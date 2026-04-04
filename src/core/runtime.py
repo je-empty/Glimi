@@ -586,16 +586,8 @@ class AgentRuntime:
             log_writer.mark_done(agent_id)
             log_writer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
 
-        # DB 로깅
-        agent_db = db.get_agent(agent_id)
-        current_emotion = agent_db.get("current_emotion", "평온") if agent_db else None
-        for msg in messages:
-            db.log_message(channel, agent_id, msg, emotion=current_emotion)
-
-        try:
-            check_and_summarize(agent_id, channel)
-        except Exception as e:
-            print(f"[Memory] 요약 체크 오류 (무시): {e}")
+        # DB 로깅은 handlers에서 디스코드 전송 후 처리
+        # (대시보드에 디스코드보다 먼저 보이는 문제 방지)
 
         return messages
 

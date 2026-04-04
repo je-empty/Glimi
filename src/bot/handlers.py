@@ -65,40 +65,45 @@ async def on_message(message: discord.Message):
 
 
 async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
-    """메시지 하나를 처리해서 전송. mgr/creator면 CMD/QUERY, 페르소나면 ACTION 파싱."""
+    """메시지 하나를 처리해서 전송 + DB 로깅. mgr/creator면 CMD/QUERY, 페르소나면 ACTION 파싱."""
     from src.bot.core import send_system_log
+    ch_name = getattr(channel, 'name', '')
     is_creator = (load_profile(agent_id) or {}).get("type") == "creator"
     has_cmd_access = is_mgr or is_creator
     has_cmd = CMD_PATTERN.search(msg) or QUERY_PATTERN.search(msg)
     has_action = ACTION_PATTERN.search(msg)
+
+    # 에이전트 감정 (DB 로깅용)
+    agent_db = db.get_agent(agent_id)
+    emotion = agent_db.get("current_emotion", "평온") if agent_db else None
 
     if has_cmd_access and guild and has_cmd:
         # CMD/QUERY — 대화에 안 보이고 시스템 로그로
         agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
         await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
         cleaned = await parse_and_execute_actions(channel, [msg], guild)
-        # CMD/QUERY 실행 후 남은 순수 텍스트만 대화에 표시
         for resp in cleaned:
             for part in _split_for_chat(resp):
                 await send_as_agent(channel, agent_id, part)
                 sent_msgs.append(part)
+                db.log_message(ch_name, agent_id, part, emotion=emotion)
     elif has_action:
-        # ACTION — 대화에 안 보이고 시스템 로그로
         agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
         await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
         actions = ACTION_PATTERN.findall(msg)
         clean_text = ACTION_PATTERN.sub('', msg).strip()
-        # ACTION 제거 후 순수 텍스트만 대화에
         if clean_text:
             for part in _split_for_chat(clean_text):
                 await send_as_agent(channel, agent_id, part)
                 sent_msgs.append(part)
+                db.log_message(ch_name, agent_id, part, emotion=emotion)
         for action in actions:
             await _forward_action_to_yuna(agent_id, action.strip(), guild)
     else:
         for part in _split_for_chat(msg):
             await send_as_agent(channel, agent_id, part)
             sent_msgs.append(part)
+            db.log_message(ch_name, agent_id, part, emotion=emotion)
 
 
 async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, user_message: str):
@@ -179,11 +184,9 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             if msg is None:
                 break
 
-            # 메시지 길이에 비례한 타이핑 딜레이 (읽고 쓰는 시간 시뮬레이션)
-            type_delay = min(len(msg) * 0.03, 2.0) + random.uniform(0.3, 0.8)
-            await asyncio.sleep(0.5 + random.uniform(0, 0.3))
+            await asyncio.sleep(0.3 + random.uniform(0, 0.5))
             async with message.channel.typing():
-                await asyncio.sleep(type_delay)
+                await asyncio.sleep(0.2 + random.uniform(0, 0.3))
 
             await _handle_msg(msg)
 
@@ -194,8 +197,13 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
                 is_mgr, message.guild, sent_msgs
             )
 
-        # 전송 완료 → speaking 해제
+        # 전송 완료 → speaking 해제 + 메모리 요약 체크
         log_writer.mark_speaking_done(agent_id)
+        try:
+            from src.core.memory import check_and_summarize
+            check_and_summarize(agent_id, channel_name)
+        except Exception:
+            pass
 
         # 톡방 요청 감지 (페르소나만)
         if not is_mgr and message.guild:
@@ -297,13 +305,11 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                 if first:
                     log_writer.mark_speaking(agent_id)
                 else:
-                    type_delay = min(len(msg) * 0.03, 2.0) + random.uniform(0.3, 0.8)
-                    await asyncio.sleep(0.5 + random.uniform(0, 0.3))
+                    await asyncio.sleep(0.3 + random.uniform(0, 0.4))
                 first = False
 
                 async with message.channel.typing():
-                    type_delay = min(len(msg) * 0.03, 2.0) if not first else 0.3
-                    await asyncio.sleep(type_delay + random.uniform(0, 0.3))
+                    await asyncio.sleep(0.2 + random.uniform(0, 0.3))
                 await _handle_group_msg(msg)
 
             # 버퍼에 남은 불완전 태그 처리
@@ -313,8 +319,13 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                     False, message.guild, sent_msgs
                 )
 
-            # 전송 완료 → speaking 해제
+            # 전송 완료 → speaking 해제 + 메모리 요약
             log_writer.mark_speaking_done(agent_id)
+            try:
+                from src.core.memory import check_and_summarize
+                check_and_summarize(agent_id, channel_name)
+            except Exception:
+                pass
 
             if message.guild:
                 for m in sent_msgs:
