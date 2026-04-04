@@ -651,9 +651,10 @@ class DashboardScreen(Screen):
         agent_list = self.query_one("#agent-list", OptionList)
         agent_list.clear_options()
 
-        # DB 채널 + 시스템 채널 병합
+        # DB 채널 + 시스템 채널 + 스캔 데이터 병합
         ch_data = {ch["channel"]: ch for ch in _cache.channels}
-        # 시스템 채널 추가 (대화 없어도 표시)
+
+        # 시스템 채널 (대화 없어도 표시)
         for a in _cache.all_agents.values():
             if a["type"] == "mgr":
                 for sys_ch in ["mgr-dashboard", "mgr-system-log"]:
@@ -666,6 +667,33 @@ class DashboardScreen(Screen):
                 dm_ch = f"dm-{a['name']}"
                 if dm_ch not in ch_data:
                     ch_data[dm_ch] = {"channel": dm_ch, "msg_count": 0, "last_active": None}
+
+        # 관계 기반 internal 채널 추론
+        agents = list(_cache.all_agents.values())
+        conn = db.get_conn()
+        rels = [dict(r) for r in conn.execute("SELECT * FROM relationships").fetchall()]
+        conn.close()
+        for r in rels:
+            a_agent = _cache.all_agents.get(r["agent_a"])
+            b_agent = _cache.all_agents.get(r["agent_b"])
+            if a_agent and b_agent:
+                # 양방향 채널 이름 체크
+                for ch_name in [
+                    f"internal-dm-{a_agent['name']}-{b_agent['name']}",
+                    f"internal-dm-{b_agent['name']}-{a_agent['name']}",
+                ]:
+                    if ch_name not in ch_data:
+                        # DB에 대화 기록이 있는지 확인
+                        cnt = db.get_recent_messages(ch_name, limit=1)
+                        if cnt:
+                            ch_data[ch_name] = {"channel": ch_name, "msg_count": len(cnt), "last_active": cnt[0].get("timestamp")}
+
+        # Sync 스캔 데이터가 있으면 포함 (디코에만 있는 채널)
+        scan_data = getattr(self, '_sync_scan_data', None)
+        if scan_data:
+            for ch_name, count in scan_data.items():
+                if ch_name not in ch_data:
+                    ch_data[ch_name] = {"channel": ch_name, "msg_count": 0, "last_active": None}
 
         all_channels = list(ch_data.values())
         dm, group, internal, mgr = _classify_channels(all_channels)
