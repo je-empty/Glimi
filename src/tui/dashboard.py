@@ -34,6 +34,7 @@ from textual.reactive import reactive
 from rich.text import Text
 from rich.panel import Panel
 from rich.table import Table as RichTable
+from rich.columns import Columns
 from rich.console import Group
 from rich import box
 
@@ -565,6 +566,78 @@ class DashboardScreen(Screen):
 
     # ── Render: Overview ────────────────────────────────
 
+    def _render_agent_card(self, agent):
+        """에이전트 카드 — 추론 중이면 확장, 아니면 컴팩트"""
+        aid = agent["id"]
+        c = _get_color(aid)
+        thinking = log_writer.is_thinking(aid)
+        em = E_EMOJI.get(agent["current_emotion"], "")
+        intensity = agent.get("emotion_intensity", 0)
+        sec = _seconds_since(agent.get("last_active"))
+        type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
+        type_str = type_map.get(agent.get("type", ""), "")
+
+        if thinking:
+            # ── 확장 카드: 추론 로그 + 최근 대화 ──
+            lines = []
+            lines.append(f"[bright_yellow bold]🧠 추론중[/bright_yellow bold]  {em} {agent['current_emotion']} ({intensity}/10)")
+            lines.append(f"[dim]{type_str} · {_ago(sec)}[/dim]")
+            lines.append("")
+
+            # 추론 로그
+            sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
+            all_sys = log_writer.tail(sys_log_path, 50)
+            thinking_lines = [l for l in all_sys if f"[{aid}]" in l]
+            if thinking_lines:
+                lines.append("[bold]추론 로그:[/bold]")
+                for l in thinking_lines[-5:]:
+                    lines.append(f"  [dim]{l}[/dim]")
+                lines.append("")
+
+            # 최근 대화
+            agent_type = agent.get("type", "persona")
+            ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
+            recent = db.get_recent_messages(ch_name, limit=4)
+            if recent:
+                lines.append("[bold]최근 대화:[/bold]")
+                for r in recent[-4:]:
+                    speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
+                    lines.append(f"  [{c}]{speaker}[/{c}]: {_trunc(r['message'], 60)}")
+
+            return Panel(
+                "\n".join(lines),
+                title=f"[{c} bold]{agent['name']}[/{c} bold]  [bright_yellow]● ACTIVE[/bright_yellow]",
+                border_style="bright_yellow", box=box.ROUNDED, padding=(1, 2),
+            )
+        else:
+            # ── 컴팩트 카드 ──
+            bar = "●" * (intensity // 2) + "○" * (5 - intensity // 2)
+            status = "[green]활성[/green]" if agent["status"] == "active" else f"[dim]{agent['status']}[/dim]"
+
+            line1 = f"{em} {agent['current_emotion']}  [{bar}]  {status}"
+            line2 = f"[dim]{type_str} · {_ago(sec)}[/dim]"
+
+            # 마지막 메시지 한 줄
+            agent_type = agent.get("type", "persona")
+            ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
+            recent = db.get_recent_messages(ch_name, limit=1)
+            line3 = ""
+            if recent:
+                r = recent[-1]
+                speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
+                line3 = f"[dim]{speaker}: {_trunc(r['message'], 50)}[/dim]"
+
+            content = f"{line1}\n{line2}"
+            if line3:
+                content += f"\n{line3}"
+
+            return Panel(
+                content,
+                title=f"[{c} bold]{agent['name']}[/{c} bold]",
+                border_style=c if agent["status"] == "active" else "dim",
+                box=box.ROUNDED, padding=(0, 1),
+            )
+
     def _render_overview(self):
         items = []
         agents = list(_cache.all_agents.values())
@@ -575,33 +648,26 @@ class DashboardScreen(Screen):
                 border_style="yellow", box=box.ROUNDED, padding=(1, 2),
             )
 
-        # 추론 중 에이전트 상세
-        thinking_agents = [a for a in agents if log_writer.is_thinking(a["id"])]
-        if thinking_agents:
-            items.append(Text(""))
-            for a in thinking_agents:
-                c = _get_color(a["id"])
-                agent_type = a.get("type", "persona")
-                if agent_type == "mgr":
-                    ch_name = "mgr-dashboard"
-                else:
-                    ch_name = f"dm-{a['name']}"
-                recent = db.get_recent_messages(ch_name, limit=3)
-                lines = []
-                for r in recent[-3:]:
-                    speaker = get_user_name() if r["speaker"] == get_user_id() else a["name"]
-                    lines.append(f"[dim]{speaker}: {_trunc(r['message'], 70)}[/dim]")
-                content = "\n".join(lines) if lines else "[dim]...[/dim]"
-                items.append(Panel(
-                    content,
-                    title=f"[{c} bold]🧠 {a['name']}[/{c} bold] [bright_yellow]추론중[/bright_yellow]",
-                    border_style=c, box=box.ROUNDED, padding=(0, 1),
-                ))
+        # 추론 중 에이전트 먼저 (확장 카드)
+        thinking = [a for a in agents if log_writer.is_thinking(a["id"])]
+        idle = [a for a in agents if not log_writer.is_thinking(a["id"])]
 
-        # 하단: 채널 요약 + 최근 대화
-        items.append(Text(""))
+        for a in thinking:
+            items.append(self._render_agent_card(a))
+
+        # 비활성 에이전트 (컴팩트 카드, 3열 그리드)
+        if idle:
+            row = []
+            for a in idle:
+                row.append(self._render_agent_card(a))
+                if len(row) == 3:
+                    items.append(Columns(row, equal=True, expand=True))
+                    row = []
+            if row:
+                items.append(Columns(row, equal=True, expand=True))
 
         # 채널 요약
+        items.append(Text(""))
         dm, group, internal, mgr = _classify_channels(_cache.channels)
         ch_lines = []
         for label, icon, chs, clr in [
@@ -613,10 +679,11 @@ class DashboardScreen(Screen):
                 active_s = f" [green]({active} active)[/green]" if active else ""
                 ch_lines.append(f"[{clr} bold]{icon} {label}[/{clr} bold] {len(chs)}{active_s}")
         ch_summary = "  │  ".join(ch_lines) if ch_lines else "[dim]채널 없음[/dim]"
+        items.append(Panel(ch_summary, border_style="dim", box=box.ROUNDED, padding=(0, 1)))
 
         # 최근 대화
         chat_lines = []
-        for r in (_cache.messages[-8:] if _cache.messages else []):
+        for r in (_cache.messages[-10:] if _cache.messages else []):
             sid = r["speaker"]
             c = _get_color(sid) if sid != get_user_id() else "bright_green"
             ts = r["timestamp"][11:16] if r["timestamp"] else ""
@@ -630,12 +697,20 @@ class DashboardScreen(Screen):
             chat_lines.append(f"[dim]{ts} {tag}[/dim] [{c}]{name}[/{c}] {msg}")
 
         chat_content = "\n".join(chat_lines) if chat_lines else "[dim]대화 없음[/dim]"
-
-        items.append(Panel(ch_summary, border_style="dim", box=box.ROUNDED, padding=(0, 1)))
         items.append(Panel(
             chat_content, title="[bold]💬 최근 대화[/bold]",
             border_style="dim", box=box.ROUNDED, padding=(0, 1),
         ))
+
+        # 시스템 로그
+        sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
+        log_lines = log_writer.tail(sys_log, 6)
+        if log_lines:
+            items.append(Panel(
+                "\n".join(log_lines),
+                title="[bold]⚙ System[/bold]",
+                border_style="dim", box=box.ROUNDED, padding=(0, 1),
+            ))
 
         return Group(*items)
 
@@ -649,54 +724,96 @@ class DashboardScreen(Screen):
 
         c = _get_color(agent_id)
         em = E_EMOJI.get(agent["current_emotion"], "")
+        thinking = log_writer.is_thinking(agent_id)
+        sec = _seconds_since(agent.get("last_active"))
         items = []
 
-        # 프로필 정보
+        # ── 프로필 정보 ──
         info_lines = []
-        info_lines.append(f"[bold]ID:[/bold] {agent_id}")
-        info_lines.append(f"[bold]Type:[/bold] {agent.get('type', '?')}")
-        info_lines.append(f"[bold]Status:[/bold] {agent.get('status', '?')}")
-        info_lines.append(f"[bold]Emotion:[/bold] {em} {agent['current_emotion']} ({agent.get('emotion_intensity', 0)}/10)")
+        type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
+        status_str = "[bright_yellow]🧠 추론중[/bright_yellow]" if thinking else \
+                     "[green]● 활성[/green]" if agent["status"] == "active" else f"[dim]{agent['status']}[/dim]"
+
+        info_lines.append(f"{status_str}  │  {em} {agent['current_emotion']} ({agent.get('emotion_intensity', 0)}/10)  │  [dim]{_ago(sec)}[/dim]")
+        info_lines.append(f"[dim]{agent_id} · {type_map.get(agent.get('type', ''), '')}[/dim]")
 
         if profile:
-            info_lines.append(f"[bold]Age:[/bold] {profile.get('age', '?')}  [bold]MBTI:[/bold] {profile.get('mbti', '?')}")
-            rel = profile.get("relationship_to_owner", {})
-            if rel.get("type"):
-                info_lines.append(f"[bold]{get_user_name()}:[/bold] {rel['type']}")
-                if rel.get("duration"):
-                    info_lines.append(f"  {rel['duration']}")
+            parts = []
+            if profile.get("age"):
+                parts.append(f"{profile['age']}살")
+            if profile.get("mbti"):
+                parts.append(profile["mbti"])
+            if profile.get("enneagram"):
+                parts.append(profile["enneagram"])
+            if parts:
+                info_lines.append("  ".join(parts))
+
             traits = profile.get("personality", {}).get("traits", [])
             if traits:
-                info_lines.append(f"[bold]Traits:[/bold] {' · '.join(traits[:5])}")
+                info_lines.append(f"[bold]성격:[/bold] {' · '.join(traits[:5])}")
+
+            rel = profile.get("relationship_to_owner", {})
+            if rel.get("type"):
+                rel_str = f"[bold]Owner:[/bold] {rel['type']}"
+                if rel.get("pet_name"):
+                    rel_str += f" ({rel['pet_name']})"
+                if rel.get("duration"):
+                    rel_str += f" · {rel['duration']}"
+                info_lines.append(rel_str)
+
+            # 다른 에이전트와의 관계
+            rels = profile.get("relationships", {})
+            if rels:
+                rel_parts = []
+                for target_id, rel_info in list(rels.items())[:5]:
+                    target = _cache.all_agents.get(target_id)
+                    target_name = target["name"] if target else target_id
+                    tc = _get_color(target_id)
+                    rel_type = rel_info.get("type", "?")
+                    rel_parts.append(f"[{tc}]{target_name}[/{tc}]({rel_type})")
+                info_lines.append(f"[bold]관계:[/bold] {' · '.join(rel_parts)}")
 
         items.append(Panel(
             "\n".join(info_lines),
-            title=f"[{c} bold]{agent['name']}[/{c} bold]  ({agent_id})",
+            title=f"[{c} bold]{agent['name']}[/{c} bold]",
             border_style=c, box=box.ROUNDED, padding=(1, 2),
         ))
 
-        # 추론 로그
+        # ── 추론 로그 (raw) ──
         sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
-        all_sys = log_writer.tail(sys_log_path, 100)
+        all_sys = log_writer.tail(sys_log_path, 200)
         thinking_lines = [l for l in all_sys if f"[{agent_id}]" in l]
-        thinking_content = "\n".join(thinking_lines[-15:]) if thinking_lines else "[dim]추론 로그 없음[/dim]"
+        thinking_content = "\n".join(thinking_lines[-20:]) if thinking_lines else "[dim]추론 로그 없음[/dim]"
         thinking_title = "[bold]🧠 추론 로그[/bold]"
-        if log_writer.is_thinking(agent_id):
-            thinking_title += "  [bright_yellow]● 추론중[/bright_yellow]"
+        if thinking:
+            thinking_title += "  [bright_yellow]● LIVE[/bright_yellow]"
         items.append(Panel(
             thinking_content, title=thinking_title,
-            border_style="bright_yellow" if log_writer.is_thinking(agent_id) else "dim",
+            border_style="bright_yellow" if thinking else "dim",
             box=box.ROUNDED, padding=(0, 1),
         ))
 
-        # 최근 대화
+        # ── 채팅 로그 (이 에이전트 관련 모든 채널) ──
         agent_type = agent.get("type", "persona")
-        if agent_type == "mgr":
-            ch_name = "mgr-dashboard"
-        else:
-            ch_name = f"dm-{agent['name']}"
+        agent_name = agent["name"]
 
-        recent = db.get_recent_messages(ch_name, limit=20)
+        # 주 채널
+        if agent_type == "mgr":
+            primary_ch = "mgr-dashboard"
+        else:
+            primary_ch = f"dm-{agent_name}"
+
+        # 관련 채널 찾기 (이 에이전트가 참여한 채널들)
+        related_channels = []
+        for ch in _cache.channels:
+            ch_name = ch["channel"]
+            if ch_name == primary_ch:
+                continue
+            if agent_name in ch_name or ch_name.startswith("mgr"):
+                related_channels.append(ch)
+
+        # 주 채널 대화
+        recent = db.get_recent_messages(primary_ch, limit=20)
         chat_lines = []
         for r in recent:
             sid = r["speaker"]
@@ -707,9 +824,36 @@ class DashboardScreen(Screen):
 
         chat_content = "\n".join(chat_lines) if chat_lines else "[dim]대화 없음[/dim]"
         items.append(Panel(
-            chat_content, title=f"[bold]💬 최근 대화 ({ch_name})[/bold]",
+            chat_content, title=f"[bold]💬 {primary_ch}[/bold]",
             border_style="cyan", box=box.ROUNDED, padding=(0, 1),
         ))
+
+        # 관련 채널 대화
+        for ch in related_channels[:3]:
+            ch_name = ch["channel"]
+            recent = db.get_recent_messages(ch_name, limit=10)
+            if not recent:
+                continue
+            lines = []
+            for r in recent:
+                sid = r["speaker"]
+                sc = _get_color(sid) if sid != get_user_id() else "bright_green"
+                name = get_user_name() if sid == get_user_id() else _speaker_name(sid)
+                ts = r["timestamp"][11:16] if r["timestamp"] else ""
+                lines.append(f"[dim]{ts}[/dim] [{sc} bold]{name}[/{sc} bold]: {r['message']}")
+
+            if ch_name.startswith("internal-"):
+                color, icon = "yellow", "🔒"
+            elif ch_name.startswith("group-"):
+                color, icon = "green", "👥"
+            else:
+                color, icon = "dim", "💬"
+
+            items.append(Panel(
+                "\n".join(lines),
+                title=f"[bold]{icon} {ch_name}[/bold]",
+                border_style=color, box=box.ROUNDED, padding=(0, 1),
+            ))
 
         return Group(*items)
 

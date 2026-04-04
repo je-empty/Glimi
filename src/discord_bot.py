@@ -8,6 +8,8 @@ Project Chaos — Discord Bot (Entry Point)
 환경변수: DISCORD_BOT_TOKEN (또는 .env 파일)
 """
 import json
+import os
+import signal
 import sys
 from pathlib import Path
 
@@ -25,9 +27,39 @@ import src.bot.commands    # noqa: F401 — !commands
 import src.bot.tasks       # noqa: F401 — background tasks + events
 
 
+def _kill_existing_bot():
+    """같은 커뮤니티의 기존 봇 프로세스 종료"""
+    pid_dir = Path(__file__).parent.parent / "dev"
+    pid_dir.mkdir(exist_ok=True)
+    cid = community.get_community_id()
+
+    # 커뮤니티별 PID 파일
+    pid_file = pid_dir / f".bot-{cid}.pid"
+    general_pid = pid_dir / ".bot.pid"
+
+    for pf in [pid_file, general_pid]:
+        if pf.exists():
+            try:
+                old_pid = int(pf.read_text().strip())
+                if old_pid != os.getpid():
+                    os.kill(old_pid, signal.SIGTERM)
+                    log.info(f"기존 봇 종료 (PID {old_pid})")
+                    import time
+                    time.sleep(1)
+            except (ProcessLookupError, ValueError):
+                pass
+            pf.unlink(missing_ok=True)
+
+    # 현재 PID 기록
+    pid_file.write_text(str(os.getpid()))
+    general_pid.write_text(str(os.getpid()))
+
+
 def main():
     cid = community.get_community_id()
     log.info(f"커뮤니티: {cid} ({community.get_community_dir()})")
+
+    _kill_existing_bot()
 
     if not TOKEN:
         env_path = community.get_env_path()
