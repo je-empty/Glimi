@@ -1113,17 +1113,17 @@ async def _trigger_onboarding_phase2(guild):
     """온보딩 Phase 2 트리거"""
     phase = db.get_meta("onboarding_phase")
     if phase in ("complete", "channels_done", "channels_setup"):
-        log_writer.system(f"[온보딩 Phase 2] 이미 진행/완료 (phase={phase}) — 스킵")
+        log_writer.system(f"[sup:onboarding] 이미 진행/완료 (phase={phase}) — 스킵")
         return
     db.set_meta("onboarding_phase", "channels_setup")
-    log_writer.system("[온보딩 Phase 2] 트리거됨")
+    log_writer.system("[sup:onboarding] 트리거됨")
     import asyncio
 
     async def _safe_setup():
         try:
             await _onboarding_setup_channels(guild)
         except Exception as e:
-            log_writer.system(f"❌ [온보딩 Phase 2] 오류: {type(e).__name__}: {e}")
+            log_writer.system(f"❌ [sup:onboarding] 오류: {type(e).__name__}: {e}")
 
     asyncio.get_event_loop().create_task(_safe_setup())
 
@@ -1133,7 +1133,7 @@ async def _onboarding_setup_channels(guild):
     phase = db.get_meta("onboarding_phase")
     if phase in ("complete", "channels_done"):
         return
-    log_writer.system("[온보딩 Phase 2] 시작: 채널 생성 + 크리에이터 소개")
+    log_writer.system("[sup:onboarding] 시작: 채널 생성 + 크리에이터 소개")
     import asyncio
     from src.bot.core import create_onboarding_channel, send_as_agent, _split_for_chat
     from src.core.runtime import runtime
