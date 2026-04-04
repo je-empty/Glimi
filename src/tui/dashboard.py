@@ -681,9 +681,8 @@ class DashboardScreen(Screen):
         dev_s = "[bright_yellow bold]🔧 Dev[/bright_yellow bold]" if dev else ""
         think_s = f"[bright_yellow]🧠 {len(thinking)}[/bright_yellow]" if thinking else ""
 
-        cid = os.environ.get("CHAOS_COMMUNITY", "default")
         parts = [
-            f"[bright_magenta bold]◈ Chaos[/bright_magenta bold] [bold cyan]{cid}[/bold cyan]",
+            f"[bright_magenta bold]◈ Chaos[/bright_magenta bold]",
             bot_s,
             f"[dim]{now}[/dim]",
             f"Agents: [cyan]{total}[/cyan]",
@@ -1757,7 +1756,7 @@ class DashboardScreen(Screen):
             return
 
         # 먼저 복원 필요한 채널 스캔
-        self._loading = LoadingOverlay("동기화 준비 중...")
+        self._loading = LoadingOverlay("동기화 진행 중...")
         self.app.push_screen(self._loading)
         self._run_sync_scan()
 
@@ -2081,14 +2080,15 @@ class DashboardScreen(Screen):
 # ══════════════════════════════════════════════════════════
 
 class ChaosDashboard(App):
-    TITLE = "Project Chaos"
-    SUB_TITLE = "Dashboard"
     CSS = DASHBOARD_CSS
     BINDINGS = [
         Binding("q", "quit", "Quit", show=True),
     ]
 
     def on_mount(self):
+        cid = os.environ.get("CHAOS_COMMUNITY", "default")
+        self.title = f"Project Chaos — {cid}"
+        self.sub_title = ""
         self.push_screen(DashboardScreen())
 
 
