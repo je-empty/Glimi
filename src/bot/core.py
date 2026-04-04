@@ -143,8 +143,29 @@ async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: st
     except Exception as e:
         log.warning(f"Webhook 실패, fallback: {e}")
         await channel.send(f"**{name}**: {message}")
-    log_writer.agent_discord(agent_id, channel.name, message)
-    log_writer.chat(channel.name, name, message)
+
+
+async def send_image_as_agent(channel: discord.TextChannel, agent_id: str, image_path: str, caption: str = ""):
+    """에이전트 Webhook으로 이미지 전송"""
+    import os as _os
+    profile = load_profile(agent_id)
+    name = profile["name"] if profile else "에이전트"
+
+    if not _os.path.exists(image_path):
+        log_writer.system(f"[이미지] 파일 없음: {image_path}")
+        return
+
+    try:
+        webhook = await get_agent_webhook(channel, agent_id)
+        file = discord.File(image_path, filename=_os.path.basename(image_path))
+        await webhook.send(content=caption, file=file, username=name)
+    except Exception as e:
+        log.warning(f"이미지 전송 실패: {e}")
+        try:
+            file = discord.File(image_path, filename=_os.path.basename(image_path))
+            await channel.send(content=f"**{name}**: {caption}", file=file)
+        except Exception as e2:
+            log.warning(f"이미지 fallback도 실패: {e2}")
 
 
 async def update_agent_webhook_avatar(channel: discord.TextChannel, agent_id: str) -> bool:

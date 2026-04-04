@@ -64,6 +64,83 @@ async def on_message(message: discord.Message):
         await _handle_runtime_error(message.guild, channel_name, e)
 
 
+def _is_image_action(action_str: str) -> bool:
+    """이미지 ACTION인지 판별"""
+    lower = action_str.lower()
+    if '"type"' in lower and ('이미지' in lower or '"image"' in lower):
+        return True
+    if action_str.startswith("이미지 ") or action_str.startswith("image "):
+        return True
+    return False
+
+
+async def _handle_image_action(channel, agent_id: str, action_str: str):
+    """이미지 ACTION 처리 — 로컬 파일 또는 URL 이미지 전송"""
+    import json as _json
+    from src.bot.core import send_image_as_agent
+    from src import community
+    import os
+    import tempfile
+
+    file_name = ""
+    url = ""
+    caption = ""
+
+    # JSON 파싱
+    if action_str.startswith("{"):
+        try:
+            data = _json.loads(action_str)
+            file_name = data.get("file", data.get("filename", data.get("sample", "")))
+            url = data.get("url", "")
+            caption = data.get("caption", data.get("message", ""))
+        except Exception:
+            pass
+    else:
+        parts = action_str.split(None, 2)
+        file_name = parts[1] if len(parts) > 1 else ""
+        caption = parts[2] if len(parts) > 2 else ""
+
+    # URL 이미지
+    if url:
+        try:
+            import urllib.request
+            ext = url.rsplit(".", 1)[-1][:4] if "." in url.split("?")[0] else "png"
+            tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+            urllib.request.urlretrieve(url, tmp.name)
+            await send_image_as_agent(channel, agent_id, tmp.name, caption)
+            log_writer.system(f"[이미지] {agent_id} URL → #{getattr(channel, 'name', '?')}")
+            os.unlink(tmp.name)
+        except Exception as e:
+            log_writer.system(f"[이미지] URL 다운로드 실패: {e}")
+        return
+
+    # 로컬 파일
+    if not file_name:
+        return
+
+    # -full 파일 찾기
+    if "-full" not in file_name:
+        base, ext = file_name.rsplit(".", 1) if "." in file_name else (file_name, "png")
+        file_name = f"{base}-full.{ext}"
+
+    paths_to_check = [
+        os.path.join(str(community.get_avatars_dir()), file_name),
+        os.path.join(str(community.ASSETS_DIR / "avatars"), file_name),
+    ]
+
+    image_path = None
+    for p in paths_to_check:
+        if os.path.exists(p):
+            image_path = p
+            break
+
+    if image_path:
+        await send_image_as_agent(channel, agent_id, image_path, caption)
+        log_writer.system(f"[이미지] {agent_id} → #{getattr(channel, 'name', '?')}: {file_name}")
+    else:
+        log_writer.system(f"[이미지] 파일 못 찾음: {file_name}")
+
+
 def _filter_meta_speech(text: str, agent_id: str) -> str:
     """메타 발언 필터 — ACTION/CMD 실행을 설명하는 발언 제거.
     예: "서유나한테 DM 보냈어", "유나한테 메시지 전달했어" 등"""
@@ -110,7 +187,12 @@ async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
                 sent_msgs.append(part)
                 db.log_message(ch_name, agent_id, part, emotion=emotion)
         for action in actions:
-            await _forward_action_to_yuna(agent_id, action.strip(), guild)
+            # 이미지 ACTION 처리
+            action_str = action.strip()
+            if _is_image_action(action_str):
+                await _handle_image_action(channel, agent_id, action_str)
+            else:
+                await _forward_action_to_yuna(agent_id, action_str, guild)
     else:
         for part in _split_for_chat(msg):
             await send_as_agent(channel, agent_id, part)
