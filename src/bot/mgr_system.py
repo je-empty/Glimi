@@ -692,9 +692,14 @@ async def execute_yuna_command(
     elif cmd == "멤버목록":
         pass  # QUERY로 처리됨
 
-    # ── 온보딩 완료 (유나가 프로필 수집 충분하다고 판단) ──
-    elif cmd == "온보딩완료":
+    # ── 프로필 수집 완료 → Phase 2 (채널 생성 + 하나 소개) ──
+    elif cmd == "프로필수집완료":
         await _trigger_onboarding_phase2(guild)
+
+    # ── 온보딩 최종 완료 (유나가 채널 설명 + 하나 보고 수신까지 마침) ──
+    elif cmd == "온보딩완료":
+        db.set_meta("onboarding_phase", "complete")
+        log_writer.system("온보딩 최종 완료")
 
     else:
         log.warning(f"[유나CMD] 알 수 없는 명령: {cmd}")
@@ -1105,7 +1110,7 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
 
 
 async def _trigger_onboarding_phase2(guild):
-    """온보딩 Phase 2 트리거 — 유나가 [CMD:온보딩완료]를 보냈을 때 호출"""
+    """온보딩 Phase 2 트리거 — 유나가 [CMD:프로필수집완료]를 보냈을 때 호출"""
     phase = db.get_meta("onboarding_phase")
     if phase == "complete":
         return
@@ -1115,8 +1120,9 @@ async def _trigger_onboarding_phase2(guild):
 
 
 async def _onboarding_setup_channels(guild):
-    """온보딩 Phase 2: 시스템 채널 생성 + 크리에이터 소개. onboarding_phase가 complete이면 실행 안 함."""
-    if db.get_meta("onboarding_phase") == "complete":
+    """온보딩 Phase 2: 시스템 채널 생성 + 크리에이터 소개."""
+    phase = db.get_meta("onboarding_phase")
+    if phase in ("complete", "channels_done", "channels_setup"):
         return
     import asyncio
     from src.bot.core import create_onboarding_channel, send_as_agent, _split_for_chat
@@ -1243,8 +1249,8 @@ async def _onboarding_setup_channels(guild):
             except Exception:
                 pass
 
-    db.set_meta("onboarding_phase", "complete")
-    log_writer.system("온보딩 Phase 2 완료: 시스템 채널 + 크리에이터 인사")
+    db.set_meta("onboarding_phase", "channels_done")
+    log_writer.system("온보딩 Phase 2 완료: 시스템 채널 + 크리에이터 인사 (최종 완료 대기)")
 
 
 async def yuna_edit_relationship(report_channel, args_str):
