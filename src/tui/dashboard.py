@@ -391,9 +391,13 @@ class DashboardScreen(Screen):
             yield Button("← Back", variant="default", id="nav-back")
             # 콘텐츠 영역
             yield Static(id="content", classes="content-area")
+            # Sync 전용 버튼 바
+            with Horizontal(id="sync-buttons", classes="nav-bar"):
+                yield Button("🔍 Scan Discord", variant="primary", id="btn-sync-scan")
+                yield Button("▶ Start Sync", variant="success", id="btn-sync-start")
             # Agents 뷰용 에이전트 선택
             yield OptionList(id="agent-list", classes="agent-selector")
-            # Manage 뷰용 채널/메시지 선택
+            # 공용 리스트 (채널 편집, 싱크 채널 선택 등)
             yield OptionList(id="manage-list", classes="content-area")
         yield Footer()
 
@@ -529,9 +533,10 @@ class DashboardScreen(Screen):
         manage_list = self.query_one("#manage-list", OptionList)
         view = self._current_view
 
-        # 기본: 리스트 숨김
+        # 기본: 리스트/버튼 숨김
         agent_list.display = False
         manage_list.display = False
+        self.query_one("#sync-buttons", Horizontal).display = False
 
         # Back 버튼: 서브페이지에서만 표시
         back_btn = self.query_one("#nav-back", Button)
@@ -552,6 +557,11 @@ class DashboardScreen(Screen):
         if view == "sync":
             content.display = True
             manage_list.display = True
+            sync_btns = self.query_one("#sync-buttons", Horizontal)
+            sync_btns.display = True
+            # Start는 스캔 후에만 활성
+            scanned = hasattr(self, '_sync_scan_data') and self._sync_scan_data
+            self.query_one("#btn-sync-start", Button).disabled = not scanned
             content.update(self._render_sync_view())
             self._update_sync_list()
         elif view == "overview":
@@ -1347,77 +1357,80 @@ class DashboardScreen(Screen):
 
     def _render_usage(self):
         """AI 사용량 대시보드"""
+        from datetime import timedelta
+        from src.core.runtime import CLAUDE_AVAILABLE, AGENT_MODELS
         items = []
 
-        # ── Claude ──
-        from src.core.runtime import CLAUDE_AVAILABLE, AGENT_MODELS
+        # ── Claude 상태 ──
+        status = "[green]● Connected[/green]" if CLAUDE_AVAILABLE else "[red]● Disconnected[/red]"
+        model = AGENT_MODELS.get("persona", "?")
 
-        claude_lines = []
-        claude_lines.append(f"  상태: {'[green]● 연결됨[/green]' if CLAUDE_AVAILABLE else '[red]● 미연결[/red]'}")
-        claude_lines.append(f"  모델: [cyan]{AGENT_MODELS.get('persona', '?')}[/cyan]")
-        claude_lines.append(f"  플랜: [dim]Claude Code Max[/dim]")
-
-        # 추론 통계 (system.log에서 추출)
+        # 추론 통계 (system.log 기반)
         sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
-        all_lines = log_writer.tail(sys_log, 500)
-        today_inferences = sum(1 for l in all_lines if "응답" in l and datetime.now().strftime("%H:") in l[:10])
+        all_lines = log_writer.tail(sys_log, 1000)
 
-        # DB 기반 통계
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_inferences = sum(1 for l in all_lines if "응답" in l)
+        thinking_logs = [l for l in all_lines if "추론" in l or "응답" in l]
+
+        # DB 통계
         conn = db.get_conn()
         total_msgs = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-        today_str = datetime.now().strftime("%Y-%m-%d")
         today_msgs = conn.execute(
             "SELECT COUNT(*) FROM conversations WHERE timestamp LIKE ?", (f"{today_str}%",)
         ).fetchone()[0]
-
-        # 최근 7일
-        from datetime import timedelta
         week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
         week_msgs = conn.execute(
             "SELECT COUNT(*) FROM conversations WHERE timestamp >= ?", (week_ago,)
         ).fetchone()[0]
 
-        # 에이전트별 메시지 수
-        agent_stats = conn.execute("""
+        # 에이전트별 오늘 추론 수
+        today_agent = conn.execute("""
             SELECT speaker, COUNT(*) as cnt FROM conversations
-            WHERE speaker LIKE 'agent-%'
+            WHERE speaker LIKE 'agent-%' AND timestamp LIKE ?
             GROUP BY speaker ORDER BY cnt DESC
-        """).fetchall()
+        """, (f"{today_str}%",)).fetchall()
         conn.close()
 
-        claude_lines.append("")
-        claude_lines.append(f"  [bold]메시지 통계[/bold]")
-        claude_lines.append(f"    전체: [cyan]{total_msgs:,}[/cyan]건")
-        claude_lines.append(f"    오늘: [cyan]{today_msgs}[/cyan]건")
-        claude_lines.append(f"    주간: [cyan]{week_msgs}[/cyan]건")
+        # 세션 사용량 (현재 실행 이후)
+        # Claude Code Max: 세션 45분, 주간 한도
+        claude_lines = [
+            f"  {status}  │  모델: [cyan]{model}[/cyan]  │  플랜: Claude Code Max",
+            "",
+            f"  [bold]현재 세션[/bold]",
+            f"    추론 요청: [cyan]{today_inferences}[/cyan]건",
+            f"    [dim]세션 한도는 Claude Code에서 확인[/dim]",
+            "",
+            f"  [bold]메시지 통계[/bold]",
+            f"    오늘: [cyan]{today_msgs}[/cyan]건  │  주간: [cyan]{week_msgs}[/cyan]건  │  전체: [dim]{total_msgs:,}[/dim]건",
+        ]
 
-        items.append(Panel(
-            "\n".join(claude_lines),
-            title="[bold blue]Claude[/bold blue]",
-            border_style="blue", box=box.ROUNDED, padding=(1, 2),
-        ))
-
-        # 에이전트별 사용량
-        if agent_stats:
-            agent_lines = []
-            for row in agent_stats[:10]:
+        if today_agent:
+            claude_lines.append("")
+            claude_lines.append(f"  [bold]오늘 에이전트별[/bold]")
+            for row in today_agent[:5]:
                 aid = row[0]
                 cnt = row[1]
                 agent = _cache.all_agents.get(aid)
                 name = agent["name"] if agent else aid
                 c = _get_color(aid)
-                bar = "█" * min(cnt // 10, 30) + "░" * max(0, 30 - cnt // 10)
-                agent_lines.append(f"  [{c}]{name:<10}[/{c}] {bar} {cnt}건")
+                bar = "█" * min(cnt, 20) + "░" * max(0, 20 - cnt)
+                claude_lines.append(f"    [{c}]{name:<8}[/{c}] {bar} {cnt}")
 
-            items.append(Panel(
-                "\n".join(agent_lines),
-                title="[bold]에이전트별 메시지[/bold]",
-                border_style="dim", box=box.ROUNDED, padding=(0, 1),
-            ))
+        items.append(Panel(
+            "\n".join(claude_lines),
+            title="[bold blue]☁ Claude[/bold blue]",
+            border_style="blue", box=box.ROUNDED, padding=(1, 2),
+        ))
 
         # ── 다른 AI (향후) ──
+        other_lines = [
+            "  [dim]GPT-4o[/dim]      [dim]미연결  │  연동 예정[/dim]",
+            "  [dim]Gemini[/dim]      [dim]미연결  │  연동 예정[/dim]",
+            "  [dim]Local LLM[/dim]   [dim]미연결  │  Ollama 등 연동 예정[/dim]",
+        ]
         items.append(Panel(
-            "[dim]  GPT-4 / Gemini 연동 예정[/dim]",
+            "\n".join(other_lines),
             title="[dim]Other AI Providers[/dim]",
             border_style="dim", box=box.ROUNDED, padding=(0, 1),
         ))
@@ -1650,10 +1663,14 @@ class DashboardScreen(Screen):
                 ConfirmDialog("[red bold]휴지통 비우기[/red bold]\n\n복원 불가능합니다.", danger=True),
                 lambda yes: self._do_empty_trash() if yes else None,
             )
-        elif oid == "sync_scan":
-            self._run_sync_scan()
-        elif oid == "sync_start":
-            self._start_sync()
+        elif oid == "sync_toggle_all":
+            overview = db.get_channel_overview()
+            all_chs = {ch["channel"] for ch in overview}
+            if all_chs == self._sync_selected_channels:
+                self._sync_selected_channels = set()
+            else:
+                self._sync_selected_channels = all_chs
+            self._update_sync_list()
         elif oid.startswith("sync_ch:"):
             ch_name = oid.split(":", 1)[1]
             if ch_name in self._sync_selected_channels:
@@ -1768,6 +1785,12 @@ class DashboardScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed):
         """클릭 또는 Enter — 모든 버튼 처리"""
+        if event.button.id == "btn-sync-scan":
+            self._run_sync_scan()
+            return
+        elif event.button.id == "btn-sync-start":
+            self._start_sync()
+            return
         self._handle_nav(event.button)
 
     @on(OptionList.OptionSelected, "#agent-list")
@@ -1899,22 +1922,31 @@ class DashboardScreen(Screen):
             self.app.call_from_thread(self._set_view, "sync")
 
     def _start_sync(self):
-        """Sync 탭에서 Start 누르면 실행"""
+        """Sync 탭에서 Start 누르면 실행 (스캔 후 + 채널 선택 필수)"""
+        if not hasattr(self, '_sync_scan_data') or not self._sync_scan_data:
+            return  # 스캔 안 됨
+
+        if not self._sync_selected_channels:
+            content = self.query_one("#content", Static)
+            content.update(Panel(
+                "[yellow]싱크할 채널을 선택하세요.[/yellow]\n[dim]전체 선택은 상단 체크박스 사용[/dim]",
+                border_style="yellow", box=box.ROUNDED, padding=(1, 2),
+            ))
+            return
+
         thinking = [a for a in _cache.all_agents.values() if log_writer.is_thinking(a["id"])]
         if thinking:
             names = ", ".join(a["name"] for a in thinking)
             content = self.query_one("#content", Static)
             content.update(Panel(
-                f"[yellow]추론 중인 에이전트가 있어 동기화할 수 없습니다.[/yellow]\n\n"
-                f"🧠 {names}\n\n[dim]추론 완료 후 다시 시도하세요.[/dim]",
+                f"[yellow]추론 중: {names}[/yellow]\n[dim]추론 완료 후 시도[/dim]",
                 border_style="yellow", box=box.ROUNDED, padding=(1, 2),
             ))
             return
 
-        channels = self._sync_selected_channels if self._sync_selected_channels else None
         self._loading = LoadingOverlay("동기화 진행 중...")
         self.app.push_screen(self._loading)
-        self._run_sync(channels)
+        self._run_sync(self._sync_selected_channels)
 
     @work(thread=True)
     def _run_sync(self, channels_filter=None):
@@ -2136,17 +2168,14 @@ class DashboardScreen(Screen):
         scan_data = getattr(self, '_sync_scan_data', None)
         selected_count = len(self._sync_selected_channels)
 
-        # 액션 버튼 — 눈에 띄게
+        # 전체 선택/해제
+        all_channels = {ch["channel"] for ch in overview}
+        all_selected = all_channels and all_channels == self._sync_selected_channels
         manage_list.add_option(Option(
-            f"  [black on cyan] 🔍 Scan Discord [/black on cyan]  메시지 수 비교 확인",
-            id="sync_scan",
-        ))
-        manage_list.add_option(Option(
-            f"  [black on green] ▶ Start Sync [/black on green]  {selected_count}개 선택 (없으면 전체)",
-            id="sync_start",
+            f"  {'[green]✓[/green]' if all_selected else '[dim]○[/dim]'}  [bold]전체 선택/해제[/bold]",
+            id="sync_toggle_all",
         ))
         manage_list.add_option(None)
-        manage_list.add_option(Option(f"  [dim]{'─' * 50}[/dim]"))
 
         overview = db.get_channel_overview()
 
