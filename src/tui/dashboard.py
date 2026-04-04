@@ -825,6 +825,85 @@ class DashboardScreen(Screen):
             box=box.ROUNDED, padding=(0, 1),
         ))
 
+        # ── 메모리 ──
+        conn = db.get_conn()
+        memories = conn.execute(
+            "SELECT * FROM memories WHERE agent_id = ? ORDER BY level, id DESC",
+            (agent_id,)
+        ).fetchall()
+        conn.close()
+
+        if memories:
+            # 채널별 + 레벨별로 그룹화
+            mem_by_channel = {}
+            for m in memories:
+                ch = m["channel"] or "general"
+                if ch not in mem_by_channel:
+                    mem_by_channel[ch] = {"L1": [], "L2": []}
+                level = f"L{m['level']}" if m["level"] in (1, 2) else "L1"
+                mem_by_channel[ch][level].append(m)
+
+            mem_lines = []
+            for ch, levels in mem_by_channel.items():
+                # 채널 라벨
+                if ch.startswith("dm-"):
+                    ch_icon = "💬"
+                elif ch.startswith("internal-"):
+                    ch_icon = "🔒"
+                elif ch.startswith("group-"):
+                    ch_icon = "👥"
+                elif ch.startswith("mgr"):
+                    ch_icon = "📋"
+                else:
+                    ch_icon = "📝"
+
+                mem_lines.append(f"[bold]{ch_icon} {ch}[/bold]")
+
+                # L2 (장기)
+                for m in levels["L2"][:3]:
+                    mem_lines.append(f"  [magenta]L2[/magenta] [dim]{m['content'][:80]}[/dim]")
+
+                # L1 (단기)
+                for m in levels["L1"][:5]:
+                    mem_lines.append(f"  [cyan]L1[/cyan] [dim]{m['content'][:80]}[/dim]")
+
+                mem_lines.append("")
+
+            items.append(Panel(
+                "\n".join(mem_lines).rstrip(),
+                title=f"[bold]🧠 메모리[/bold]  [dim]({len(memories)}건)[/dim]",
+                border_style="magenta", box=box.ROUNDED, padding=(0, 1),
+            ))
+        else:
+            items.append(Panel(
+                "[dim]메모리 없음[/dim]",
+                title="[bold]🧠 메모리[/bold]",
+                border_style="dim", box=box.ROUNDED, padding=(0, 1),
+            ))
+
+        # ── 관계 점수 ──
+        rels_db = db.get_all_relationships(agent_id)
+        if rels_db:
+            rel_lines = []
+            for r in rels_db:
+                other_id = r["agent_b"] if r["agent_a"] == agent_id else r["agent_a"]
+                other = _cache.all_agents.get(other_id)
+                other_name = other["name"] if other else other_id
+                oc = _get_color(other_id)
+                intimacy = r.get("intimacy_score", 50)
+                bar = "".join("█" if i < intimacy // 10 else "░" for i in range(10))
+                dynamics = r.get("dynamics", "")
+                rel_lines.append(
+                    f"  [{oc}]{other_name}[/{oc}]  {r.get('type', '?')}  "
+                    f"[cyan]{bar}[/cyan] {intimacy}"
+                    f"{'  [dim]' + _trunc(dynamics, 30) + '[/dim]' if dynamics else ''}"
+                )
+            items.append(Panel(
+                "\n".join(rel_lines),
+                title=f"[bold]💕 관계[/bold]  [dim]({len(rels_db)}건)[/dim]",
+                border_style="bright_magenta", box=box.ROUNDED, padding=(0, 1),
+            ))
+
         # ── 채팅 로그 (이 에이전트 관련 모든 채널) ──
         agent_type = agent.get("type", "persona")
         agent_name = agent["name"]
