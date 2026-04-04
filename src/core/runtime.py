@@ -517,7 +517,6 @@ class AgentRuntime:
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
 
-            _msg_count = 0
             for line in process.stdout:
                 raw_line = line.rstrip("\n")
                 line = raw_line.strip()
