@@ -49,7 +49,7 @@ from src import db
 from src.core.profile import load_profile, get_user_name, get_user_id
 from src.core.sync import run_sync, run_restore
 from src import log_writer
-from src.tui.components import LoadingOverlay, ConfirmDialog, MessageActionDialog
+from src.tui.components import LoadingOverlay, ConfirmDialog, MessageActionDialog, ErrorDialog
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PID_FILE = os.path.join(PROJECT_ROOT, "dev", ".bot.pid")
@@ -1793,12 +1793,87 @@ class DashboardScreen(Screen):
                 lines.append("\n[dim]변경 없음 — 이미 동기화 상태[/dim]")
             msg = "\n".join(lines)
         else:
-            msg = f"[red]동기화 실패: {result.get('error', '?')}[/red]"
-            if result.get("errors"):
-                msg += "\n\n[yellow]상세:[/yellow]\n" + "\n".join(f"  [dim]{e}[/dim]" for e in result["errors"][:5])
+            # 에러 다이얼로그 표시
+            error_msg = result.get("error", "알 수 없는 오류")
+            error_detail = "\n".join(result.get("errors", [])[:10])
+            self.app.call_from_thread(self.app.pop_screen)  # 로딩 닫기
+            self.app.call_from_thread(
+                self._show_error_dialog,
+                "동기화 실패",
+                error_msg,
+                error_detail,
+                "sync",
+            )
+            return
 
         self.app.call_from_thread(self.app.pop_screen)
         self.app.call_from_thread(self._show_sync_result, msg)
+
+    def _show_error_dialog(self, title: str, error_msg: str, detail: str, context: str):
+        """에러 다이얼로그 표시 — Auto Fix 선택 시 개발봇에 요청"""
+        full_msg = f"[red]{error_msg}[/red]"
+        if detail:
+            full_msg += f"\n\n[yellow]상세:[/yellow]\n[dim]{detail}[/dim]"
+
+        def on_result(action: str):
+            if action == "fix":
+                self._request_auto_fix(context, error_msg, detail)
+
+        self.app.push_screen(
+            ErrorDialog(title, full_msg, f"context: {context}"),
+            on_result,
+        )
+
+    def _request_auto_fix(self, context: str, error_msg: str, detail: str):
+        """개발봇에 자동 수정 요청"""
+        import json
+        from pathlib import Path
+
+        # runtime_error.log 내용 읽기
+        error_log_path = os.path.join(log_writer.get_log_dir(), "runtime_error.log")
+        error_log = ""
+        if os.path.exists(error_log_path):
+            with open(error_log_path, "r") as f:
+                error_log = f.read()[-3000:]  # 마지막 3000자
+
+        # 개발 요청 생성
+        dev_dir = os.path.join(PROJECT_ROOT, "dev")
+        os.makedirs(dev_dir, exist_ok=True)
+        request = {
+            "description": (
+                f"[자동 수정 요청] {context} 에러 수정\n\n"
+                f"에러: {error_msg}\n\n"
+                f"상세:\n{detail[:2000]}\n\n"
+                f"runtime_error.log:\n{error_log}"
+            ),
+            "requested_by": "dashboard-auto-fix",
+            "timestamp": datetime.now().isoformat(),
+        }
+        pending_path = os.path.join(dev_dir, "pending.json")
+        with open(pending_path, "w", encoding="utf-8") as f:
+            json.dump(request, f, ensure_ascii=False, indent=2)
+
+        log_writer.system(f"[AutoFix] 개발 요청 생성: {context}")
+
+        # 봇 종료 → exit(42) 시뮬레이션 → dev_runner 실행
+        self._stop_bot()
+        self._run_dev_runner_for_fix()
+
+    @work(thread=True)
+    def _run_dev_runner_for_fix(self):
+        """개발봇 실행 후 전체 재시작"""
+        import time
+        log_writer.system("[AutoFix] 개발봇 실행 중...")
+        self._dev_proc = subprocess.Popen(
+            [_venv_python(), "-u", "-m", "src.tools.dev_runner"],
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        self._dev_proc.wait()  # 완료 대기
+        log_writer.system("[AutoFix] 개발봇 완료 — 재시작")
+        self._dev_proc = None
+        time.sleep(1)
+        self.app.call_from_thread(self._do_full_restart)
 
     def _update_loading_log(self, text: str):
         """메인 스레드에서 로딩 로그 업데이트"""

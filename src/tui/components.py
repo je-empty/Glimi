@@ -192,3 +192,67 @@ class MessageActionDialog(ModalScreen[str]):
 
     def action_cancel(self):
         self.dismiss("")
+
+
+class ErrorDialog(ModalScreen[str]):
+    """에러 발생 시 표시 — 닫기 또는 자동 수정 요청"""
+
+    DEFAULT_CSS = """
+    ErrorDialog {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    ErrorDialog > Vertical {
+        width: 75;
+        height: auto;
+        max-height: 30;
+        background: $panel;
+        border: round $error;
+        padding: 1 2;
+        overflow-y: auto;
+    }
+    ErrorDialog .action-bar {
+        height: 3;
+        margin: 1 0 0 0;
+    }
+    ErrorDialog .action-bar Button {
+        margin: 0 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "닫기"),
+        Binding("f", "fix", "자동 수정"),
+    ]
+
+    def __init__(self, title: str, error_msg: str, context: str = ""):
+        super().__init__()
+        self._title = title
+        self._error_msg = error_msg
+        self._context = context
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(f"[red bold]❌ {self._title}[/red bold]\n", markup=True)
+            yield Static(self._error_msg, markup=True)
+            if self._context:
+                yield Static(f"\n[dim]{self._context}[/dim]", markup=True)
+            yield Static("")
+            with Horizontal(classes="action-bar"):
+                yield Button("Auto Fix", variant="warning", id="err-fix")
+                yield Button("Close", variant="default", id="err-close")
+            yield Static("[dim]F 자동수정 / ESC 닫기[/dim]", markup=True)
+
+    @on(Button.Pressed, "#err-fix")
+    def on_fix(self):
+        self.dismiss("fix")
+
+    @on(Button.Pressed, "#err-close")
+    def on_close_btn(self):
+        self.dismiss("")
+
+    def action_fix(self):
+        self.dismiss("fix")
+
+    def action_close(self):
+        self.dismiss("")
