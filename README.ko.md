@@ -237,7 +237,9 @@ cd Glimi
 
 ## Supervisor 시스템
 
-Supervisor는 보이지 않는 백그라운드 감시자입니다. 어떤 에이전트도 이들의 존재를 모릅니다 — 재촉은 `generate_response_force`를 통해 에이전트의 내면 생각으로 주입됩니다.
+Supervisor는 보이지 않는 백그라운드 감시자입니다. 어떤 에이전트도 이들의 존재를 모릅니다 — 재촉은 `generate_response_force`를 통해 에이전트의 내면 생각으로 주입됩니다. Haiku로 대화 맥락을 판단합니다.
+
+### 동작 방식
 
 ```mermaid
 flowchart LR
@@ -262,10 +264,62 @@ flowchart LR
     style Force fill:#3a1a1a,stroke:#ff4a4a,color:#fff
 ```
 
-**현재 감시자:**
-- `OnboardingSupervisor` — 프로필 수집부터 Creator 아이스브레이킹까지 온보딩 전 과정 감시. 완료 시 자동 비활성화.
+### 채널 상태 추적
 
-**확장:** `supervisors.py`의 `SUPERVISORS` 리스트에 새 `Supervisor` 서브클래스 등록.
+각 채널은 DB에 상태를 가집니다:
+
+| 상태 | 의미 |
+|------|------|
+| `idle` | 대화 없음 |
+| `running` | 턴 기반 대화 진행 중 (`current_turn` / `max_turns`) |
+
+`start_conversation()` 호출 시 → `running`. 매 턴마다 `current_turn` 증가. 턴 소진 또는 자연 종료 → `idle`.
+
+### 활성 감시자
+
+| 감시자 | 감시 대상 | 활성화 조건 | 비활성화 조건 |
+|--------|----------|------------|--------------|
+| `OnboardingSupervisor` | 온보딩 플로우 (프로필 수집 → 채널 세팅 → 크리에이터 아이스브레이킹) | 첫 부팅 | `onboarding_phase=complete` |
+| `ChannelConversationSupervisor` | `internal-*` 채널 (`status=running`) | internal 채널이 running 될 때 | 모든 internal 채널 idle |
+
+### 충돌 방지
+
+온보딩 중 `internal-dm-하나-유나`에서 두 감시자가 동시에 작동할 수 있는 상황:
+
+```mermaid
+flowchart TD
+    OS["OnboardingSupervisor\nchannel_setup 체크"]
+    Check{"internal-dm\nstatus=running?"}
+    CS["ChannelConversationSupervisor\n대화 감시"]
+    OS_Wait["OS 대기\n(CS에 위임)"]
+    OS_Act["OS 직접 행동\n(유나에게 재촉)"]
+
+    OS --> Check
+    Check -->|"Yes"| OS_Wait
+    Check -->|"No (idle)"| OS_Act
+    OS_Wait -.-> CS
+
+    style CS fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style OS_Wait fill:#1a1a2e,stroke:#666,color:#999
+```
+
+- `internal-dm`이 `running` → `OnboardingSupervisor`가 `ChannelConversationSupervisor`에 위임
+- 대상 에이전트가 `thinking`/`speaking` 중이면 둘 다 스킵
+- `ChannelConversationSupervisor`는 `internal-*` 채널만 감시 (유저 참여 `dm-*`, `group-*` 제외)
+- 재촉은 에이전트 자율 판단 — `"..."` 응답 시 아무 행동 안 함
+
+### 확장
+
+`supervisors.py`의 `SUPERVISORS` 리스트에 새 `Supervisor` 서브클래스 등록:
+
+```python
+class MySupervisor(Supervisor):
+    name = "my-supervisor"
+    
+    def should_run(self) -> bool: ...
+    def is_done(self) -> bool: ...
+    async def check(self, guild): ...
+```
 
 ---
 

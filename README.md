@@ -321,7 +321,9 @@ Actions: **Refresh** · **Restart** (reload code changes) · **Wizard** (switch 
 
 ## Supervisor System
 
-Supervisors are invisible background agents that monitor and intervene when needed. No agent knows they exist — nudges are injected as the agent's own inner thoughts via `generate_response_force`.
+Supervisors are invisible background agents that monitor and intervene when needed. No agent knows they exist — nudges are injected as the agent's own inner thoughts via `generate_response_force`. They use Haiku for lightweight context judgment.
+
+### How It Works
 
 ```mermaid
 flowchart LR
@@ -346,10 +348,62 @@ flowchart LR
     style Force fill:#3a1a1a,stroke:#ff4a4a,color:#fff
 ```
 
-**Current supervisors:**
-- `OnboardingSupervisor` — monitors onboarding from profile collection through Creator icebreaking. Auto-deactivates on completion.
+### Channel Status Tracking
 
-**Extensible:** Add new `Supervisor` subclass to `SUPERVISORS` list in `supervisors.py`.
+Each channel has a `status` in the database:
+
+| Status | Meaning |
+|--------|---------|
+| `idle` | No active conversation |
+| `running` | Turn-based conversation in progress (`current_turn` / `max_turns`) |
+
+When a conversation starts via `start_conversation()`, the channel status becomes `running`. Each turn increments `current_turn`. When turns run out or the conversation ends naturally, status returns to `idle`.
+
+### Active Supervisors
+
+| Supervisor | Monitors | Activates | Deactivates |
+|------------|----------|-----------|-------------|
+| `OnboardingSupervisor` | Onboarding flow (profile collection → channel setup → Creator icebreaking) | On first boot | `onboarding_phase=complete` |
+| `ChannelConversationSupervisor` | `internal-*` channels with `status=running` | Any internal channel goes running | All internal channels idle |
+
+### Conflict Resolution
+
+When both supervisors could act on the same situation (e.g., `internal-dm-hana-yuna` during onboarding):
+
+```mermaid
+flowchart TD
+    OS["OnboardingSupervisor\nchecks channel_setup"]
+    Check{"internal-dm\nstatus=running?"}
+    CS["ChannelConversationSupervisor\nhandles conversation"]
+    OS_Wait["OS waits\n(delegates to CS)"]
+    OS_Act["OS acts\n(nudge Yuna in mgr-dashboard)"]
+
+    OS --> Check
+    Check -->|"Yes"| OS_Wait
+    Check -->|"No (idle)"| OS_Act
+    OS_Wait -.-> CS
+
+    style CS fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style OS_Wait fill:#1a1a2e,stroke:#666,color:#999
+```
+
+- If `internal-dm` is `running` → `OnboardingSupervisor` delegates to `ChannelConversationSupervisor`
+- Both skip if target agent is `thinking` or `speaking`
+- Nudges use `generate_response_force` — agent decides whether to act (can respond with `"..."` to do nothing)
+- `ChannelConversationSupervisor` only monitors `internal-*` channels (never `dm-*` or `group-*` where user participates)
+
+### Extending
+
+Add a new `Supervisor` subclass to `SUPERVISORS` list in `supervisors.py`:
+
+```python
+class MySupervisor(Supervisor):
+    name = "my-supervisor"
+    
+    def should_run(self) -> bool: ...
+    def is_done(self) -> bool: ...
+    async def check(self, guild): ...
+```
 
 ---
 
