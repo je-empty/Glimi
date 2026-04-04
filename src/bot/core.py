@@ -74,10 +74,51 @@ async def get_agent_webhook(channel: discord.TextChannel, agent_id: str) -> disc
     return wh
 
 
+def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
+    """에이전트가 해당 채널의 참가자인지 확인"""
+    # mgr 채널 — mgr 에이전트만
+    if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
+        return agent_id == MGR_ID
+    if ch_name == CREATOR_CHANNEL:
+        return agent_id == "agent-creator-001"
+
+    # dm-이름 — 해당 에이전트 또는 MGR
+    if ch_name.startswith("dm-"):
+        dm_name = ch_name[3:]
+        return dm_name == agent_name or agent_id == MGR_ID
+
+    # internal-dm-이름1-이름2 — 이름이 포함된 에이전트
+    if ch_name.startswith("internal-dm-") or ch_name.startswith("internal-group-"):
+        return agent_name in ch_name
+
+    # group-이름1-이름2 — 이름이 포함된 에이전트
+    if ch_name.startswith("group-"):
+        return agent_name in ch_name
+
+    # GROUP_PARTICIPANTS로 체크
+    participants = GROUP_PARTICIPANTS.get(ch_name, [])
+    if participants and agent_id in participants:
+        return True
+
+    # CHANNEL_AGENT_MAP으로 체크
+    mapped = CHANNEL_AGENT_MAP.get(ch_name)
+    if mapped and mapped == agent_id:
+        return True
+
+    # 알 수 없는 채널은 허용
+    return True
+
+
 async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: str):
-    """에이전트 전용 Webhook으로 메시지 전송"""
+    """에이전트 전용 Webhook으로 메시지 전송 (채널 참가자 검증)"""
     profile = load_profile(agent_id)
     name = profile["name"] if profile else "에이전트"
+
+    # 채널 참가자 검증 — 에이전트가 이 채널에 속하는지 확인
+    ch_name = getattr(channel, 'name', '')
+    if ch_name and not _is_agent_in_channel(ch_name, agent_id, name):
+        log_writer.system(f"[필터] {name}({agent_id})의 #{ch_name} 메시지 차단 (참가자 아님): {message[:50]}")
+        return
     try:
         webhook = await get_agent_webhook(channel, agent_id)
         await webhook.send(content=message, username=name)

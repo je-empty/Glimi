@@ -64,6 +64,17 @@ async def on_message(message: discord.Message):
         await _handle_runtime_error(message.guild, channel_name, e)
 
 
+def _filter_meta_speech(text: str, agent_id: str) -> str:
+    """메타 발언 필터 — ACTION/CMD 실행을 설명하는 발언 제거.
+    예: "서유나한테 DM 보냈어", "유나한테 메시지 전달했어" 등"""
+    import re
+    # "~한테 DM/메시지 보냈/전달" 패턴
+    text = re.sub(r'.{1,10}한테\s*(DM|메시지|dm)\s*(보냈|전달|전송).{0,10}', '', text).strip()
+    # "~에게 DM 보냈어"
+    text = re.sub(r'.{1,10}에게\s*(DM|메시지|dm)\s*(보냈|전달|전송).{0,10}', '', text).strip()
+    return text
+
+
 async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
     """메시지 하나를 처리해서 전송 + DB 로깅. mgr/creator면 CMD/QUERY, 페르소나면 ACTION 파싱."""
     from src.bot.core import send_system_log
@@ -92,6 +103,7 @@ async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
         await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
         actions = ACTION_PATTERN.findall(msg)
         clean_text = ACTION_PATTERN.sub('', msg).strip()
+        clean_text = _filter_meta_speech(clean_text, agent_id)
         if clean_text:
             for part in _split_for_chat(clean_text):
                 await send_as_agent(channel, agent_id, part)
