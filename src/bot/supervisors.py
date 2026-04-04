@@ -7,7 +7,9 @@ Project Glimi — Supervisor 시스템
 확장: 새 Supervisor 클래스를 만들고 SUPERVISORS에 등록하면 자동으로 동작.
 """
 import asyncio
+import os
 import re as _re
+import subprocess
 from datetime import datetime
 
 import discord
@@ -19,6 +21,33 @@ from src.bot import (
     bot, log, MGR_CHANNEL, MGR_SYSTEM_LOG, CREATOR_CHANNEL, MGR_ID,
 )
 from src.bot.core import send_as_agent, _split_for_chat
+
+
+def _judge_conversation(channel: str, question: str) -> str:
+    """대화 맥락을 haiku에게 판단 요청 (저비용)"""
+    recent = db.get_recent_messages(channel, limit=10)
+    if not recent:
+        return "no_data"
+
+    from src.core.profile import get_user_id
+    lines = []
+    for r in recent:
+        speaker = "유저" if r["speaker"] == get_user_id() else r["speaker"]
+        lines.append(f"{speaker}: {r['message']}")
+    conversation = "\n".join(lines[-8:])
+
+    prompt = f"대화 기록:\n{conversation}\n\n질문: {question}\n한 단어로만 답해."
+
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--output-format", "text",
+             "--model", "claude-haiku-4-5-20251001"],
+            capture_output=True, text=True, timeout=15,
+            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+        )
+        return result.stdout.strip().lower() if result.returncode == 0 else "error"
+    except Exception:
+        return "error"
 
 
 # ── 베이스 ──────────────────────────────────────────────
@@ -76,7 +105,7 @@ class OnboardingSupervisor(Supervisor):
             return  # 첫 인사 대기
 
         idle = self._get_idle_seconds(MGR_CHANNEL)
-        if idle < 20:
+        if idle < 10:
             return  # 대화 진행 중
 
         # 프로필 충분한지 체크
@@ -96,12 +125,23 @@ class OnboardingSupervisor(Supervisor):
             await _trigger_onboarding_phase2(guild)
             return
 
-        if idle > 30:
-            # 유나에게 재촉 (내면의 생각으로 주입)
+        # 대화 맥락 판단 (haiku)
+        loop = asyncio.get_event_loop()
+        judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
+            MGR_CHANNEL,
+            "에이전트가 온보딩(프로필 수집)을 진행하고 있나? "
+            "아니면 잡담으로 빠지거나 멈춰있나? "
+            "'진행중', '멈춤', '잡담' 중 하나로."
+        ))
+
+        if judgment in ("멈춤", "잡담", "stopped", "chatting", "idle"):
+            log_writer.system(f"[sup:onboarding] 대화 판단: {judgment} — 유나 재촉")
             await self._nudge_yuna(guild,
                 "프로필 수집을 마무리하고 다음 단계로 넘어가야겠다. "
                 "아직 안 물어본 게 있으면 물어보고, 충분히 물어봤으면 마무리하자."
             )
+        elif judgment in ("진행중", "progressing", "ongoing"):
+            pass  # 정상 진행 중
 
     # ── 채널 세팅 단계 ──
 
@@ -135,10 +175,21 @@ class OnboardingSupervisor(Supervisor):
                 )
             return
 
-        # 하나가 보고 안 함 — 멈춤 체크
+        # 하나가 보고 안 함 — 맥락 판단
         idle = self._get_idle_seconds(CREATOR_CHANNEL)
-        if idle > 30:
-            log_writer.system("[sup:onboarding] 하나 아이스브레이킹 멈춤 — 재촉")
+        if idle < 10:
+            return
+
+        loop = asyncio.get_event_loop()
+        judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
+            CREATOR_CHANNEL,
+            "크리에이터가 아이스브레이킹을 충분히 했나? "
+            "아니면 아직 진행 중이거나 멈춰있나? "
+            "'충분', '진행중', '멈춤' 중 하나로."
+        ))
+
+        if judgment in ("충분", "enough", "done", "멈춤", "stopped"):
+            log_writer.system(f"[sup:onboarding] 하나 판단: {judgment} — 재촉")
             await self._nudge_agent(guild, CREATOR_ID, CREATOR_CHANNEL,
                 "아이스브레이킹은 충분히 한 것 같다. "
                 "에이전트 생성 얘기를 시작하고, 유나 언니한테 보고도 해야지."
