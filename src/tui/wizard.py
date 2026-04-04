@@ -584,34 +584,93 @@ class CreateScreen(Screen):
     def __init__(self):
         super().__init__()
         self._community_id = ""
+        self._page = 1
+        self._gender = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with VerticalScroll(can_focus=False):
             yield Static(BANNER_ART, id="banner")
             yield Static("[bold]New Community[/bold]", id="subtitle")
-            with Container(classes="input-group"):
+
+            # Page 1: 커뮤니티 정보
+            with Container(id="page-1", classes="input-group"):
                 yield Label("Community ID [dim](영문, 하이픈 가능)[/dim]")
                 yield Input(placeholder="my-server", id="cid-input")
+                yield Static("")
                 yield Label("Description [dim](선택)[/dim]")
                 yield Input(placeholder="내 디스코드 서버", id="desc-input")
-            with Container(classes="input-group"):
-                yield Label("[bold]사용자 정보[/bold] [dim](에이전트가 이 정보로 대화합니다)[/dim]")
+                yield Static("")
+                yield Button("Next →", variant="primary", id="btn-next")
+
+            # Page 2: 사용자 정보
+            with Container(id="page-2", classes="input-group"):
+                yield Label("[bold]사용자 정보[/bold]")
+                yield Label("[dim]에이전트가 이 정보를 기반으로 대화합니다[/dim]")
+                yield Static("")
                 yield Label("이름 [dim](필수)[/dim]")
                 yield Input(placeholder="홍길동", id="owner-name-input")
-                yield Label("별칭 [dim](희망 호칭 — 에이전트별로 다르게 부를 수 있음, 선택)[/dim]")
-                yield Input(placeholder="선택사항 — 비워두면 이름으로 불러요", id="owner-nickname-input")
+                yield Static("")
+                yield Label("별칭 [dim](희망 호칭 — 에이전트별로 다르게 부를 수 있음)[/dim]")
+                yield Input(placeholder="비워두면 이름으로 불러요", id="owner-nickname-input")
+                yield Static("")
                 yield Label("생년월일 [dim](YYYY-MM-DD)[/dim]")
                 yield Input(placeholder="2001-01-01", id="owner-birth-input")
-                yield Label("성별")
-                yield Input(placeholder="남 / 여", id="owner-gender-input")
                 yield Static("")
-                yield Button("Create", variant="primary", id="btn-create")
+                yield Label("성별")
+                with Horizontal(classes="action-bar"):
+                    yield Button("남", id="gender-m")
+                    yield Button("여", id="gender-f")
+                yield Static("", id="gender-display")
+                yield Static("")
+                with Horizontal(classes="action-bar"):
+                    yield Button("← Back", id="btn-prev")
+                    yield Button("Create", variant="primary", id="btn-create")
+
             yield Static("", id="create-result", classes="result-text")
         yield Footer()
 
     def on_mount(self):
+        self._show_page(1)
         self.query_one("#cid-input", Input).focus()
+
+    def _show_page(self, page: int):
+        self._page = page
+        self.query_one("#page-1").display = (page == 1)
+        self.query_one("#page-2").display = (page == 2)
+
+    @on(Button.Pressed, "#btn-next")
+    def on_next(self):
+        cid = self.query_one("#cid-input", Input).value.strip()
+        result = self.query_one("#create-result", Static)
+        if not cid or not cid.replace("-", "").replace("_", "").isalnum():
+            result.update("[red]유효하지 않은 Community ID입니다.[/red]")
+            return
+        if (community.COMMUNITIES_DIR / cid).exists():
+            result.update(f"[red]이미 존재: {cid}[/red]")
+            return
+        result.update("")
+        self._show_page(2)
+        self.query_one("#owner-name-input", Input).focus()
+
+    @on(Button.Pressed, "#btn-prev")
+    def on_prev(self):
+        self._show_page(1)
+        self.query_one("#cid-input", Input).focus()
+
+    @on(Button.Pressed, "#gender-m")
+    def on_gender_m(self):
+        self._gender = "남"
+        self.query_one("#gender-display", Static).update("[cyan bold]남[/cyan bold] 선택됨")
+        self.query_one("#gender-m", Button).variant = "primary"
+        self.query_one("#gender-f", Button).variant = "default"
+
+    @on(Button.Pressed, "#gender-f")
+    def on_gender_f(self):
+        self._gender = "여"
+        self.query_one("#gender-display", Static).update("[magenta bold]여[/magenta bold] 선택됨")
+        self.query_one("#gender-f", Button).variant = "primary"
+        self.query_one("#gender-m", Button).variant = "default"
 
     @on(Button.Pressed, "#btn-create")
     def on_create(self):
@@ -623,7 +682,7 @@ class CreateScreen(Screen):
 
     @on(Input.Submitted, "#desc-input")
     def on_desc_submit(self):
-        self._do_create()
+        self.on_next()
 
     def _do_create(self):
         cid = self.query_one("#cid-input", Input).value.strip()
@@ -631,7 +690,7 @@ class CreateScreen(Screen):
         owner_name = self.query_one("#owner-name-input", Input).value.strip()
         owner_nickname = self.query_one("#owner-nickname-input", Input).value.strip()
         owner_birth = self.query_one("#owner-birth-input", Input).value.strip()
-        owner_gender = self.query_one("#owner-gender-input", Input).value.strip()
+        owner_gender = getattr(self, '_gender', '')
         result = self.query_one("#create-result", Static)
 
         if not cid or not cid.replace("-", "").replace("_", "").isalnum():
