@@ -316,6 +316,16 @@ Screen {
     overflow-y: auto;
 }
 
+/* ── 에이전트 선택 목록 ── */
+.agent-selector {
+    height: auto;
+    max-height: 8;
+    margin: 0 2;
+    background: $panel;
+    border: round $primary-darken-2;
+    padding: 0 1;
+}
+
 /* ── 기타 ── */
 .section-title {
     padding: 0 2;
@@ -344,7 +354,7 @@ class DashboardScreen(Screen):
         self._bot_proc: subprocess.Popen | None = None
         self._dev_proc: subprocess.Popen | None = None
         self._prev_dev = False
-        self._current_view = "overview"  # overview, agent, channel, channels, health, dev, logs
+        self._current_view = "overview"  # overview, agent, channel, channels, health, dev, logs, manage
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -358,14 +368,17 @@ class DashboardScreen(Screen):
                 yield Button("Health", id="nav-health")
                 yield Button("Dev", id="nav-dev")
                 yield Button("Logs", id="nav-logs")
+                yield Button("Manage", id="nav-manage")
                 yield Button("Refresh", variant="primary", id="nav-refresh")
                 yield Button("Restart", variant="error", id="nav-restart")
                 yield Button("Sync", variant="success", id="nav-sync")
                 yield Button("Wizard", variant="warning", id="nav-wizard")
-            # 에이전트 선택 목록
-            yield OptionList(id="agent-list", classes="content-area")
-            # 콘텐츠 영역
+            # 콘텐츠 영역 (카드 등)
             yield Static(id="content", classes="content-area")
+            # 에이전트 선택 목록 (하단)
+            yield OptionList(id="agent-list", classes="agent-selector")
+            # Manage 뷰용 채널/메시지 선택
+            yield OptionList(id="manage-list", classes="content-area")
         yield Footer()
 
     def on_mount(self):
@@ -480,7 +493,11 @@ class DashboardScreen(Screen):
 
         content = self.query_one("#content", Static)
         agent_list = self.query_one("#agent-list", OptionList)
+        manage_list = self.query_one("#manage-list", OptionList)
         view = self._current_view
+
+        # 기본: 모든 리스트 숨김
+        manage_list.display = False
 
         # overview에서만 에이전트 목록 표시
         if view == "overview":
@@ -503,6 +520,10 @@ class DashboardScreen(Screen):
                 content.update(self._render_dev())
             elif view == "logs":
                 content.update(self._render_logs())
+            elif view == "manage" or view.startswith("manage:"):
+                manage_list.display = True
+                content.update(self._render_manage())
+                self._update_manage_list()
             else:
                 content.update(self._render_overview())
 
@@ -576,66 +597,61 @@ class DashboardScreen(Screen):
         sec = _seconds_since(agent.get("last_active"))
         type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
         type_str = type_map.get(agent.get("type", ""), "")
+        bar = "".join("█" if i < intensity else "░" for i in range(10))
+
+        agent_type = agent.get("type", "persona")
+        ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
 
         if thinking:
-            # ── 확장 카드: 추론 로그 + 최근 대화 ──
+            # ── 확장 카드 ──
             lines = []
-            lines.append(f"[bright_yellow bold]🧠 추론중[/bright_yellow bold]  {em} {agent['current_emotion']} ({intensity}/10)")
-            lines.append(f"[dim]{type_str} · {_ago(sec)}[/dim]")
-            lines.append("")
+            lines.append(f"  [bright_yellow bold]🧠 추론중[/bright_yellow bold]")
+            lines.append(f"  {em} {agent['current_emotion']}  [{c}]{bar}[/{c}] {intensity}/10")
+            lines.append(f"  [dim]{type_str}  ·  {_ago(sec)}[/dim]")
+            lines.append(f"  {'─' * 40}")
 
             # 추론 로그
             sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
             all_sys = log_writer.tail(sys_log_path, 50)
             thinking_lines = [l for l in all_sys if f"[{aid}]" in l]
             if thinking_lines:
-                lines.append("[bold]추론 로그:[/bold]")
-                for l in thinking_lines[-5:]:
-                    lines.append(f"  [dim]{l}[/dim]")
-                lines.append("")
+                for l in thinking_lines[-6:]:
+                    lines.append(f"  [dim]{_trunc(l, 80)}[/dim]")
+                lines.append(f"  {'─' * 40}")
 
             # 최근 대화
-            agent_type = agent.get("type", "persona")
-            ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
             recent = db.get_recent_messages(ch_name, limit=4)
             if recent:
-                lines.append("[bold]최근 대화:[/bold]")
                 for r in recent[-4:]:
                     speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
-                    lines.append(f"  [{c}]{speaker}[/{c}]: {_trunc(r['message'], 60)}")
+                    ts = r["timestamp"][11:16] if r["timestamp"] else ""
+                    lines.append(f"  [dim]{ts}[/dim] [{c}]{speaker}[/{c}]: {_trunc(r['message'], 55)}")
 
             return Panel(
                 "\n".join(lines),
-                title=f"[{c} bold]{agent['name']}[/{c} bold]  [bright_yellow]● ACTIVE[/bright_yellow]",
-                border_style="bright_yellow", box=box.ROUNDED, padding=(1, 2),
+                title=f" [{c} bold]{agent['name']}[/{c} bold] ",
+                subtitle=f"[bright_yellow] ACTIVE [/bright_yellow]",
+                border_style="bright_yellow", box=box.HEAVY, padding=(0, 1),
             )
         else:
             # ── 컴팩트 카드 ──
-            bar = "●" * (intensity // 2) + "○" * (5 - intensity // 2)
-            status = "[green]활성[/green]" if agent["status"] == "active" else f"[dim]{agent['status']}[/dim]"
+            status_icon = "[green]●[/green]" if agent["status"] == "active" else "[dim]○[/dim]"
+            lines = []
+            lines.append(f"  {status_icon} {em} {agent['current_emotion']}  [{c}]{bar}[/{c}]")
+            lines.append(f"  [dim]{type_str}  ·  {_ago(sec)}[/dim]")
 
-            line1 = f"{em} {agent['current_emotion']}  [{bar}]  {status}"
-            line2 = f"[dim]{type_str} · {_ago(sec)}[/dim]"
-
-            # 마지막 메시지 한 줄
-            agent_type = agent.get("type", "persona")
-            ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
+            # 마지막 메시지
             recent = db.get_recent_messages(ch_name, limit=1)
-            line3 = ""
             if recent:
                 r = recent[-1]
                 speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
-                line3 = f"[dim]{speaker}: {_trunc(r['message'], 50)}[/dim]"
-
-            content = f"{line1}\n{line2}"
-            if line3:
-                content += f"\n{line3}"
+                lines.append(f"  [dim]{speaker}: {_trunc(r['message'], 40)}[/dim]")
 
             return Panel(
-                content,
-                title=f"[{c} bold]{agent['name']}[/{c} bold]",
+                "\n".join(lines),
+                title=f" [{c} bold]{agent['name']}[/{c} bold] ",
                 border_style=c if agent["status"] == "active" else "dim",
-                box=box.ROUNDED, padding=(0, 1),
+                box=box.ROUNDED, padding=(0, 0),
             )
 
     def _render_overview(self):
@@ -1019,6 +1035,201 @@ class DashboardScreen(Screen):
             border_style="dim", box=box.ROUNDED, padding=(1, 2),
         )
 
+    # ── Render: Manage (DB 관리) ──────────────────────────
+
+    def _render_manage(self):
+        view = self._current_view
+        items = []
+
+        if view == "manage":
+            # 채널 목록 표시
+            items.append(Panel(
+                "[bold]DB 관리[/bold]\n\n"
+                "아래 채널 목록에서 선택 → Enter로 메시지 관리\n"
+                "[dim]채널 선택 후: 메시지 삭제, 채널 전체 삭제 등[/dim]",
+                border_style="cyan", box=box.ROUNDED, padding=(1, 2),
+            ))
+        elif view.startswith("manage:channel:"):
+            ch_name = view.split(":", 2)[2]
+            items.append(self._render_manage_channel(ch_name))
+
+        return Group(*items) if items else Text("[dim]관리 메뉴[/dim]")
+
+    def _render_manage_channel(self, ch_name):
+        """채널 관리 상세 — 메시지 목록 + 삭제 옵션"""
+        recent = db.get_recent_messages(ch_name, limit=30)
+        lines = []
+        for i, r in enumerate(recent):
+            sid = r["speaker"]
+            c = _get_color(sid) if sid != get_user_id() else "bright_green"
+            name = get_user_name() if sid == get_user_id() else _speaker_name(sid)
+            ts = r["timestamp"][11:16] if r["timestamp"] else ""
+            msg_id = r.get("id", i)
+            lines.append(f"[dim]#{msg_id} {ts}[/dim] [{c}]{name}[/{c}]: {r['message']}")
+
+        content = "\n".join(lines) if lines else "[dim]메시지 없음[/dim]"
+
+        if ch_name.startswith("dm-"):
+            color, icon = "cyan", "💬"
+        elif ch_name.startswith("group-"):
+            color, icon = "green", "👥"
+        elif ch_name.startswith("internal-"):
+            color, icon = "yellow", "🔒"
+        else:
+            color, icon = "blue", "📋"
+
+        return Panel(
+            content,
+            title=f"[bold]{icon} {ch_name}[/bold]  [dim]({len(recent)}건)[/dim]",
+            subtitle="[dim]manage-list에서 삭제 옵션 선택[/dim]",
+            border_style=color, box=box.ROUNDED, padding=(1, 2),
+        )
+
+    def _update_manage_list(self):
+        """Manage 뷰의 OptionList 갱신"""
+        manage_list = self.query_one("#manage-list", OptionList)
+        view = self._current_view
+
+        if view == "manage":
+            # 채널 목록
+            channels = db.get_channel_overview()
+            manage_list.clear_options()
+            for ch in channels:
+                name = ch["channel"]
+                cnt = ch["msg_count"]
+                if name.startswith("dm-"):
+                    icon = "💬"
+                elif name.startswith("group-"):
+                    icon = "👥"
+                elif name.startswith("internal-"):
+                    icon = "🔒"
+                else:
+                    icon = "📋"
+                manage_list.add_option(Option(
+                    f"  {icon} {name}  [dim]({cnt}건)[/dim]",
+                    id=f"ch:{name}",
+                ))
+        elif view.startswith("manage:channel:"):
+            ch_name = view.split(":", 2)[2]
+            manage_list.clear_options()
+            manage_list.add_option(Option(
+                "  [red]🗑 이 채널 전체 삭제[/red]  (DB + Discord)",
+                id=f"del_ch:{ch_name}",
+            ))
+            manage_list.add_option(Option(
+                "  [yellow]🧹 채널 메시지 전체 삭제[/yellow]  (DB만, 채널 유지)",
+                id=f"clear_ch:{ch_name}",
+            ))
+            manage_list.add_option(Option(
+                "  [dim]← 채널 목록으로[/dim]",
+                id="back_manage",
+            ))
+
+    @on(OptionList.OptionSelected, "#manage-list")
+    def on_manage_selected(self, event: OptionList.OptionSelected):
+        oid = event.option_id
+        if not oid:
+            return
+
+        if oid.startswith("ch:"):
+            ch_name = oid.split(":", 1)[1]
+            self._current_view = f"manage:channel:{ch_name}"
+            self._refresh_all()
+        elif oid == "back_manage":
+            self._current_view = "manage"
+            self._refresh_all()
+        elif oid.startswith("del_ch:"):
+            ch_name = oid.split(":", 1)[1]
+            self._do_delete_channel(ch_name)
+        elif oid.startswith("clear_ch:"):
+            ch_name = oid.split(":", 1)[1]
+            self._do_clear_channel(ch_name)
+
+    @work(thread=True)
+    def _do_delete_channel(self, ch_name):
+        """채널 전체 삭제 — DB(대화+메모리) + Discord"""
+        from src.core.sync import _get_token
+        import time
+
+        self.app.call_from_thread(
+            lambda: self.app.push_screen(LoadingOverlay(f"채널 삭제: {ch_name}"))
+        )
+
+        # DB 삭제
+        conn = db.get_conn()
+        conn.execute("DELETE FROM conversations WHERE channel = ?", (ch_name,))
+        conn.execute("DELETE FROM memories WHERE channel = ?", (ch_name,))
+        conn.commit()
+        conn.close()
+        log_writer.system(f"[Manage] DB 삭제: {ch_name}")
+
+        # Discord 채널 삭제
+        token = _get_token()
+        if token:
+            import asyncio
+            import discord as discord_lib
+
+            async def _delete():
+                intents = discord_lib.Intents.default()
+                intents.guilds = True
+                client = discord_lib.Client(intents=intents)
+
+                @client.event
+                async def on_ready():
+                    for guild in client.guilds:
+                        for cat in guild.categories:
+                            if cat.name.startswith("chaos"):
+                                for ch in cat.text_channels:
+                                    if ch.name == ch_name:
+                                        await ch.delete(reason="Chaos Manage")
+                                        log_writer.system(f"[Manage] Discord 삭제: {ch_name}")
+                    await client.close()
+
+                # 봇 일시 중지
+                bot_was_running = self._bot_proc and self._bot_proc.poll() is None
+                if bot_was_running:
+                    self._stop_bot()
+                    time.sleep(2)
+
+                try:
+                    await asyncio.wait_for(client.start(token), timeout=30)
+                except Exception:
+                    pass
+
+                if bot_was_running:
+                    self.app.call_from_thread(self._start_bot)
+
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(_delete())
+            loop.close()
+
+        _cache.refresh()
+        self.app.call_from_thread(self.app.pop_screen)
+        self.app.call_from_thread(self._set_view, "manage")
+
+    @work(thread=True)
+    def _do_clear_channel(self, ch_name):
+        """채널 메시지만 삭제 — DB(대화+메모리), 채널은 유지"""
+        self.app.call_from_thread(
+            lambda: self.app.push_screen(LoadingOverlay(f"메시지 삭제: {ch_name}"))
+        )
+
+        conn = db.get_conn()
+        count = conn.execute("SELECT COUNT(*) FROM conversations WHERE channel = ?", (ch_name,)).fetchone()[0]
+        conn.execute("DELETE FROM conversations WHERE channel = ?", (ch_name,))
+        conn.execute("DELETE FROM memories WHERE channel = ?", (ch_name,))
+        conn.commit()
+        conn.close()
+        log_writer.system(f"[Manage] 메시지 삭제: {ch_name} ({count}건)")
+
+        _cache.refresh()
+        self.app.call_from_thread(self.app.pop_screen)
+        self.app.call_from_thread(self._set_view, f"manage:channel:{ch_name}")
+
+    def _set_view(self, view: str):
+        self._current_view = view
+        self._refresh_all()
+
     # ── 네비게이션 액션 ─────────────────────────────────
 
     _NAV_MAP = {
@@ -1027,6 +1238,7 @@ class DashboardScreen(Screen):
         "nav-health": "health",
         "nav-dev": "dev",
         "nav-logs": "logs",
+        "nav-manage": "manage",
     }
 
     # Sync, Wizard는 액션 버튼 — Enter/클릭으로만 실행
@@ -1049,7 +1261,9 @@ class DashboardScreen(Screen):
             self._refresh_all()
 
     def action_go_back(self):
-        if self._current_view.startswith("channel:"):
+        if self._current_view.startswith("manage:"):
+            self._current_view = "manage"
+        elif self._current_view.startswith("channel:"):
             self._current_view = "channels"
         elif self._current_view.startswith("agent:"):
             self._current_view = "overview"
