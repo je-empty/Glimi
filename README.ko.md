@@ -162,38 +162,69 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant U as 👤 오너
+    participant D as 🖥 대시보드
     participant Y as 🔵 Manager (유나)
-    participant S as 👁 Supervisor
+    participant OS as 👁 OnboardingSupervisor
+    participant CS as 👁 ChannelConvSupervisor
     participant H as 🟡 Creator (하나)
 
-    Note over Y: mgr-dashboard 생성
+    Note over D: 부팅 → mgr-dashboard만 생성
+    D->>D: 로딩 모달 (Discord 세팅)
+    D->>Y: 활성화 (Sonnet)
+    D->>H: 활성화 (Sonnet)
 
-    Y->>U: 인사 + 호칭/말투 질문
-    U->>Y: 선호 설정
+    rect rgb(30, 40, 60)
+        Note over Y,U: Phase 1: 프로필 수집
+        Y->>U: 인사 + 호칭 질문
+        U->>Y: 선호 설정
+        Y->>Y: [CMD:프로필수정] → DB
 
-    loop 프로필 수집
-        Y->>U: 정보 질문 (MBTI, 직업, 취미...)
-        U->>Y: 정보 제공
-        Y->>Y: [CMD:프로필수정] DB 저장
-        S-->>S: 진행 상황 감시 (Haiku 판단)
-        S-.->Y: 멈추면 재촉 (내면의 생각)
+        loop 정보 수집 (MBTI, 직업, 취미...)
+            Y->>U: 질문
+            U->>Y: 답변
+            Y->>Y: [CMD:프로필수정] → DB
+            OS-->>OS: 감시 (Haiku 맥락 판단)
+            OS-.->Y: 멈추면 재촉 (내면의 생각)
+        end
+
+        alt 유나가 CMD 보냄
+            Y->>Y: [CMD:프로필수집완료]
+        else Supervisor 강제 트리거
+            OS->>OS: DB 체크: mbti+background 존재
+            OS->>Y: Phase 2 강제 시작
+        end
     end
 
-    Y->>Y: [CMD:프로필수집완료]
-    Note over Y: 자동: mgr-system-log 생성
-    Y->>U: 시스템 로그 채널 설명
-    Note over Y: 자동: mgr-creator 생성
-    Y->>U: Creator(하나) 소개
+    rect rgb(40, 40, 30)
+        Note over Y,H: Phase 2: 채널 세팅 + 크리에이터
+        Note over Y: 자동: mgr-system-log 생성
+        Y->>U: 시스템 로그 채널 설명
+        Note over Y: 자동: mgr-creator 생성
+        Y->>U: 크리에이터(하나) 소개
 
-    H->>U: 인사 + 아이스브레이킹
-    S-->>S: 하나 진행 감시
-    H->>H: [ACTION:DM → 유나] 보고
-    Note over H: internal-dm 채널 자동 생성
+        H->>U: 인사 + 아이스브레이킹
+        loop 에이전트 생성
+            H->>U: 함께 에이전트 디자인
+            U->>H: 선호/요구사항
+            H->>H: [CMD:프로필생성] → DB (Sonnet)
+        end
+    end
 
-    Y->>U: "하나한테 들었어..." + 채널 구조 설명
-    Y->>U: "더 궁금한 거 있어?"
-    Y->>Y: [CMD:온보딩완료]
-    Note over S: Supervisor 비활성화
+    rect rgb(40, 30, 40)
+        Note over H,Y: Phase 3: 보고 + 핸드오프
+        H->>Y: [ACTION:DM] "아이스브레이킹 + 에이전트 생성 완료"
+        Note over H,Y: internal-dm 채널 자동 생성
+        activate CS
+        CS-->>CS: internal-dm 감시 (status=running)
+        Y->>H: 보고 확인
+        deactivate CS
+
+        Y->>U: "하나한테 들었어..." + 채널 구조 설명
+        Y->>U: "더 궁금한 거 있어?"
+        Y->>Y: [CMD:온보딩완료]
+        Note over OS: onboarding_phase=complete
+        Note over OS: Supervisor 비활성화
+    end
 ```
 
 ### 에이전트 상태 (대시보드)

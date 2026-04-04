@@ -183,38 +183,69 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant U as 👤 Owner
+    participant D as 🖥 Dashboard
     participant Y as 🔵 Manager (Yuna)
-    participant S as 👁 Supervisor
+    participant OS as 👁 OnboardingSupervisor
+    participant CS as 👁 ChannelConvSupervisor
     participant H as 🟡 Creator (Hana)
 
-    Note over Y: mgr-dashboard created
+    Note over D: Boot → mgr-dashboard only
+    D->>D: Loading modal (Discord setup)
+    D->>Y: Activate (Sonnet)
+    D->>H: Activate (Sonnet)
 
-    Y->>U: Greeting + ask honorific/speech style
-    U->>Y: Set preferences
+    rect rgb(30, 40, 60)
+        Note over Y,U: Phase 1: Profile Collection
+        Y->>U: Greeting + ask honorific
+        U->>Y: Set preferences
+        Y->>Y: [CMD:프로필수정] → DB
 
-    loop Profile Collection
-        Y->>U: Ask info (MBTI, job, hobby...)
-        U->>Y: Provide info
-        Y->>Y: [CMD:프로필수정] save to DB
-        S-->>S: Monitor progress (Haiku judgment)
-        S-.->Y: Nudge if stalled (inner thought)
+        loop Ask info (MBTI, job, hobby...)
+            Y->>U: Question
+            U->>Y: Answer
+            Y->>Y: [CMD:프로필수정] → DB
+            OS-->>OS: Monitor (Haiku judgment)
+            OS-.->Y: Nudge if stalled (inner thought)
+        end
+
+        alt Yuna sends CMD
+            Y->>Y: [CMD:프로필수집완료]
+        else Supervisor force-trigger
+            OS->>OS: DB check: mbti+background exist
+            OS->>Y: Force Phase 2
+        end
     end
 
-    Y->>Y: [CMD:프로필수집완료]
-    Note over Y: Auto: create mgr-system-log
-    Y->>U: Explain system-log channel
-    Note over Y: Auto: create mgr-creator
-    Y->>U: Introduce Creator (Hana)
+    rect rgb(40, 40, 30)
+        Note over Y,H: Phase 2: Channel Setup + Creator
+        Note over Y: Auto: create mgr-system-log
+        Y->>U: Explain system-log channel
+        Note over Y: Auto: create mgr-creator
+        Y->>U: Introduce Creator (Hana)
 
-    H->>U: Greeting + icebreaking
-    S-->>S: Monitor Hana's progress
-    H->>H: [ACTION:DM → Yuna] Report
-    Note over H: internal-dm channel created
+        H->>U: Greeting + icebreaking
+        loop Agent Creation
+            H->>U: Design agent together
+            U->>H: Preferences
+            H->>H: [CMD:프로필생성] → DB (Sonnet)
+        end
+    end
 
-    Y->>U: "Heard from Hana..." + explain channel types
-    Y->>U: "Any questions?"
-    Y->>Y: [CMD:온보딩완료]
-    Note over S: Supervisor deactivated
+    rect rgb(40, 30, 40)
+        Note over H,Y: Phase 3: Report + Handoff
+        H->>Y: [ACTION:DM] "Icebreaking + agent created"
+        Note over H,Y: internal-dm channel auto-created
+        activate CS
+        CS-->>CS: Monitor internal-dm (status=running)
+        Y->>H: Acknowledge report
+        deactivate CS
+
+        Y->>U: "Heard from Hana..." + channel structure
+        Y->>U: "Any questions?"
+        Y->>Y: [CMD:온보딩완료]
+        Note over OS: onboarding_phase=complete
+        Note over OS: Supervisor deactivated
+    end
 ```
 
 ### Agent States (Dashboard)
