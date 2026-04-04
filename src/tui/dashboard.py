@@ -356,7 +356,6 @@ class DashboardScreen(Screen):
         Binding("q", "quit_app", "종료"),
         Binding("r", "refresh", "새로고침"),
         Binding("ctrl+r", "restart", "재시작"),
-        Binding("s", "sync", "동기화"),
         Binding("e", "toggle_edit", "편집"),
         Binding("delete", "go_back", "뒤로"),
         Binding("w", "go_wizard", "Wizard"),
@@ -383,9 +382,9 @@ class DashboardScreen(Screen):
                 yield Button("Health", id="nav-health")
                 yield Button("Dev", id="nav-dev")
                 yield Button("Logs", id="nav-logs")
+                yield Button("Sync", id="nav-sync")
                 yield Button("Refresh", variant="primary", id="nav-refresh")
                 yield Button("Restart", variant="error", id="nav-restart")
-                yield Button("Sync", variant="success", id="nav-sync")
                 yield Button("Wizard", variant="warning", id="nav-wizard")
             # Back 버튼 (서브페이지에서만 표시)
             yield Button("← Back", variant="default", id="nav-back")
@@ -549,11 +548,11 @@ class DashboardScreen(Screen):
             except Exception:
                 pass
 
-        if view == "sync_select":
+        if view == "sync":
             content.display = True
             manage_list.display = True
-            content.update(self._render_sync_select())
-            self._update_sync_select_list()
+            content.update(self._render_sync_view())
+            self._update_sync_list()
         elif view == "overview":
             content.display = True
             content.update(self._render_overview())
@@ -1567,10 +1566,7 @@ class DashboardScreen(Screen):
                 lambda yes: self._do_empty_trash() if yes else None,
             )
         elif oid == "sync_start":
-            self._start_sync_with_filter()
-        elif oid == "sync_cancel":
-            self._current_view = "overview"
-            self._refresh_all()
+            self._start_sync()
         elif oid.startswith("sync_ch:"):
             ch_name = oid.split(":", 1)[1]
             if ch_name in self._sync_selected_channels:
@@ -1679,6 +1675,7 @@ class DashboardScreen(Screen):
         "nav-health": "health",
         "nav-dev": "dev",
         "nav-logs": "logs",
+        "nav-sync": "sync",
     }
 
     def on_button_pressed(self, event: Button.Pressed):
@@ -1738,81 +1735,21 @@ class DashboardScreen(Screen):
 
     # ── Sync ─────────────────────────────────────────────
 
-    def action_sync(self):
-        # 추론 중인 에이전트가 있으면 차단
+    def _start_sync(self):
+        """Sync 탭에서 Start 누르면 실행"""
         thinking = [a for a in _cache.all_agents.values() if log_writer.is_thinking(a["id"])]
         if thinking:
             names = ", ".join(a["name"] for a in thinking)
-            self._current_view = "overview"
-            self._refresh_all()
             content = self.query_one("#content", Static)
             content.update(Panel(
                 f"[yellow]추론 중인 에이전트가 있어 동기화할 수 없습니다.[/yellow]\n\n"
-                f"🧠 {names}\n\n"
-                f"[dim]추론 완료 후 다시 시도하세요.[/dim]",
-                title="[bold]🔄 Sync[/bold]",
+                f"🧠 {names}\n\n[dim]추론 완료 후 다시 시도하세요.[/dim]",
                 border_style="yellow", box=box.ROUNDED, padding=(1, 2),
             ))
             return
 
-        # 먼저 복원 필요한 채널 스캔
-        self._loading = LoadingOverlay("동기화 진행 중...")
-        self.app.push_screen(self._loading)
-        self._run_sync_scan()
-
-    @work(thread=True)
-    def _run_sync_scan(self):
-        """먼저 채널 구조 싱크 + 복원 필요 채널 스캔"""
-        import time
-
-        def on_progress(msg):
-            try:
-                self.app.call_from_thread(self._loading.update_detail, msg)
-            except Exception:
-                pass
-
-        bot_was_running = self._bot_proc and self._bot_proc.poll() is None
-
-        # 채널 구조만 먼저 (메시지 없이)
-        on_progress("채널 구조 동기화 중...")
-        if bot_was_running:
-            self._stop_bot()
-            time.sleep(2)
-
-        # 빈 필터로 실행 → 채널 구조만 싱크, 메시지는 아무것도 안 함
-        result = run_sync(on_progress=on_progress, channels_filter=set())
-
-        # DB에 있지만 디코가 빈 채널 체크 (복원 필요)
-        on_progress("복원 필요 채널 스캔 중...")
-        restore_needed = {}
-        overview = db.get_channel_overview()
-        for ch in overview:
-            if ch["msg_count"] > 0:
-                restore_needed[ch["channel"]] = ch["msg_count"]
-
-        if bot_was_running:
-            self.app.call_from_thread(self._start_bot)
-            time.sleep(2)
-
-        self.app.call_from_thread(self.app.pop_screen)  # 로딩 닫기
-
-        total_restore = sum(restore_needed.values())
-        if total_restore > 50:
-            # 복원 메시지가 많으면 채널 선택 화면
-            self._sync_restore_needed = restore_needed
-            self._sync_selected_channels = set()
-            self.app.call_from_thread(self._set_view, "sync_select")
-        else:
-            # 적으면 바로 전체 싱크
-            self._loading = LoadingOverlay("Discord ↔ DB 동기화 중...")
-            self.app.call_from_thread(lambda: self.app.push_screen(self._loading))
-            time.sleep(0.5)
-            self._run_sync_execute(None, bot_was_running=False)
-
-    def _start_sync_with_filter(self):
-        """선택된 채널로 싱크 시작"""
         channels = self._sync_selected_channels if self._sync_selected_channels else None
-        self._loading = LoadingOverlay("Discord ↔ DB 동기화 중...")
+        self._loading = LoadingOverlay("동기화 진행 중...")
         self.app.push_screen(self._loading)
         self._run_sync(channels)
 
@@ -1968,49 +1905,86 @@ class DashboardScreen(Screen):
         time.sleep(1)
         self.app.call_from_thread(self._do_full_restart)
 
-    def _render_sync_select(self):
-        """싱크 채널 선택 화면"""
+    def _render_sync_view(self):
+        """Sync 탭 메인 뷰"""
+        if not hasattr(self, '_sync_selected_channels'):
+            self._sync_selected_channels = set()
+
         selected = len(self._sync_selected_channels)
+
+        # DB vs 디코 상태 요약
+        overview = db.get_channel_overview()
+        total_db = sum(ch["msg_count"] for ch in overview)
+        ch_count = len(overview)
+
+        lines = [
+            f"[bold]🔄 Discord ↔ DB Sync[/bold]",
+            "",
+            f"DB: [cyan]{ch_count}[/cyan]개 채널, [cyan]{total_db:,}[/cyan]건 메시지",
+            "",
+            f"채널을 선택하고 [green bold]▶ Start[/green bold]로 싱크 (선택 없으면 전체)",
+            f"[dim]채널 구조 (그룹/생성/삭제)는 항상 자동 싱크됩니다[/dim]",
+        ]
+        if selected:
+            lines.append(f"\n[cyan]선택: {selected}개 채널[/cyan]")
+
         return Panel(
-            f"[bold]🔄 Sync — 채널 선택[/bold]\n\n"
-            f"싱크할 채널을 선택 후 [bold green]Start Sync[/bold green] 실행\n"
-            f"선택 없이 실행하면 전체 채널 싱크\n\n"
-            f"[cyan]선택: {selected}개[/cyan]",
+            "\n".join(lines),
             border_style="cyan", box=box.ROUNDED, padding=(1, 2),
         )
 
-    def _update_sync_select_list(self):
-        """싱크 채널 선택 목록 — 복원 필요 채널 + 건수 표시"""
+    def _update_sync_list(self):
+        """Sync 탭 채널 목록"""
         manage_list = self.query_one("#manage-list", OptionList)
         manage_list.clear_options()
 
+        if not hasattr(self, '_sync_selected_channels'):
+            self._sync_selected_channels = set()
+
         selected_count = len(self._sync_selected_channels)
         manage_list.add_option(Option(
-            f"  [green bold]▶ Start Sync[/green bold]  ({selected_count}개 선택, 없으면 전체)",
+            f"  [green bold]▶ Start Sync[/green bold]  ({selected_count}개 선택)",
             id="sync_start",
         ))
         manage_list.add_option(None)
 
-        restore = getattr(self, '_sync_restore_needed', {})
-        for ch_name, count in sorted(restore.items(), key=lambda x: -x[1]):
+        # 채널별 DB 건수 표시
+        overview = db.get_channel_overview()
+        # 건수 큰 순 정렬
+        overview.sort(key=lambda x: -x["msg_count"])
+
+        for ch in overview:
+            ch_name = ch["channel"]
+            count = ch["msg_count"]
             selected = ch_name in self._sync_selected_channels
             check = "[green]✓[/green]" if selected else "[dim]○[/dim]"
-            # 예상 소요 시간 (2초/건)
-            est_min = (count * 2) // 60
-            est_str = f"~{est_min}분" if est_min > 0 else "<1분"
+
+            # 예상 시간 (0.5초/건)
+            est_sec = int(count * 0.5)
+            if est_sec >= 60:
+                est_str = f"~{est_sec // 60}분"
+            else:
+                est_str = f"~{est_sec}초"
+
+            # 채널 아이콘
+            if ch_name.startswith("dm-"):
+                icon = "💬"
+            elif ch_name.startswith("group-"):
+                icon = "👥"
+            elif ch_name.startswith("internal-"):
+                icon = "🔒"
+            else:
+                icon = "📋"
+
             manage_list.add_option(Option(
-                f"  {check}  {ch_name}  [yellow]{count}건[/yellow]  [dim]{est_str}[/dim]",
+                f"  {check}  {icon} {ch_name}  [yellow]{count}건[/yellow]  [dim]{est_str}[/dim]",
                 id=f"sync_ch:{ch_name}",
             ))
 
-        manage_list.add_option(None)
-        manage_list.add_option(Option("  [dim]← 취소[/dim]", id="sync_cancel"))
-
     def _show_sync_result(self, msg: str):
-        self._current_view = "overview"
+        self._current_view = "sync"
         _cache.refresh()
         self._refresh_all()
-        # 결과를 content에 표시
         content = self.query_one("#content", Static)
         content.update(Panel(
             msg,
@@ -2062,8 +2036,6 @@ class DashboardScreen(Screen):
             self.action_refresh()
         elif button.id == "nav-restart":
             self.action_restart()
-        elif button.id == "nav-sync":
-            self.action_sync()
         elif button.id == "nav-wizard":
             self.action_go_wizard()
 
