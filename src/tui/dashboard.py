@@ -1052,7 +1052,7 @@ class DashboardScreen(Screen):
             ch_name = ch["channel"]
             if ch_name == primary_ch:
                 continue
-            if agent_name in ch_name or ch_name.startswith("mgr"):
+            if agent_name in ch_name:
                 related_channels.append(ch)
 
         # 주 채널 대화
