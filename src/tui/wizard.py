@@ -625,6 +625,17 @@ class CreateScreen(Screen):
                 yield Static("")
                 with Horizontal(classes="action-bar"):
                     yield Button("← Back", id="btn-prev")
+                    yield Button("Next →", variant="primary", id="btn-next2")
+
+            # Page 3: Discord 봇 토큰
+            with Container(id="page-3", classes="input-group"):
+                yield Static(DISCORD_SETUP_GUIDE, markup=True)
+                yield Static("")
+                yield Label("Bot Token [dim](필수)[/dim]")
+                yield Input(placeholder="MTIzNDU2...", password=True, id="token-input")
+                yield Static("")
+                with Horizontal(classes="action-bar"):
+                    yield Button("← Back", id="btn-prev2")
                     yield Button("Create", variant="primary", id="btn-create")
 
             yield Static("", id="create-result", classes="result-text")
@@ -638,6 +649,7 @@ class CreateScreen(Screen):
         self._page = page
         self.query_one("#page-1").display = (page == 1)
         self.query_one("#page-2").display = (page == 2)
+        self.query_one("#page-3").display = (page == 3)
 
     @on(Button.Pressed, "#btn-next")
     def on_next(self):
@@ -672,6 +684,22 @@ class CreateScreen(Screen):
         self.query_one("#gender-f", Button).variant = "primary"
         self.query_one("#gender-m", Button).variant = "default"
 
+    @on(Button.Pressed, "#btn-next2")
+    def on_next2(self):
+        owner_name = self.query_one("#owner-name-input", Input).value.strip()
+        result = self.query_one("#create-result", Static)
+        if not owner_name:
+            result.update("[red]이름은 필수입니다.[/red]")
+            return
+        result.update("")
+        self._show_page(3)
+        self.query_one("#token-input", Input).focus()
+
+    @on(Button.Pressed, "#btn-prev2")
+    def on_prev2(self):
+        self._show_page(2)
+        self.query_one("#owner-name-input", Input).focus()
+
     @on(Button.Pressed, "#btn-create")
     def on_create(self):
         self._do_create()
@@ -684,6 +712,10 @@ class CreateScreen(Screen):
     def on_desc_submit(self):
         self.on_next()
 
+    @on(Input.Submitted, "#token-input")
+    def on_token_submit(self):
+        self._do_create()
+
     def _do_create(self):
         cid = self.query_one("#cid-input", Input).value.strip()
         desc = self.query_one("#desc-input", Input).value.strip()
@@ -691,20 +723,18 @@ class CreateScreen(Screen):
         owner_nickname = self.query_one("#owner-nickname-input", Input).value.strip()
         owner_birth = self.query_one("#owner-birth-input", Input).value.strip()
         owner_gender = getattr(self, '_gender', '')
+        token = self.query_one("#token-input", Input).value.strip()
         result = self.query_one("#create-result", Static)
 
-        if not cid or not cid.replace("-", "").replace("_", "").isalnum():
-            result.update("[red]유효하지 않은 ID입니다.[/red]")
-            return
-
-        if not owner_name:
-            result.update("[red]오너 이름은 필수입니다.[/red]")
+        if not token:
+            result.update("[red]봇 토큰은 필수입니다.[/red]")
             return
 
         if (community.COMMUNITIES_DIR / cid).exists():
             result.update(f"[red]이미 존재: {cid}[/red]")
             return
 
+        # 커뮤니티 생성
         self._community_id = cid
         community.init_community(cid)
 
@@ -718,15 +748,23 @@ class CreateScreen(Screen):
                 )
                 reg.write_text(content)
 
-        # 오너 정보를 DB에 저장
+        # 오너 정보 저장
         self._save_owner_profile(cid, owner_name, owner_nickname, owner_birth, owner_gender)
+
+        # 토큰 저장
+        env_path = community.COMMUNITIES_DIR / cid / ".env"
+        set_key(str(env_path), "DISCORD_BOT_TOKEN", token)
 
         result.update(
             f"[green]커뮤니티 '{cid}' 생성 완료![/green]\n\n"
-            f"오너: {owner_name}"
+            f"사용자: {owner_name}"
             f"{f' ({owner_nickname})' if owner_nickname else ''}\n"
-            f"경로: {community.COMMUNITIES_DIR / cid}\n"
+            f"토큰: {_mask_token(token)}\n\n"
+            "[dim]ESC로 돌아가세요.[/dim]"
         )
+
+        # DB 초기화
+        self._ask_init_db(cid)
 
     def _save_owner_profile(self, cid, name, nickname, birth, gender):
         """오너 프로필을 커뮤니티 DB에 저장"""
@@ -781,32 +819,6 @@ class CreateScreen(Screen):
             os.environ["CHAOS_COMMUNITY"] = old_community
             community.set_community(old_community)
 
-        # 토큰 설정 물어보기
-        def on_confirm(should_set: bool):
-            if should_set:
-                def on_token(token: str):
-                    if token:
-                        env_path = community.COMMUNITIES_DIR / cid / ".env"
-                        set_key(str(env_path), "DISCORD_BOT_TOKEN", token)
-                        r = self.query_one("#create-result", Static)
-                        r.update(
-                            f"[green]커뮤니티 '{cid}' 생성 + 토큰 설정 완료![/green]\n\n"
-                            f"토큰: {_mask_token(token)}\n\n"
-                        )
-                        self._ask_init_db(cid)
-                    else:
-                        self.app.pop_screen()  # CreateScreen 닫고 메인으로
-                self.app.push_screen(
-                    TokenSetupDialog(),
-                    on_token,
-                )
-            else:
-                self.app.pop_screen()  # CreateScreen 닫고 메인으로
-
-        self.app.push_screen(
-            ConfirmDialog("봇 토큰을 지금 설정할까요?"),
-            on_confirm,
-        )
 
     def _ask_init_db(self, cid: str):
         def on_confirm(should_init: bool):
