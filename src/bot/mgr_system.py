@@ -1624,6 +1624,25 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
                     await send_as_agent(target_ch, agent_id, message)
                     log_writer.system(f"✓ {sender_name} ACTION DM: → {target_name}")
                     await send_as_agent(mgr_ch, agent_id, f"{target_name}한테 DM 보냈어")
+
+                    # 대상 에이전트 응답 트리거
+                    actual_ch_name = target_ch.name
+                    db.log_message(actual_ch_name, agent_id, message)
+
+                    async def _trigger_response():
+                        loop = asyncio.get_event_loop()
+                        responses = await loop.run_in_executor(
+                            None,
+                            lambda: runtime.generate_response(
+                                target["id"], actual_ch_name, message, log_user_message=False
+                            )
+                        )
+                        for resp in responses:
+                            for part in _split_for_chat(resp):
+                                await send_as_agent(target_ch, target["id"], part)
+                                await asyncio.sleep(0.5)
+
+                    asyncio.create_task(_trigger_response())
             return
 
         sender_name = runtime.get_agent_name(agent_id)
