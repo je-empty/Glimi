@@ -471,12 +471,12 @@ class TokenSetupDialog(ModalScreen[str]):
 # ══════════════════════════════════════════════════════════
 
 BANNER_ART = """\
- ██████╗██╗  ██╗ █████╗  ██████╗ ███████╗
-██╔════╝██║  ██║██╔══██╗██╔═══██╗██╔════╝
-██║     ███████║███████║██║   ██║███████╗
-██║     ██╔══██║██╔══██║██║   ██║╚════██║
-╚██████╗██║  ██║██║  ██║╚██████╔╝███████║
- ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝"""
+ ██████╗ ██╗     ██╗███╗   ███╗██╗
+██╔════╝ ██║     ██║████╗ ████║██║
+██║  ███╗██║     ██║██╔████╔██║██║
+██║   ██║██║     ██║██║╚██╔╝██║██║
+╚██████╔╝███████╗██║██║ ╚═╝ ██║██║
+ ╚═════╝ ╚══════╝╚═╝╚═╝     ╚═╝╚═╝"""
 
 
 class MainScreen(Screen):
@@ -777,8 +777,8 @@ class CreateScreen(Screen):
 
         # DB 초기화 (테이블 없으면)
         from src import db as _db
-        old_community = os.environ.get("CHAOS_COMMUNITY", "")
-        os.environ["CHAOS_COMMUNITY"] = cid
+        old_community = os.environ.get("GLIMI_COMMUNITY", "")
+        os.environ["GLIMI_COMMUNITY"] = cid
         community.set_community(cid)
         _db.init_db()
 
@@ -816,7 +816,7 @@ class CreateScreen(Screen):
 
         # 환경변수 복원
         if old_community:
-            os.environ["CHAOS_COMMUNITY"] = old_community
+            os.environ["GLIMI_COMMUNITY"] = old_community
             community.set_community(old_community)
 
 
@@ -834,7 +834,7 @@ class CreateScreen(Screen):
     @work(thread=True)
     def _run_db_init(self, cid: str):
         env = os.environ.copy()
-        env["CHAOS_COMMUNITY"] = cid
+        env["GLIMI_COMMUNITY"] = cid
         result = subprocess.run(
             [_venv_python(), "-c",
              f"from src import community, db; "
@@ -1073,7 +1073,7 @@ class ManageScreen(Screen):
     def _start_bot_process(self):
         cid = self._cid
         # 기존 프로세스 정리
-        subprocess.run(["pkill", "-f", f"CHAOS_COMMUNITY={cid}.*src.discord_bot"], capture_output=True)
+        subprocess.run(["pkill", "-f", f"GLIMI_COMMUNITY={cid}.*src.discord_bot"], capture_output=True)
         for pf in [PROJECT_ROOT / "dev" / f".bot-{cid}.pid", PROJECT_ROOT / "dev" / ".bot.pid"]:
             if pf.exists():
                 try:
@@ -1085,7 +1085,7 @@ class ManageScreen(Screen):
         time.sleep(1)
         # 새 프로세스 시작
         env = os.environ.copy()
-        env["CHAOS_COMMUNITY"] = cid
+        env["GLIMI_COMMUNITY"] = cid
         proc = subprocess.Popen(
             ["bash", str(PROJECT_ROOT / "scripts" / "run.sh"), cid],
             cwd=str(PROJECT_ROOT), env=env,
@@ -1113,7 +1113,7 @@ class ManageScreen(Screen):
     @work(thread=True)
     def _stop_bot_process(self):
         cid = self._cid
-        subprocess.run(["pkill", "-f", f"CHAOS_COMMUNITY={cid}.*src.discord_bot"], capture_output=True)
+        subprocess.run(["pkill", "-f", f"GLIMI_COMMUNITY={cid}.*src.discord_bot"], capture_output=True)
         for pf in [PROJECT_ROOT / "dev" / f".bot-{cid}.pid", PROJECT_ROOT / "dev" / ".bot.pid"]:
             if pf.exists():
                 try:
@@ -1127,7 +1127,7 @@ class ManageScreen(Screen):
             self.app.call_from_thread(self.app.pop_screen)
             self.app.call_from_thread(self._result, "[green]서버가 중지되었습니다.[/green]")
         else:
-            subprocess.run(["pkill", "-9", "-f", f"CHAOS_COMMUNITY={cid}"], capture_output=True)
+            subprocess.run(["pkill", "-9", "-f", f"GLIMI_COMMUNITY={cid}"], capture_output=True)
             self.app.call_from_thread(self.app.pop_screen)
             self.app.call_from_thread(self._result, "[yellow]강제 종료됨[/yellow]")
         self.app.call_from_thread(self._refresh_view)
@@ -1143,7 +1143,7 @@ class ManageScreen(Screen):
     def _restart_bot_process(self):
         cid = self._cid
         self.app.call_from_thread(self._result, "[yellow]서버 중지 중...[/yellow]")
-        subprocess.run(["pkill", "-f", f"CHAOS_COMMUNITY={cid}.*src.discord_bot"], capture_output=True)
+        subprocess.run(["pkill", "-f", f"GLIMI_COMMUNITY={cid}.*src.discord_bot"], capture_output=True)
         for pf in [PROJECT_ROOT / "dev" / f".bot-{cid}.pid", PROJECT_ROOT / "dev" / ".bot.pid"]:
             if pf.exists():
                 try:
@@ -1155,7 +1155,7 @@ class ManageScreen(Screen):
         time.sleep(3)
         self.app.call_from_thread(self._loading.update_detail, "새 프로세스 시작 중...")
         env = os.environ.copy()
-        env["CHAOS_COMMUNITY"] = cid
+        env["GLIMI_COMMUNITY"] = cid
         proc = subprocess.Popen(
             ["bash", str(PROJECT_ROOT / "scripts" / "run.sh"), cid],
             cwd=str(PROJECT_ROOT), env=env,
@@ -1183,7 +1183,7 @@ class ManageScreen(Screen):
         cid = self._cid
         self.app.call_from_thread(self._result, "[dim]DB 초기화 중...[/dim]")
         env = os.environ.copy()
-        env["CHAOS_COMMUNITY"] = cid
+        env["GLIMI_COMMUNITY"] = cid
         result = subprocess.run(
             [_venv_python(), "-c",
              f"from src import community, db; "
@@ -1209,7 +1209,7 @@ class ManageScreen(Screen):
                 return
             # 봇 먼저 중지
             if _is_bot_running(self._cid):
-                subprocess.run(["pkill", "-f", f"CHAOS_COMMUNITY={self._cid}"], capture_output=True)
+                subprocess.run(["pkill", "-f", f"GLIMI_COMMUNITY={self._cid}"], capture_output=True)
                 time.sleep(1)
 
             token = _get_token(self._cid)
@@ -1493,8 +1493,8 @@ class ExportImportScreen(Screen):
             yield Static(BANNER_ART, id="banner")
             yield Static("[bold]Export / Import[/bold]", id="subtitle")
             yield OptionList(
-                Option("  Export Community        커뮤니티를 .chaos.zip으로 내보내기", id="export"),
-                Option("  Import Community        .chaos.zip에서 가져오기", id="import"),
+                Option("  Export Community        커뮤니티를 .glimi.zip으로 내보내기", id="export"),
+                Option("  Import Community        .glimi.zip에서 가져오기", id="import"),
                 None,
                 Option("  Apply External DB      외부 DB 파일 적용", id="apply_db"),
                 id="ei-menu",
@@ -1549,7 +1549,7 @@ class ExportImportScreen(Screen):
                     if out_path:
                         self._run_export(cid, out_path)
                 self.app.push_screen(
-                    InputDialog("저장 경로", placeholder=str(PROJECT_ROOT / f"{cid}.chaos.zip")),
+                    InputDialog("저장 경로", placeholder=str(PROJECT_ROOT / f"{cid}.glimi.zip")),
                     on_path,
                 )
 
@@ -1558,7 +1558,7 @@ class ExportImportScreen(Screen):
     @work(thread=True)
     def _run_export(self, cid: str, out_path: str):
         if not out_path.endswith(".zip"):
-            out_path += ".chaos.zip"
+            out_path += ".glimi.zip"
 
         self.app.call_from_thread(self._result, "[dim]압축 중...[/dim]")
         cdir = community.COMMUNITIES_DIR / cid
@@ -1605,7 +1605,7 @@ class ExportImportScreen(Screen):
                 return
             self._preview_and_import(zip_path)
         self.app.push_screen(
-            InputDialog("가져올 .chaos.zip 파일 경로", placeholder="/path/to/community.chaos.zip"),
+            InputDialog("가져올 .glimi.zip 파일 경로", placeholder="/path/to/community.glimi.zip"),
             on_path,
         )
 
@@ -1749,7 +1749,7 @@ class ExportImportScreen(Screen):
 
         if is_old:
             env = os.environ.copy()
-            env["CHAOS_COMMUNITY"] = cid
+            env["GLIMI_COMMUNITY"] = cid
             result = subprocess.run(
                 [_venv_python(), "-m", "src.tools.migrate", "--upgrade-db", str(target)],
                 capture_output=True, text=True, env=env,

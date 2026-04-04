@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 # (src.db import 시 community.get_community_id()가 호출됨)
 for _a in sys.argv[1:]:
     if not _a.startswith("-"):
-        os.environ["CHAOS_COMMUNITY"] = _a
+        os.environ["GLIMI_COMMUNITY"] = _a
         break
 
 from datetime import datetime
@@ -429,9 +429,9 @@ class DashboardScreen(Screen):
             return
         log_writer.system("봇 시작")
         env = os.environ.copy()
-        cid = os.environ.get("CHAOS_COMMUNITY", "")
+        cid = os.environ.get("GLIMI_COMMUNITY", "")
         if cid:
-            env["CHAOS_COMMUNITY"] = cid
+            env["GLIMI_COMMUNITY"] = cid
         self._bot_proc = subprocess.Popen(
             [_venv_python(), "-u", "-m", "src.discord_bot"],
             cwd=PROJECT_ROOT, env=env,
@@ -2287,7 +2287,7 @@ class DashboardScreen(Screen):
         if self._dev_proc and self._dev_proc.poll() is None:
             self._dev_proc.terminate()
         log_writer.system("대시보드 재시작")
-        cid = os.environ.get("CHAOS_COMMUNITY", "")
+        cid = os.environ.get("GLIMI_COMMUNITY", "")
         py = _venv_python()
         args = [py, "-m", "src.tui.dashboard"]
         if cid:
@@ -2339,7 +2339,7 @@ class GlimiDashboard(App):
     ]
 
     def on_mount(self):
-        cid = os.environ.get("CHAOS_COMMUNITY", "default")
+        cid = os.environ.get("GLIMI_COMMUNITY", "default")
         self.title = f"Project Glimi — {cid}"
         self.sub_title = ""
         self.push_screen(DashboardScreen())
@@ -2353,7 +2353,7 @@ def main():
 
     # 환경변수를 먼저 설정 (다른 모듈이 import 시 참조)
     if args.community_id:
-        os.environ["CHAOS_COMMUNITY"] = args.community_id
+        os.environ["GLIMI_COMMUNITY"] = args.community_id
 
     # community 모듈의 캐시된 값 강제 갱신
     from src import community

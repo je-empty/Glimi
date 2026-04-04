@@ -16,7 +16,7 @@ NC='\033[0m'
 
 # 커뮤니티 결정
 if [ -n "$1" ]; then
-    export CHAOS_COMMUNITY="$1"
+    export GLIMI_COMMUNITY="$1"
 fi
 
 # ── 자동 세팅 ──────────────────────────────────────────
@@ -75,7 +75,7 @@ pkill -9 -f "src.tui.dashboard" 2>/dev/null
 pkill -9 -f "src.tools.dev_runner" 2>/dev/null
 
 echo -e "${GREEN}◈ Project Glimi 시작${NC}"
-if [ -n "$CHAOS_COMMUNITY" ]; then
-    echo -e "  커뮤니티: ${GREEN}${CHAOS_COMMUNITY}${NC}"
+if [ -n "$GLIMI_COMMUNITY" ]; then
+    echo -e "  커뮤니티: ${GREEN}${GLIMI_COMMUNITY}${NC}"
 fi
 python -m src.tui.dashboard

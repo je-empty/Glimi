@@ -5,7 +5,7 @@
 # 사용법:
 #   ./dev.sh "버그 수정해줘"
 #   ./dev.sh  (인자 없으면 대화형)
-#   CHAOS_COMMUNITY=private ./dev.sh "..."
+#   GLIMI_COMMUNITY=private ./dev.sh "..."
 
 cd "$(dirname "$0")/.."
 

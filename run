@@ -38,7 +38,7 @@ fi
 
 mkdir -p dev
 
-# ── 기존 Chaos 프로세스 정리 ──────────────────────────
+# ── 기존 Glimi 프로세스 정리 ──────────────────────────
 
 _cleanup() {
     pkill -f "src.discord_bot" 2>/dev/null || true

@@ -19,12 +19,12 @@ NC='\033[0m'
 
 # 커뮤니티 결정
 if [ -n "$1" ]; then
-    export CHAOS_COMMUNITY="$1"
+    export GLIMI_COMMUNITY="$1"
 fi
 
 echo -e "${CYAN}◈ Project Glimi — run.sh${NC}"
-if [ -n "$CHAOS_COMMUNITY" ]; then
-    echo -e "  커뮤니티: ${GREEN}${CHAOS_COMMUNITY}${NC}"
+if [ -n "$GLIMI_COMMUNITY" ]; then
+    echo -e "  커뮤니티: ${GREEN}${GLIMI_COMMUNITY}${NC}"
 fi
 echo ""
 

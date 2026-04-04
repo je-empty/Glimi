@@ -16,7 +16,7 @@ communities/ 디렉토리 아래 커뮤니티별 서브디렉토리로 격리.
       └── ...
 
 사용:
-  CHAOS_COMMUNITY=my-server ./scripts/run.sh
+  GLIMI_COMMUNITY=my-server ./scripts/run.sh
   ./scripts/run.sh my-server
 """
 import os
@@ -44,7 +44,7 @@ def set_community(community_id: str):
     """커뮤니티 ID 설정 (프로세스 시작 시 1회)"""
     global _current_id
     _current_id = community_id
-    os.environ["CHAOS_COMMUNITY"] = community_id
+    os.environ["GLIMI_COMMUNITY"] = community_id
 
 
 def get_community_id() -> str:
@@ -54,7 +54,7 @@ def get_community_id() -> str:
         return _current_id
 
     # 1. 환경변수
-    env_id = os.environ.get("CHAOS_COMMUNITY")
+    env_id = os.environ.get("GLIMI_COMMUNITY")
     if env_id:
         _current_id = env_id
         return env_id
