@@ -40,7 +40,15 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'archived')),
             current_emotion TEXT DEFAULT '평온',
             emotion_intensity INTEGER DEFAULT 5 CHECK(emotion_intensity BETWEEN 1 AND 10),
-            last_active DATETIME DEFAULT CURRENT_TIMESTAMP
+            last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
+            birth_year INTEGER,
+            age INTEGER,
+            mbti TEXT,
+            enneagram TEXT,
+            background TEXT,
+            avatar_filename TEXT,
+            version INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS relationships (

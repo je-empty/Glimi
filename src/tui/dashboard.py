@@ -517,12 +517,16 @@ class DashboardScreen(Screen):
             agent_list.display = True
             content.display = False
             self._update_agent_list()
+            agent_list.focus()
         elif view.startswith("agent:"):
             content.display = True
             content.update(self._render_agent_detail(view.split(":", 1)[1]))
         elif view == "channels":
-            content.display = True
-            content.update(self._render_channels())
+            # 채널 목록을 agent_list(OptionList) 재활용
+            agent_list.display = True
+            content.display = False
+            self._update_channel_list()
+            agent_list.focus()
         elif view.startswith("channel:"):
             content.display = True
             content.update(self._render_channel_detail(view.split(":", 1)[1]))
@@ -573,6 +577,30 @@ class DashboardScreen(Screen):
                 type_str = type_map.get(a.get("type", ""), a.get("type", ""))
                 label = f"  {icon} [{c}]{a['name']}[/{c}]  {type_str}  {em} {a.get('current_emotion', '')}"
                 agent_list.add_option(Option(label, id=a["id"]))
+
+    def _update_channel_list(self):
+        """채널 OptionList 갱신 (agent-list 재활용)"""
+        agent_list = self.query_one("#agent-list", OptionList)
+        agent_list.clear_options()
+
+        dm, group, internal, mgr = _classify_channels(_cache.channels)
+        for label, icon, chs, clr in [
+            ("Manager", "📋", mgr, "blue"),
+            ("DM", "💬", dm, "cyan"),
+            ("Group", "👥", group, "green"),
+            ("Internal", "🔒", internal, "yellow"),
+        ]:
+            if not chs:
+                continue
+            agent_list.add_option(Option(f"  [{clr} bold]{icon} {label} ({len(chs)})[/{clr} bold]"))
+            for ch in chs:
+                active = _channel_is_active(_cache.channels, ch["channel"])
+                dot = "[green]●[/green]" if active else "[dim]○[/dim]"
+                ts = ch["last_active"][11:16] if ch["last_active"] else ""
+                agent_list.add_option(Option(
+                    f"    {dot} {ch['channel']}  [dim]{ch['msg_count']}건  {ts}[/dim]",
+                    id=f"ch:{ch['channel']}",
+                ))
 
     def _update_status_bar(self):
         bot = _is_bot_running()
@@ -661,14 +689,13 @@ class DashboardScreen(Screen):
         else:
             # ── 컴팩트 카드 ──
             status_icon = "[green]●[/green]" if agent["status"] == "active" else "[dim]○[/dim]"
-            # 추론 바 (비활성 = 회색)
-            idle_bar = "[dim]" + "░" * 20 + "[/dim]"
 
             lines = []
             lines.append(f"  {status_icon}  {em} {agent['current_emotion']}  [dim]{type_str}[/dim]")
-            lines.append(f"  {idle_bar}  [dim]idle · {_ago(sec)}[/dim]")
+            # 추론 바 (라벨 포함)
+            lines.append(f"  [dim]🧠 ░░░░░░░░░░░░░░░░░░░░  idle · {_ago(sec)}[/dim]")
 
-            # 관계 요약
+            # 관계 (라벨 포함)
             rels = db.get_all_relationships(aid)
             if rels:
                 rel_parts = []
@@ -679,16 +706,16 @@ class DashboardScreen(Screen):
                         intimacy = r.get("intimacy_score", 50)
                         mini_bar = "█" * (intimacy // 20) + "░" * (5 - intimacy // 20)
                         oc = _get_color(other_id)
-                        rel_parts.append(f"[{oc}]{other['name'][:4]}[/{oc}][dim]{mini_bar}[/dim]")
+                        rel_parts.append(f"[{oc}]{other['name'][:4]}[/{oc}]{mini_bar}")
                 if rel_parts:
-                    lines.append(f"  {'  '.join(rel_parts)}")
+                    lines.append(f"  [dim]💕[/dim] {'  '.join(rel_parts)}")
 
             # 마지막 메시지
             recent = db.get_recent_messages(ch_name, limit=1)
             if recent:
                 r = recent[-1]
                 speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
-                lines.append(f"  [dim]{speaker}: {_trunc(r['message'], 38)}[/dim]")
+                lines.append(f"  [dim]💬 {speaker}: {_trunc(r['message'], 36)}[/dim]")
 
             return Panel(
                 "\n".join(lines),
@@ -852,62 +879,6 @@ class DashboardScreen(Screen):
             box=box.ROUNDED, padding=(0, 1),
         ))
 
-        # ── 메모리 ──
-        conn = db.get_conn()
-        memories = conn.execute(
-            "SELECT * FROM memories WHERE agent_id = ? ORDER BY level, id DESC",
-            (agent_id,)
-        ).fetchall()
-        conn.close()
-
-        if memories:
-            # 채널별 + 레벨별로 그룹화
-            mem_by_channel = {}
-            for m in memories:
-                ch = m["channel"] or "general"
-                if ch not in mem_by_channel:
-                    mem_by_channel[ch] = {"L1": [], "L2": []}
-                level = f"L{m['level']}" if m["level"] in (1, 2) else "L1"
-                mem_by_channel[ch][level].append(m)
-
-            mem_lines = []
-            for ch, levels in mem_by_channel.items():
-                # 채널 라벨
-                if ch.startswith("dm-"):
-                    ch_icon = "💬"
-                elif ch.startswith("internal-"):
-                    ch_icon = "🔒"
-                elif ch.startswith("group-"):
-                    ch_icon = "👥"
-                elif ch.startswith("mgr"):
-                    ch_icon = "📋"
-                else:
-                    ch_icon = "📝"
-
-                mem_lines.append(f"[bold]{ch_icon} {ch}[/bold]")
-
-                # L2 (장기)
-                for m in levels["L2"][:3]:
-                    mem_lines.append(f"  [magenta]L2[/magenta] [dim]{m['content'][:80]}[/dim]")
-
-                # L1 (단기)
-                for m in levels["L1"][:5]:
-                    mem_lines.append(f"  [cyan]L1[/cyan] [dim]{m['content'][:80]}[/dim]")
-
-                mem_lines.append("")
-
-            items.append(Panel(
-                "\n".join(mem_lines).rstrip(),
-                title=f"[bold]🧠 메모리[/bold]  [dim]({len(memories)}건)[/dim]",
-                border_style="magenta", box=box.ROUNDED, padding=(0, 1),
-            ))
-        else:
-            items.append(Panel(
-                "[dim]메모리 없음[/dim]",
-                title="[bold]🧠 메모리[/bold]",
-                border_style="dim", box=box.ROUNDED, padding=(0, 1),
-            ))
-
         # ── 관계 점수 ──
         rels_db = db.get_all_relationships(agent_id)
         if rels_db:
@@ -929,6 +900,54 @@ class DashboardScreen(Screen):
                 "\n".join(rel_lines),
                 title=f"[bold]💕 관계[/bold]  [dim]({len(rels_db)}건)[/dim]",
                 border_style="bright_magenta", box=box.ROUNDED, padding=(0, 1),
+            ))
+
+        # ── 메모리 (채널별 전체) ──
+        conn = db.get_conn()
+        memories = conn.execute(
+            "SELECT * FROM memories WHERE agent_id = ? ORDER BY channel, level DESC, id DESC",
+            (agent_id,)
+        ).fetchall()
+        conn.close()
+
+        if memories:
+            mem_by_channel = {}
+            for m in memories:
+                ch = m["channel"] or "general"
+                if ch not in mem_by_channel:
+                    mem_by_channel[ch] = []
+                mem_by_channel[ch].append(m)
+
+            for ch, mems in mem_by_channel.items():
+                if ch.startswith("dm-"):
+                    ch_icon, ch_clr = "💬", "cyan"
+                elif ch.startswith("internal-"):
+                    ch_icon, ch_clr = "🔒", "yellow"
+                elif ch.startswith("group-"):
+                    ch_icon, ch_clr = "👥", "green"
+                elif ch.startswith("mgr"):
+                    ch_icon, ch_clr = "📋", "blue"
+                else:
+                    ch_icon, ch_clr = "📝", "dim"
+
+                mem_lines = []
+                for m in mems:
+                    level_tag = f"[magenta]L{m['level']}[/magenta]" if m["level"] == 2 else f"[cyan]L{m['level']}[/cyan]"
+                    ts = m["created_at"][:16] if m.get("created_at") else ""
+                    mem_lines.append(f"  {level_tag} [dim]{ts}[/dim]")
+                    mem_lines.append(f"    {m['content']}")
+                    mem_lines.append("")
+
+                items.append(Panel(
+                    "\n".join(mem_lines).rstrip(),
+                    title=f"[bold]🧠 {ch_icon} {ch}[/bold]  [dim]({len(mems)}건)[/dim]",
+                    border_style=ch_clr, box=box.ROUNDED, padding=(0, 1),
+                ))
+        else:
+            items.append(Panel(
+                "[dim]메모리 없음[/dim]",
+                title="[bold]🧠 메모리[/bold]",
+                border_style="dim", box=box.ROUNDED, padding=(0, 1),
             ))
 
         # ── 채팅 로그 (이 에이전트 관련 모든 채널) ──
@@ -1475,8 +1494,17 @@ class DashboardScreen(Screen):
 
     @on(OptionList.OptionSelected, "#agent-list")
     def on_agent_selected(self, event: OptionList.OptionSelected):
-        if event.option_id:
-            self._current_view = f"agent:{event.option_id}"
+        if not event.option_id:
+            return
+        oid = event.option_id
+        if oid.startswith("ch:"):
+            # 채널 상세
+            ch_name = oid.split(":", 1)[1]
+            self._current_view = f"channel:{ch_name}"
+            self._refresh_all()
+        else:
+            # 에이전트 상세
+            self._current_view = f"agent:{oid}"
             self._refresh_all()
 
     def action_go_back(self):
