@@ -75,38 +75,34 @@ async def get_agent_webhook(channel: discord.TextChannel, agent_id: str) -> disc
 
 
 def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
-    """에이전트가 해당 채널의 참가자인지 확인"""
-    # mgr 채널 — mgr 에이전트만
+    """에이전트가 해당 채널의 참가자인지 확인 (DB 우선, 폴백으로 채널 이름 기반)"""
+    # 1. DB channels 테이블 체크
+    db_participants = db.get_channel_participants(ch_name)
+    if db_participants:
+        return agent_id in db_participants
+
+    # 2. DB에 없으면 채널 이름 기반 폴백
     if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
         return agent_id == MGR_ID
     if ch_name == CREATOR_CHANNEL:
         return agent_id == "agent-creator-001"
-
-    # dm-이름 — 해당 에이전트 또는 MGR
     if ch_name.startswith("dm-"):
         dm_name = ch_name[3:]
         return dm_name == agent_name or agent_id == MGR_ID
-
-    # internal-dm-이름1-이름2 — 이름이 포함된 에이전트
     if ch_name.startswith("internal-dm-") or ch_name.startswith("internal-group-"):
         return agent_name in ch_name
-
-    # group-이름1-이름2 — 이름이 포함된 에이전트
     if ch_name.startswith("group-"):
         return agent_name in ch_name
 
-    # GROUP_PARTICIPANTS로 체크
+    # 3. 메모리 기반 폴백
     participants = GROUP_PARTICIPANTS.get(ch_name, [])
-    if participants and agent_id in participants:
-        return True
-
-    # CHANNEL_AGENT_MAP으로 체크
+    if participants:
+        return agent_id in participants
     mapped = CHANNEL_AGENT_MAP.get(ch_name)
-    if mapped and mapped == agent_id:
-        return True
+    if mapped:
+        return mapped == agent_id
 
-    # 알 수 없는 채널은 허용
-    return True
+    return True  # 알 수 없는 채널은 허용
 
 
 async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: str):
@@ -306,6 +302,7 @@ async def ensure_channels(guild: discord.Guild):
             cat = await _ensure_category(guild, "glimi-mgr")
             await guild.create_text_channel(MGR_CHANNEL, category=cat)
             log_writer.system(f"채널 생성: {MGR_CHANNEL}")
+        db.set_channel_participants(MGR_CHANNEL, [MGR_ID])
         log_writer.system("초기 세팅: mgr-dashboard 준비 완료")
     else:
         # 일반 실행: 전체 채널 보장
@@ -335,6 +332,15 @@ async def ensure_channels(guild: discord.Guild):
                 created.append(ch_name)
                 log_writer.system(f"채널 생성: {ch_name}")
 
+            # DB에 참가자 등록 (없으면)
+            if not db.get_channel_participants(ch_name):
+                if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
+                    db.set_channel_participants(ch_name, [MGR_ID])
+                elif ch_name == CREATOR_CHANNEL:
+                    db.set_channel_participants(ch_name, ["agent-creator-001"])
+                elif ch_name in CHANNEL_AGENT_MAP:
+                    db.set_channel_participants(ch_name, [CHANNEL_AGENT_MAP[ch_name]])
+
         if created:
             log_writer.system(f"채널 {len(created)}개 생성 완료")
         else:
@@ -352,14 +358,18 @@ async def ensure_channels(guild: discord.Guild):
     log_writer.system("카테고리 정렬 완료")
 
 
-async def create_onboarding_channel(guild: discord.Guild, ch_name: str) -> discord.TextChannel:
-    """온보딩 중 단계별 채널 생성"""
+async def create_onboarding_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
+    """온보딩 중 단계별 채널 생성 + 참가자 등록"""
     existing = discord.utils.get(guild.text_channels, name=ch_name)
     if existing:
+        if participants:
+            db.set_channel_participants(ch_name, participants)
         return existing
     cat_name = _get_category_for_channel(ch_name)
     category = await _ensure_category(guild, cat_name)
     ch = await guild.create_text_channel(ch_name, category=category)
+    if participants:
+        db.set_channel_participants(ch_name, participants)
     log_writer.system(f"온보딩 채널 생성: {ch_name}")
     return ch
 

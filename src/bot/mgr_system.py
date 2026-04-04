@@ -744,6 +744,7 @@ async def yuna_create_room(report_channel, args_str, guild):
             dm_ch = await guild.create_text_channel(dm_name, category=category or guild.text_channels[0].category)
             CHANNEL_AGENT_MAP[dm_name] = participants[0]["id"]
             AGENT_CHANNEL_MAP[participants[0]["id"]] = dm_name
+            db.set_channel_participants(dm_name, [participants[0]["id"]])
         await send_as_agent(report_channel, MGR_ID, f"dm 채널 준비 완료: #{dm_name}")
         return
 
@@ -778,9 +779,10 @@ async def yuna_create_room(report_channel, args_str, guild):
         ch_name, category=category or guild.text_channels[0].category
     )
 
-    # 참여자 등록
+    # 참여자 등록 (메모리 + DB)
     participant_ids = [p["id"] for p in participants]
     GROUP_PARTICIPANTS[ch_name] = participant_ids
+    db.set_channel_participants(ch_name, participant_ids)
 
     await send_as_agent(report_channel, MGR_ID, f"톡방 만들었어: #{ch_name}")
     log.info(f"[유나CMD] 톡방 생성: {ch_name}")
@@ -838,8 +840,9 @@ async def yuna_start_conversation(report_channel, args_str, guild):
             ch_name, category=category or guild.text_channels[0].category
         )
 
-    # 참여자 등록 (기존 채널이든 새 채널이든)
+    # 참여자 등록 (메모리 + DB)
     GROUP_PARTICIPANTS[ch_name] = participant_ids
+    db.set_channel_participants(ch_name, participant_ids)
 
     async def send_fn(agent_id: str, message: str):
         await send_as_agent(target_ch, agent_id, message)
@@ -1141,7 +1144,7 @@ async def _onboarding_setup_channels(guild):
     await asyncio.sleep(2)
 
     # 1. mgr-system-log 생성 + 유나 설명
-    log_ch = await create_onboarding_channel(guild, MGR_SYSTEM_LOG)
+    log_ch = await create_onboarding_channel(guild, MGR_SYSTEM_LOG, participants=[MGR_ID])
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if mgr_ch:
         prompt = (
@@ -1172,7 +1175,7 @@ async def _onboarding_setup_channels(guild):
     await asyncio.sleep(3)
 
     # 2. mgr-creator 생성
-    creator_ch = await create_onboarding_channel(guild, CREATOR_CHANNEL)
+    creator_ch = await create_onboarding_channel(guild, CREATOR_CHANNEL, participants=["agent-creator-001"])
 
     await asyncio.sleep(2)
 
@@ -1576,6 +1579,7 @@ async def yuna_approve_action(report_channel, args_str, guild):
             category = discord.utils.get(guild.categories, name="internal") or \
                        (guild.categories[0] if guild.categories else None)
             target_ch = await guild.create_text_channel(ch_name, category=category)
+            db.set_channel_participants(ch_name, [sender_id, target_id])
 
         # 원본 메시지를 sender로 전송
         await send_as_agent(target_ch, sender_id, message)
@@ -1637,6 +1641,7 @@ async def yuna_approve_action(report_channel, args_str, guild):
             target_ch = await guild.create_text_channel(ch_name, category=category)
 
         GROUP_PARTICIPANTS[ch_name] = part_ids
+        db.set_channel_participants(ch_name, part_ids)
 
         # 첫 메시지 전송 (발신자 이름으로)
         if first_msg:
@@ -2047,9 +2052,9 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
                         from src.bot.core import _get_category_for_channel, _ensure_category
                         cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
                         target_ch = await guild.create_text_channel(ch_name, category=cat)
+                        db.set_channel_participants(ch_name, [agent_id, target["id"]])
                     await send_as_agent(target_ch, agent_id, message)
                     log_writer.system(f"✓ {sender_name} ACTION DM: → {target_name}")
-                    await send_as_agent(mgr_ch, agent_id, f"{target_name}한테 DM 보냈어")
 
                     # 자율 대화 시작 (역질문도 이어감, 턴 제한 적용)
                     actual_ch_name = target_ch.name

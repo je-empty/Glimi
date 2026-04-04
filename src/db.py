@@ -168,6 +168,14 @@ def init_db():
             value TEXT
         );
 
+        -- ── 채널 참가자 ──
+
+        CREATE TABLE IF NOT EXISTS channels (
+            channel TEXT PRIMARY KEY,
+            participants TEXT NOT NULL DEFAULT '[]',  -- JSON array of agent IDs
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         -- ── 휴지통 ──
 
         CREATE TABLE IF NOT EXISTS trash (
@@ -439,6 +447,55 @@ def get_latest_l2_memory_id(agent_id: str, channel: str) -> Optional[int]:
     return row["last_id"] if row and row["last_id"] else None
 
 
+# ══════════════════════════════════════════════════════
+# 채널 참가자 관리
+# ══════════════════════════════════════════════════════
+
+def get_channel_participants(channel: str) -> list[str]:
+    """채널 참가자 ID 리스트 반환"""
+    conn = get_conn()
+    row = conn.execute("SELECT participants FROM channels WHERE channel = ?", (channel,)).fetchone()
+    conn.close()
+    if not row:
+        return []
+    try:
+        return json.loads(row["participants"])
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def set_channel_participants(channel: str, agent_ids: list[str]):
+    """채널 참가자 설정 (덮어쓰기)"""
+    conn = get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO channels (channel, participants) VALUES (?, ?)",
+        (channel, json.dumps(agent_ids))
+    )
+    conn.commit()
+    conn.close()
+
+
+def add_channel_participant(channel: str, agent_id: str):
+    """채널에 참가자 추가"""
+    current = get_channel_participants(channel)
+    if agent_id not in current:
+        current.append(agent_id)
+        set_channel_participants(channel, current)
+
+
+def remove_channel_participant(channel: str, agent_id: str):
+    """채널에서 참가자 제거"""
+    current = get_channel_participants(channel)
+    if agent_id in current:
+        current.remove(agent_id)
+        set_channel_participants(channel, current)
+
+
+def is_channel_participant(channel: str, agent_id: str) -> bool:
+    """에이전트가 해당 채널의 참가자인지"""
+    return agent_id in get_channel_participants(channel)
+
+
 if __name__ == "__main__":
     init_db()
 
@@ -446,9 +503,10 @@ if __name__ == "__main__":
 # === 유나 관리자 조회 ===
 
 def get_channel_overview() -> list[dict]:
-    """전체 채널 활동 현황 (유나 대시보드용)"""
+    """전체 채널 활동 현황 — channels 테이블 + conversations 통계 병합"""
     conn = get_conn()
-    rows = conn.execute("""
+    # 대화 통계
+    conv_rows = conn.execute("""
         SELECT channel,
                COUNT(*) as msg_count,
                COUNT(DISTINCT speaker) as speakers,
@@ -458,8 +516,32 @@ def get_channel_overview() -> list[dict]:
         GROUP BY channel
         ORDER BY last_active DESC
     """).fetchall()
+    conv_data = {r["channel"]: dict(r) for r in conv_rows}
+
+    # channels 테이블 (대화 없는 채널도 포함)
+    ch_rows = conn.execute("SELECT channel, participants, created_at FROM channels").fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+
+    result = {}
+    for r in ch_rows:
+        ch = r["channel"]
+        result[ch] = conv_data.get(ch, {
+            "channel": ch, "msg_count": 0, "speakers": 0,
+            "last_active": None, "first_active": None,
+        })
+        result[ch]["channel"] = ch
+        try:
+            result[ch]["participants"] = json.loads(r["participants"])
+        except (json.JSONDecodeError, TypeError):
+            result[ch]["participants"] = []
+
+    # conversations에만 있고 channels에 없는 채널
+    for ch, data in conv_data.items():
+        if ch not in result:
+            result[ch] = data
+            result[ch]["participants"] = []
+
+    return sorted(result.values(), key=lambda x: x.get("last_active") or "", reverse=True)
 
 
 def search_messages(keyword: str, limit: int = 20) -> list[dict]:
@@ -570,8 +652,49 @@ def _migrate_schema():
             conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {col_type}")
             print(f"[DB] agents.{col} 추가")
 
+    # channels 테이블 자동 채우기 (기존 DB 호환)
+    try:
+        existing_channels = [r["channel"] for r in
+            conn.execute("SELECT DISTINCT channel FROM conversations").fetchall()]
+        registered = set(r["channel"] for r in
+            conn.execute("SELECT channel FROM channels").fetchall())
+        for ch in existing_channels:
+            if ch not in registered:
+                # 채널 이름에서 참가자 추론
+                participants = _infer_participants(ch, conn)
+                conn.execute("INSERT OR IGNORE INTO channels (channel, participants) VALUES (?, ?)",
+                    (ch, json.dumps(participants)))
+        conn.commit()
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
+
+
+def _infer_participants(ch_name: str, conn) -> list[str]:
+    """채널 이름에서 참가자 에이전트 ID를 추론"""
+    agents = [dict(r) for r in conn.execute("SELECT id, name FROM agents").fetchall()]
+    name_to_id = {a["name"]: a["id"] for a in agents}
+
+    if ch_name.startswith("mgr-dashboard") or ch_name.startswith("mgr-system-log"):
+        mgr = next((a["id"] for a in agents if a.get("id", "").startswith("agent-mgr")), None)
+        return [mgr] if mgr else []
+    if ch_name.startswith("mgr-creator"):
+        creator = next((a["id"] for a in agents if a.get("id", "").startswith("agent-creator")), None)
+        return [creator] if creator else []
+    if ch_name.startswith("dm-"):
+        name = ch_name[3:]
+        return [name_to_id[name]] if name in name_to_id else []
+
+    # internal-dm/group, group — 이름으로 추론
+    for prefix in ("internal-dm-", "internal-group-", "group-"):
+        if ch_name.startswith(prefix):
+            rest = ch_name[len(prefix):]
+            parts = rest.split("-")
+            ids = [name_to_id[p] for p in parts if p in name_to_id]
+            return ids
+    return []
 
 
 def _migrate_satellite_tables():
