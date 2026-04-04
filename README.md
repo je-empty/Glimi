@@ -57,58 +57,39 @@ Agents don't just chat with the owner 1:1 — they **autonomously converse with 
 ## Architecture
 
 ```mermaid
-graph TB
-    Owner["👤 Owner"]
-
-    subgraph Discord["Discord Server"]
+flowchart LR
+    subgraph Owner["👤 Owner"]
         direction TB
-        subgraph chaos_mgr["chaos-mgr"]
-            Dashboard["mgr-dashboard"]
-            MgrCreator["mgr-creator"]
-            SysLog["mgr-system-log"]
-        end
-        subgraph chaos_dm["chaos-dm"]
-            DM_A["dm-A"]
-            DM_B["dm-B"]
-            DM_C["dm-C"]
-        end
-        subgraph chaos_internal_dm["chaos-internal-dm"]
-            INT_AB["internal-dm-A-B<br/>🔒 1:1 Secret"]
-        end
-        subgraph chaos_internal_group["chaos-internal-group"]
-            INT_ABC["internal-group-A-B-C<br/>🔒 Multi-DM Secret"]
-        end
+        Wizard["Wizard (TUI)"]
+        Dash["Dashboard (TUI)"]
     end
 
-    subgraph System["Chaos System"]
+    subgraph Core["Chaos Engine"]
+        Bot["🤖 Discord Bot"]
+        Runtime["Agent Runtime\n(Claude CLI)"]
+        DB[("DB\nmemory\nrelationships")]
+        DevRunner["🔧 Dev Runner\n(Opus)"]
+    end
+
+    subgraph Channels["Discord Channels"]
         direction TB
-        Bot["Discord Bot<br/>(Webhook Manager)"]
-        Runtime["Agent Runtime<br/>(Claude CLI)"]
-        Memory["Memory Manager<br/>(Raw→L1→L2)"]
-        DB[("SQLite DB")]
-        ConvEngine["Conversation Engine"]
-        DevRunner["Dev Runner<br/>(Opus · Self-Healing)"]
+        DM["dm-A, dm-B, dm-C\n(Owner ↔ Agent)"]
+        Secret1["🔒 internal-dm-A-B\n(Agent 1:1)"]
+        Secret2["🔒 internal-group-A-B-C\n(Agent Multi-DM)"]
+        Mgr["mgr-dashboard\nmgr-creator"]
     end
 
-    subgraph TUI["Terminal UI"]
-        Wizard["Wizard"]
-        Dash["Dashboard"]
-    end
+    Owner -->|"chat"| DM
+    Owner -.->|"spy 🔍"| Secret1 & Secret2
+    DM & Secret1 & Secret2 & Mgr <--> Bot
+    Bot <--> Runtime
+    Runtime <--> DB
+    DevRunner -->|"fix code\nrestart"| Bot
+    Dash & Wizard <--> Bot
 
-    Owner -->|"DM"| DM_A & DM_B & DM_C
-    Owner -.->|"spy 🔍"| INT_AB & INT_ABC
-    DM_A & DM_B & DM_C --> Bot
-    INT_AB & INT_ABC --> Bot
-    Dashboard & MgrCreator --> Bot
-    Bot --> Runtime --> Memory --> DB
-    ConvEngine -->|"autonomous"| INT_AB & INT_ABC
-    DevRunner -->|"fix → restart"| Bot
-    Wizard & Dash --> Bot
-
-    style INT_AB fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style INT_ABC fill:#2d2d2d,stroke:#f5a142,color:#fff
+    style Secret1 fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style Secret2 fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
-    style ConvEngine fill:#2d2d2d,stroke:#4af5a3,color:#fff
 ```
 
 ---
@@ -116,51 +97,42 @@ graph TB
 ## Agent Structure
 
 ```mermaid
-graph TB
-    subgraph Mgr["Manager System"]
-        Manager["🔵 Manager<br/>──────────<br/>Server Admin<br/>DM/Multi-DM approval<br/>Conversation facilitation<br/>Infinite loop prevention<br/>Emotion/relationship mgmt<br/>Periodic status reports<br/>Error → dev request"]
-        Creator["🟡 Creator (Opus)<br/>──────────<br/>New agent creation<br/>Profile JSON design<br/>Avatar prompt generation<br/>Personality/speech setup"]
-        Manager <-->|"mgr-creator<br/>1:1 comms"| Creator
-    end
-
-    subgraph Personas["Persona Agents"]
-        A["Agent A<br/>Personality · MBTI<br/>Speech · Emotion · Memory"]
-        B["Agent B<br/>Personality · MBTI<br/>Speech · Emotion · Memory"]
-        C["Agent C<br/>Personality · MBTI<br/>Speech · Emotion · Memory"]
-    end
-
+flowchart TB
     Owner["👤 Owner"]
 
-    Owner <-->|"DM"| A & B & C
-    Owner -.->|"spy 🔍"| AB_Chat & ABC_Chat
+    subgraph System["System Agents"]
+        direction LR
+        Manager["🔵 Manager\n─────────\nDM approval\nConversation control\nEmotion & relationship\nError → dev request"]
+        Creator["🟡 Creator (Opus)\n─────────\nProfile generation\nAvatar prompts\nfor DALL-E / Gemini"]
+        Manager <--->|"mgr-creator"| Creator
+    end
 
-    A -->|"[ACTION]<br/>DM request"| Manager
-    C -->|"[ACTION]<br/>Multi-DM request"| Manager
-    Manager -->|"approve"| AB_Chat & ABC_Chat
+    subgraph Agents["Persona Agents"]
+        direction LR
+        A["Agent A"] --- B["Agent B"] --- C["Agent C"]
+    end
 
-    A <-->|"1:1"| AB_Chat["🔒 A ↔ B<br/>Secret DM"]
-    B <-->|"1:1"| AB_Chat
+    Owner <--->|"1:1 DM"| Agents
+    Owner -.->|"spy 🔍"| SecretDM & SecretGroup
 
-    A <-->|" "| ABC_Chat["🔒 A ↔ B ↔ C<br/>Secret Multi-DM"]
-    B <-->|" "| ABC_Chat
-    C <-->|" "| ABC_Chat
+    A <-->|"autonomous"| SecretDM["🔒 A ↔ B\nSecret DM"]
+    A & B & C <-->|"autonomous"| SecretGroup["🔒 A·B·C\nSecret Multi-DM"]
 
-    A <-->|"intimacy<br/>nicknames"| B
-    B <-->|"intimacy<br/>nicknames"| C
+    Agents -->|"ACTION\nDM request"| Manager
+    Manager -->|"approve\ncreate channel"| SecretDM & SecretGroup
+    Manager -->|"monitor · turn limit"| Agents
+    Manager -.->|"status reports"| Owner
+    Creator -.->|"create new"| Agents
 
-    Manager -->|"facilitate · monitor<br/>turn limit"| A & B & C
-    Manager -.->|"reports"| Owner
-    Creator -->|"create"| Personas
-
-    style AB_Chat fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style ABC_Chat fill:#2d2d2d,stroke:#f5a142,color:#fff
+    style SecretDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecretGroup fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
 ```
 
-**Manager**: Approves/rejects DM requests, facilitates conversations, prevents infinite loops (turn limits), manages emotions/relationships, monitors activity, reports to owner, triggers dev bot on errors.
+**Manager** — DM/Multi-DM request approval, conversation facilitation & turn limits, emotion/relationship management, periodic monitoring & owner reports, error detection → dev bot
 
-**Creator** (Opus model): Creates new agents with full JSON profiles (personality, appearance, speech patterns, relationships). Generates **avatar prompts** ready for image generation AI (DALL-E, Midjourney, Gemini, etc.) — copy-paste the prompt and get a matching character illustration. Works with Manager via mgr-creator channel.
+**Creator** (Opus) — Full profile JSON generation (personality, appearance, speech, relationships). **Avatar prompts** for image AI (DALL-E, Midjourney, Gemini) — copy-paste ready. Works with Manager via mgr-creator.
 
 ---
 

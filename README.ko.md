@@ -57,58 +57,39 @@
 ## 시스템 아키텍처
 
 ```mermaid
-graph TB
-    Owner["👤 Owner"]
-
-    subgraph Discord["Discord Server"]
+flowchart LR
+    subgraph Owner["👤 Owner"]
         direction TB
-        subgraph chaos_mgr["chaos-mgr"]
-            Dashboard["mgr-dashboard"]
-            MgrCreator["mgr-creator"]
-            SysLog["mgr-system-log"]
-        end
-        subgraph chaos_dm["chaos-dm"]
-            DM_A["dm-A"]
-            DM_B["dm-B"]
-            DM_C["dm-C"]
-        end
-        subgraph chaos_internal_dm["chaos-internal-dm"]
-            INT_AB["internal-dm-A-B<br/>🔒 1:1 비밀"]
-        end
-        subgraph chaos_internal_group["chaos-internal-group"]
-            INT_ABC["internal-group-A-B-C<br/>🔒 멀티DM 비밀"]
-        end
+        Wizard["Wizard (TUI)"]
+        Dash["Dashboard (TUI)"]
     end
 
-    subgraph System["Chaos System"]
+    subgraph Core["Chaos Engine"]
+        Bot["🤖 Discord Bot"]
+        Runtime["Agent Runtime\n(Claude CLI)"]
+        DB[("DB\n메모리\n관계")]
+        DevRunner["🔧 Dev Runner\n(Opus)"]
+    end
+
+    subgraph Channels["Discord Channels"]
         direction TB
-        Bot["Discord Bot<br/>(Webhook Manager)"]
-        Runtime["Agent Runtime<br/>(Claude CLI)"]
-        Memory["Memory Manager<br/>(Raw→L1→L2)"]
-        DB[("SQLite DB")]
-        ConvEngine["Conversation Engine"]
-        DevRunner["Dev Runner<br/>(Opus · Self-Healing)"]
+        DM["dm-A, dm-B, dm-C\n(오너 ↔ 에이전트)"]
+        Secret1["🔒 internal-dm-A-B\n(에이전트 1:1)"]
+        Secret2["🔒 internal-group-A-B-C\n(에이전트 멀티DM)"]
+        Mgr["mgr-dashboard\nmgr-creator"]
     end
 
-    subgraph TUI["Terminal UI"]
-        Wizard["Wizard"]
-        Dash["Dashboard"]
-    end
+    Owner -->|"대화"| DM
+    Owner -.->|"엿보기 🔍"| Secret1 & Secret2
+    DM & Secret1 & Secret2 & Mgr <--> Bot
+    Bot <--> Runtime
+    Runtime <--> DB
+    DevRunner -->|"코드 수정\n재시작"| Bot
+    Dash & Wizard <--> Bot
 
-    Owner -->|"DM"| DM_A & DM_B & DM_C
-    Owner -.->|"엿보기 🔍"| INT_AB & INT_ABC
-    DM_A & DM_B & DM_C --> Bot
-    INT_AB & INT_ABC --> Bot
-    Dashboard & MgrCreator --> Bot
-    Bot --> Runtime --> Memory --> DB
-    ConvEngine -->|"자율 대화"| INT_AB & INT_ABC
-    DevRunner -->|"코드 수정 → 재시작"| Bot
-    Wizard & Dash --> Bot
-
-    style INT_AB fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style INT_ABC fill:#2d2d2d,stroke:#f5a142,color:#fff
+    style Secret1 fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style Secret2 fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
-    style ConvEngine fill:#2d2d2d,stroke:#4af5a3,color:#fff
 ```
 
 ---
@@ -116,51 +97,42 @@ graph TB
 ## 에이전트 구조
 
 ```mermaid
-graph TB
-    subgraph Mgr["Manager System"]
-        Manager["🔵 Manager<br/>──────────<br/>서버 총괄 관리자<br/>DM/멀티DM 요청 승인·거절<br/>에이전트 대화 촉진·중재<br/>무한 대화 방지 (턴 제한)<br/>감정·관계·채널 관리<br/>주기적 상황 감시·보고<br/>에러 감지 → 개발 요청"]
-        Creator["🟡 Creator (Opus)<br/>──────────<br/>새 에이전트 생성<br/>프로필 JSON 설계<br/>아바타 프롬프트 생성<br/>성격·말투·관계 설정"]
-        Manager <-->|"mgr-creator<br/>1:1 소통"| Creator
-    end
-
-    subgraph Personas["Persona Agents"]
-        A["Agent A<br/>고유 성격 · MBTI<br/>말투 · 감정 · 기억"]
-        B["Agent B<br/>고유 성격 · MBTI<br/>말투 · 감정 · 기억"]
-        C["Agent C<br/>고유 성격 · MBTI<br/>말투 · 감정 · 기억"]
-    end
-
+flowchart TB
     Owner["👤 Owner"]
 
-    Owner <-->|"DM"| A & B & C
-    Owner -.->|"엿보기 🔍"| AB_Chat & ABC_Chat
+    subgraph System["시스템 에이전트"]
+        direction LR
+        Manager["🔵 Manager\n─────────\nDM 요청 승인·거절\n대화 촉진·턴 제한\n감정·관계 관리\n에러 → 개발 요청"]
+        Creator["🟡 Creator (Opus)\n─────────\n프로필 JSON 생성\n아바타 프롬프트\n(DALL-E / Gemini용)"]
+        Manager <--->|"mgr-creator"| Creator
+    end
 
-    A -->|"[ACTION]<br/>DM 요청"| Manager
-    C -->|"[ACTION]<br/>멀티DM 요청"| Manager
-    Manager -->|"승인"| AB_Chat & ABC_Chat
+    subgraph Agents["페르소나 에이전트"]
+        direction LR
+        A["Agent A"] --- B["Agent B"] --- C["Agent C"]
+    end
 
-    A <-->|"1:1"| AB_Chat["🔒 A ↔ B<br/>비밀 DM"]
-    B <-->|"1:1"| AB_Chat
+    Owner <--->|"1:1 DM"| Agents
+    Owner -.->|"엿보기 🔍"| SecretDM & SecretGroup
 
-    A <-->|" "| ABC_Chat["🔒 A ↔ B ↔ C<br/>비밀 멀티DM"]
-    B <-->|" "| ABC_Chat
-    C <-->|" "| ABC_Chat
+    A <-->|"자율 대화"| SecretDM["🔒 A ↔ B\n비밀 DM"]
+    A & B & C <-->|"자율 대화"| SecretGroup["🔒 A·B·C\n비밀 멀티DM"]
 
-    A <-->|"친밀도<br/>별칭"| B
-    B <-->|"친밀도<br/>별칭"| C
+    Agents -->|"ACTION\nDM 요청"| Manager
+    Manager -->|"승인\n채널 생성"| SecretDM & SecretGroup
+    Manager -->|"감시·턴 제한"| Agents
+    Manager -.->|"상황 보고"| Owner
+    Creator -.->|"새 에이전트 생성"| Agents
 
-    Manager -->|"대화 촉진·감시<br/>턴 제한"| A & B & C
-    Manager -.->|"보고"| Owner
-    Creator -->|"생성"| Personas
-
-    style AB_Chat fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style ABC_Chat fill:#2d2d2d,stroke:#f5a142,color:#fff
+    style SecretDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecretGroup fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
 ```
 
-**Manager**: DM/멀티DM 요청 승인·거절, 대화 촉진·중재, 무한 대화 방지, 감정·관계 관리, 상황 감시·보고, 에러 → 개발 요청
+**Manager** — DM/멀티DM 승인·거절, 대화 촉진·턴 제한, 감정·관계 관리, 상황 감시·보고, 에러 → 개발봇
 
-**Creator** (Opus): 새 에이전트의 전체 프로필(성격, 외모, 말투, 관계) JSON 생성 + **아바타 프롬프트** 생성 (DALL-E, Midjourney, Gemini 등에 그대로 넣으면 캐릭터 일러스트 생성). mgr-creator에서 Manager와 1:1 소통
+**Creator** (Opus) — 전체 프로필 JSON + **아바타 프롬프트** (DALL-E, Midjourney, Gemini에 복붙). mgr-creator에서 Manager와 1:1 소통
 
 ---
 
