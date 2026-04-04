@@ -352,6 +352,7 @@ class DashboardScreen(Screen):
         Binding("r", "refresh", "새로고침"),
         Binding("ctrl+r", "restart", "재시작"),
         Binding("s", "sync", "동기화"),
+        Binding("e", "toggle_edit", "편집"),
         Binding("w", "go_wizard", "Wizard"),
         Binding("escape", "go_back", "복귀"),
     ]
@@ -376,7 +377,6 @@ class DashboardScreen(Screen):
                 yield Button("Health", id="nav-health")
                 yield Button("Dev", id="nav-dev")
                 yield Button("Logs", id="nav-logs")
-                yield Button("DB", id="nav-manage")
                 yield Button("Refresh", variant="primary", id="nav-refresh")
                 yield Button("Restart", variant="error", id="nav-restart")
                 yield Button("Sync", variant="success", id="nav-sync")
@@ -511,7 +511,11 @@ class DashboardScreen(Screen):
         manage_list.display = False
 
         # 탭 활성 표시
+        # 탭 활성 표시
         view_base = view.split(":")[0] if ":" in view else view
+        # channel → channels 매핑
+        if view_base == "channel":
+            view_base = "channels"
         for btn_id, tab_view in self._NAV_MAP.items():
             try:
                 btn = self.query_one(f"#{btn_id}", Button)
@@ -533,9 +537,18 @@ class DashboardScreen(Screen):
             agent_list.display = True
             content.display = False
             self._update_channel_list()
-        elif view.startswith("channel:"):
+        elif view.startswith("channel:") and view.endswith(":edit"):
+            # 편집 모드 — manage_list로 메시지 삭제
+            ch_name = view.split(":")[1]
             content.display = True
-            content.update(self._render_channel_detail(view.split(":", 1)[1]))
+            manage_list.display = True
+            content.update(self._render_channel_edit_header(ch_name))
+            self._update_channel_edit_list(ch_name)
+        elif view.startswith("channel:"):
+            # 기본 뷰 — 메시지 읽기
+            ch_name = view.split(":", 1)[1]
+            content.display = True
+            content.update(self._render_channel_detail(ch_name))
         elif view == "health":
             content.display = True
             content.update(self._render_health())
@@ -545,11 +558,10 @@ class DashboardScreen(Screen):
         elif view == "logs":
             content.display = True
             content.update(self._render_logs())
-        elif view == "manage" or view.startswith("manage:"):
-            content.display = True
-            manage_list.display = True
-            content.update(self._render_manage())
-            self._update_manage_list()
+        elif view.startswith("manage"):
+            # 레거시 manage 뷰 → channels로 리다이렉트
+            self._current_view = "channels"
+            return self._refresh_all()
         else:
             content.display = True
             content.update(self._render_overview())
@@ -638,8 +650,9 @@ class DashboardScreen(Screen):
         dev_s = "[bright_yellow bold]🔧 Dev[/bright_yellow bold]" if dev else ""
         think_s = f"[bright_yellow]🧠 {len(thinking)}[/bright_yellow]" if thinking else ""
 
+        cid = os.environ.get("CHAOS_COMMUNITY", "default")
         parts = [
-            f"[bright_magenta bold]◈ Chaos[/bright_magenta bold]",
+            f"[bright_magenta bold]◈ Chaos[/bright_magenta bold] [bold cyan]{cid}[/bold cyan]",
             bot_s,
             f"[dim]{now}[/dim]",
             f"Agents: [cyan]{total}[/cyan]",
@@ -1081,13 +1094,31 @@ class DashboardScreen(Screen):
 
     # ── Render: Channel Detail ──────────────────────────
 
+    def _get_channel_style(self, ch_name):
+        if ch_name.startswith("dm-"):
+            return "cyan", "💬"
+        elif ch_name.startswith("group-"):
+            return "green", "👥"
+        elif ch_name.startswith("internal-"):
+            return "yellow", "🔒"
+        else:
+            return "blue", "📋"
+
     def _render_channel_detail(self, channel_name):
         active = _channel_is_active(_cache.channels, channel_name)
         active_s = "  [green bold]● 대화중[/green bold]" if active else ""
+        color, icon = self._get_channel_style(channel_name)
 
-        rows = db.get_recent_messages(channel_name, limit=30)
+        # 전체 메시지
+        conn = db.get_conn()
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM conversations WHERE channel=? ORDER BY timestamp ASC",
+            (channel_name,)
+        ).fetchall()]
+        conn.close()
+
         lines = []
-        for r in reversed(rows):
+        for r in rows:
             sid = r["speaker"]
             c = _get_color(sid) if sid != get_user_id() else "bright_green"
             ts = r["timestamp"][11:16] if r["timestamp"] else ""
@@ -1096,20 +1127,109 @@ class DashboardScreen(Screen):
 
         content = "\n".join(lines) if lines else "[dim]메시지 없음[/dim]"
 
-        if channel_name.startswith("dm-"):
-            color, icon = "cyan", "💬"
-        elif channel_name.startswith("group-"):
-            color, icon = "green", "👥"
-        elif channel_name.startswith("internal-"):
-            color, icon = "yellow", "🔒"
-        else:
-            color, icon = "blue", "📋"
-
-        return Panel(
+        # 관련 에이전트 메모리
+        items = []
+        items.append(Panel(
             content,
-            title=f"[bold]{icon} {channel_name}[/bold]{active_s}",
-            border_style=color, box=box.ROUNDED, padding=(1, 2),
+            title=f"[bold]{icon} {channel_name}[/bold]{active_s}  [dim]({len(rows)}건)[/dim]",
+            subtitle="[dim]ESC 뒤로  │  e 편집모드[/dim]",
+            border_style=color, box=box.ROUNDED, padding=(0, 1),
+        ))
+
+        # 이 채널 관련 메모리
+        conn = db.get_conn()
+        mems = [dict(m) for m in conn.execute(
+            "SELECT * FROM memories WHERE channel=? ORDER BY level DESC, id DESC",
+            (channel_name,)
+        ).fetchall()]
+        conn.close()
+
+        if mems:
+            mem_lines = []
+            for m in mems:
+                level_tag = f"[magenta]L{m['level']}[/magenta]" if m["level"] == 2 else f"[cyan]L{m['level']}[/cyan]"
+                agent_name = ""
+                agent = _cache.all_agents.get(m.get("agent_id", ""))
+                if agent:
+                    ac = _get_color(agent["id"])
+                    agent_name = f" [{ac}]{agent['name']}[/{ac}]"
+                ts = m["created_at"][:16] if m.get("created_at") else ""
+                mem_lines.append(f"  {level_tag}{agent_name} [dim]{ts}[/dim]")
+                mem_lines.append(f"    {m['content']}")
+                mem_lines.append("")
+            items.append(Panel(
+                "\n".join(mem_lines).rstrip(),
+                title=f"[bold]🧠 메모리[/bold]  [dim]({len(mems)}건)[/dim]",
+                border_style="magenta", box=box.ROUNDED, padding=(0, 1),
+            ))
+
+        return Group(*items)
+
+    def _render_channel_edit_header(self, ch_name):
+        """편집 모드 헤더"""
+        color, icon = self._get_channel_style(ch_name)
+        conn = db.get_conn()
+        count = conn.execute("SELECT COUNT(*) FROM conversations WHERE channel=?", (ch_name,)).fetchone()[0]
+        conn.close()
+        return Panel(
+            f"[bold]{icon} {ch_name}[/bold]  │  {count}건  │  [red bold]편집 모드[/red bold]\n\n"
+            f"[dim]메시지 선택 → Enter로 삭제 (휴지통 보관)[/dim]\n"
+            f"[dim]ESC로 뷰 모드 복귀[/dim]",
+            border_style="red", box=box.ROUNDED, padding=(1, 2),
         )
+
+    def _update_channel_edit_list(self, ch_name):
+        """편집 모드 — 메시지 삭제 목록"""
+        manage_list = self.query_one("#manage-list", OptionList)
+        manage_list.clear_options()
+
+        color, icon = self._get_channel_style(ch_name)
+
+        # 채널 액션
+        manage_list.add_option(Option(
+            f"  [red bold]🗑 채널 전체 삭제[/red bold]  [dim](DB + Discord)[/dim]",
+            id=f"del_ch:{ch_name}",
+        ))
+        manage_list.add_option(Option(
+            f"  [yellow bold]🧹 메시지 전체 삭제[/yellow bold]  [dim](DB만, 채널 유지)[/dim]",
+            id=f"clear_ch:{ch_name}",
+        ))
+        manage_list.add_option(None)
+
+        # 전체 메시지
+        conn = db.get_conn()
+        all_msgs = [dict(r) for r in conn.execute(
+            "SELECT * FROM conversations WHERE channel=? ORDER BY timestamp ASC",
+            (ch_name,)
+        ).fetchall()]
+        conn.close()
+
+        for r in all_msgs:
+            msg_id = r.get("id", "")
+            sid = r["speaker"]
+            c = _get_color(sid) if sid != get_user_id() else "bright_green"
+            name = get_user_name() if sid == get_user_id() else _speaker_name(sid)
+            msg = _trunc(r["message"], 50)
+            ts = r["timestamp"][11:16] if r["timestamp"] else ""
+            manage_list.add_option(Option(
+                f"  [dim]#{msg_id}[/dim] [dim]{ts}[/dim] [{c}]{name}[/{c}]: {msg}",
+                id=f"del_msg:{ch_name}:{msg_id}",
+            ))
+
+        # 휴지통 바로가기
+        trash_count = len(db.trash_list())
+        if trash_count:
+            manage_list.add_option(None)
+            manage_list.add_option(Option(
+                f"  [yellow]🗑 휴지통[/yellow]  [dim]({trash_count}건)[/dim]",
+                id="trash_view",
+            ))
+
+        manage_list.add_option(None)
+        manage_list.add_option(Option(
+            f"  [dim]← 뷰 모드로[/dim]",
+            id=f"back_channel_view:{ch_name}",
+        ))
 
     # ── Render: Health ──────────────────────────────────
 
@@ -1365,12 +1485,12 @@ class DashboardScreen(Screen):
         if not oid:
             return
 
-        if oid.startswith("ch:"):
+        if oid.startswith("back_channel_view:"):
             ch_name = oid.split(":", 1)[1]
-            self._current_view = f"manage:channel:{ch_name}"
+            self._current_view = f"channel:{ch_name}"
             self._refresh_all()
         elif oid == "back_manage":
-            self._current_view = "manage"
+            self._current_view = "channels"
             self._refresh_all()
         elif oid.startswith("del_ch:"):
             ch_name = oid.split(":", 1)[1]
@@ -1458,7 +1578,7 @@ class DashboardScreen(Screen):
 
         _cache.refresh()
         self.app.call_from_thread(self.app.pop_screen)
-        self.app.call_from_thread(self._set_view, "manage")
+        self.app.call_from_thread(self._set_view, "channels")
 
     @work(thread=True)
     def _do_clear_channel(self, ch_name):
@@ -1472,14 +1592,14 @@ class DashboardScreen(Screen):
 
         _cache.refresh()
         self.app.call_from_thread(self.app.pop_screen)
-        self.app.call_from_thread(self._set_view, f"manage:channel:{ch_name}")
+        self.app.call_from_thread(self._set_view, f"channel:{ch_name}:edit")
 
     def _do_delete_message(self, ch_name, msg_id):
         """개별 메시지 삭제 — 휴지통"""
         db.trash_messages(ch_name, [int(msg_id)])
         log_writer.system(f"[DB] 휴지통: #{msg_id} ({ch_name})")
         _cache.refresh()
-        self._current_view = f"manage:channel:{ch_name}"
+        self._current_view = f"channel:{ch_name}:edit"
         self._refresh_all()
 
     def _do_empty_trash(self):
@@ -1502,7 +1622,6 @@ class DashboardScreen(Screen):
         "nav-health": "health",
         "nav-dev": "dev",
         "nav-logs": "logs",
-        "nav-manage": "manage",
     }
 
     # Sync, Wizard는 액션 버튼 — Enter/클릭으로만 실행
@@ -1534,21 +1653,39 @@ class DashboardScreen(Screen):
             self._refresh_all()
 
     def action_go_back(self):
-        if self._current_view.startswith("manage:"):
-            self._current_view = "manage"
-        elif self._current_view.startswith("channel:"):
+        view = self._current_view
+        if view.startswith("channel:") and view.endswith(":edit"):
+            # 편집 → 뷰
+            ch_name = view.split(":")[1]
+            self._current_view = f"channel:{ch_name}"
+        elif view.startswith("channel:"):
             self._current_view = "channels"
-        elif self._current_view.startswith("agent:"):
+        elif view.startswith("agent:"):
             self._current_view = "agents"
             self._refresh_all()
             self.query_one("#agent-list", OptionList).focus()
             return
-        elif self._current_view != "overview":
+        elif view.startswith("manage"):
+            self._current_view = "channels"
+        elif view != "overview":
             self._current_view = "overview"
         self._refresh_all()
 
     def action_refresh(self):
         _cache.refresh()
+        self._refresh_all()
+
+    def action_toggle_edit(self):
+        """채널 뷰 ↔ 편집 모드 전환"""
+        view = self._current_view
+        if view.startswith("channel:") and view.endswith(":edit"):
+            # 편집 → 뷰
+            ch_name = view.split(":")[1]
+            self._current_view = f"channel:{ch_name}"
+        elif view.startswith("channel:"):
+            # 뷰 → 편집
+            ch_name = view.split(":", 1)[1]
+            self._current_view = f"channel:{ch_name}:edit"
         self._refresh_all()
 
     # ── Sync ─────────────────────────────────────────────
