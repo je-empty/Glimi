@@ -66,10 +66,10 @@ def _venv_python() -> str:
 # ══════════════════════════════════════════════════════════
 
 _COLOR_POOL = [
-    "bright_magenta", "bright_red", "bright_cyan", "yellow", "green",
-    "bright_yellow", "bright_green", "magenta", "red",
-    "dark_orange", "deep_pink1", "spring_green1", "dodger_blue1",
-    "orchid", "turquoise2", "salmon1",
+    "bright_magenta", "bright_cyan", "bright_green", "bright_yellow",
+    "bright_red", "dodger_blue1", "spring_green1", "orchid",
+    "salmon1", "turquoise2", "deep_pink1", "gold1",
+    "medium_purple1", "dark_orange", "pale_green1", "sky_blue1",
 ]
 _TYPE_COLORS = {"mgr": "bright_blue", "creator": "bright_yellow"}
 _agent_colors: dict[str, str] = {}
@@ -806,9 +806,11 @@ class DashboardScreen(Screen):
                 thinking = log_writer.is_thinking(a["id"])
                 em = E_EMOJI.get(a["current_emotion"], "")
                 icon = "🧠" if thinking else "🟢" if a["status"] == "active" else "⚪"
-                type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
-                type_str = type_map.get(a.get("type", ""), a.get("type", ""))
-                label = f"  {icon} [{c}]{a['name']}  {type_str}  {em} {a.get('current_emotion', '')}[/{c}]"
+                type_map = {"mgr": "MGR", "creator": "CRT", "persona": ""}
+                type_str = type_map.get(a.get("type", ""), "")
+                type_badge = f" [dim]({type_str})[/dim]" if type_str else ""
+                emotion = a.get('current_emotion', '')
+                label = f"  {icon} [{c} bold]{a['name']}[/{c} bold]{type_badge}  {em} [dim]{emotion}[/dim]"
                 agent_list.add_option(Option(label, id=a["id"]))
 
     def _update_channel_list(self):
