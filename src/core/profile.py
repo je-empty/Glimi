@@ -252,6 +252,8 @@ def _build_action_system_prompt(agent_type: str) -> str:
 --- CMD (생성 전용) ---
   [CMD:{"cmd":"프로필생성","profile":{...전체 JSON...}}]
   [CMD:{"cmd":"프로필삭제","name":"이름"}]
+
+※ ACTION DM은 Manager(서유나)에게만 보낼 것. 다른 멤버에게 직접 DM 보내지 마.
 """
 
     if agent_type == "persona":
