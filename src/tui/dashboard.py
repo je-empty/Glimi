@@ -488,6 +488,9 @@ class DashboardScreen(Screen):
     # ── Tick / Refresh ──────────────────────────────────
 
     def _tick(self):
+        # 모달이 떠있으면 tick 스킵
+        if len(self.app.screen_stack) > 2:  # App screen + DashboardScreen + modal
+            return
         _cache.refresh()
         self._check_bot_status()
 
@@ -1740,13 +1743,8 @@ class DashboardScreen(Screen):
     def _run_sync(self):
         import time
 
-        self._sync_log = []
-
         def on_progress(msg):
-            self._sync_log.append(msg)
-            visible = self._sync_log[-15:]
-            text = "\n".join(f"[dim]{l}[/dim]" for l in visible)
-            self.app.call_from_thread(self._update_loading_log, text)
+            self.app.call_from_thread(self._loading.update_detail, msg)
 
         # 봇 중지 (같은 토큰 동시 접속 불가)
         on_progress("봇 일시 중지...")
@@ -1869,14 +1867,6 @@ class DashboardScreen(Screen):
         self._dev_proc = None
         time.sleep(1)
         self.app.call_from_thread(self._do_full_restart)
-
-    def _update_loading_log(self, text: str):
-        """메인 스레드에서 로딩 로그 업데이트"""
-        try:
-            widget = self._loading.query_one("#loading-log", Static)
-            widget.update(text)
-        except Exception as e:
-            log_writer.error(f"로딩 로그 업데이트 실패: {e}")
 
     def _show_sync_result(self, msg: str):
         self._current_view = "overview"

@@ -6,62 +6,56 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Static, LoadingIndicator, Button
+from textual.widgets import Static, Button, RichLog
 
 
 class LoadingOverlay(ModalScreen):
-    """로딩 중 다른 조작 차단하는 오버레이"""
+    """로딩 + 실시간 로그 오버레이"""
 
     DEFAULT_CSS = """
     LoadingOverlay {
         align: center middle;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.7);
     }
     LoadingOverlay > Vertical {
         width: 80;
-        height: auto;
-        max-height: 40;
+        height: 30;
         background: $panel;
         border: round $accent;
         padding: 1 2;
     }
-    LoadingOverlay #loading-message {
+    LoadingOverlay #loading-title {
         text-align: center;
-        padding: 1 0;
+        padding: 1 0 0 0;
+        text-style: bold;
     }
-    LoadingOverlay #loading-log {
-        height: auto;
-        min-height: 5;
-        max-height: 30;
+    LoadingOverlay RichLog {
+        height: 1fr;
+        border: round $primary-darken-2;
         padding: 0 1;
+        margin: 1 0;
     }
     """
 
     def __init__(self, message: str = "로딩 중..."):
         super().__init__()
         self._message = message
-        self._log_lines: list[str] = []
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield LoadingIndicator()
-            yield Static(self._message, id="loading-message", markup=True)
-            yield Static("[dim]대기 중...[/dim]", id="loading-log", markup=True)
+            yield Static(f"⏳ {self._message}", id="loading-title", markup=True)
+            yield RichLog(id="loading-log", markup=True, wrap=True)
 
     def update_message(self, message: str):
         try:
-            self.query_one("#loading-message", Static).update(message)
+            self.query_one("#loading-title", Static).update(f"⏳ {message}")
         except Exception:
             pass
 
     def update_detail(self, detail: str):
-        """진행 로그 누적 표시"""
-        self._log_lines.append(detail)
-        visible = self._log_lines[-15:]
+        """실시간 로그 추가"""
         try:
-            log_widget = self.query_one("#loading-log", Static)
-            log_widget.update("\n".join(f"[dim]{l}[/dim]" for l in visible))
-            log_widget.refresh()
+            self.query_one("#loading-log", RichLog).write(f"[dim]{detail}[/dim]")
         except Exception:
             pass
 
@@ -196,7 +190,7 @@ class MessageActionDialog(ModalScreen[str]):
 
 
 class ErrorDialog(ModalScreen[str]):
-    """에러 발생 시 표시 — 닫기 또는 자동 수정 요청"""
+    """에러 표시 + 자동 수정 요청"""
 
     DEFAULT_CSS = """
     ErrorDialog {
@@ -210,7 +204,13 @@ class ErrorDialog(ModalScreen[str]):
         background: $panel;
         border: round $error;
         padding: 1 2;
-        overflow-y: auto;
+    }
+    ErrorDialog RichLog {
+        height: auto;
+        max-height: 15;
+        border: round $primary-darken-2;
+        padding: 0 1;
+        margin: 1 0;
     }
     ErrorDialog .action-bar {
         height: 3;
@@ -234,15 +234,19 @@ class ErrorDialog(ModalScreen[str]):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static(f"[red bold]❌ {self._title}[/red bold]\n", markup=True)
-            yield Static(self._error_msg, markup=True)
-            if self._context:
-                yield Static(f"\n[dim]{self._context}[/dim]", markup=True)
-            yield Static("")
+            yield Static(f"[red bold]❌ {self._title}[/red bold]", markup=True)
+            log = RichLog(id="error-log", markup=True, wrap=True)
+            yield log
             with Horizontal(classes="action-bar"):
-                yield Button("Auto Fix", variant="warning", id="err-fix")
-                yield Button("Close", variant="default", id="err-close")
-            yield Static("[dim]F 자동수정 / ESC 닫기[/dim]", markup=True)
+                yield Button("Auto Fix (F)", variant="warning", id="err-fix")
+                yield Button("Close (ESC)", variant="default", id="err-close")
+
+    def on_mount(self):
+        log = self.query_one("#error-log", RichLog)
+        for line in self._error_msg.split("\n"):
+            log.write(line)
+        if self._context:
+            log.write(f"\n[dim]{self._context}[/dim]")
 
     @on(Button.Pressed, "#err-fix")
     def on_fix(self):
