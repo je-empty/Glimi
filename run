@@ -1,0 +1,66 @@
+#!/bin/bash
+# Project Chaos — 메인 진입점
+#
+# ./run            → Wizard (커뮤니티 관리)
+# ./run dev        → dev 커뮤니티 대시보드 바로 실행
+# ./run prod       → prod 커뮤니티 대시보드 바로 실행
+
+set -e
+cd "$(dirname "$0")"
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# ── 자동 세팅 ──────────────────────────────────────────
+
+# venv 생성
+if [ ! -d .venv ]; then
+    echo -e "${CYAN}[setup] 가상환경 생성 중...${NC}"
+    python3 -m venv .venv
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}[setup] venv 생성 실패. Python 3.11+ 필요${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}[setup] 가상환경 생성 완료${NC}"
+fi
+
+source .venv/bin/activate
+
+# 패키지 설치 (requirements.txt가 변경됐을 때만)
+MARKER=".venv/.deps_installed"
+if [ ! -f "$MARKER" ] || [ requirements.txt -nt "$MARKER" ]; then
+    pip install -q -r requirements.txt && pip install -q -e . 2>/dev/null
+    touch "$MARKER"
+fi
+
+mkdir -p dev
+
+# ── 기존 Chaos 프로세스 정리 ──────────────────────────
+
+_cleanup() {
+    pkill -f "src.discord_bot" 2>/dev/null || true
+    pkill -f "src.tui.dashboard" 2>/dev/null || true
+    pkill -f "src.tui.wizard" 2>/dev/null || true
+    pkill -f "src.tools.dev_runner" 2>/dev/null || true
+    rm -f dev/.bot*.pid 2>/dev/null || true
+    sleep 1
+    pkill -9 -f "src.discord_bot" 2>/dev/null || true
+    pkill -9 -f "src.tui.dashboard" 2>/dev/null || true
+    pkill -9 -f "src.tools.dev_runner" 2>/dev/null || true
+}
+
+_cleanup
+
+# ── 실행 ──────────────────────────────────────────────
+
+echo -e "${CYAN}◈ Project Chaos${NC}"
+
+if [ -z "$1" ]; then
+    python -m src.tui.wizard
+else
+    echo -e "  커뮤니티: ${GREEN}$1${NC}"
+    python -m src.tui.dashboard "$1"
+fi

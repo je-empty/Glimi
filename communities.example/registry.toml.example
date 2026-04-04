@@ -1,0 +1,12 @@
+# Project Chaos — 커뮤니티 레지스트리
+#
+# 이 파일을 communities/registry.toml로 복사한 후 커뮤니티를 등록하세요.
+# 각 커뮤니티 디렉토리에는 .env, community.db, avatars/, logs/가 생성됩니다.
+#
+# 자동 생성: python -m src.community init my-server
+
+default = "my-server"
+
+[community.my-server]
+name = "My Server"
+description = "내 디스코드 서버"
