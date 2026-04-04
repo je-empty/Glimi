@@ -700,96 +700,81 @@ class DashboardScreen(Screen):
 
     # ── Render: Overview ────────────────────────────────
 
-    def _render_agent_card(self, agent):
-        """에이전트 카드 — 추론 중이면 확장, 아니면 컴팩트"""
+    def _render_agent_card(self, agent, expanded=False):
+        """에이전트 카드"""
         aid = agent["id"]
         c = _get_color(aid)
         thinking = log_writer.is_thinking(aid)
         em = E_EMOJI.get(agent["current_emotion"], "")
         sec = _seconds_since(agent.get("last_active"))
-        type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
+        type_map = {"mgr": "Mgr", "creator": "Cre", "persona": "Per"}
         type_str = type_map.get(agent.get("type", ""), "")
-
         agent_type = agent.get("type", "persona")
         ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
 
-        if thinking:
-            # ── 확장 카드 (추론 중) ──
+        if thinking and expanded:
+            # ── 확장 카드 (추론 중, 상단 배치) ──
             think_sec = log_writer.thinking_seconds(aid)
-            think_min = int(think_sec // 60)
-            think_s = int(think_sec % 60)
-            elapsed = f"{think_min}:{think_s:02d}" if think_min else f"{think_s}s"
-
-            # 추론 진행 바 (애니메이션 느낌)
-            bar_len = 20
-            filled = int((think_sec % bar_len))
+            elapsed = f"{int(think_sec//60)}:{int(think_sec%60):02d}" if think_sec >= 60 else f"{int(think_sec)}s"
+            bar_len = 30
+            filled = int(think_sec % bar_len)
             progress = "".join("▓" if i == filled else "░" for i in range(bar_len))
 
-            lines = []
-            lines.append(f"  [bright_yellow bold]🧠 추론중[/bright_yellow bold]  [bright_yellow]{elapsed}[/bright_yellow]")
-            lines.append(f"  [{c}]{progress}[/{c}]")
-            lines.append(f"  {em} {agent['current_emotion']}  ·  {type_str}")
-            lines.append(f"  {'─' * 44}")
+            lines = [
+                f"  [bright_yellow bold]🧠 THINKING[/bright_yellow bold]  {elapsed}  {em} {agent['current_emotion']}  {type_str}",
+                f"  [{c}]{progress}[/{c}]",
+            ]
 
             # 추론 로그
             sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
             all_sys = log_writer.tail(sys_log_path, 50)
-            thinking_lines = [l for l in all_sys if f"[{aid}]" in l]
-            if thinking_lines:
-                for l in thinking_lines[-6:]:
-                    lines.append(f"  [dim]{_trunc(l, 76)}[/dim]")
-                lines.append(f"  {'─' * 44}")
+            t_lines = [l for l in all_sys if f"[{aid}]" in l]
+            if t_lines:
+                lines.append(f"  {'─' * 50}")
+                for l in t_lines[-4:]:
+                    lines.append(f"  [dim]{_trunc(l, 70)}[/dim]")
 
             # 최근 대화
-            recent = db.get_recent_messages(ch_name, limit=4)
+            recent = db.get_recent_messages(ch_name, limit=3)
             if recent:
-                for r in recent[-4:]:
+                lines.append(f"  {'─' * 50}")
+                for r in recent[-3:]:
                     speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
-                    ts = r["timestamp"][11:16] if r["timestamp"] else ""
-                    lines.append(f"  [dim]{ts}[/dim] [{c}]{speaker}[/{c}]: {_trunc(r['message'], 55)}")
+                    lines.append(f"  [{c}]{speaker}[/{c}]: {_trunc(r['message'], 55)}")
 
             return Panel(
                 "\n".join(lines),
                 title=f" [{c} bold]{agent['name']}[/{c} bold] ",
-                subtitle=f"[bright_yellow] ● THINKING {elapsed} [/bright_yellow]",
+                subtitle=f"[bright_yellow] ● {elapsed} [/bright_yellow]",
                 border_style="bright_yellow", box=box.HEAVY, padding=(0, 1),
             )
         else:
-            # ── 컴팩트 카드 ──
-            status_icon = "[green]●[/green]" if agent["status"] == "active" else "[dim]○[/dim]"
+            # ── 컴팩트 카드 (고정 크기) ──
+            status = "[green]●[/green]" if agent["status"] == "active" else "[dim]○[/dim]"
 
-            lines = []
-            lines.append(f"  {status_icon}  {em} {agent['current_emotion']}  [dim]{type_str}[/dim]")
-            # 추론 바 (라벨 포함)
-            lines.append(f"  [dim]🧠 ░░░░░░░░░░░░░░░░░░░░  idle · {_ago(sec)}[/dim]")
-
-            # 관계 (라벨 포함)
-            rels = db.get_all_relationships(aid)
-            if rels:
-                rel_parts = []
-                for r in rels[:3]:
-                    other_id = r["agent_b"] if r["agent_a"] == aid else r["agent_a"]
-                    other = _cache.all_agents.get(other_id)
-                    if other:
-                        intimacy = r.get("intimacy_score", 50)
-                        mini_bar = "█" * (intimacy // 20) + "░" * (5 - intimacy // 20)
-                        oc = _get_color(other_id)
-                        rel_parts.append(f"[{oc}]{other['name'][:4]}[/{oc}]{mini_bar}")
-                if rel_parts:
-                    lines.append(f"  [dim]💕[/dim] {'  '.join(rel_parts)}")
+            if thinking:
+                think_sec = log_writer.thinking_seconds(aid)
+                elapsed = f"{int(think_sec)}s"
+                bar = "[bright_yellow]" + "▓" * 10 + "[/bright_yellow]"
+                line1 = f"  {status} {em}  [bright_yellow]🧠{elapsed}[/bright_yellow]  {type_str}"
+            else:
+                bar = "[dim]░░░░░░░░░░[/dim]"
+                line1 = f"  {status} {em} {agent['current_emotion'][:4]}  {type_str}  [dim]{_ago(sec)}[/dim]"
 
             # 마지막 메시지
             recent = db.get_recent_messages(ch_name, limit=1)
             if recent:
                 r = recent[-1]
                 speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
-                lines.append(f"  [dim]💬 {speaker}: {_trunc(r['message'], 36)}[/dim]")
+                line2 = f"  [dim]{speaker}: {_trunc(r['message'], 30)}[/dim]"
+            else:
+                line2 = f"  [dim]대화 없음[/dim]"
 
+            border = "bright_yellow" if thinking else (c if agent["status"] == "active" else "dim")
             return Panel(
-                "\n".join(lines),
-                title=f" [{c} bold]{agent['name']}[/{c} bold] ",
-                border_style=c if agent["status"] == "active" else "dim",
-                box=box.ROUNDED, padding=(0, 1),
+                f"{line1}\n{line2}",
+                title=f" [{c}]{agent['name']}[/{c}] ",
+                border_style=border, box=box.ROUNDED, padding=(0, 0),
             )
 
     def _render_overview(self):
@@ -802,14 +787,24 @@ class DashboardScreen(Screen):
                 border_style="yellow", box=box.ROUNDED, padding=(1, 2),
             )
 
-        # 추론 중 에이전트 먼저 (확장 카드)
         thinking = [a for a in agents if log_writer.is_thinking(a["id"])]
         idle = [a for a in agents if not log_writer.is_thinking(a["id"])]
 
-        for a in thinking:
-            items.append(self._render_agent_card(a))
+        # 추론 중 — 확장 카드 (2열 분할)
+        if thinking:
+            if len(thinking) == 1:
+                items.append(self._render_agent_card(thinking[0], expanded=True))
+            else:
+                row = []
+                for a in thinking:
+                    row.append(self._render_agent_card(a, expanded=True))
+                    if len(row) == 2:
+                        items.append(Columns(row, equal=True, expand=True))
+                        row = []
+                if row:
+                    items.append(Columns(row, equal=True, expand=True))
 
-        # 비활성 에이전트 (컴팩트 카드, 3열 그리드)
+        # 나머지 — 컴팩트 카드 3열 (추론 중이어도 여기에 컴팩트 버전도 표시하지 않음)
         if idle:
             row = []
             for a in idle:
@@ -818,6 +813,9 @@ class DashboardScreen(Screen):
                     items.append(Columns(row, equal=True, expand=True))
                     row = []
             if row:
+                # 빈 자리 채우기 (균일 크기)
+                while len(row) < 3:
+                    row.append(Text(""))
                 items.append(Columns(row, equal=True, expand=True))
 
         # 채널 요약
