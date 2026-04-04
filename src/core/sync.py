@@ -1,21 +1,25 @@
 """
 Project Chaos — Discord ↔ DB 동기화
 
-디스코드 채널 상태와 DB를 정합:
 1. 채널 동기화: 불필요한 디코 채널 삭제, 필요한 채널 생성 (카테고리별)
-2. 메시지 동기화: 디코 메시지 → DB 보충 (LLM 토큰 소모 없음)
+2. 메시지 동기화: 디코 메시지 → DB 보충 (LLM 토큰 소모 없음, Discord API만 사용)
+3. 유저 프로필 동기화: 디코 사용자 이름/ID 매핑
 
 주의: 같은 토큰으로 두 클라이언트를 동시에 열 수 없으므로,
 봇이 실행 중이면 먼저 중지해야 합니다.
 """
 import asyncio
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Callable
 
 import discord as discord_lib
 
 from src import db, community, log_writer
+
+
+# 카테고리 순서
+CATEGORY_ORDER = ["chaos-mgr", "chaos-dm", "chaos-group", "chaos-internal-dm", "chaos-internal-group"]
 
 
 def _get_category_for_channel(ch_name: str) -> str:
@@ -64,6 +68,47 @@ def _get_expected_channels() -> set[str]:
     return channels
 
 
+async def _fetch_all_messages(channel, after=None, progress_fn=None):
+    """채널의 모든 메시지를 페이지네이션으로 가져오기 (100개씩)"""
+    all_messages = []
+    batch = 0
+
+    while True:
+        messages = []
+        async for msg in channel.history(limit=100, after=after, oldest_first=True):
+            messages.append(msg)
+
+        if not messages:
+            break
+
+        all_messages.extend(messages)
+        batch += 1
+        after = messages[-1]  # 다음 페이지의 시작점
+
+        if progress_fn:
+            progress_fn(f"  {channel.name}: {len(all_messages)}건 로드 (batch {batch})")
+
+        # rate limit 방지
+        await asyncio.sleep(0.5)
+
+        # 마지막 batch가 100개 미만이면 끝
+        if len(messages) < 100:
+            break
+
+    return all_messages
+
+
+def _resolve_speaker(msg, agent_map: dict, user_id: str) -> Optional[str]:
+    """Discord 메시지 → speaker ID 매핑"""
+    if msg.author.bot and msg.webhook_id:
+        # Webhook = 에이전트 발화
+        return agent_map.get(msg.author.display_name)
+    elif not msg.author.bot:
+        # 유저 메시지
+        return user_id
+    return None
+
+
 async def sync_community(
     on_progress: Optional[Callable[[str], None]] = None,
 ) -> dict:
@@ -75,7 +120,9 @@ async def sync_community(
         "ok": False,
         "channels_created": [],
         "channels_deleted": [],
+        "categories_deleted": [],
         "messages_synced": 0,
+        "channels_scanned": 0,
         "errors": [],
     }
 
@@ -101,7 +148,15 @@ async def sync_community(
             guild = client.guilds[0]
             _progress(f"서버 연결: {guild.name}")
 
-            # chaos 카테고리들 내 모든 채널 수집
+            # 유저 ID 가져오기
+            from src.core.profile import get_user_id, get_user_name
+            user_id = get_user_id()
+
+            # 에이전트 이름 → ID 매핑
+            agent_map = {a["name"]: a["id"] for a in db.list_agents()}
+
+            # ═══ 1. 채널 정리 ═══
+            _progress("채널 정리 중...")
             chaos_categories = [c for c in guild.categories if c.name.startswith("chaos")]
             all_chaos_channels = []
             for cat in chaos_categories:
@@ -110,9 +165,7 @@ async def sync_community(
 
             expected = _get_expected_channels()
 
-            # ── 1. 채널 정리 (불필요 삭제 + 잘못된 카테고리 삭제 + 중복 삭제) ──
-            _progress("채널 정리 중...")
-            surviving = {}  # name → channel (올바른 카테고리에 있는 것만)
+            surviving = {}
             for ch in all_chaos_channels:
                 correct_cat = _get_category_for_channel(ch.name)
                 if ch.name not in expected:
@@ -125,7 +178,7 @@ async def sync_community(
                 elif ch.category and ch.category.name != correct_cat:
                     try:
                         await ch.delete(reason="Chaos Sync: 카테고리 재배치")
-                        _progress(f"  재배치: {ch.name} ({ch.category.name} → 재생성)")
+                        _progress(f"  재배치: {ch.name}")
                     except Exception as e:
                         result["errors"].append(f"재배치 실패 ({ch.name}): {e}")
                 elif ch.name not in surviving:
@@ -133,20 +186,30 @@ async def sync_community(
                 else:
                     try:
                         await ch.delete(reason="Chaos Sync: 중복")
-                        _progress(f"  중복 삭제: {ch.name}")
                     except Exception:
                         pass
 
-            # ── 2. 필요 채널 생성 (올바른 카테고리에) ──
-            _progress("필요 채널 생성 중...")
+            # ═══ 2. 카테고리 생성 + 채널 생성 (순서대로) ═══
+            _progress("채널 생성 중...")
             MGR_ORDER = ["mgr-system-log", "mgr-dashboard", "mgr-creator"]
-            for ch_name in sorted(expected):
-                if ch_name not in surviving:
+
+            # 카테고리를 원하는 순서대로 생성
+            for cat_name in CATEGORY_ORDER:
+                needed = [ch for ch in sorted(expected) if _get_category_for_channel(ch) == cat_name and ch not in surviving]
+                if not needed and not any(ch for ch in surviving.values() if ch.category and ch.category.name == cat_name):
+                    continue
+
+                cat = discord_lib.utils.get(guild.categories, name=cat_name)
+                if not cat:
+                    cat = await guild.create_category(cat_name)
+                    _progress(f"  카테고리 생성: {cat_name}")
+
+                # mgr 카테고리는 특정 순서
+                if cat_name == "chaos-mgr":
+                    needed = [ch for ch in MGR_ORDER if ch not in surviving]
+
+                for ch_name in needed:
                     try:
-                        cat_name = _get_category_for_channel(ch_name)
-                        cat = discord_lib.utils.get(guild.categories, name=cat_name)
-                        if not cat:
-                            cat = await guild.create_category(cat_name)
                         new_ch = await guild.create_text_channel(ch_name, category=cat)
                         surviving[ch_name] = new_ch
                         result["channels_created"].append(ch_name)
@@ -154,7 +217,7 @@ async def sync_community(
                     except Exception as e:
                         result["errors"].append(f"생성 실패 ({ch_name}): {e}")
 
-            # ── 3. mgr 채널 순서 정렬 ──
+            # mgr 채널 순서 정렬
             mgr_cat = discord_lib.utils.get(guild.categories, name="chaos-mgr")
             if mgr_cat:
                 for i, name in enumerate(MGR_ORDER):
@@ -166,70 +229,133 @@ async def sync_community(
                         except Exception:
                             pass
 
-            # ── 4. 메시지 동기화 (Discord → DB) ──
+            # ═══ 3. 빈 카테고리 정리 ═══
+            _progress("빈 카테고리 정리 중...")
+            for cat in list(guild.categories):
+                if cat.name.startswith("chaos") and len(cat.text_channels) == 0 and len(cat.voice_channels) == 0:
+                    try:
+                        result["categories_deleted"].append(cat.name)
+                        await cat.delete()
+                        _progress(f"  카테고리 삭제: {cat.name}")
+                    except Exception:
+                        pass
+
+            # ═══ 4. 카테고리 순서 정렬 ═══
+            _progress("카테고리 순서 정리 중...")
+            # 기존 non-chaos 카테고리 위치 파악
+            existing_cats = {c.name: c for c in guild.categories}
+            for i, cat_name in enumerate(CATEGORY_ORDER):
+                cat = existing_cats.get(cat_name)
+                if cat:
+                    try:
+                        await cat.edit(position=i)
+                        await asyncio.sleep(0.2)
+                    except Exception:
+                        pass
+
+            # ═══ 5. 메시지 동기화 (Discord → DB) ═══
             _progress("메시지 동기화 중...")
-            synced = 0
-            agents = {a["name"]: a["id"] for a in db.list_agents()}
+            total_synced = 0
 
             for ch_name, ch in surviving.items():
+                # DB에서 이 채널의 마지막 메시지 시간
                 recent = db.get_recent_messages(ch_name, limit=1)
                 after = None
                 if recent:
                     try:
-                        after = datetime.fromisoformat(recent[0].get("timestamp", ""))
+                        ts = recent[0].get("timestamp", "")
+                        after_dt = datetime.fromisoformat(ts)
+                        # Discord API는 aware datetime 필요
+                        if after_dt.tzinfo is None:
+                            after_dt = after_dt.replace(tzinfo=timezone.utc)
+                        # 작은 snowflake 객체 대신 after 파라미터로 datetime 전달
+                        after = after_dt
                     except (ValueError, TypeError):
                         pass
 
+                # 전체 메시지 가져오기 (페이지네이션)
                 try:
-                    messages = []
-                    async for msg in ch.history(limit=100, after=after, oldest_first=True):
-                        if msg.author.bot and msg.webhook_id:
-                            speaker = agents.get(msg.author.display_name)
-                            if speaker:
-                                messages.append((ch_name, speaker, msg.content, msg.created_at.isoformat()))
-                        elif not msg.author.bot:
-                            from src.core.profile import get_user_id
-                            messages.append((ch_name, get_user_id(), msg.content, msg.created_at.isoformat()))
-
-                    if messages:
-                        conn = db.get_conn()
-                        for channel, speaker, message, ts in messages:
-                            exists = conn.execute(
-                                "SELECT 1 FROM conversations WHERE channel=? AND speaker=? AND message=? LIMIT 1",
-                                (channel, speaker, message),
-                            ).fetchone()
-                            if not exists:
-                                conn.execute(
-                                    "INSERT INTO conversations (channel, speaker, message, timestamp) VALUES (?, ?, ?, ?)",
-                                    (channel, speaker, message, ts),
-                                )
-                                synced += 1
-                        conn.commit()
-                        conn.close()
-                        _progress(f"  {ch_name}: +{synced}건")
+                    discord_msgs = await _fetch_all_messages(ch, after=after, progress_fn=_progress)
                 except discord_lib.Forbidden:
-                    pass
+                    _progress(f"  {ch_name}: 권한 없음 (스킵)")
+                    continue
                 except Exception as e:
-                    result["errors"].append(f"메시지 동기화 실패 ({ch_name}): {e}")
+                    result["errors"].append(f"메시지 로드 실패 ({ch_name}): {e}")
+                    continue
 
-            result["messages_synced"] = synced
+                if not discord_msgs:
+                    result["channels_scanned"] += 1
+                    continue
 
-            # ── 5. 빈 카테고리 정리 ──
-            _progress("빈 카테고리 정리 중...")
-            # guild 상태 다시 읽기 (캐시 갱신)
-            guild = client.guilds[0]
-            for cat in list(guild.categories):
-                if cat.name.startswith("chaos") and len(cat.text_channels) == 0 and len(cat.voice_channels) == 0:
-                    try:
-                        cat_name = cat.name
-                        await cat.delete()
-                        result["channels_deleted"].append(f"[카테고리] {cat_name}")
-                        _progress(f"  카테고리 삭제: {cat_name}")
-                    except Exception:
-                        pass
+                _progress(f"  {ch_name}: {len(discord_msgs)}개 메시지 처리 중...")
+
+                # DB에 삽입 (중복 방지)
+                conn = db.get_conn()
+                ch_synced = 0
+
+                for msg in discord_msgs:
+                    if not msg.content:
+                        continue  # 빈 메시지, embed만 있는 경우 스킵
+
+                    speaker = _resolve_speaker(msg, agent_map, user_id)
+                    if not speaker:
+                        continue
+
+                    ts = msg.created_at.isoformat()
+
+                    # 중복 체크 (채널 + 발화자 + 메시지 내용 + 시간 근접)
+                    exists = conn.execute(
+                        "SELECT 1 FROM conversations WHERE channel=? AND speaker=? AND message=? LIMIT 1",
+                        (ch_name, speaker, msg.content),
+                    ).fetchone()
+
+                    if not exists:
+                        conn.execute(
+                            "INSERT INTO conversations (channel, speaker, message, timestamp) VALUES (?, ?, ?, ?)",
+                            (ch_name, speaker, msg.content, ts),
+                        )
+                        ch_synced += 1
+
+                conn.commit()
+                conn.close()
+
+                total_synced += ch_synced
+                result["channels_scanned"] += 1
+
+                if ch_synced:
+                    _progress(f"  {ch_name}: +{ch_synced}건 동기화")
+                else:
+                    _progress(f"  {ch_name}: 변경 없음")
+
+                # rate limit 방지
+                await asyncio.sleep(0.3)
+
+            result["messages_synced"] = total_synced
+
+            # ═══ 6. 유저 프로필 동기화 ═══
+            _progress("유저 프로필 확인 중...")
+            # Discord 서버의 오너(봇을 운영하는 사용자) 정보 동기화
+            for member in guild.members:
+                if member.bot:
+                    continue
+                # users 테이블에 없으면 기본 정보 저장
+                conn = db.get_conn()
+                existing = conn.execute("SELECT 1 FROM users WHERE id=?", (str(member.id),)).fetchone()
+                if not existing:
+                    # 기존 user_id(이름 기반)로 저장된 게 있으면 스킵
+                    existing_by_name = conn.execute("SELECT 1 FROM users WHERE name=?", (member.display_name,)).fetchone()
+                    if not existing_by_name:
+                        _progress(f"  유저 발견: {member.display_name} (#{member.id})")
+                conn.close()
 
             result["ok"] = True
-            _progress(f"동기화 완료 (채널 +{len(result['channels_created'])} -{len(result['channels_deleted'])}, 메시지 +{synced})")
+            summary = (
+                f"동기화 완료 — "
+                f"채널 +{len(result['channels_created'])} -{len(result['channels_deleted'])}, "
+                f"메시지 +{total_synced}, "
+                f"채널 {result['channels_scanned']}개 스캔"
+            )
+            _progress(summary)
 
         except Exception as e:
             result["error"] = str(e)
@@ -239,7 +365,7 @@ async def sync_community(
             await client.close()
 
     try:
-        await asyncio.wait_for(client.start(token), timeout=120)
+        await asyncio.wait_for(client.start(token), timeout=300)  # 5분 타임아웃
     except (asyncio.CancelledError, asyncio.TimeoutError):
         if not result["ok"]:
             result["error"] = "시간 초과"

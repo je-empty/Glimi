@@ -1576,7 +1576,9 @@ class DashboardScreen(Screen):
                 lines.append(f"[green]채널 생성:[/green] {', '.join(result['channels_created'])}")
             if result["channels_deleted"]:
                 lines.append(f"[yellow]채널 삭제:[/yellow] {', '.join(result['channels_deleted'])}")
-            lines.append(f"[cyan]메시지 동기화:[/cyan] {result['messages_synced']}건")
+            if result.get("categories_deleted"):
+                lines.append(f"[yellow]카테고리 삭제:[/yellow] {', '.join(result['categories_deleted'])}")
+            lines.append(f"[cyan]메시지 동기화:[/cyan] +{result['messages_synced']}건 ({result.get('channels_scanned', 0)}개 채널 스캔)")
             if result.get("errors"):
                 lines.append(f"\n[yellow]경고 {len(result['errors'])}건:[/yellow]")
                 for e in result["errors"][:5]:
