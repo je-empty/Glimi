@@ -102,9 +102,28 @@ async def parse_and_execute_actions(
 
 async def execute_yuna_query(query_str: str, guild: discord.Guild = None) -> str:
     """유나의 QUERY 실행 → 텍스트 결과 반환 (DB + 디스코드 직접 조회)"""
-    parts = query_str.split(None, 1)
-    cmd = parts[0]
-    args = parts[1] if len(parts) > 1 else ""
+    query_str = query_str.strip()
+
+    # JSON 형식 지원
+    if query_str.startswith("{"):
+        try:
+            import json as _json
+            data = _json.loads(query_str)
+            cmd = data.get("type", data.get("cmd", ""))
+            args = data.get("name", data.get("target", data.get("args", "")))
+            if isinstance(args, str):
+                args = _resolve_agent_name(args) if args else ""
+        except (ValueError, KeyError):
+            parts = query_str.split(None, 1)
+            cmd = parts[0]
+            args = parts[1] if len(parts) > 1 else ""
+    else:
+        parts = query_str.split(None, 1)
+        cmd = parts[0]
+        args = parts[1] if len(parts) > 1 else ""
+        # 이름 인자 해석 (프로필, 관계, 발화, 이벤트 등)
+        if cmd in ("프로필", "관계", "발화", "이벤트") and args:
+            args = _resolve_agent_name(args.split()[0]) + (" " + " ".join(args.split()[1:]) if len(args.split()) > 1 else "")
 
     log.info(f"[유나QUERY] {cmd} {args}")
 
@@ -485,15 +504,113 @@ async def _yuna_followup_with_data(
 # ── CMD 실행 ─────────────────────────────────────────────
 
 
+def _resolve_agent_name(name_or_alias: str) -> str:
+    """이름, 별칭, ID → 실제 에이전트 이름으로 변환"""
+    if not name_or_alias:
+        return name_or_alias
+    name_or_alias = name_or_alias.strip()
+
+    # 정확한 이름 매치
+    for a in db.list_agents():
+        if a["name"] == name_or_alias:
+            return a["name"]
+
+    # ID 매치
+    agent = db.get_agent(name_or_alias)
+    if agent:
+        return agent["name"]
+
+    # 별칭 매치 (pet_name)
+    conn = db.get_conn()
+    rels = conn.execute("SELECT * FROM relationships").fetchall()
+    conn.close()
+    for r in rels:
+        r = dict(r)
+        if r.get("pet_name_a_to_b") == name_or_alias:
+            target = db.get_agent(r["agent_b"])
+            if target:
+                return target["name"]
+        if r.get("pet_name_b_to_a") == name_or_alias:
+            target = db.get_agent(r["agent_a"])
+            if target:
+                return target["name"]
+
+    # 부분 매치 (앞 글자)
+    for a in db.list_agents():
+        if a["name"].startswith(name_or_alias):
+            return a["name"]
+
+    return name_or_alias  # 해석 불가 → 원본 반환
+
+
+def _parse_cmd_json(cmd_str: str) -> tuple[str, str]:
+    """CMD 문자열 파싱 — JSON 또는 레거시 스페이스 구분 모두 지원.
+    Returns: (cmd, args_str) — 기존 execute_yuna_command 호환 형식
+    """
+    cmd_str = cmd_str.strip()
+
+    # JSON 형식 시도
+    if cmd_str.startswith("{"):
+        try:
+            import json as _json
+            data = _json.loads(cmd_str)
+            cmd = data.get("cmd", data.get("type", ""))
+
+            # 이름 필드들 해석
+            for key in ("name", "target", "이름"):
+                if key in data and isinstance(data[key], str):
+                    data[key] = _resolve_agent_name(data[key])
+            if "names" in data and isinstance(data["names"], list):
+                data["names"] = [_resolve_agent_name(n) for n in data["names"]]
+
+            # cmd별 args_str 생성 (기존 형식 호환)
+            if cmd == "톡방":
+                names = " ".join(data.get("names", []))
+                topic = data.get("topic", "")
+                return cmd, f"{names} {topic}".strip()
+            elif cmd == "대화시작":
+                names = " ".join(data.get("names", []))
+                situation = data.get("situation", data.get("context", ""))
+                return cmd, f"{names} {situation}".strip()
+            elif cmd == "감정":
+                return cmd, f"{data.get('name', '')} {data.get('emotion', '')} {data.get('intensity', 5)}"
+            elif cmd == "프로필수정":
+                return cmd, f"{data.get('name', '')} {data.get('field', '')} {data.get('value', '')}"
+            elif cmd == "관계수정":
+                return cmd, f"{data.get('name_a', '')} {data.get('name_b', '')} {data.get('field', '')} {data.get('value', '')}"
+            elif cmd == "프로필생성":
+                return cmd, _json.dumps(data.get("profile", data), ensure_ascii=False)
+            else:
+                # 기타 — args를 스페이스로 join
+                args = data.get("args", data.get("target", data.get("name", "")))
+                if isinstance(args, list):
+                    return cmd, " ".join(str(a) for a in args)
+                return cmd, str(args)
+        except (ValueError, KeyError):
+            pass  # JSON 파싱 실패 → 레거시 폴백
+
+    # 레거시 스페이스 구분
+    parts = cmd_str.split(None, 1)
+    cmd = parts[0]
+    args_str = parts[1] if len(parts) > 1 else ""
+
+    # 레거시에서도 이름 해석 (첫 번째 인자가 이름인 CMD들)
+    name_cmds = {"감정", "프로필수정", "채널삭제", "채널초기화", "에이전트초기화", "오너초대", "강제"}
+    if cmd in name_cmds and args_str:
+        name_parts = args_str.split(None, 1)
+        resolved = _resolve_agent_name(name_parts[0])
+        args_str = f"{resolved} {name_parts[1]}" if len(name_parts) > 1 else resolved
+
+    return cmd, args_str
+
+
 async def execute_yuna_command(
     report_channel: discord.TextChannel,
     cmd_str: str,
     guild: discord.Guild,
 ):
     """유나의 CMD 태그 하나를 실행"""
-    parts = cmd_str.split(None, 1)
-    cmd = parts[0]
-    args_str = parts[1] if len(parts) > 1 else ""
+    cmd, args_str = _parse_cmd_json(cmd_str)
 
     log.info(f"[유나CMD] 실행: {cmd} {args_str}")
 
@@ -1585,20 +1702,39 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
     if not guild:
         return
 
+    # ACTION 파싱 (JSON 또는 레거시)
+    action_str = action_str.strip()
+    if action_str.startswith("{"):
+        try:
+            import json as _json
+            data = _json.loads(action_str)
+            action_type = data.get("type", data.get("action", "")).upper()
+            target_name = _resolve_agent_name(data.get("target", data.get("name", "")))
+            message = data.get("message", data.get("msg", ""))
+            action_args = f"{target_name} {message}".strip() if target_name else message
+        except (ValueError, KeyError):
+            parts = action_str.split(None, 1)
+            action_type = parts[0].upper() if parts else ""
+            action_args = parts[1] if len(parts) > 1 else ""
+    else:
+        parts = action_str.split(None, 1)
+        action_type = parts[0].upper() if parts else ""
+        action_args = parts[1] if len(parts) > 1 else ""
+        # 레거시에서도 이름 해석
+        if action_type == "DM" and action_args:
+            dm_parts = action_args.split(None, 1)
+            dm_parts[0] = _resolve_agent_name(dm_parts[0])
+            action_args = " ".join(dm_parts)
+
     # 시스템 에이전트(Manager/Creator)가 ACTION을 쓴 경우 → 직접 실행
     agent_info = db.get_agent(agent_id)
     is_system_agent = agent_info and agent_info.get("type") in ("mgr", "creator")
     if is_system_agent:
-        parts = action_str.split(None, 1)
-        action_type = parts[0].upper() if parts else ""
-        action_args = parts[1] if len(parts) > 1 else ""
-
         mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
         if not mgr_ch:
             return
 
         if action_type == "DM":
-            # DM 이름 메시지 → CMD로 변환: internal-dm 채널에서 직접 전송
             dm_parts = action_args.split(None, 1)
             target_name = dm_parts[0] if dm_parts else ""
             message = dm_parts[1] if len(dm_parts) > 1 else ""

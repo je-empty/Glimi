@@ -220,47 +220,49 @@ def _build_action_system_prompt(agent_type: str) -> str:
     base = """
 === 자율 행동 시스템 ===
 응답에 태그를 넣으면 시스템이 자동 실행해. 태그는 디스코드 대화에 안 보이고 시스템 로그로만 간다.
+이름은 반드시 정확한 본명을 사용해. 별칭/호칭 쓰면 안 돼.
 """
 
     if agent_type in ("mgr", "creator"):
         base += """
 --- CMD (실행) ---
-  [CMD:톡방 이름1 이름2 주제]          → 그룹/내부 채팅 생성
-  [CMD:대화시작 이름1 이름2 상황]       → 에이전트간 자율 대화 트리거
-  [CMD:대화중단 채널명]                → 자율 대화 중단
-  [CMD:감정 이름 감정 강도]            → 감정 상태 변경 (1-10)
-  [CMD:프로필수정 이름 필드경로 값]     → 프로필 JSON 필드 수정
-  [CMD:관계수정 이름A 이름B 필드 값]   → 관계 수정 (intimacy, dynamics, pet_name 등)
-  [CMD:채널삭제 채널명]                → 채널 삭제 (dm-/mgr- 보호)
-  [CMD:채널초기화 채널명]              → 채널 DB(대화+메모리) + Discord 채널 삭제
-  [CMD:개발요청 상세내용]              → 봇 종료 → Opus가 코드 수정 → 재시작
+  [CMD:{"cmd":"톡방","names":["이름1","이름2"],"topic":"주제"}]
+  [CMD:{"cmd":"대화시작","names":["이름1","이름2"],"situation":"상황"}]
+  [CMD:{"cmd":"대화중단","target":"채널명"}]
+  [CMD:{"cmd":"감정","name":"이름","emotion":"감정","intensity":5}]
+  [CMD:{"cmd":"프로필수정","name":"이름","field":"필드경로","value":"값"}]
+  [CMD:{"cmd":"관계수정","name_a":"이름A","name_b":"이름B","field":"필드","value":"값"}]
+  [CMD:{"cmd":"채널삭제","target":"채널명"}]
+  [CMD:{"cmd":"개발요청","args":"상세 내용"}]
 
 --- QUERY (조회) ---
-  [QUERY:채널목록]                     → 활성 채널 + 메시지 수
-  [QUERY:로그 채널명 개수]             → 최근 메시지
-  [QUERY:검색 키워드]                  → 전체 채널 검색
-  [QUERY:프로필 이름]                  → 프로필 JSON 전체
-  [QUERY:관계]                         → 전체 관계 목록
-  [QUERY:이벤트]                       → 이벤트 로그
+  [QUERY:{"type":"채널목록"}]
+  [QUERY:{"type":"로그","target":"채널명","count":20}]
+  [QUERY:{"type":"검색","args":"키워드"}]
+  [QUERY:{"type":"프로필","name":"이름"}]
+  [QUERY:{"type":"관계","name":"이름"}]
+
+레거시 형식(스페이스 구분)도 호환되지만 JSON 권장.
 """
     if agent_type == "creator":
         base += """
 --- CMD (생성 전용) ---
-  [CMD:프로필생성 JSON데이터]          → 새 에이전트 프로필 생성
-  [CMD:프로필삭제 이름]                → 에이전트 삭제
+  [CMD:{"cmd":"프로필생성","profile":{...전체 JSON...}}]
+  [CMD:{"cmd":"프로필삭제","name":"이름"}]
 """
 
     if agent_type == "persona":
         base += """
 --- ACTION (요청) ---
 다른 사람한테 연락하거나 톡방 만들고 싶으면 ACTION 태그를 써. 남발하지 말고 진짜 필요할 때만.
-  [ACTION:DM 이름 메시지]              → 다른 멤버에게 DM 보내기
-  [ACTION:톡방 이름1 이름2 주제]       → 톡방 만들기 요청
+  [ACTION:{"type":"DM","target":"이름","message":"보낼 메시지"}]
+  [ACTION:{"type":"톡방","names":["이름1","이름2"],"topic":"주제"}]
 """
 
     base += """
 규칙:
 - 태그는 디스코드에 안 보여 (시스템 로그 채널에만 전송)
+- 이름은 반드시 본명 (별칭/호칭 X)
 - CMD/QUERY는 한 응답에 여러 개 가능
 """
     return base
