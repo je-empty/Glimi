@@ -1993,35 +1993,47 @@ class DashboardScreen(Screen):
         overview = db.get_channel_overview()
         total_db = sum(ch["msg_count"] for ch in overview)
 
-        lines = [
-            f"[bold]🔄 Discord ↔ DB Sync[/bold]",
-            "",
-            f"DB: [cyan]{len(overview)}[/cyan]개 채널, [cyan]{total_db:,}[/cyan]건 메시지",
-        ]
+        items = []
+
+        # 상태 요약
+        status_lines = [f"[bold]🔄 Discord ↔ DB Sync[/bold]", ""]
 
         if scan_data:
             total_discord = sum(scan_data.values())
-            diff = total_db - total_discord
-            lines.append(f"Discord: [cyan]{total_discord:,}[/cyan]건 메시지")
-            if diff > 0:
-                lines.append(f"[yellow]→ {diff:,}건 싱크 필요 (DB → Discord)[/yellow]")
-            elif diff < 0:
-                lines.append(f"[yellow]→ {-diff:,}건 싱크 필요 (Discord → DB)[/yellow]")
-            else:
-                lines.append(f"[green]→ 동기화 완료 상태[/green]")
-        else:
-            lines.append(f"Discord: [dim]스캔 필요 (🔍 Scan 실행)[/dim]")
+            db_only = 0  # DB에만 있는 (디코 누락)
+            dc_only = 0  # 디코에만 있는 (DB 누락)
+            synced_ch = 0
 
-        lines.append("")
-        lines.append(f"[dim]🔍 Scan: 디코 메시지 수 확인  │  ▶ Start: 싱크 실행[/dim]")
+            for ch in overview:
+                ch_name = ch["channel"]
+                dc = scan_data.get(ch_name, 0)
+                diff = ch["msg_count"] - dc
+                if diff > 0:
+                    db_only += diff
+                elif diff < 0:
+                    dc_only += -diff
+                else:
+                    synced_ch += 1
+
+            status_lines.append(f"  DB: [cyan]{total_db:,}[/cyan]건  │  Discord: [cyan]{total_discord:,}[/cyan]건")
+            status_lines.append("")
+            if db_only > 0:
+                status_lines.append(f"  [yellow]⬆ DB → Discord 필요: {db_only:,}건[/yellow] (디코에 누락)")
+            if dc_only > 0:
+                status_lines.append(f"  [cyan]⬇ Discord → DB 필요: {dc_only:,}건[/cyan] (DB에 누락)")
+            if db_only == 0 and dc_only == 0:
+                status_lines.append(f"  [green]✓ 완전 동기화 상태[/green]")
+            status_lines.append(f"  [dim]동기화 완료: {synced_ch}개 채널[/dim]")
+        else:
+            status_lines.append(f"  DB: [cyan]{total_db:,}[/cyan]건 ({len(overview)}개 채널)")
+            status_lines.append(f"  Discord: [dim]? (🔍 Scan으로 확인)[/dim]")
 
         if selected:
-            lines.append(f"\n[cyan]선택: {selected}개 채널[/cyan]")
+            status_lines.append(f"\n  [cyan bold]선택: {selected}개 채널[/cyan bold]")
 
-        return Panel(
-            "\n".join(lines),
-            border_style="cyan", box=box.ROUNDED, padding=(1, 2),
-        )
+        items.append(Panel("\n".join(status_lines), border_style="cyan", box=box.ROUNDED, padding=(1, 2)))
+
+        return Group(*items)
 
     def _update_sync_list(self):
         """Sync 탭 채널 목록"""
@@ -2032,10 +2044,11 @@ class DashboardScreen(Screen):
             self._sync_selected_channels = set()
 
         scan_data = getattr(self, '_sync_scan_data', None)
-
         selected_count = len(self._sync_selected_channels)
+
+        # 액션 버튼
         manage_list.add_option(Option(
-            f"  [cyan bold]🔍 Scan[/cyan bold]  Discord 메시지 수 확인",
+            f"  [cyan bold]🔍 Scan Discord[/cyan bold]  (메시지 수 비교)",
             id="sync_scan",
         ))
         manage_list.add_option(Option(
@@ -2045,7 +2058,15 @@ class DashboardScreen(Screen):
         manage_list.add_option(None)
 
         overview = db.get_channel_overview()
-        overview.sort(key=lambda x: -x["msg_count"])
+
+        # 싱크 필요한 채널 먼저, 그 다음 완료
+        def sort_key(ch):
+            if scan_data and ch["channel"] in scan_data:
+                diff = abs(ch["msg_count"] - scan_data[ch["channel"]])
+                return (0 if diff > 0 else 1, -diff)
+            return (0, -ch["msg_count"])
+
+        overview.sort(key=sort_key)
 
         for ch in overview:
             ch_name = ch["channel"]
@@ -2053,7 +2074,6 @@ class DashboardScreen(Screen):
             selected = ch_name in self._sync_selected_channels
             check = "[green]✓[/green]" if selected else "[dim]○[/dim]"
 
-            # 채널 아이콘
             if ch_name.startswith("dm-"):
                 icon = "💬"
             elif ch_name.startswith("group-"):
@@ -2063,19 +2083,22 @@ class DashboardScreen(Screen):
             else:
                 icon = "📋"
 
-            # 디코 메시지 수 (스캔 데이터 있으면 비교 표시)
             if scan_data and ch_name in scan_data:
                 dc_count = scan_data[ch_name]
                 diff = db_count - dc_count
+
                 if diff > 0:
-                    status = f"[yellow]+{diff}[/yellow]"
+                    # DB에 더 많음 → 디코에 보내야
+                    status = f"  [yellow bold]⬆{diff}건 디코 누락[/yellow bold]"
                 elif diff < 0:
-                    status = f"[cyan]+{-diff}[/cyan]"
+                    # 디코에 더 많음 → DB에 넣어야
+                    status = f"  [cyan bold]⬇{-diff}건 DB 누락[/cyan bold]"
                 else:
-                    status = "[green]✓[/green]"
-                count_str = f"DB:{db_count} DC:{dc_count} {status}"
+                    status = f"  [green]✓ 동기화됨[/green]"
+
+                count_str = f"DB:{db_count} DC:{dc_count}{status}"
             else:
-                count_str = f"DB:[yellow]{db_count}[/yellow]"
+                count_str = f"DB:{db_count}  [dim]DC:?[/dim]"
 
             manage_list.add_option(Option(
                 f"  {check}  {icon} {ch_name}  {count_str}",

@@ -430,7 +430,7 @@ async def sync_community(
             summary = (
                 f"동기화 완료 — "
                 f"채널 +{len(result['channels_created'])} -{len(result['channels_deleted'])}, "
-                f"메시지 +{total_synced}, "
+                f"디코→DB +{total_discord_to_db}, DB→디코 +{total_db_to_discord}, "
                 f"채널 {result['channels_scanned']}개 스캔"
             )
             _progress(summary)
