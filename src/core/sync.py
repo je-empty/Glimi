@@ -258,24 +258,16 @@ async def sync_community(
             total_synced = 0
 
             for ch_name, ch in surviving.items():
-                # DB에서 이 채널의 마지막 메시지 시간
-                recent = db.get_recent_messages(ch_name, limit=1)
-                after = None
-                if recent:
-                    try:
-                        ts = recent[0].get("timestamp", "")
-                        after_dt = datetime.fromisoformat(ts)
-                        # Discord API는 aware datetime 필요
-                        if after_dt.tzinfo is None:
-                            after_dt = after_dt.replace(tzinfo=timezone.utc)
-                        # 작은 snowflake 객체 대신 after 파라미터로 datetime 전달
-                        after = after_dt
-                    except (ValueError, TypeError):
-                        pass
+                # DB 메시지 수
+                conn = db.get_conn()
+                db_count = conn.execute(
+                    "SELECT COUNT(*) FROM conversations WHERE channel=?", (ch_name,)
+                ).fetchone()[0]
+                conn.close()
 
-                # 전체 메시지 가져오기 (페이지네이션)
+                # 전체 메시지 가져오기 (항상 전체 — 중복은 DB에서 필터)
                 try:
-                    discord_msgs = await _fetch_all_messages(ch, after=after, progress_fn=_progress)
+                    discord_msgs = await _fetch_all_messages(ch, after=None, progress_fn=_progress)
                 except discord_lib.Forbidden:
                     _progress(f"  {ch_name}: 권한 없음 (스킵)")
                     continue
@@ -287,7 +279,7 @@ async def sync_community(
                     result["channels_scanned"] += 1
                     continue
 
-                _progress(f"  {ch_name}: {len(discord_msgs)}개 메시지 처리 중...")
+                _progress(f"  {ch_name}: 디코 {len(discord_msgs)}개 / DB {db_count}개")
 
                 # DB에 삽입 (중복 방지)
                 conn = db.get_conn()
@@ -295,7 +287,7 @@ async def sync_community(
 
                 for msg in discord_msgs:
                     if not msg.content:
-                        continue  # 빈 메시지, embed만 있는 경우 스킵
+                        continue
 
                     speaker = _resolve_speaker(msg, agent_map, user_id)
                     if not speaker:

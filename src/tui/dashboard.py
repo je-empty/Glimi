@@ -1225,18 +1225,10 @@ class DashboardScreen(Screen):
         return Group(*items) if items else Text("[dim]관리 메뉴[/dim]")
 
     def _render_manage_channel(self, ch_name):
-        """채널 관리 상세 — 메시지 목록 + 삭제 옵션"""
-        recent = db.get_recent_messages(ch_name, limit=30)
-        lines = []
-        for i, r in enumerate(recent):
-            sid = r["speaker"]
-            c = _get_color(sid) if sid != get_user_id() else "bright_green"
-            name = get_user_name() if sid == get_user_id() else _speaker_name(sid)
-            ts = r["timestamp"][11:16] if r["timestamp"] else ""
-            msg_id = r.get("id", i)
-            lines.append(f"[dim]#{msg_id} {ts}[/dim] [{c}]{name}[/{c}]: {r['message']}")
-
-        content = "\n".join(lines) if lines else "[dim]메시지 없음[/dim]"
+        """채널 관리 — 안내만 (메시지는 manage-list에서 조작)"""
+        conn = db.get_conn()
+        count = conn.execute("SELECT COUNT(*) FROM conversations WHERE channel=?", (ch_name,)).fetchone()[0]
+        conn.close()
 
         if ch_name.startswith("dm-"):
             color, icon = "cyan", "💬"
@@ -1248,9 +1240,9 @@ class DashboardScreen(Screen):
             color, icon = "blue", "📋"
 
         return Panel(
-            content,
-            title=f"[bold]{icon} {ch_name}[/bold]  [dim]({len(recent)}건)[/dim]",
-            subtitle="[dim]manage-list에서 삭제 옵션 선택[/dim]",
+            f"[bold]{icon} {ch_name}[/bold]  │  {count}건\n\n"
+            f"[dim]아래 목록에서 메시지를 선택하여 삭제 (Enter)[/dim]\n"
+            f"[dim]삭제된 데이터는 휴지통에 보관됩니다[/dim]",
             border_style=color, box=box.ROUNDED, padding=(1, 2),
         )
 
@@ -1309,26 +1301,36 @@ class DashboardScreen(Screen):
         elif view.startswith("manage:channel:"):
             ch_name = view.split(":", 2)[2]
             manage_list.clear_options()
+
+            # 채널 액션
             manage_list.add_option(Option(
-                "  [red]🗑 이 채널 전체 삭제[/red]  (DB + Discord)",
+                "  [red bold]🗑 채널 전체 삭제[/red bold]  [dim](DB + Discord)[/dim]",
                 id=f"del_ch:{ch_name}",
             ))
             manage_list.add_option(Option(
-                "  [yellow]🧹 채널 메시지 전체 삭제[/yellow]  (DB만, 채널 유지)",
+                "  [yellow bold]🧹 메시지 전체 삭제[/yellow bold]  [dim](DB만, 채널 유지)[/dim]",
                 id=f"clear_ch:{ch_name}",
             ))
-            manage_list.add_option(None)  # 구분선
+            manage_list.add_option(None)
 
-            # 개별 메시지 삭제 옵션
-            recent = db.get_recent_messages(ch_name, limit=30)
-            for r in recent:
+            # 전체 메시지 (limit 늘림)
+            conn = db.get_conn()
+            all_msgs = conn.execute(
+                "SELECT * FROM conversations WHERE channel=? ORDER BY timestamp ASC",
+                (ch_name,)
+            ).fetchall()
+            conn.close()
+
+            for r in all_msgs:
+                r = dict(r)
                 msg_id = r.get("id", "")
                 sid = r["speaker"]
+                c = _get_color(sid) if sid != get_user_id() else "bright_green"
                 name = get_user_name() if sid == get_user_id() else _speaker_name(sid)
-                msg = _trunc(r["message"], 45)
+                msg = _trunc(r["message"], 50)
                 ts = r["timestamp"][11:16] if r["timestamp"] else ""
                 manage_list.add_option(Option(
-                    f"  [dim]#{msg_id} {ts}[/dim]  {name}: {msg}",
+                    f"  [dim]#{msg_id}[/dim] [dim]{ts}[/dim] [{c}]{name}[/{c}]: {msg}",
                     id=f"del_msg:{ch_name}:{msg_id}",
                 ))
 
