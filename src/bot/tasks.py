@@ -119,29 +119,57 @@ async def _check_owner_profile(guild):
                 log_writer.system(f"오너 자동 등록: {owner_member.display_name} (#{owner_member.id})")
             conn.close()
 
-            # 유나가 세부 정보 요청 (DB에 없는 항목만)
+            # 유나가 인적사항 기반 인사 + 빈 필드 질문
             mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
             if mgr_ch:
                 conn = db.get_conn()
                 user = conn.execute("SELECT * FROM users WHERE id=?", (str(owner_member.id),)).fetchone()
+                if not user:
+                    user = conn.execute("SELECT * FROM users LIMIT 1").fetchone()
                 conn.close()
                 user = dict(user) if user else {}
 
-                await asyncio.sleep(3)
                 name = user.get("name", owner_member.display_name)
-                await send_as_agent(mgr_ch, MGR_ID, f"{name} 안녕! 처음이지? 몇 가지만 알려줘~")
+                age = user.get("age")
+                import json as _json
+                pers = user.get("personality")
+                if isinstance(pers, str):
+                    try:
+                        pers = _json.loads(pers)
+                    except Exception:
+                        pers = {}
+                pers = pers or {}
+                gender = pers.get("gender", "")
+                nickname = pers.get("nickname", "")
 
+                # 유나 나이 기반 말투 조정 (유나 18살)
+                call_name = nickname or name
+                await asyncio.sleep(3)
+
+                if age and age > 18:
+                    await send_as_agent(mgr_ch, MGR_ID, f"{call_name} 안녕~ 나 서유나야! 잘 부탁해")
+                elif age and age <= 18:
+                    await send_as_agent(mgr_ch, MGR_ID, f"{call_name} 안녕! 나 유나~ 반가워!")
+                else:
+                    await send_as_agent(mgr_ch, MGR_ID, f"{call_name} 안녕! 나 서유나야 반가워~")
+
+                # 빈 필드만 질문
+                await asyncio.sleep(2)
                 questions = []
                 if not user.get("mbti"):
-                    questions.append("MBTI가 뭐야?")
+                    questions.append("MBTI 뭐야?")
                 if not user.get("background"):
-                    questions.append("간단하게 자기소개 해줘 (직업이나 하는 일)")
-                if not user.get("personality"):
-                    questions.append("성격이 어떤 편이야?")
+                    questions.append("뭐하는 사람이야?")
+                if not user.get("enneagram"):
+                    questions.append("에니어그램 알아? 모르면 넘어가도 돼~")
 
-                for q in questions:
-                    await asyncio.sleep(1.5)
-                    await send_as_agent(mgr_ch, MGR_ID, q)
+                if questions:
+                    await send_as_agent(mgr_ch, MGR_ID, "몇 가지만 알려줘")
+                    for q in questions:
+                        await asyncio.sleep(1.5)
+                        await send_as_agent(mgr_ch, MGR_ID, q)
+                else:
+                    await send_as_agent(mgr_ch, MGR_ID, "준비 다 됐어!")
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────

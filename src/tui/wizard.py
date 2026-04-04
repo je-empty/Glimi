@@ -599,7 +599,7 @@ class CreateScreen(Screen):
                 yield Label("[bold]사용자 정보[/bold] [dim](에이전트가 이 정보로 대화합니다)[/dim]")
                 yield Label("이름 [dim](필수)[/dim]")
                 yield Input(placeholder="홍길동", id="owner-name-input")
-                yield Label("별칭 [dim](에이전트가 부를 수 있는 호칭, 선택)[/dim]")
+                yield Label("별칭 [dim](희망 호칭 — 에이전트별로 다르게 부를 수 있음, 선택)[/dim]")
                 yield Input(placeholder="선택사항 — 비워두면 이름으로 불러요", id="owner-nickname-input")
                 yield Label("생년월일 [dim](YYYY-MM-DD)[/dim]")
                 yield Input(placeholder="2001-01-01", id="owner-birth-input")
