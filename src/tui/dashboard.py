@@ -2242,6 +2242,8 @@ class DashboardScreen(Screen):
             box=box.ROUNDED,
             padding=(1, 2),
         ))
+        # 검증용 자동 재스캔
+        self._run_sync_scan()
 
     # ── Restart / Navigation ────────────────────────────
 
