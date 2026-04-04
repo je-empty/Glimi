@@ -99,6 +99,12 @@ async def on_ready():
         log_writer.system(f"❌ 온보딩 오류: {type(e).__name__}: {e}")
         log.error(f"[Onboarding] {e}", exc_info=True)
 
+    # 온보딩 감시자 시작 (온보딩 중일 때만)
+    from src import db as _db2
+    if _db2.get_meta("onboarding_phase") != "complete":
+        if not onboarding_watchdog.is_running():
+            onboarding_watchdog.start()
+
     # 유나 자율 감시 + 시스템 로그 동기화 시작
     try:
         if not yuna_watcher.is_running():
@@ -317,6 +323,154 @@ async def _check_owner_profile(guild):
 
     log_writer.system("온보딩 완료")
     log_writer.mark_onboarding_done()
+
+
+# ── 온보딩 감시자 ─────────────────────────────────────
+
+@tasks.loop(seconds=15)
+async def onboarding_watchdog():
+    """온보딩 진행 상황 감시 — 15초마다 체크, 멈추면 재촉"""
+    from src import db as _db
+    from src.bot.core import send_as_agent, _split_for_chat, create_onboarding_channel
+
+    phase = _db.get_meta("onboarding_phase")
+    if phase == "complete":
+        onboarding_watchdog.stop()
+        return
+
+    if not bot.guilds:
+        return
+    guild = bot.guilds[0]
+
+    # 에이전트가 추론/전송 중이면 건너뜀
+    if log_writer.is_thinking(MGR_ID) or log_writer.is_speaking(MGR_ID):
+        return
+    CREATOR_ID = "agent-creator-001"
+    if log_writer.is_thinking(CREATOR_ID) or log_writer.is_speaking(CREATOR_ID):
+        return
+
+    greeted = _db.get_meta("yuna_greeted")
+    ch_names = {ch.name for ch in guild.text_channels}
+
+    # ── Phase 체크: 프로필 수집 단계 ──
+    if not phase or phase == "":
+        if not greeted:
+            return  # 아직 첫 인사도 안 함 — 대기
+
+        # 유나가 인사는 했는데 프로필수집완료를 안 보냄
+        # 최근 대화 확인 — 마지막 메시지가 N초 이상 전이면 재촉
+        recent = _db.get_recent_messages(MGR_CHANNEL, limit=1)
+        if not recent:
+            return
+
+        from datetime import datetime
+        last_ts = recent[-1]["timestamp"]
+        try:
+            last_dt = datetime.fromisoformat(last_ts)
+            idle_sec = (datetime.now() - last_dt).total_seconds()
+        except Exception:
+            return
+
+        if idle_sec < 20:
+            return  # 아직 대화 중
+
+        # 프로필 수집 상태 확인
+        conn = _db.get_conn()
+        user = conn.execute("SELECT * FROM users LIMIT 1").fetchone()
+        conn.close()
+        user = dict(user) if user else {}
+        has_mbti = bool(user.get("mbti"))
+        has_bg = bool(user.get("background"))
+        has_speech = bool(user.get("speech") or _db.get_meta("speech_style_set"))
+
+        collected = sum([has_mbti, has_bg, has_speech])
+        if collected >= 2 and has_speech:
+            # 조건 충족인데 안 보냄 — 강제 트리거
+            log_writer.system("[온보딩 감시] 프로필수집 조건 충족 — 강제 프로필수집완료 트리거")
+            from src.bot.mgr_system import _trigger_onboarding_phase2
+            await _trigger_onboarding_phase2(guild)
+            return
+
+        if idle_sec > 30:
+            # 대화 멈춤 — 유나에게 재촉 주입
+            log_writer.system("[온보딩 감시] 대화 멈춤 — 유나에게 온보딩 재촉")
+            mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
+            if mgr_ch:
+                nudge = (
+                    "[시스템 알림] 온보딩이 멈춰있어. 아직 프로필 수집이 안 끝났으면 다음 질문을 해. "
+                    "이미 충분히 물어봤으면 [CMD:프로필수집완료] 를 보내서 다음 단계로 넘어가."
+                )
+                loop = asyncio.get_event_loop()
+                responses = await loop.run_in_executor(
+                    None,
+                    lambda: runtime.generate_response(
+                        MGR_ID, MGR_CHANNEL, nudge, log_user_message=False
+                    )
+                )
+                import re as _re
+                cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+                for resp in responses:
+                    resp = cmd_pat.sub('', resp).strip()
+                    if resp:
+                        for part in _split_for_chat(resp):
+                            await send_as_agent(mgr_ch, MGR_ID, part)
+                            await asyncio.sleep(0.1)
+            return
+
+    # ── Phase 체크: channels_setup/channels_done ──
+    elif phase in ("channels_setup", "channels_done"):
+        # 채널 생성 + 하나 인사 대기 — 자동으로 진행되므로 여기선 감시만
+        has_syslog = MGR_SYSTEM_LOG in ch_names
+        has_creator = CREATOR_CHANNEL in ch_names
+
+        if not has_syslog or not has_creator:
+            return  # 아직 채널 생성 중
+
+        # 하나가 인사했는지 체크
+        creator_msgs = _db.get_recent_messages(CREATOR_CHANNEL, limit=1)
+        if not creator_msgs:
+            return  # 하나 인사 대기
+
+        # 하나가 유나에게 보고했는지 체크 (internal-dm 존재)
+        has_internal = any(
+            n.startswith("internal-dm-") and ("유나" in n or "하나" in n)
+            for n in ch_names
+        )
+
+        if not has_internal:
+            # 하나가 보고 안 함 — 대화 멈춤 확인
+            recent = _db.get_recent_messages(CREATOR_CHANNEL, limit=1)
+            if recent:
+                from datetime import datetime
+                try:
+                    last_dt = datetime.fromisoformat(recent[-1]["timestamp"])
+                    idle_sec = (datetime.now() - last_dt).total_seconds()
+                except Exception:
+                    idle_sec = 0
+
+                if idle_sec > 30:
+                    # 하나에게 재촉
+                    log_writer.system("[온보딩 감시] 하나 아이스브레이킹 멈춤 — 재촉")
+                    creator_ch = discord.utils.get(guild.text_channels, name=CREATOR_CHANNEL)
+                    if creator_ch:
+                        nudge = (
+                            "[시스템 알림] 아이스브레이킹이 충분히 진행됐으면 에이전트 생성 대화를 시작하고, "
+                            "반드시 유나에게 보고해. [ACTION:{\"type\":\"DM\",\"target\":\"서유나\",\"message\":\"보고 내용\"}]"
+                        )
+                        loop = asyncio.get_event_loop()
+                        responses = await loop.run_in_executor(
+                            None,
+                            lambda: runtime.generate_response(
+                                CREATOR_ID, CREATOR_CHANNEL, nudge, log_user_message=False
+                            )
+                        )
+        return
+
+
+@onboarding_watchdog.before_loop
+async def _watchdog_wait():
+    await bot.wait_until_ready()
+    await asyncio.sleep(30)  # 온보딩 시작 후 30초 대기
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────
