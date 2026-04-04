@@ -668,7 +668,7 @@ class DashboardScreen(Screen):
                 if dm_ch not in ch_data:
                     ch_data[dm_ch] = {"channel": dm_ch, "msg_count": 0, "last_active": None}
 
-        # 관계 기반 internal 채널 추론 (대화 없어도 표시)
+        # 관계 기반 internal 채널 (대화 있는 것만 표시)
         conn = db.get_conn()
         rels = [dict(r) for r in conn.execute("SELECT * FROM relationships").fetchall()]
         conn.close()
@@ -682,12 +682,13 @@ class DashboardScreen(Screen):
                 ]:
                     if ch_name not in ch_data:
                         cnt = db.get_recent_messages(ch_name, limit=1)
-                        ch_data[ch_name] = {
-                            "channel": ch_name,
-                            "msg_count": len(cnt) if cnt else 0,
-                            "last_active": cnt[0].get("timestamp") if cnt else None,
-                        }
-                        break  # 하나만 추가 (양방향 중 하나)
+                        if cnt:  # 대화 있는 것만
+                            ch_data[ch_name] = {
+                                "channel": ch_name,
+                                "msg_count": len(cnt),
+                                "last_active": cnt[0].get("timestamp"),
+                            }
+                            break
 
         # Sync 스캔 데이터가 있으면 포함 (디코에만 있는 채널)
         scan_data = getattr(self, '_sync_scan_data', None)

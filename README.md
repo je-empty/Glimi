@@ -141,9 +141,9 @@ graph TB
     A <-->|"1:1"| AB_Chat["🔒 A ↔ B<br/>Secret DM"]
     B <-->|"1:1"| AB_Chat
 
-    A <-->|""| ABC_Chat["🔒 A ↔ B ↔ C<br/>Secret Multi-DM"]
-    B <-->|""| ABC_Chat
-    C <-->|""| ABC_Chat
+    A <-->|" "| ABC_Chat["🔒 A ↔ B ↔ C<br/>Secret Multi-DM"]
+    B <-->|" "| ABC_Chat
+    C <-->|" "| ABC_Chat
 
     A <-->|"intimacy<br/>nicknames"| B
     B <-->|"intimacy<br/>nicknames"| C

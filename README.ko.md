@@ -141,9 +141,9 @@ graph TB
     A <-->|"1:1"| AB_Chat["🔒 A ↔ B<br/>비밀 DM"]
     B <-->|"1:1"| AB_Chat
 
-    A <-->|""| ABC_Chat["🔒 A ↔ B ↔ C<br/>비밀 멀티DM"]
-    B <-->|""| ABC_Chat
-    C <-->|""| ABC_Chat
+    A <-->|" "| ABC_Chat["🔒 A ↔ B ↔ C<br/>비밀 멀티DM"]
+    B <-->|" "| ABC_Chat
+    C <-->|" "| ABC_Chat
 
     A <-->|"친밀도<br/>별칭"| B
     B <-->|"친밀도<br/>별칭"| C
