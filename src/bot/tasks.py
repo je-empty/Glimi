@@ -119,15 +119,29 @@ async def _check_owner_profile(guild):
                 log_writer.system(f"오너 자동 등록: {owner_member.display_name} (#{owner_member.id})")
             conn.close()
 
-            # 유나가 추가 정보 요청
+            # 유나가 세부 정보 요청 (DB에 없는 항목만)
             mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
             if mgr_ch:
+                conn = db.get_conn()
+                user = conn.execute("SELECT * FROM users WHERE id=?", (str(owner_member.id),)).fetchone()
+                conn.close()
+                user = dict(user) if user else {}
+
                 await asyncio.sleep(3)
-                await send_as_agent(mgr_ch, MGR_ID,
-                    f"{owner_member.display_name}, 처음이네! 나한테 몇 가지 알려줘~")
-                await asyncio.sleep(1)
-                await send_as_agent(mgr_ch, MGR_ID,
-                    "나이, MBTI, 그리고 나한테 뭐라고 불러줬으면 좋겠는지 알려줘")
+                name = user.get("name", owner_member.display_name)
+                await send_as_agent(mgr_ch, MGR_ID, f"{name} 안녕! 처음이지? 몇 가지만 알려줘~")
+
+                questions = []
+                if not user.get("mbti"):
+                    questions.append("MBTI가 뭐야?")
+                if not user.get("background"):
+                    questions.append("간단하게 자기소개 해줘 (직업이나 하는 일)")
+                if not user.get("personality"):
+                    questions.append("성격이 어떤 편이야?")
+
+                for q in questions:
+                    await asyncio.sleep(1.5)
+                    await send_as_agent(mgr_ch, MGR_ID, q)
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────

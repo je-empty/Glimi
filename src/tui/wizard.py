@@ -595,6 +595,16 @@ class CreateScreen(Screen):
                 yield Input(placeholder="my-server", id="cid-input")
                 yield Label("Description [dim](선택)[/dim]")
                 yield Input(placeholder="내 디스코드 서버", id="desc-input")
+            with Container(classes="input-group"):
+                yield Label("[bold]사용자 정보[/bold] [dim](에이전트가 이 정보로 대화합니다)[/dim]")
+                yield Label("이름 [dim](필수)[/dim]")
+                yield Input(placeholder="홍길동", id="owner-name-input")
+                yield Label("별칭 [dim](에이전트가 부를 수 있는 호칭, 선택)[/dim]")
+                yield Input(placeholder="길동이 / 재빈이 등", id="owner-nickname-input")
+                yield Label("생년월일 [dim](YYYY-MM-DD)[/dim]")
+                yield Input(placeholder="2001-01-01", id="owner-birth-input")
+                yield Label("성별")
+                yield Input(placeholder="남 / 여", id="owner-gender-input")
                 yield Static("")
                 yield Button("Create", variant="primary", id="btn-create")
             yield Static("", id="create-result", classes="result-text")
@@ -618,10 +628,18 @@ class CreateScreen(Screen):
     def _do_create(self):
         cid = self.query_one("#cid-input", Input).value.strip()
         desc = self.query_one("#desc-input", Input).value.strip()
+        owner_name = self.query_one("#owner-name-input", Input).value.strip()
+        owner_nickname = self.query_one("#owner-nickname-input", Input).value.strip()
+        owner_birth = self.query_one("#owner-birth-input", Input).value.strip()
+        owner_gender = self.query_one("#owner-gender-input", Input).value.strip()
         result = self.query_one("#create-result", Static)
 
         if not cid or not cid.replace("-", "").replace("_", "").isalnum():
             result.update("[red]유효하지 않은 ID입니다.[/red]")
+            return
+
+        if not owner_name:
+            result.update("[red]오너 이름은 필수입니다.[/red]")
             return
 
         if (community.COMMUNITIES_DIR / cid).exists():
@@ -641,10 +659,68 @@ class CreateScreen(Screen):
                 )
                 reg.write_text(content)
 
+        # 오너 정보를 DB에 저장
+        self._save_owner_profile(cid, owner_name, owner_nickname, owner_birth, owner_gender)
+
         result.update(
             f"[green]커뮤니티 '{cid}' 생성 완료![/green]\n\n"
+            f"오너: {owner_name}"
+            f"{f' ({owner_nickname})' if owner_nickname else ''}\n"
             f"경로: {community.COMMUNITIES_DIR / cid}\n"
         )
+
+    def _save_owner_profile(self, cid, name, nickname, birth, gender):
+        """오너 프로필을 커뮤니티 DB에 저장"""
+        import json as _json
+        import sqlite3
+
+        db_path = community.COMMUNITIES_DIR / cid / "community.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+
+        # DB 초기화 (테이블 없으면)
+        from src import db as _db
+        old_community = os.environ.get("CHAOS_COMMUNITY", "")
+        os.environ["CHAOS_COMMUNITY"] = cid
+        community.set_community(cid)
+        _db.init_db()
+
+        # 나이 계산
+        age = None
+        birth_year = None
+        if birth:
+            try:
+                from datetime import datetime
+                birth_date = datetime.strptime(birth, "%Y-%m-%d")
+                birth_year = birth_date.year
+                today = datetime.now()
+                age = today.year - birth_year
+                # 한국 나이 (만 나이 + 1은 유나가 나중에 물어볼 것)
+            except ValueError:
+                pass
+
+        # 오너 데이터
+        owner_id = name.lower().replace(" ", "_")
+        user_data = {
+            "id": owner_id,
+            "name": name,
+            "birth_year": birth_year,
+            "age": age,
+            "personality": _json.dumps({"nickname": nickname, "gender": gender}, ensure_ascii=False) if nickname or gender else None,
+        }
+
+        conn.execute(
+            "INSERT OR REPLACE INTO users (id, name, birth_year, age, personality) VALUES (?, ?, ?, ?, ?)",
+            (user_data["id"], user_data["name"], user_data["birth_year"], user_data["age"], user_data["personality"]),
+        )
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('active_user_id', ?)", (owner_id,))
+        conn.commit()
+        conn.close()
+
+        # 환경변수 복원
+        if old_community:
+            os.environ["CHAOS_COMMUNITY"] = old_community
+            community.set_community(old_community)
 
         # 토큰 설정 물어보기
         def on_confirm(should_set: bool):

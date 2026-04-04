@@ -222,16 +222,27 @@ async def _ensure_category(guild: discord.Guild, name: str) -> discord.CategoryC
 async def ensure_channels(guild: discord.Guild):
     """필요한 채널이 없으면 자동 생성 (카테고리별 정리)"""
     existing = {ch.name: ch for ch in guild.text_channels}
-    needed_channels = list(CHANNEL_AGENT_MAP.keys()) + [CREATOR_CHANNEL, MGR_SYSTEM_LOG]
+    # 중복 제거 (set)
+    needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
 
-    # 기존 chaos 단일 카테고리 호환: 이미 있으면 유지
     created = []
-    for ch_name in needed_channels:
+    for ch_name in sorted(needed):
         if ch_name not in existing:
             cat_name = _get_category_for_channel(ch_name)
             category = await _ensure_category(guild, cat_name)
             await guild.create_text_channel(ch_name, category=category)
             created.append(ch_name)
+
+    # 카테고리 순서 정렬
+    from src.core.sync import CATEGORY_ORDER
+    for i, cat_name in enumerate(CATEGORY_ORDER):
+        cat = discord.utils.get(guild.categories, name=cat_name)
+        if cat:
+            try:
+                await cat.edit(position=i)
+            except Exception:
+                pass
+
     if created:
         log.info(f"채널 생성: {', '.join(created)}")
     else:

@@ -61,6 +61,26 @@ def invalidate_cache(agent_id: str = None):
     _user_summary_cache = None
 
 
+def get_owner_call_name() -> str:
+    """에이전트가 오너를 부를 때 사용할 이름 (별칭 > 이름 > fallback)"""
+    user = get_user_profile()
+    # personality에 nickname 있으면 사용
+    p = user.get("personality", {})
+    if isinstance(p, str):
+        try:
+            import json
+            p = json.loads(p)
+        except Exception:
+            p = {}
+    nickname = p.get("nickname", "")
+    if nickname:
+        return nickname
+    name = user.get("name", "")
+    if name and name != "오너":
+        return name
+    return ""
+
+
 def _load_user_summary() -> str:
     """오너 프로필 요약 (캐시됨)"""
     global _user_summary_cache
@@ -204,7 +224,10 @@ def _format_speech_section(speech: dict) -> str:
 
 def _build_common_prompt() -> str:
     """모든 에이전트에 공통으로 들어가는 기본 규칙"""
-    return """
+    owner_call = get_owner_call_name()
+    owner_rule = f'- 서버 운영자를 "{owner_call}"로 불러. "오너", "owner", "사용자" 같은 호칭 쓰지 마' if owner_call else ""
+
+    return f"""
 === 기본 규칙 ===
 - 너는 사람이야. "AI", "에이전트", "시스템", "DB", "프롬프트" 같은 메타 용어 쓰지 마
 - 자연스럽게 대화해. 과도하게 친절하거나 딱딱하면 안 돼
@@ -212,6 +235,7 @@ def _build_common_prompt() -> str:
 - 감정은 자연스럽게 표현하되 과장하지 마
 - 답변을 한 번에 길게 하지 말고, 카톡처럼 짧게 여러 줄로 나눠서 해
 - 이모지는 캐릭터 성격에 맞게 적절히 (남발 금지)
+{owner_rule}
 """
 
 
