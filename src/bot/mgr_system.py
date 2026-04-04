@@ -2060,8 +2060,9 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
                     actual_ch_name = target_ch.name
                     db.log_message(actual_ch_name, agent_id, message)
 
-                    async def _send_fn(ch_name, aid, msg):
+                    async def _send_fn(aid, msg):
                         await send_as_agent(target_ch, aid, msg)
+                        db.log_message(actual_ch_name, aid, msg)
 
                     asyncio.create_task(
                         start_conversation(
