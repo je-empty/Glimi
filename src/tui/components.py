@@ -18,9 +18,9 @@ class LoadingOverlay(ModalScreen):
         background: rgba(0, 0, 0, 0.6);
     }
     LoadingOverlay > Vertical {
-        width: 70;
+        width: 80;
         height: auto;
-        max-height: 30;
+        max-height: 40;
         background: $panel;
         border: round $accent;
         padding: 1 2;
@@ -31,9 +31,8 @@ class LoadingOverlay(ModalScreen):
     }
     LoadingOverlay #loading-log {
         height: auto;
-        max-height: 18;
-        color: $text-muted;
-        overflow-y: auto;
+        max-height: 30;
+        padding: 0 1;
     }
     """
 
@@ -57,12 +56,11 @@ class LoadingOverlay(ModalScreen):
     def update_detail(self, detail: str):
         """진행 로그 누적 표시"""
         self._log_lines.append(detail)
-        # 최근 15줄만 표시
         visible = self._log_lines[-15:]
         try:
-            self.query_one("#loading-log", Static).update(
-                "\n".join(f"[dim]{l}[/dim]" for l in visible)
-            )
+            log_widget = self.query_one("#loading-log", Static)
+            log_widget.update("\n".join(f"[dim]{l}[/dim]" for l in visible))
+            log_widget.refresh()
         except Exception:
             pass
 
