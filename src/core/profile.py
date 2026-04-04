@@ -457,7 +457,8 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 1. 호칭/말투가 정해짐
 2. MBTI, 직업, 취미 등 수집할 정보를 한 번씩은 물어봄 (모르면 패스해도 됨)
 3. 아이스브레이킹이 어느 정도 이루어짐
-→ 조건 충족되면 바로 보내. 온보딩 끝나야 다음 단계로 넘어갈 수 있어.
+→ 조건 충족되면 바로 보내.
+[CMD:온보딩완료] 보내면 시스템이 자동으로 시스템 채널 생성 + 크리에이터 소개까지 진행해.
 """
     elif onboarding_phase != "complete":
         owner_name = get_user_name() or "유저"
@@ -479,7 +480,12 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 1. 호칭/말투가 정해짐
 2. MBTI, 직업/취미 등 수집할 정보를 한 번씩은 물어봄 (모르면 패스 OK)
 3. 기본적인 아이스브레이킹이 이루어짐
-→ 조건 충족되면 바로 보내. 온보딩 끝나야 다음 단계로 넘어갈 수 있어.
+→ 조건 충족되면 바로 보내.
+[CMD:온보딩완료] 보내면 시스템이 자동으로:
+1. mgr-system-log 채널 생성 → 너가 이 채널 설명해줘야 함
+2. mgr-creator 채널 생성 → 너가 크리에이터(하나)를 소개해줘야 함
+3. 하나가 직접 인사함
+이건 자동으로 진행되니까 너는 [CMD:온보딩완료]만 보내면 돼.
 
 === 하나 보고 수신 ===
 하나(크리에이터)가 {owner_name}과 아이스브레이킹 끝나고 너한테 보고를 보낼 거야.
