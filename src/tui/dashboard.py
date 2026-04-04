@@ -2019,9 +2019,9 @@ class DashboardScreen(Screen):
             if result.get("categories_deleted"):
                 lines.append(f"[yellow]카테고리 삭제:[/yellow] {', '.join(result['categories_deleted'])}")
             if result.get("messages_deleted_from_discord"):
-                lines.append(f"[red]디코 메시지 삭제:[/red] {result['messages_deleted_from_discord']}건")
+                lines.append(f"[red]Discord 메시지 삭제:[/red] {result['messages_deleted_from_discord']}건")
             if result.get("messages_restored"):
-                lines.append(f"[green]DB→디코 복원:[/green] +{result['messages_restored']}건")
+                lines.append(f"[green]DB→Discord 복원:[/green] +{result['messages_restored']}건")
             lines.append(f"[dim]{result.get('channels_scanned', 0)}개 채널 스캔[/dim]")
             if result.get("errors"):
                 lines.append(f"\n[yellow]경고 {len(result['errors'])}건:[/yellow]")
@@ -2128,8 +2128,8 @@ class DashboardScreen(Screen):
 
         if scan_data:
             total_discord = sum(scan_data.values())
-            db_only = 0  # DB에만 있는 (디코 누락)
-            dc_only = 0  # 디코에만 있는 (DB 누락)
+            db_only = 0  # DB에만 있는 (Discord 누락)
+            dc_only = 0  # Discord에만 있는 (DB 누락)
             synced_ch = 0
 
             for ch in overview:
@@ -2146,9 +2146,9 @@ class DashboardScreen(Screen):
             status_lines.append(f"  DB: [cyan]{total_db:,}[/cyan]건  │  Discord: [cyan]{total_discord:,}[/cyan]건")
             status_lines.append("")
             if db_only > 0:
-                status_lines.append(f"  [yellow]⬆ {db_only:,}건 디코 누락[/yellow] → 싱크 시 복원")
+                status_lines.append(f"  [yellow]⬆ {db_only:,}건 Discord 누락[/yellow] → 싱크 시 복원")
             if dc_only > 0:
-                status_lines.append(f"  [red]⬇ {dc_only:,}건 디코 초과[/red] → 싱크 시 삭제 (DB 기준)")
+                status_lines.append(f"  [red]⬇ {dc_only:,}건 Discord 초과[/red] → 싱크 시 삭제 (DB 기준)")
             if db_only == 0 and dc_only == 0:
                 status_lines.append(f"  [green]✓ 완전 동기화 상태[/green]")
             status_lines.append(f"  [dim]동기화 완료: {synced_ch}개 채널[/dim]")
@@ -2215,9 +2215,9 @@ class DashboardScreen(Screen):
                 diff = db_count - dc_count
 
                 if diff > 0:
-                    status = f"  [yellow bold]⬆{diff}건 디코 누락[/yellow bold] → 복원"
+                    status = f"  [yellow bold]⬆{diff}건 Discord 누락[/yellow bold] → 복원"
                 elif diff < 0:
-                    status = f"  [red bold]⬇{-diff}건 디코 초과[/red bold] → 삭제"
+                    status = f"  [red bold]⬇{-diff}건 Discord 초과[/red bold] → 삭제"
                 else:
                     status = f"  [green]✓[/green]"
 

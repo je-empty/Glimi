@@ -1,9 +1,9 @@
 """
 Project Chaos — Discord ↔ DB 동기화
 
-1. 채널 동기화: 불필요한 디코 채널 삭제, 필요한 채널 생성 (카테고리별)
-2. 메시지 동기화: 디코 메시지 → DB 보충 (LLM 토큰 소모 없음, Discord API만 사용)
-3. 유저 프로필 동기화: 디코 사용자 이름/ID 매핑
+1. 채널 동기화: 불필요한 Discord 채널 삭제, 필요한 채널 생성 (카테고리별)
+2. 메시지 동기화: Discord 메시지 → DB 보충 (LLM 토큰 소모 없음, Discord API만 사용)
+3. 유저 프로필 동기화: Discord 사용자 이름/ID 매핑
 
 주의: 같은 토큰으로 두 클라이언트를 동시에 열 수 없으므로,
 봇이 실행 중이면 먼저 중지해야 합니다.
@@ -303,9 +303,9 @@ async def sync_community(
                     result["errors"].append(f"메시지 로드 실패 ({ch_name}): {e}")
 
                 discord_count = len(discord_msgs)
-                _progress(f"  {ch_name}: 디코 {discord_count} / DB {db_count}")
+                _progress(f"  {ch_name}: Discord {discord_count} / DB {db_count}")
 
-                # DB가 기준 — 디코에 DB보다 많은 메시지가 있으면 삭제
+                # DB가 기준 — Discord에 DB보다 많은 메시지가 있으면 삭제
                 if discord_count > db_count and discord_msgs:
                     # DB에 있는 메시지 내용 set
                     conn = db.get_conn()
@@ -316,7 +316,7 @@ async def sync_community(
                         db_messages.add(row[0])
                     conn.close()
 
-                    # 디코에만 있는 메시지 삭제
+                    # Discord에만 있는 메시지 삭제
                     deleted = 0
                     for msg in discord_msgs:
                         if msg.content and msg.content not in db_messages:
@@ -328,14 +328,14 @@ async def sync_community(
                                 pass
                     if deleted:
                         total_discord_to_db += deleted  # 카운트 재활용 (삭제 건수)
-                        _progress(f"  {ch_name}: 디코 메시지 {deleted}건 삭제 (DB 기준)")
+                        _progress(f"  {ch_name}: Discord 메시지 {deleted}건 삭제 (DB 기준)")
 
-                # ── DB → Discord (DB에 있는데 디코에 없는 메시지 복원) ──
+                # ── DB → Discord (DB에 있는데 Discord에 없는 메시지 복원) ──
                 if db_count > discord_count:
                     need = db_count - discord_count
-                    _progress(f"  {ch_name}: DB→디코 복원 ({need}건 누락)...")
+                    _progress(f"  {ch_name}: DB→Discord 복원 ({need}건 누락)...")
 
-                    # 디코에 이미 있는 메시지 내용 set (중복 방지)
+                    # Discord에 이미 있는 메시지 내용 set (중복 방지)
                     discord_contents = set()
                     for dm in discord_msgs:
                         if dm.content:
@@ -348,7 +348,7 @@ async def sync_community(
                     ).fetchall()]
                     conn.close()
 
-                    # 디코에 없는 메시지만 필터
+                    # Discord에 없는 메시지만 필터
                     to_send = [m for m in messages if m["message"] not in discord_contents]
                     _progress(f"  {ch_name}: {len(to_send)}건 전송 예정")
 
@@ -394,14 +394,14 @@ async def sync_community(
                                 except Exception:
                                     result["errors"].append(f"재시도 실패 ({ch_name} #{msg.get('id','')})")
                             else:
-                                result["errors"].append(f"DB→디코 ({ch_name}): {e}")
+                                result["errors"].append(f"DB→Discord ({ch_name}): {e}")
                                 await asyncio.sleep(2)
                         except Exception as e:
-                            result["errors"].append(f"DB→디코 ({ch_name} #{msg.get('id','')}): {e}")
+                            result["errors"].append(f"DB→Discord ({ch_name} #{msg.get('id','')}): {e}")
                             await asyncio.sleep(2)
 
                     total_db_to_discord += sent
-                    _progress(f"  {ch_name}: DB→디코 {sent}건 복원 완료")
+                    _progress(f"  {ch_name}: DB→Discord {sent}건 복원 완료")
 
                 result["channels_scanned"] += 1
                 await asyncio.sleep(0.3)
@@ -429,7 +429,7 @@ async def sync_community(
             summary = (
                 f"동기화 완료 — "
                 f"채널 +{len(result['channels_created'])} -{len(result['channels_deleted'])}, "
-                f"디코→DB +{total_discord_to_db}, DB→디코 +{total_db_to_discord}, "
+                f"Discord→DB +{total_discord_to_db}, DB→Discord +{total_db_to_discord}, "
                 f"채널 {result['channels_scanned']}개 스캔"
             )
             _progress(summary)
@@ -525,10 +525,10 @@ async def restore_messages(
                 ch_name = ch_info["channel"]
                 dc_ch = discord_channels.get(ch_name)
                 if not dc_ch:
-                    _progress(f"  {ch_name}: 디코 채널 없음 (스킵)")
+                    _progress(f"  {ch_name}: Discord 채널 없음 (스킵)")
                     continue
 
-                # 디코에 이미 메시지가 있으면 스킵
+                # Discord에 이미 메시지가 있으면 스킵
                 has_msgs = False
                 async for _ in dc_ch.history(limit=1):
                     has_msgs = True
