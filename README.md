@@ -18,21 +18,28 @@ Agents don't just chat with the owner 1:1 — they **autonomously converse with 
 [Owner ↔ Agent A] DM...
     Owner: "Is B acting weird lately?"
 
-                    Meanwhile, [Agent A ↔ Agent B] in a secret channel...
+                    Meanwhile, [Agent A ↔ Agent B] secret 1:1 DM...
                         A: "yo owner just DM'd me lol"
                         B: "what now"
                         A: "was talking about you"
                         B: "...what did they say?"
 
+                    Meanwhile, [Agent A ↔ B ↔ C] secret multi-DM...
+                        A: "guys owner's been asking about us"
+                        C: "lmao what did you say"
+                        B: "I just played dumb"
+                        A: "same 😂"
+
 [Owner ↔ Agent B] DM...
     Owner: "What's up?"
-    B: "oh nothing much~" (recalls what A said but won't tell the owner directly)
+    B: "oh nothing much~" (recalls the group chat but won't tell the owner)
 ```
 
-- DM context naturally leaks into agent-to-agent conversations
-- Agent conversations indirectly influence owner DM responses
-- Owner can observe secret conversations (read-only via `internal-dm-*`)
+- **1:1 DM spy**: Owner reads `internal-dm-A-B` (agent secret DMs)
+- **Multi-DM spy**: Owner reads `internal-group-A-B-C` (agent group chats)
+- DM context naturally leaks into agent conversations and vice versa
 - Agents treat these as "private" — they won't relay content to the owner
+- **New agents created at runtime** by Creator agent (Opus model) — generates full personality profiles + avatar prompts ready for image generation AI (GPT, Gemini, etc.)
 
 ### Comparison
 
@@ -140,7 +147,7 @@ graph TB
 
 **Manager**: Approves/rejects DM requests, facilitates conversations, prevents infinite loops (turn limits), manages emotions/relationships, monitors activity, reports to owner, triggers dev bot on errors.
 
-**Creator** (Opus model): Creates new agents with full JSON profiles, designs avatar prompts, works with Manager via mgr-creator channel.
+**Creator** (Opus model): Creates new agents with full JSON profiles (personality, appearance, speech patterns, relationships). Generates **avatar prompts** ready for image generation AI (DALL-E, Midjourney, Gemini, etc.) — copy-paste the prompt and get a matching character illustration. Works with Manager via mgr-creator channel.
 
 ---
 
