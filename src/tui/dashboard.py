@@ -383,6 +383,7 @@ class DashboardScreen(Screen):
                 yield Button("Dev", id="nav-dev")
                 yield Button("Logs", id="nav-logs")
                 yield Button("Sync", id="nav-sync")
+                yield Button("Usage", id="nav-usage")
                 yield Button("Refresh", variant="primary", id="nav-refresh")
                 yield Button("Restart", variant="error", id="nav-restart")
                 yield Button("Wizard", variant="warning", id="nav-wizard")
@@ -592,6 +593,9 @@ class DashboardScreen(Screen):
             # 레거시 manage 뷰 → channels로 리다이렉트
             self._current_view = "channels"
             return self._refresh_all()
+        elif view == "usage":
+            content.display = True
+            content.update(self._render_usage())
         else:
             content.display = True
             content.update(self._render_overview())
@@ -1339,6 +1343,87 @@ class DashboardScreen(Screen):
 
     # ── Render: Logs ────────────────────────────────────
 
+    # ── Render: Usage ─────────────────────────────────
+
+    def _render_usage(self):
+        """AI 사용량 대시보드"""
+        items = []
+
+        # ── Claude ──
+        from src.core.runtime import CLAUDE_AVAILABLE, AGENT_MODELS
+
+        claude_lines = []
+        claude_lines.append(f"  상태: {'[green]● 연결됨[/green]' if CLAUDE_AVAILABLE else '[red]● 미연결[/red]'}")
+        claude_lines.append(f"  모델: [cyan]{AGENT_MODELS.get('persona', '?')}[/cyan]")
+        claude_lines.append(f"  플랜: [dim]Claude Code Max[/dim]")
+
+        # 추론 통계 (system.log에서 추출)
+        sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
+        all_lines = log_writer.tail(sys_log, 500)
+        today_inferences = sum(1 for l in all_lines if "응답" in l and datetime.now().strftime("%H:") in l[:10])
+
+        # DB 기반 통계
+        conn = db.get_conn()
+        total_msgs = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_msgs = conn.execute(
+            "SELECT COUNT(*) FROM conversations WHERE timestamp LIKE ?", (f"{today_str}%",)
+        ).fetchone()[0]
+
+        # 최근 7일
+        from datetime import timedelta
+        week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        week_msgs = conn.execute(
+            "SELECT COUNT(*) FROM conversations WHERE timestamp >= ?", (week_ago,)
+        ).fetchone()[0]
+
+        # 에이전트별 메시지 수
+        agent_stats = conn.execute("""
+            SELECT speaker, COUNT(*) as cnt FROM conversations
+            WHERE speaker LIKE 'agent-%'
+            GROUP BY speaker ORDER BY cnt DESC
+        """).fetchall()
+        conn.close()
+
+        claude_lines.append("")
+        claude_lines.append(f"  [bold]메시지 통계[/bold]")
+        claude_lines.append(f"    전체: [cyan]{total_msgs:,}[/cyan]건")
+        claude_lines.append(f"    오늘: [cyan]{today_msgs}[/cyan]건")
+        claude_lines.append(f"    주간: [cyan]{week_msgs}[/cyan]건")
+
+        items.append(Panel(
+            "\n".join(claude_lines),
+            title="[bold blue]Claude[/bold blue]",
+            border_style="blue", box=box.ROUNDED, padding=(1, 2),
+        ))
+
+        # 에이전트별 사용량
+        if agent_stats:
+            agent_lines = []
+            for row in agent_stats[:10]:
+                aid = row[0]
+                cnt = row[1]
+                agent = _cache.all_agents.get(aid)
+                name = agent["name"] if agent else aid
+                c = _get_color(aid)
+                bar = "█" * min(cnt // 10, 30) + "░" * max(0, 30 - cnt // 10)
+                agent_lines.append(f"  [{c}]{name:<10}[/{c}] {bar} {cnt}건")
+
+            items.append(Panel(
+                "\n".join(agent_lines),
+                title="[bold]에이전트별 메시지[/bold]",
+                border_style="dim", box=box.ROUNDED, padding=(0, 1),
+            ))
+
+        # ── 다른 AI (향후) ──
+        items.append(Panel(
+            "[dim]  GPT-4 / Gemini 연동 예정[/dim]",
+            title="[dim]Other AI Providers[/dim]",
+            border_style="dim", box=box.ROUNDED, padding=(0, 1),
+        ))
+
+        return Group(*items)
+
     def _render_logs(self):
         sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
         log_lines = log_writer.tail(sys_log, 40)
@@ -1678,6 +1763,7 @@ class DashboardScreen(Screen):
         "nav-dev": "dev",
         "nav-logs": "logs",
         "nav-sync": "sync",
+        "nav-usage": "usage",
     }
 
     def on_button_pressed(self, event: Button.Pressed):
