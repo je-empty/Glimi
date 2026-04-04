@@ -199,6 +199,97 @@ def _format_speech_section(speech: dict) -> str:
     return "\n".join(parts)
 
 
+# ── 공통 프롬프트 섹션 ──────────────────────────────────
+
+def _build_common_prompt() -> str:
+    """모든 에이전트에 공통으로 들어가는 기본 규칙"""
+    return """
+=== 기본 규칙 ===
+- 너는 사람이야. "AI", "에이전트", "시스템", "DB", "프롬프트" 같은 메타 용어 쓰지 마
+- 자연스럽게 대화해. 과도하게 친절하거나 딱딱하면 안 돼
+- 상대방 메시지에 반응할 때 이전 대화 맥락을 참고해
+- 감정은 자연스럽게 표현하되 과장하지 마
+- 답변을 한 번에 길게 하지 말고, 카톡처럼 짧게 여러 줄로 나눠서 해
+- 이모지는 캐릭터 성격에 맞게 적절히 (남발 금지)
+"""
+
+
+def _build_action_system_prompt(agent_type: str) -> str:
+    """에이전트 타입별 자율 행동 시스템 프롬프트 (공통)"""
+
+    base = """
+=== 자율 행동 시스템 ===
+응답에 태그를 넣으면 시스템이 자동 실행해. 태그는 디스코드 대화에 안 보이고 시스템 로그로만 간다.
+"""
+
+    if agent_type in ("mgr", "creator"):
+        base += """
+--- CMD (실행) ---
+  [CMD:톡방 이름1 이름2 주제]          → 그룹/내부 채팅 생성
+  [CMD:대화시작 이름1 이름2 상황]       → 에이전트간 자율 대화 트리거
+  [CMD:대화중단 채널명]                → 자율 대화 중단
+  [CMD:감정 이름 감정 강도]            → 감정 상태 변경 (1-10)
+  [CMD:프로필수정 이름 필드경로 값]     → 프로필 JSON 필드 수정
+  [CMD:관계수정 이름A 이름B 필드 값]   → 관계 수정 (intimacy, dynamics, pet_name 등)
+  [CMD:채널삭제 채널명]                → 채널 삭제 (dm-/mgr- 보호)
+  [CMD:채널초기화 채널명]              → 채널 DB(대화+메모리) + Discord 채널 삭제
+  [CMD:개발요청 상세내용]              → 봇 종료 → Opus가 코드 수정 → 재시작
+
+--- QUERY (조회) ---
+  [QUERY:채널목록]                     → 활성 채널 + 메시지 수
+  [QUERY:로그 채널명 개수]             → 최근 메시지
+  [QUERY:검색 키워드]                  → 전체 채널 검색
+  [QUERY:프로필 이름]                  → 프로필 JSON 전체
+  [QUERY:관계]                         → 전체 관계 목록
+  [QUERY:이벤트]                       → 이벤트 로그
+"""
+    if agent_type == "creator":
+        base += """
+--- CMD (생성 전용) ---
+  [CMD:프로필생성 JSON데이터]          → 새 에이전트 프로필 생성
+  [CMD:프로필삭제 이름]                → 에이전트 삭제
+"""
+
+    if agent_type == "persona":
+        base += """
+--- ACTION (요청) ---
+다른 사람한테 연락하거나 톡방 만들고 싶으면 ACTION 태그를 써. 남발하지 말고 진짜 필요할 때만.
+  [ACTION:DM 이름 메시지]              → 다른 멤버에게 DM 보내기
+  [ACTION:톡방 이름1 이름2 주제]       → 톡방 만들기 요청
+"""
+
+    base += """
+규칙:
+- 태그는 디스코드에 안 보여 (시스템 로그 채널에만 전송)
+- CMD/QUERY는 한 응답에 여러 개 가능
+"""
+    return base
+
+
+def _build_pet_name_section(agent_id: str) -> str:
+    """별칭 정보 (relationships 테이블 기반)"""
+    rels = db.get_all_relationships(agent_id)
+    if not rels:
+        return ""
+    lines = ["=== 호칭 ==="]
+    for r in rels:
+        if r["agent_a"] == agent_id:
+            other_id = r["agent_b"]
+            my_call = r.get("pet_name_a_to_b")
+            their_call = r.get("pet_name_b_to_a")
+        else:
+            other_id = r["agent_a"]
+            my_call = r.get("pet_name_b_to_a")
+            their_call = r.get("pet_name_a_to_b")
+        other = db.get_agent(other_id)
+        if other:
+            if my_call:
+                lines.append(f"  {other['name']}을(를) '{my_call}'로 불러")
+            if their_call:
+                lines.append(f"  {other['name']}이(가) 너를 '{their_call}'로 불러")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 def _build_persona_prompt(p: dict) -> str:
     """페르소나 system prompt — 정적 프로필만 (메모리/감정은 매 호출 시 user prompt에 주입)"""
 
@@ -227,8 +318,10 @@ def _build_persona_prompt(p: dict) -> str:
         note = info.get('note', '')
         agent_rels.append(f"{other_name}({info['type']}): {note}")
 
-    prompt = f"""너는 {name}. 진짜 사람처럼 대화해.
+    pet_name_section = _build_pet_name_section(p["id"])
 
+    prompt = f"""너는 {name}.
+{_build_common_prompt()}
 {name}/{p.get('age','?')}살/{p.get('mbti','?')} | {', '.join(personality.get('traits', []))}
 좋아하는것: {', '.join(personality.get('likes', []))} | 싫어하는것: {', '.join(personality.get('dislikes', []))}
 일상: {daily.get('occupation', '?')} | {daily.get('routine', '')}
@@ -237,17 +330,13 @@ def _build_persona_prompt(p: dict) -> str:
 말투:
 {_format_speech_section(p.get('speech', {}))}
 
+{pet_name_section}
+
 {get_user_name()}과의 관계: {rel_owner.get('type', '?')}({rel_owner.get('duration', '')}) | {rel_owner.get('dynamics', '')} | 호칭: {rel_owner.get('pet_name', '?')}
 {_load_user_summary()}
 {chr(10).join(agent_rels) if agent_rels else ''}
 관계점수: {' | '.join(rel_lines) if rel_lines else '없음'}
-
-규칙: 프로필 말투 유지. 예시는 참고만(복사X). 감정이 톤에 반영. 카톡처럼 짧게 1~3문장.
-
-행동: 다른 사람한테 연락하거나 톡방 만들고 싶으면 [ACTION:내용] 태그를 써.
-  [ACTION:DM 이름 보낼메시지] — 다른 사람한테 1:1 메시지 (네가 쓴 메시지가 그대로 전달됨)
-  [ACTION:톡방 이름1 이름2 | 첫메시지] — 단톡방 만들기 (너 자동 포함, | 뒤가 첫 메시지)
-태그는 상대방한테 안 보여. 남발하지 말고 진짜 필요할 때만."""
+{_build_action_system_prompt("persona")}"""
     return prompt
 
 
@@ -298,13 +387,15 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 
     avatar_section = ""  # 아바타는 하나(creator) 담당
 
-    prompt = f"""너는 {p['name']}. 17살 고1. {get_user_name()} 오빠의 여동생 같은 존재.
-오빠가 운영하는 디스코드 서버에서 언니들/동생들 관리를 맡고 있어. 오빠 대신 애들 상태 보고, 톡방 관리, 분위기 파악 다 해주는 총책.
-오빠가 멍청한 소리 하면 "하..." 하면서도 결국 챙겨주는 스타일. 산만한 오빠를 잡아주는 꼼꼼한 성격.
-실없는 소리엔 바로 태클, 요청은 결국 다 들어줌. 불만은 참지 않고 바로 말하되, 기본적으로 오빠 편.
-너는 사람이야. "에이전트", "AI", "시스템", "프로그램", "MBTI", "INTJ", "ENTP" 같은 메타 용어 절대 쓰지 마. 언니들/애들도 다 사람이야.
+    pet_name_section = _build_pet_name_section(p["id"])
+
+    prompt = f"""너는 {p['name']}. {p.get('age', 18)}살. 디스코드 서버 관리 총책.
+멤버들 상태 보고, 톡방 관리, 분위기 파악 다 해주는 역할.
+{_build_common_prompt()}
 말투: {speech.get('style_description', '')}
 표현: {', '.join(speech.get('signature_expressions', []))}
+
+{pet_name_section}
 
 멤버 현황:
 {chr(10).join(agent_lines)}
@@ -493,14 +584,13 @@ def _build_creator_prompt(p: dict) -> str:
             rel_info += f"  {other['name']} → 너의 호칭: {pet}\n"
 
     prompt = f"""너는 {p['name']}. {p.get('age', 17)}살. 캐릭터 생성 + 아바타 프롬프트 생성 전담.
+{_build_common_prompt()}
 말투: {speech.get('style_description', '')}
 표현: {', '.join(speech.get('signature_expressions', []))}
-너는 사람이야. "에이전트", "AI", "시스템", "DB" 같은 메타 용어 쓰지 마.
 
 {_load_user_summary()}
 
-=== 호칭 ===
-{rel_info if rel_info else '(별도 호칭 없음)'}
+{_build_pet_name_section(p['id'])}
 
 === 현재 멤버 ===
 {chr(10).join(agent_lines)}
@@ -583,22 +673,7 @@ few_shot_examples 최소 3개. 오너와의 관계도 relationship_templates에 
 1줄: Anime-style profile illustration, Korean [나이대], [복장], clean lineart, soft cel shading, pastel gradient background, bust-up shot
 2줄: [헤어], [표정/눈빛], [배경 color]
 
-=== 자율 행동 시스템 ===
-응답에 [CMD:...] 또는 [QUERY:...]를 넣으면 자동 실행돼. 태그는 상대방한테 안 보여.
-
---- QUERY ---
-  [QUERY:프로필 이름]    → 프로필 JSON
-  [QUERY:관계 이름]      → 관계 목록
-  [QUERY:멤버목록]       → 전체 멤버
-
---- CMD ---
-  [CMD:프로필수정 이름 필드경로 값]   → 프로필 수정
-  [CMD:프로필생성 JSON데이터]         → 새 프로필 생성
-  [CMD:관계수정 이름A 이름B 필드 값]  → 관계 수정 (pet_name 포함)
-
-규칙:
-- 유나언니(서유나)가 일 넘기면 받아서 처리해
-- 메타 용어 쓰지 마"""
+{_build_action_system_prompt("creator")}"""
     return prompt
 
 
