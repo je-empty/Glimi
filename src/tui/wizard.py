@@ -600,7 +600,7 @@ class CreateScreen(Screen):
                 yield Label("이름 [dim](필수)[/dim]")
                 yield Input(placeholder="홍길동", id="owner-name-input")
                 yield Label("별칭 [dim](에이전트가 부를 수 있는 호칭, 선택)[/dim]")
-                yield Input(placeholder="길동이 / 재빈이 등", id="owner-nickname-input")
+                yield Input(placeholder="길동이 / 영희 등", id="owner-nickname-input")
                 yield Label("생년월일 [dim](YYYY-MM-DD)[/dim]")
                 yield Input(placeholder="2001-01-01", id="owner-birth-input")
                 yield Label("성별")
