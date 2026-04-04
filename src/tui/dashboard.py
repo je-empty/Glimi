@@ -1683,7 +1683,7 @@ class DashboardScreen(Screen):
                 self._sync_selected_channels.discard(ch_name)
             else:
                 self._sync_selected_channels.add(ch_name)
-            self._update_sync_select_list()
+            self._update_sync_list()
 
     @work(thread=True)
     def _do_delete_channel(self, ch_name):
@@ -2146,9 +2146,9 @@ class DashboardScreen(Screen):
             status_lines.append(f"  DB: [cyan]{total_db:,}[/cyan]건  │  Discord: [cyan]{total_discord:,}[/cyan]건")
             status_lines.append("")
             if db_only > 0:
-                status_lines.append(f"  [yellow]⬆ DB → Discord 필요: {db_only:,}건[/yellow] (디코에 누락)")
+                status_lines.append(f"  [yellow]⬆ {db_only:,}건 디코 누락[/yellow] → 싱크 시 복원")
             if dc_only > 0:
-                status_lines.append(f"  [cyan]⬇ Discord → DB 필요: {dc_only:,}건[/cyan] (DB에 누락)")
+                status_lines.append(f"  [red]⬇ {dc_only:,}건 디코 초과[/red] → 싱크 시 삭제 (DB 기준)")
             if db_only == 0 and dc_only == 0:
                 status_lines.append(f"  [green]✓ 완전 동기화 상태[/green]")
             status_lines.append(f"  [dim]동기화 완료: {synced_ch}개 채널[/dim]")
@@ -2215,13 +2215,11 @@ class DashboardScreen(Screen):
                 diff = db_count - dc_count
 
                 if diff > 0:
-                    # DB에 더 많음 → 디코에 보내야
-                    status = f"  [yellow bold]⬆{diff}건 디코 누락[/yellow bold]"
+                    status = f"  [yellow bold]⬆{diff}건 디코 누락[/yellow bold] → 복원"
                 elif diff < 0:
-                    # 디코에 더 많음 → DB에 넣어야
-                    status = f"  [cyan bold]⬇{-diff}건 DB 누락[/cyan bold]"
+                    status = f"  [red bold]⬇{-diff}건 디코 초과[/red bold] → 삭제"
                 else:
-                    status = f"  [green]✓ 동기화됨[/green]"
+                    status = f"  [green]✓[/green]"
 
                 count_str = f"DB:{db_count} DC:{dc_count}{status}"
             else:
