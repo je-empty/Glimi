@@ -1585,8 +1585,10 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
     if not guild:
         return
 
-    # 유나가 ACTION을 쓴 경우 → CMD로 직접 실행
-    if agent_id == MGR_ID:
+    # 시스템 에이전트(Manager/Creator)가 ACTION을 쓴 경우 → 직접 실행
+    agent_info = db.get_agent(agent_id)
+    is_system_agent = agent_info and agent_info.get("type") in ("mgr", "creator")
+    if is_system_agent:
         parts = action_str.split(None, 1)
         action_type = parts[0].upper() if parts else ""
         action_args = parts[1] if len(parts) > 1 else ""
@@ -1609,19 +1611,23 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
                         target = a
                         break
                 if target:
-                    ch_name = f"internal-dm-{runtime.get_agent_name(MGR_ID)}-{target_name}"
-                    target_ch = discord.utils.get(guild.text_channels, name=ch_name)
+                    sender_name = runtime.get_agent_name(agent_id)
+                    ch_name = f"internal-dm-{sender_name}-{target_name}"
+                    # 역방향 채널도 체크
+                    alt_ch_name = f"internal-dm-{target_name}-{sender_name}"
+                    target_ch = (discord.utils.get(guild.text_channels, name=ch_name)
+                                 or discord.utils.get(guild.text_channels, name=alt_ch_name))
                     if not target_ch:
-                        # 채널 없으면 생성
                         from src.bot.core import _get_category_for_channel, _ensure_category
                         cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
                         target_ch = await guild.create_text_channel(ch_name, category=cat)
-                    await send_as_agent(target_ch, MGR_ID, message)
-                    log_writer.system(f"✓ Manager ACTION DM: → {target_name}")
-                    await send_as_agent(mgr_ch, MGR_ID, f"{target_name}한테 DM 보냈어")
+                    await send_as_agent(target_ch, agent_id, message)
+                    log_writer.system(f"✓ {sender_name} ACTION DM: → {target_name}")
+                    await send_as_agent(mgr_ch, agent_id, f"{target_name}한테 DM 보냈어")
             return
 
-        log_writer.system(f"Manager ACTION 직접 실행: {action_type} {action_args[:50]}")
+        sender_name = runtime.get_agent_name(agent_id)
+        log_writer.system(f"{sender_name} ACTION 직접 실행: {action_type} {action_args[:50]}")
         return
 
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)

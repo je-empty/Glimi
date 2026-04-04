@@ -66,26 +66,33 @@ async def on_message(message: discord.Message):
 
 async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
     """메시지 하나를 처리해서 전송. mgr/creator면 CMD/QUERY, 페르소나면 ACTION 파싱."""
-    # mgr(유나) + creator(하나) 모두 CMD/QUERY 권한
+    from src.bot.core import send_system_log
     is_creator = (load_profile(agent_id) or {}).get("type") == "creator"
     has_cmd_access = is_mgr or is_creator
-    if has_cmd_access and guild and (CMD_PATTERN.search(msg) or QUERY_PATTERN.search(msg)):
-        # CMD/QUERY 태그 → 파싱 실행
+    has_cmd = CMD_PATTERN.search(msg) or QUERY_PATTERN.search(msg)
+    has_action = ACTION_PATTERN.search(msg)
+
+    if has_cmd_access and guild and has_cmd:
+        # CMD/QUERY — 대화에 안 보이고 시스템 로그로
+        agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
+        await send_system_log(f"[{agent_name}] {msg}", force=True)
         cleaned = await parse_and_execute_actions(channel, [msg], guild)
+        # CMD/QUERY 실행 후 남은 순수 텍스트만 대화에 표시
         for resp in cleaned:
             for part in _split_for_chat(resp):
                 await send_as_agent(channel, agent_id, part)
                 sent_msgs.append(part)
-    elif not is_mgr and ACTION_PATTERN.search(msg):
-        # 페르소나: ACTION 태그 → 유나에게 승인 요청
+    elif has_action:
+        # ACTION — 대화에 안 보이고 시스템 로그로
+        agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
+        await send_system_log(f"[{agent_name}] {msg}", force=True)
         actions = ACTION_PATTERN.findall(msg)
         clean_text = ACTION_PATTERN.sub('', msg).strip()
-        # 액션 제거된 텍스트는 디스코드에 전송
+        # ACTION 제거 후 순수 텍스트만 대화에
         if clean_text:
             for part in _split_for_chat(clean_text):
                 await send_as_agent(channel, agent_id, part)
                 sent_msgs.append(part)
-        # 각 액션을 유나에게 전달
         for action in actions:
             await _forward_action_to_yuna(agent_id, action.strip(), guild)
     else:
