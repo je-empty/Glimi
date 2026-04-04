@@ -31,6 +31,7 @@ class LoadingOverlay(ModalScreen):
     }
     LoadingOverlay #loading-log {
         height: auto;
+        min-height: 5;
         max-height: 30;
         padding: 0 1;
     }
@@ -45,7 +46,7 @@ class LoadingOverlay(ModalScreen):
         with Vertical():
             yield LoadingIndicator()
             yield Static(self._message, id="loading-message", markup=True)
-            yield Static("", id="loading-log", markup=True)
+            yield Static("[dim]대기 중...[/dim]", id="loading-log", markup=True)
 
     def update_message(self, message: str):
         try:

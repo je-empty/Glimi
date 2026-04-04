@@ -1659,18 +1659,9 @@ class DashboardScreen(Screen):
         "nav-logs": "logs",
     }
 
-    # Sync, Wizard는 액션 버튼 — Enter/클릭으로만 실행
-    _ACTION_BUTTONS = {"nav-refresh", "nav-restart", "nav-sync", "nav-wizard", "nav-back"}
-
     def on_button_pressed(self, event: Button.Pressed):
         """클릭 또는 Enter — 모든 버튼 처리"""
         self._handle_nav(event.button)
-
-    def on_descendant_focus(self, event):
-        """Tab 포커스 시 뷰 탭만 즉시 전환 (액션 버튼은 제외)"""
-        if isinstance(event.widget, Button):
-            if event.widget.id not in self._ACTION_BUTTONS:
-                self._handle_nav(event.widget)
 
     @on(OptionList.OptionSelected, "#agent-list")
     def on_agent_selected(self, event: OptionList.OptionSelected):
@@ -1793,7 +1784,11 @@ class DashboardScreen(Screen):
                 lines.append("\n[dim]변경 없음 — 이미 동기화 상태[/dim]")
             msg = "\n".join(lines)
         else:
-            # 에러 다이얼로그 표시
+            # 에러 — 봇 재시작 후 에러 다이얼로그
+            if bot_was_running:
+                on_progress("봇 재시작...")
+                self.app.call_from_thread(self._start_bot)
+                time.sleep(3)
             error_msg = result.get("error", "알 수 없는 오류")
             error_detail = "\n".join(result.get("errors", [])[:10])
             self.app.call_from_thread(self.app.pop_screen)  # 로딩 닫기
@@ -1880,8 +1875,8 @@ class DashboardScreen(Screen):
         try:
             widget = self._loading.query_one("#loading-log", Static)
             widget.update(text)
-        except Exception:
-            pass
+        except Exception as e:
+            log_writer.error(f"로딩 로그 업데이트 실패: {e}")
 
     def _show_sync_result(self, msg: str):
         self._current_view = "overview"
