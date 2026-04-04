@@ -1739,6 +1739,16 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
             target_name = dm_parts[0] if dm_parts else ""
             message = dm_parts[1] if len(dm_parts) > 1 else ""
             if target_name and message:
+                # 시스템 에이전트는 시스템 에이전트끼리만 DM (persona에게 직접 DM 차단)
+                target_agent = None
+                for a in db.list_agents():
+                    if a["name"] == target_name:
+                        target_agent = a
+                        break
+                if target_agent and target_agent.get("type") == "persona":
+                    log_writer.system(f"⚠ {runtime.get_agent_name(agent_id)} → {target_name} DM 차단 (시스템→persona 불가)")
+                    await send_as_agent(mgr_ch, agent_id, f"{target_name}한테는 직접 DM 보낼 수 없어")
+                    return
                 # 대상 에이전트의 internal-dm 채널에서 메시지 전송
                 from src.core.profile import load_profile
                 target = None

@@ -244,24 +244,21 @@ def _build_action_system_prompt(agent_type: str) -> str:
 
 --- ACTION (DM 보내기) ---
   [ACTION:{"type":"DM","target":"이름","message":"메시지"}]
-
-레거시 형식(스페이스 구분)도 호환되지만 JSON 권장.
+  ※ 시스템 에이전트끼리만 DM 가능. 멤버에게 직접 DM 보내지 마.
 """
     if agent_type == "creator":
         base += """
 --- CMD (생성 전용) ---
   [CMD:{"cmd":"프로필생성","profile":{...전체 JSON...}}]
   [CMD:{"cmd":"프로필삭제","name":"이름"}]
-
-※ ACTION DM은 Manager(서유나)에게만 보낼 것. 다른 멤버에게 직접 DM 보내지 마.
 """
 
     if agent_type == "persona":
         base += """
 --- ACTION (요청) ---
-다른 사람한테 연락하거나 톡방 만들고 싶으면 ACTION 태그를 써. 남발하지 말고 진짜 필요할 때만.
+다른 사람한테 연락하거나 DM 만들고 싶으면 ACTION 태그를 써. 남발하지 말고 진짜 필요할 때만.
   [ACTION:{"type":"DM","target":"이름","message":"보낼 메시지"}]
-  [ACTION:{"type":"톡방","names":["이름1","이름2"],"topic":"주제"}]
+  [ACTION:{"type":"멀티DM","names":["이름1","이름2"],"topic":"주제"}]
 """
 
     base += """
