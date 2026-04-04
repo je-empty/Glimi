@@ -47,7 +47,7 @@ from rich import box
 
 from src import db
 from src.core.profile import load_profile, get_user_name, get_user_id
-from src.core.sync import run_sync
+from src.core.sync import run_sync, run_restore
 from src import log_writer
 from src.tui.components import LoadingOverlay, ConfirmDialog, MessageActionDialog
 
@@ -1776,7 +1776,10 @@ class DashboardScreen(Screen):
                 lines.append(f"[yellow]채널 삭제:[/yellow] {', '.join(result['channels_deleted'])}")
             if result.get("categories_deleted"):
                 lines.append(f"[yellow]카테고리 삭제:[/yellow] {', '.join(result['categories_deleted'])}")
-            lines.append(f"[cyan]메시지 동기화:[/cyan] +{result['messages_synced']}건 ({result.get('channels_scanned', 0)}개 채널 스캔)")
+            lines.append(f"[cyan]디코→DB:[/cyan] +{result['messages_synced']}건")
+            if result.get("messages_restored"):
+                lines.append(f"[green]DB→디코 복원:[/green] +{result['messages_restored']}건")
+            lines.append(f"[dim]{result.get('channels_scanned', 0)}개 채널 스캔[/dim]")
             if result.get("errors"):
                 lines.append(f"\n[yellow]경고 {len(result['errors'])}건:[/yellow]")
                 for e in result["errors"][:5]:

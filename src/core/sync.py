@@ -176,11 +176,17 @@ async def sync_community(
                     except Exception as e:
                         result["errors"].append(f"삭제 실패 ({ch.name}): {e}")
                 elif ch.category and ch.category.name != correct_cat:
+                    # 카테고리 이동 (삭제하지 않음 — 메시지 보존)
                     try:
-                        await ch.delete(reason="Chaos Sync: 카테고리 재배치")
-                        _progress(f"  재배치: {ch.name}")
+                        target_cat = discord_lib.utils.get(guild.categories, name=correct_cat)
+                        if not target_cat:
+                            target_cat = await guild.create_category(correct_cat)
+                        await ch.edit(category=target_cat)
+                        surviving[ch.name] = ch
+                        _progress(f"  이동: {ch.name} → {correct_cat}")
                     except Exception as e:
-                        result["errors"].append(f"재배치 실패 ({ch.name}): {e}")
+                        result["errors"].append(f"이동 실패 ({ch.name}): {e}")
+                        surviving[ch.name] = ch  # 실패해도 유지
                 elif ch.name not in surviving:
                     surviving[ch.name] = ch
                 else:
@@ -253,76 +259,118 @@ async def sync_community(
                     except Exception:
                         pass
 
-            # ═══ 5. 메시지 동기화 (Discord → DB) ═══
+            # ═══ 5. 양방향 메시지 동기화 ═══
             _progress("메시지 동기화 중...")
-            total_synced = 0
+            total_discord_to_db = 0
+            total_db_to_discord = 0
+
+            # 아바타 로드 함수
+            from src.bot.core import _get_avatar_bytes
 
             for ch_name, ch in surviving.items():
-                # DB 메시지 수
                 conn = db.get_conn()
                 db_count = conn.execute(
                     "SELECT COUNT(*) FROM conversations WHERE channel=?", (ch_name,)
                 ).fetchone()[0]
                 conn.close()
 
-                # 전체 메시지 가져오기 (항상 전체 — 중복은 DB에서 필터)
+                # Discord 메시지 수 확인
+                discord_count = 0
                 try:
-                    discord_msgs = await _fetch_all_messages(ch, after=None, progress_fn=_progress)
-                except discord_lib.Forbidden:
-                    _progress(f"  {ch_name}: 권한 없음 (스킵)")
-                    continue
-                except Exception as e:
-                    result["errors"].append(f"메시지 로드 실패 ({ch_name}): {e}")
-                    continue
+                    async for _ in ch.history(limit=1):
+                        discord_count = 1
+                except Exception:
+                    pass
 
-                if not discord_msgs:
-                    result["channels_scanned"] += 1
-                    continue
+                # ── Discord → DB (디코에 있고 DB에 없는 메시지) ──
+                if discord_count > 0:
+                    try:
+                        discord_msgs = await _fetch_all_messages(ch, after=None, progress_fn=_progress)
+                    except Exception as e:
+                        result["errors"].append(f"디코→DB 실패 ({ch_name}): {e}")
+                        discord_msgs = []
 
-                _progress(f"  {ch_name}: 디코 {len(discord_msgs)}개 / DB {db_count}개")
+                    if discord_msgs:
+                        conn = db.get_conn()
+                        ch_synced = 0
+                        for msg in discord_msgs:
+                            if not msg.content:
+                                continue
+                            speaker = _resolve_speaker(msg, agent_map, user_id)
+                            if not speaker:
+                                continue
+                            exists = conn.execute(
+                                "SELECT 1 FROM conversations WHERE channel=? AND speaker=? AND message=? LIMIT 1",
+                                (ch_name, speaker, msg.content),
+                            ).fetchone()
+                            if not exists:
+                                conn.execute(
+                                    "INSERT INTO conversations (channel, speaker, message, timestamp) VALUES (?, ?, ?, ?)",
+                                    (ch_name, speaker, msg.content, msg.created_at.isoformat()),
+                                )
+                                ch_synced += 1
+                        conn.commit()
+                        conn.close()
+                        total_discord_to_db += ch_synced
+                        if ch_synced:
+                            _progress(f"  {ch_name}: 디코→DB +{ch_synced}건")
 
-                # DB에 삽입 (중복 방지)
-                conn = db.get_conn()
-                ch_synced = 0
+                # ── DB → Discord (DB에 있고 디코에 없는 메시지) ──
+                if db_count > 0 and discord_count == 0:
+                    _progress(f"  {ch_name}: DB→디코 복원 중 ({db_count}건)...")
 
-                for msg in discord_msgs:
-                    if not msg.content:
-                        continue
+                    conn = db.get_conn()
+                    messages = [dict(r) for r in conn.execute(
+                        "SELECT * FROM conversations WHERE channel=? ORDER BY timestamp ASC",
+                        (ch_name,)
+                    ).fetchall()]
+                    conn.close()
 
-                    speaker = _resolve_speaker(msg, agent_map, user_id)
-                    if not speaker:
-                        continue
+                    webhooks = {}
+                    sent = 0
+                    for msg in messages:
+                        speaker_id = msg["speaker"]
+                        content = msg["message"]
 
-                    ts = msg.created_at.isoformat()
+                        if speaker_id == user_id:
+                            display_name = user_name
+                            avatar = None
+                        elif speaker_id in agents:
+                            display_name = agents[speaker_id]["name"]
+                            avatar = _get_avatar_bytes(speaker_id)
+                        else:
+                            display_name = speaker_id
+                            avatar = None
 
-                    # 중복 체크 (채널 + 발화자 + 메시지 내용 + 시간 근접)
-                    exists = conn.execute(
-                        "SELECT 1 FROM conversations WHERE channel=? AND speaker=? AND message=? LIMIT 1",
-                        (ch_name, speaker, msg.content),
-                    ).fetchone()
+                        wh_key = display_name
+                        if wh_key not in webhooks:
+                            wh_name = f"chaos-{speaker_id}" if speaker_id in agents else f"chaos-user"
+                            existing_whs = await ch.webhooks()
+                            wh = next((w for w in existing_whs if w.name == wh_name), None)
+                            if not wh:
+                                wh = await ch.create_webhook(name=wh_name, avatar=avatar)
+                            webhooks[wh_key] = wh
 
-                    if not exists:
-                        conn.execute(
-                            "INSERT INTO conversations (channel, speaker, message, timestamp) VALUES (?, ?, ?, ?)",
-                            (ch_name, speaker, msg.content, ts),
-                        )
-                        ch_synced += 1
+                        try:
+                            await webhooks[wh_key].send(content=content, username=display_name)
+                            sent += 1
+                            if sent % 5 == 0:
+                                await asyncio.sleep(1)
+                                _progress(f"  {ch_name}: {sent}/{len(messages)}건")
+                            else:
+                                await asyncio.sleep(0.3)
+                        except Exception as e:
+                            result["errors"].append(f"DB→디코 실패 ({ch_name} #{msg.get('id','')}): {e}")
+                            await asyncio.sleep(2)
 
-                conn.commit()
-                conn.close()
+                    total_db_to_discord += sent
+                    _progress(f"  {ch_name}: DB→디코 {sent}건 복원 완료")
 
-                total_synced += ch_synced
                 result["channels_scanned"] += 1
-
-                if ch_synced:
-                    _progress(f"  {ch_name}: +{ch_synced}건 동기화")
-                else:
-                    _progress(f"  {ch_name}: 변경 없음")
-
-                # rate limit 방지
                 await asyncio.sleep(0.3)
 
-            result["messages_synced"] = total_synced
+            result["messages_synced"] = total_discord_to_db
+            result["messages_restored"] = total_db_to_discord
 
             # ═══ 6. 유저 프로필 동기화 ═══
             _progress("유저 프로필 확인 중...")
@@ -374,5 +422,176 @@ def run_sync(on_progress: Optional[Callable[[str], None]] = None) -> dict:
     loop = asyncio.new_event_loop()
     try:
         return loop.run_until_complete(sync_community(on_progress))
+    finally:
+        loop.close()
+
+
+async def restore_messages(
+    on_progress: Optional[Callable[[str], None]] = None,
+) -> dict:
+    """DB → Discord: DB 메시지를 Webhook으로 디스코드에 복원"""
+    token = _get_token()
+    if not token:
+        return {"ok": False, "error": "토큰 미설정"}
+
+    result = {"ok": False, "restored": 0, "channels": 0, "errors": []}
+
+    intents = discord_lib.Intents.default()
+    intents.guilds = True
+    intents.message_content = True
+    client = discord_lib.Client(intents=intents)
+
+    def _progress(msg):
+        log_writer.system(f"[Restore] {msg}")
+        if on_progress:
+            on_progress(msg)
+
+    @client.event
+    async def on_ready():
+        try:
+            guild = client.guilds[0]
+            _progress(f"서버 연결: {guild.name}")
+
+            from src.core.profile import get_user_id, get_user_name
+
+            # 에이전트 매핑
+            agents = {a["id"]: a for a in db.list_agents()}
+            user_id = get_user_id()
+            user_name = get_user_name()
+
+            # 아바타 로드
+            from src.bot.core import _get_avatar_bytes
+
+            # chaos 채널 매핑
+            discord_channels = {}
+            for cat in guild.categories:
+                if cat.name.startswith("chaos"):
+                    for ch in cat.text_channels:
+                        discord_channels[ch.name] = ch
+
+            # DB 채널별 메시지
+            overview = db.get_channel_overview()
+            _progress(f"복원 대상: {len(overview)}개 채널")
+
+            for ch_info in overview:
+                ch_name = ch_info["channel"]
+                dc_ch = discord_channels.get(ch_name)
+                if not dc_ch:
+                    _progress(f"  {ch_name}: 디코 채널 없음 (스킵)")
+                    continue
+
+                # 디코에 이미 메시지가 있으면 스킵
+                has_msgs = False
+                async for _ in dc_ch.history(limit=1):
+                    has_msgs = True
+                    break
+                if has_msgs:
+                    _progress(f"  {ch_name}: 이미 메시지 있음 (스킵)")
+                    continue
+
+                # DB에서 전체 메시지 (시간순)
+                conn = db.get_conn()
+                messages = [dict(r) for r in conn.execute(
+                    "SELECT * FROM conversations WHERE channel=? ORDER BY timestamp ASC",
+                    (ch_name,)
+                ).fetchall()]
+                conn.close()
+
+                if not messages:
+                    continue
+
+                _progress(f"  {ch_name}: {len(messages)}건 복원 중...")
+
+                # Webhook 캐시
+                webhooks = {}
+                sent = 0
+
+                for msg in messages:
+                    speaker_id = msg["speaker"]
+                    content = msg["message"]
+                    ts = msg.get("timestamp", "")[:16]
+
+                    if speaker_id == user_id:
+                        # 유저 메시지
+                        display_name = user_name
+                        avatar = None
+                    elif speaker_id in agents:
+                        agent = agents[speaker_id]
+                        display_name = agent["name"]
+                        avatar = _get_avatar_bytes(speaker_id)
+                    else:
+                        display_name = speaker_id
+                        avatar = None
+
+                    # Webhook 가져오기/생성
+                    wh_key = display_name
+                    if wh_key not in webhooks:
+                        wh_name = f"chaos-restore-{wh_key}"
+                        # 기존 webhook 찾기
+                        existing = await dc_ch.webhooks()
+                        wh = None
+                        for w in existing:
+                            if w.name == wh_name:
+                                wh = w
+                                break
+                        if not wh:
+                            wh = await dc_ch.create_webhook(name=wh_name, avatar=avatar)
+                        webhooks[wh_key] = wh
+
+                    wh = webhooks[wh_key]
+
+                    try:
+                        await wh.send(content=content, username=display_name)
+                        sent += 1
+
+                        # rate limit 방지
+                        if sent % 5 == 0:
+                            await asyncio.sleep(1)
+                        else:
+                            await asyncio.sleep(0.3)
+
+                    except Exception as e:
+                        result["errors"].append(f"{ch_name} #{msg.get('id', '?')}: {e}")
+                        await asyncio.sleep(2)  # rate limit 대기
+
+                    if sent % 20 == 0:
+                        _progress(f"  {ch_name}: {sent}/{len(messages)}건 전송")
+
+                # 복원용 webhook 정리
+                for wh in webhooks.values():
+                    try:
+                        await wh.delete()
+                    except Exception:
+                        pass
+
+                result["restored"] += sent
+                result["channels"] += 1
+                _progress(f"  {ch_name}: {sent}건 완료")
+
+            result["ok"] = True
+            _progress(f"복원 완료 — {result['channels']}개 채널, {result['restored']}건 메시지")
+
+        except Exception as e:
+            result["error"] = str(e)
+            result["errors"].append(traceback.format_exc())
+        finally:
+            await client.close()
+
+    try:
+        await asyncio.wait_for(client.start(token), timeout=600)  # 10분
+    except (asyncio.CancelledError, asyncio.TimeoutError):
+        if not result["ok"]:
+            result["error"] = "시간 초과"
+    except Exception as e:
+        if not result["ok"]:
+            result["error"] = str(e)
+
+    return result
+
+
+def run_restore(on_progress: Optional[Callable[[str], None]] = None) -> dict:
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(restore_messages(on_progress))
     finally:
         loop.close()

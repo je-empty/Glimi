@@ -18,9 +18,9 @@ class LoadingOverlay(ModalScreen):
         background: rgba(0, 0, 0, 0.6);
     }
     LoadingOverlay > Vertical {
-        width: 50;
+        width: 70;
         height: auto;
-        max-height: 12;
+        max-height: 30;
         background: $panel;
         border: round $accent;
         padding: 1 2;
@@ -29,21 +29,24 @@ class LoadingOverlay(ModalScreen):
         text-align: center;
         padding: 1 0;
     }
-    LoadingOverlay #loading-detail {
-        text-align: center;
+    LoadingOverlay #loading-log {
+        height: auto;
+        max-height: 18;
         color: $text-muted;
+        overflow-y: auto;
     }
     """
 
     def __init__(self, message: str = "로딩 중..."):
         super().__init__()
         self._message = message
+        self._log_lines: list[str] = []
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield LoadingIndicator()
             yield Static(self._message, id="loading-message", markup=True)
-            yield Static("", id="loading-detail", markup=True)
+            yield Static("", id="loading-log", markup=True)
 
     def update_message(self, message: str):
         try:
@@ -52,8 +55,14 @@ class LoadingOverlay(ModalScreen):
             pass
 
     def update_detail(self, detail: str):
+        """진행 로그 누적 표시"""
+        self._log_lines.append(detail)
+        # 최근 15줄만 표시
+        visible = self._log_lines[-15:]
         try:
-            self.query_one("#loading-detail", Static).update(f"[dim]{detail}[/dim]")
+            self.query_one("#loading-log", Static).update(
+                "\n".join(f"[dim]{l}[/dim]" for l in visible)
+            )
         except Exception:
             pass
 
