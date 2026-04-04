@@ -223,24 +223,41 @@ async def ensure_channels(guild: discord.Guild):
     """채널 초기화. 첫 실행이면 mgr-dashboard만, 이후에는 전체 채널 보장."""
     from src import db as _db
     onboarding_done = _db.get_meta("onboarding_phase") == "complete"
-    first_run = not _db.get_meta("yuna_greeted")
+    greeted = _db.get_meta("yuna_greeted")
+
+    # DB에 대화 기록이 있으면 절대 첫 실행이 아님
+    conn = _db.get_conn()
+    has_messages = conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone() is not None
+    conn.close()
+
+    first_run = not greeted and not has_messages and not onboarding_done
 
     if first_run:
-        # 초기 세팅: 기존 glimi 채널 전부 삭제 + mgr-dashboard만 생성
-        glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
-        for cat in glimi_categories:
-            for ch in cat.text_channels:
-                try:
-                    await ch.delete(reason="Glimi 초기화: 채널 정리")
-                    log_writer.system(f"채널 삭제: {ch.name}")
-                except Exception:
-                    pass
-            if len(cat.channels) == 0:
-                try:
-                    await cat.delete()
-                    log_writer.system(f"카테고리 삭제: {cat.name}")
-                except Exception:
-                    pass
+        # 초기 세팅: 채널 정리 플래그가 있을 때만 기존 채널 삭제
+        from src import community as _comm
+        clean_flag = os.path.join(_comm.get_log_dir(), ".clean-channels")
+        should_clean = os.path.exists(clean_flag)
+
+        if should_clean:
+            glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
+            for cat in glimi_categories:
+                for ch in cat.text_channels:
+                    try:
+                        await ch.delete(reason="Glimi 초기화: 채널 정리")
+                        log_writer.system(f"채널 삭제: {ch.name}")
+                    except Exception:
+                        pass
+                if len(cat.channels) == 0:
+                    try:
+                        await cat.delete()
+                        log_writer.system(f"카테고리 삭제: {cat.name}")
+                    except Exception:
+                        pass
+            # 플래그 제거
+            try:
+                os.remove(clean_flag)
+            except FileNotFoundError:
+                pass
 
         # mgr-dashboard만 생성
         existing = {ch.name: ch for ch in guild.text_channels}

@@ -15,6 +15,7 @@ import discord
 import src.bot as _bot_state
 from src import db
 from src import log_writer
+from src import community
 from src.core.profile import (
     load_profile, list_all_profiles, get_user_name, get_user_id,
 )
@@ -1012,7 +1013,7 @@ async def yuna_edit_profile(report_channel, args_str):
     if target:
         profile = load_profile(target["id"])
         if not profile:
-            await send_as_agent(report_channel, MGR_ID, f"{agent_name} 프로필 로드 실패")
+            log_writer.system(f"[프로필] {agent_name} 프로필 로드 실패")
             return
     else:
         # 유저(오너)에서 검색
@@ -1022,7 +1023,7 @@ async def yuna_edit_profile(report_channel, args_str):
         if user:
             await _edit_user_profile(report_channel, dict(user), field_path, value)
             return
-        await send_as_agent(report_channel, MGR_ID, f"{agent_name} 찾을 수 없어")
+        log_writer.system(f"[프로필] '{agent_name}' 찾을 수 없음 (에이전트/유저 모두 미매칭)")
         return
 
     profile = load_profile(target["id"])
@@ -1052,8 +1053,7 @@ async def yuna_edit_profile(report_channel, args_str):
         log.info(f"[유나CMD] 프로필 수정: {agent_name}.{field_path} = {value}")
 
     except (KeyError, IndexError, TypeError) as e:
-        await send_as_agent(report_channel, MGR_ID,
-            f"프로필 수정 실패: {field_path} 경로가 잘못됐어 ({str(e)[:40]})")
+        log_writer.system(f"[프로필] 수정 실패: {field_path} 경로 오류 ({str(e)[:40]})")
 
 
 async def _edit_user_profile(report_channel, user: dict, field_path: str, value: str):
@@ -1075,25 +1075,33 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
         log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 
-    # JSON 필드 (예: personality.gender, speech.style)
+    # JSON 필드 — dot 있으면 하위 키, 없으면 top-level 통째로 저장
     parts = field_path.split(".", 1)
-    if parts[0] in json_fields and len(parts) == 2:
+    if parts[0] in json_fields:
         conn = db.get_conn()
-        raw = conn.execute(f"SELECT {parts[0]} FROM users WHERE id = ?", (user_id,)).fetchone()
-        blob = {}
-        if raw and raw[0]:
-            try:
-                blob = _json.loads(raw[0]) if isinstance(raw[0], str) else raw[0]
-            except Exception:
-                blob = {}
-        blob[parts[1]] = value
-        conn.execute(f"UPDATE users SET {parts[0]} = ? WHERE id = ?", (_json.dumps(blob, ensure_ascii=False), user_id))
+        if len(parts) == 2:
+            # speech.style → speech 컬럼의 {"style": value}
+            raw = conn.execute(f"SELECT {parts[0]} FROM users WHERE id = ?", (user_id,)).fetchone()
+            blob = {}
+            if raw and raw[0]:
+                try:
+                    blob = _json.loads(raw[0]) if isinstance(raw[0], str) else raw[0]
+                except Exception:
+                    blob = {}
+            blob[parts[1]] = value
+            conn.execute(f"UPDATE users SET {parts[0]} = ? WHERE id = ?", (_json.dumps(blob, ensure_ascii=False), user_id))
+        else:
+            # speech → speech 컬럼 통째로
+            if value.startswith("{"):
+                conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (value, user_id))
+            else:
+                conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (_json.dumps({"style": value}, ensure_ascii=False), user_id))
         conn.commit()
         conn.close()
         log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 
-    await send_as_agent(report_channel, MGR_ID, f"유저 프로필 필드 '{field_path}'를 찾을 수 없어")
+    log_writer.system(f"[프로필] {user_name} 필드 '{field_path}' 찾을 수 없음 (무시)")
 
 
 async def _trigger_onboarding_phase2(guild):

@@ -75,7 +75,7 @@ async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
     if has_cmd_access and guild and has_cmd:
         # CMD/QUERY — 대화에 안 보이고 시스템 로그로
         agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
-        await send_system_log(f"[{agent_name}] {msg}", force=True)
+        await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
         cleaned = await parse_and_execute_actions(channel, [msg], guild)
         # CMD/QUERY 실행 후 남은 순수 텍스트만 대화에 표시
         for resp in cleaned:
@@ -85,7 +85,7 @@ async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
     elif has_action:
         # ACTION — 대화에 안 보이고 시스템 로그로
         agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
-        await send_system_log(f"[{agent_name}] {msg}", force=True)
+        await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
         actions = ACTION_PATTERN.findall(msg)
         clean_text = ACTION_PATTERN.sub('', msg).strip()
         # ACTION 제거 후 순수 텍스트만 대화에

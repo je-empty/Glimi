@@ -20,7 +20,7 @@ from src import log_writer
 from src.core.profile import list_all_profiles, get_user_name, get_user_id
 from src.core.runtime import runtime
 from src.bot import (
-    bot, log, MGR_CHANNEL, MGR_SYSTEM_LOG, MGR_ID,
+    bot, log, MGR_CHANNEL, MGR_SYSTEM_LOG, CREATOR_CHANNEL, MGR_ID,
     _webhook_cache, _last_activity_snapshot,
     DAILY_SOCIAL_LIMIT,
     _last_log_line_count, _runtime_error_counts,
@@ -89,24 +89,77 @@ async def on_ready():
     log_writer.system("봇 준비 완료")
     log_writer.mark_bot_ready()
 
-    # 오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
     try:
+        # 온보딩 상태 검증 — 채널 기반 안전장치
+        await _verify_onboarding_state(guild)
+
+        # 오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
         await _check_owner_profile(guild)
     except Exception as e:
-        log_writer.system(f"❌ 온보딩 오류: {e}")
+        log_writer.system(f"❌ 온보딩 오류: {type(e).__name__}: {e}")
         log.error(f"[Onboarding] {e}", exc_info=True)
 
     # 유나 자율 감시 + 시스템 로그 동기화 시작
-    if not yuna_watcher.is_running():
-        yuna_watcher.start()
-    if not system_log_sync.is_running():
-        system_log_sync.start()
+    try:
+        if not yuna_watcher.is_running():
+            yuna_watcher.start()
+        if not system_log_sync.is_running():
+            system_log_sync.start()
+    except Exception as e:
+        log_writer.system(f"❌ 태스크 시작 오류: {e}")
 
     # 개발 결과 체크 (재시작 후)
     try:
         await check_dev_results()
     except Exception as e:
         log.error(f"[Dev] 결과 체크 오류: {e}")
+
+
+async def _verify_onboarding_state(guild):
+    """온보딩 완료 상태 검증 — 채널 기반 안전장치.
+    메타 플래그와 실제 채널 상태가 불일치하면 보정."""
+    from src import db as _db
+
+    phase = _db.get_meta("onboarding_phase")
+    greeted = _db.get_meta("yuna_greeted")
+
+    if not guild:
+        return
+
+    ch_names = {ch.name for ch in guild.text_channels}
+
+    # 필수 채널 3개
+    has_dashboard = MGR_CHANNEL in ch_names
+    has_system_log = MGR_SYSTEM_LOG in ch_names
+    has_creator = CREATOR_CHANNEL in ch_names
+    # 하나-유나 internal-dm
+    has_internal = any(
+        n.startswith("internal-dm-") and ("유나" in n or "하나" in n)
+        for n in ch_names
+    )
+
+    all_channels = has_dashboard and has_system_log and has_creator
+
+    if phase == "complete":
+        # 이미 완료 — 검증만
+        if not all_channels:
+            log_writer.system(f"[온보딩 검증] phase=complete이지만 채널 부족 — 채널 재생성 필요")
+        return
+
+    # DB에 대화 기록이 있으면 온보딩은 이미 지난 것
+    conn = _db.get_conn()
+    has_messages = conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone() is not None
+    conn.close()
+
+    if has_messages or all_channels:
+        # 대화 기록 또는 채널이 있으면 온보딩 완료로 보정
+        if phase != "complete":
+            _db.set_meta("onboarding_phase", "complete")
+            if not greeted:
+                _db.set_meta("yuna_greeted", "1")
+            log_writer.system("[온보딩 검증] 온보딩 완료 보정 (대화 기록/채널 존재)")
+    elif greeted:
+        log_writer.system(f"[온보딩 검증] greeted=1, phase={phase}, 채널: dashboard={has_dashboard} syslog={has_system_log} creator={has_creator}")
 
 
 async def _check_owner_profile(guild):
@@ -196,10 +249,7 @@ async def _check_owner_profile(guild):
         return
 
     info = f"이름:{name}, 나이:{age}, 성별:{gender}, 별칭:{nickname}"
-    log_writer.system(f"유나 온보딩 준비 — {'첫 인사' if first_time else '정보 요청'}")
-    log_writer.system(f"  오너 정보: {info}")
-    if missing:
-        log_writer.system(f"  누락 필드: {', '.join(missing)}")
+    log_writer.system("온보딩 준비")
     log_writer.mark_onboarding()
 
     if first_time:
@@ -242,7 +292,7 @@ async def _check_owner_profile(guild):
             f"[금지] [CMD:온보딩완료] 외의 CMD/QUERY/ACTION 태그는 이 첫 인사에서 사용하지 마."
         )
 
-    log_writer.system("유나 응답 생성 중... (Claude API 호출)")
+    log_writer.system("유나 불러오는 중...")
     await asyncio.sleep(3)
     loop = asyncio.get_event_loop()
     responses = await loop.run_in_executor(
@@ -251,7 +301,7 @@ async def _check_owner_profile(guild):
             MGR_ID, MGR_CHANNEL, prompt, log_user_message=False
         )
     )
-    log_writer.system("유나 응답 생성 완료 — 디스코드 전송 중...")
+    log_writer.system("유나가 도착했어요!")
     import re as _re
     cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
     for resp in responses:
@@ -266,7 +316,7 @@ async def _check_owner_profile(guild):
     if first_time:
         db.set_meta("yuna_greeted", "1")
 
-    log_writer.system("유나 온보딩 완료")
+    log_writer.system("온보딩 완료")
     log_writer.mark_onboarding_done()
 
 

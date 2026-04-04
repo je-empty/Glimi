@@ -10,6 +10,7 @@ Project Glimi — Interactive Dashboard TUI (Textual)
 """
 import sys
 import os
+import re as _re
 import signal
 import subprocess
 import asyncio
@@ -385,12 +386,12 @@ class DashboardScreen(Screen):
                 yield Button("Overview", variant="primary", id="nav-overview")
                 yield Button("Agents", id="nav-agents")
                 yield Button("Channels", id="nav-channels")
-                yield Button("Dev", id="nav-dev")
-                yield Button("Logs", id="nav-logs")
-                yield Button("Refresh", variant="primary", id="nav-refresh")
-                yield Button("Health", id="nav-health")
                 yield Button("Sync", id="nav-sync")
+                yield Button("Health", id="nav-health")
+                yield Button("Logs", id="nav-logs")
+                yield Button("Dev", id="nav-dev")
                 yield Button("Usage", id="nav-usage")
+                yield Button("Refresh", variant="primary", id="nav-refresh")
                 yield Button("Restart", variant="error", id="nav-restart")
                 yield Button("Wizard", variant="warning", id="nav-wizard")
             # Back 버튼 (서브페이지에서만 표시)
@@ -431,14 +432,40 @@ class DashboardScreen(Screen):
             open(_log_path, "w").close()
         except OSError:
             pass
+
+        self._check_first_run_cleanup()
         self._start_bot()
-        self._init_loading = LoadingOverlay("Discord 초기 세팅 중... (완료 전까지 디스코드를 건드리지 마세요)")
+        self._init_loading = LoadingOverlay("Discord 연결 중...")
         self.app.push_screen(self._init_loading)
         self._wait_bot_ready()
         _cache.refresh()
         self._refresh_all()
         self.set_interval(1.0, self._tick)
         self.query_one("#nav-overview", Button).focus()
+
+    def _check_first_run_cleanup(self):
+        """첫 실행 판단 + 채널 정리 플래그 설정"""
+        greeted = db.get_meta("yuna_greeted")
+        phase = db.get_meta("onboarding_phase")
+        conn = db.get_conn()
+        has_msgs = conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone() is not None
+        conn.close()
+
+        first_run = not greeted and not phase and not has_msgs
+        flag_path = os.path.join(log_writer.get_log_dir(), ".clean-channels")
+
+        if first_run:
+            # 기본: 채널 정리함
+            try:
+                open(flag_path, "w").close()
+            except OSError:
+                pass
+        else:
+            # 첫 실행 아님 — 정리 플래그 제거
+            try:
+                os.remove(flag_path)
+            except FileNotFoundError:
+                pass
 
     # ── Bot / Dev 프로세스 관리 ──────────────────────────
 
@@ -529,16 +556,23 @@ class DashboardScreen(Screen):
         for _ in range(600):  # 최대 5분 (0.5초 간격)
             _time.sleep(0.5)
 
-            # 시스템 로그 실시간 표시 (추론/응답 내용 제외)
-            if self._init_loading and os.path.exists(log_path):
+            # 시스템 로그 실시간 표시 (온보딩 단계에서는 숨김)
+            is_onboarding = phase in ("onboarding", "wait_onboarding")
+            if self._init_loading and os.path.exists(log_path) and not is_onboarding:
                 try:
                     lines = log_writer.tail(log_path, 30)
                     for line in lines[seen_lines:]:
-                        # 추론 로그, 응답 결과 필터링
-                        lower = line.lower()
-                        if any(k in lower for k in ("claude", "추론", "응답 생성 완료", "응답 생성 중")):
-                            continue
                         self.app.call_from_thread(self._init_loading.update_detail, line)
+                        # 로그 키워드로 모달 타이틀 자동 변경
+                        low = line.lower()
+                        if "채널 초기화" in line:
+                            self.app.call_from_thread(self._init_loading.update_message, "채널 세팅 중...")
+                        elif "아바타 동기화" in line:
+                            self.app.call_from_thread(self._init_loading.update_message, "아바타 불러오는 중...")
+                        elif "에이전트 활성화" in line:
+                            self.app.call_from_thread(self._init_loading.update_message, "에이전트 깨우는 중...")
+                        elif "봇 준비 완료" in line:
+                            self.app.call_from_thread(self._init_loading.update_message, "거의 다 됐어요!")
                     seen_lines = len(lines)
                 except Exception:
                     pass
@@ -549,7 +583,7 @@ class DashboardScreen(Screen):
                     phase = "onboarding"
                     self.app.call_from_thread(
                         self._init_loading.update_message,
-                        "유나 온보딩 중... (디스코드를 건드리지 마세요)"
+                        "온보딩 준비 중... (디스코드를 건드리지 마세요)"
                     )
                 elif log_writer.is_onboarding_done():
                     break
@@ -564,7 +598,7 @@ class DashboardScreen(Screen):
                     phase = "onboarding"
                     self.app.call_from_thread(
                         self._init_loading.update_message,
-                        "유나 온보딩 중... (디스코드를 건드리지 마세요)"
+                        "온보딩 준비 중... (디스코드를 건드리지 마세요)"
                     )
                 elif log_writer.is_onboarding_done() or _wait_count > 6:
                     break  # 3초(6 * 0.5) 대기 후 온보딩 없으면 진행
@@ -913,11 +947,12 @@ class DashboardScreen(Screen):
                 for l in t_lines[-4:]:
                     lines.append(f"  [dim]{_trunc(l, 70)}[/dim]")
 
-            # 최근 대화
-            recent = db.get_recent_messages(ch_name, limit=3)
+            # 최근 대화 (CMD/QUERY/ACTION 제외)
+            recent = [m for m in db.get_recent_messages(ch_name, limit=10)
+                      if not _re.search(r'\[(?:CMD|QUERY|ACTION):', m["message"] or "")][-3:]
             if recent:
                 lines.append(f"  {'─' * 50}")
-                for r in recent[-3:]:
+                for r in recent:
                     speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
                     lines.append(f"  [{c}]{speaker}[/{c}]: {_trunc(r['message'], 55)}")
 
@@ -1012,9 +1047,12 @@ class DashboardScreen(Screen):
         ch_summary = "  │  ".join(ch_lines) if ch_lines else "[dim]채널 없음[/dim]"
         items.append(Panel(ch_summary, border_style="dim", box=box.ROUNDED, padding=(0, 1)))
 
-        # 최근 대화
+        # 최근 대화 (CMD/QUERY/ACTION 태그 포함 메시지 제외)
+        _cmd_re = _re.compile(r'\[(?:CMD|QUERY|ACTION):')
         chat_lines = []
-        for r in (_cache.messages[-10:] if _cache.messages else []):
+        for r in (_cache.messages[-20:] if _cache.messages else []):
+            if _cmd_re.search(r["message"] or ""):
+                continue
             sid = r["speaker"]
             c = _get_color(sid) if sid != get_user_id() else "bright_green"
             ts = r["timestamp"][11:16] if r["timestamp"] else ""
@@ -1026,6 +1064,8 @@ class DashboardScreen(Screen):
             msg = _trunc(r["message"], 60)
             name = _speaker_name(sid)
             chat_lines.append(f"[dim]{ts} {tag}[/dim] [{c}]{name}[/{c}] {msg}")
+            if len(chat_lines) >= 10:
+                break
 
         chat_content = "\n".join(chat_lines) if chat_lines else "[dim]대화 없음[/dim]"
         items.append(Panel(
