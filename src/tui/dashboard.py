@@ -529,11 +529,15 @@ class DashboardScreen(Screen):
         for _ in range(600):  # 최대 5분 (0.5초 간격)
             _time.sleep(0.5)
 
-            # 시스템 로그 실시간 표시
+            # 시스템 로그 실시간 표시 (추론/응답 내용 제외)
             if self._init_loading and os.path.exists(log_path):
                 try:
                     lines = log_writer.tail(log_path, 30)
                     for line in lines[seen_lines:]:
+                        # 추론 로그, 응답 결과 필터링
+                        lower = line.lower()
+                        if any(k in lower for k in ("claude", "추론", "응답 생성 완료", "응답 생성 중")):
+                            continue
                         self.app.call_from_thread(self._init_loading.update_detail, line)
                     seen_lines = len(lines)
                 except Exception:

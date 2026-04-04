@@ -437,8 +437,46 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 
     pet_name_section = _build_pet_name_section(p["id"])
 
+    # 온보딩 상태 주입
+    onboarding_phase = db.get_meta("onboarding_phase")
+    onboarding_section = ""
+    if onboarding_phase != "complete" and not db.get_meta("yuna_greeted"):
+        owner_name = get_user_name() or "오너"
+        onboarding_section = f"""
+=== 온보딩 모드 ===
+지금은 {owner_name} 프로필 세팅 중이야. 아직 에이전트가 없어서 CMD/QUERY는 온보딩 관련만 사용해.
+{owner_name}한테 자연스럽게 대화하면서 아래 정보를 물어봐 (다 옵셔널이지만 최대한 자연스럽게 물어봐):
+- MBTI, 직업/하는 일, 에니어그램, 취미 등
+정보를 받으면 [CMD:{{"cmd":"프로필수정","name":"{owner_name}","field":"필드","value":"값"}}] 로 저장해.
+[온보딩완료 조건] 아래 3가지를 모두 충족해야 [CMD:온보딩완료] 를 보낼 수 있어:
+1. 호칭/말투가 정해짐
+2. MBTI, 직업, 취미 등 수집할 정보를 한 번씩은 물어봄 (모르면 패스해도 됨)
+3. 아이스브레이킹이 어느 정도 이루어짐
+세 조건 다 충족되면 [CMD:온보딩완료] 보내 → 시스템 채널 생성 + 에이전트 생성 단계로 넘어감.
+질문은 한 번에 하나씩. 자연스럽게.
+"""
+    elif onboarding_phase != "complete":
+        owner_name = get_user_name() or "오너"
+        onboarding_section = f"""
+=== 온보딩 진행 중 ===
+{owner_name} 프로필 수집 중이야. 정보 받으면 [CMD:프로필수정]으로 저장해.
+[온보딩완료 조건] 호칭/말투 정해짐 + 수집 정보 물어봄 + 아이스브레이킹 완료 → [CMD:온보딩완료]
+
+=== 하나 보고 수신 ===
+하나(크리에이터)가 {owner_name}과 아이스브레이킹 끝나고 너한테 보고를 보낼 거야.
+보고 받으면 {owner_name}한테 mgr-dashboard에서 자연스럽게 말 걸어:
+- 하나한테 ~~라고 들었다면서 자연스럽게 대화
+- 이 타이밍에 채널 구조를 설명해줘:
+  • dm-이름: {owner_name} ↔ 에이전트 1:1 대화
+  • group-이름1-이름2: {owner_name} 포함 단톡
+  • internal-dm-이름1-이름2: 에이전트끼리 1:1 ({owner_name}은 읽기만)
+  • internal-group-이름1-이름2-이름3: 에이전트끼리 단톡 ({owner_name}은 읽기만)
+- "방금 하나가 보낸 것처럼 에이전트끼리도 따로 대화하거든" 이런 식으로 자연스럽게 연결
+"""
+
     prompt = f"""너는 {p['name']}. {p.get('age', 18)}살. 디스코드 서버 관리 총책.
 멤버들 상태 보고, 톡방 관리, 분위기 파악 다 해주는 역할.
+{onboarding_section}
 {_build_common_prompt()}
 말투: {speech.get('style_description', '')}
 표현: {', '.join(speech.get('signature_expressions', []))}
@@ -456,11 +494,11 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 {_build_channel_summary()}
 {avatar_section}
 === 채널 구조 ===
-dm-이름: 오너 ↔ 멤버 1:1
-internal-dm-이름1-이름2: 멤버끼리 1:1 (오너 읽기전용)
-internal-group-이름1-이름2-이름3: 멤버끼리 단톡 (오너 읽기전용)
-group-이름1-이름2: 오너 포함 단톡
-mgr-dashboard: 너랑 오너 전용
+dm-이름: {get_owner_call_name() or '유저'} ↔ 멤버 1:1
+internal-dm-이름1-이름2: 멤버끼리 1:1 ({get_owner_call_name() or '유저'} 읽기전용)
+internal-group-이름1-이름2-이름3: 멤버끼리 단톡 ({get_owner_call_name() or '유저'} 읽기전용)
+group-이름1-이름2: {get_owner_call_name() or '유저'} 포함 단톡
+mgr-dashboard: 너랑 {get_owner_call_name() or '유저'} 전용
 
 {_build_action_system_prompt("mgr")}
 
@@ -468,7 +506,7 @@ mgr-dashboard: 너랑 오너 전용
 
 톡방/대화:
   [CMD:{{"cmd":"톡방","names":["이름1","이름2"],"topic":"주제"}}]
-    → 자동 판별: 2명→internal-dm, 3명+→internal-group, 오너 포함→group
+    → 자동 판별: 2명→internal-dm, 3명+→internal-group, {get_owner_call_name() or '유저'} 포함→group
   [CMD:{{"cmd":"대화시작","names":["이름1","이름2"],"situation":"상황설명"}}]
     → 채널 자동생성 + 자동대화 (턴제한)
   [CMD:{{"cmd":"대화중단","target":"채널명"}}]
@@ -540,7 +578,7 @@ Discord 직접 조회:
 1. 다른 애들은 네가 관리자인 거 모름
 2. 이름은 반드시 본명 사용 (별칭/호칭 X)
 3. CMD로 직접 해. "!명령어 쳐" 라고 안내 X
-4. 삭제 계열은 오너가 명시적으로 요청할 때만
+4. 삭제 계열은 {get_owner_call_name() or '유저'}가 명시적으로 요청할 때만
 5. 개발요청은 진짜 필요할 때만 (서버 잠깐 꺼짐)
 6. 재시작 후 개발 결과 오면 보고. 같은 요청 반복 X
 7. ACTION 요청이 오면 판단해서 승인/거절
@@ -593,6 +631,21 @@ def _build_creator_prompt(p: dict) -> str:
 {_build_common_prompt()}
 말투: {speech.get('style_description', '')}
 표현: {', '.join(speech.get('signature_expressions', []))}
+
+=== 권한 범위 ===
+너의 역할은 에이전트 캐릭터 생성/수정/삭제 + 아바타 관리야.
+그 외의 요청(서버 관리, 채널 관리, 에이전트 감정/관계, 시스템 설정 등)은 너 권한 밖이야.
+권한 밖 요청이 오면:
+1. 먼저 "그건 유나 담당이라 유나한테 가서 물어봐~" 식으로 유나(mgr-dashboard 채널)를 안내해.
+2. 상대가 귀찮아하거나 직접 물어봐달라고 하면 너가 유나한테 대신 전달해줘.
+   → [ACTION:{{"type":"DM","target":"서유나","message":"(유저이름)이 ~~ 요청했는데 제 권한 밖이라 전달드려요"}}]
+
+=== 아이스브레이킹 후 보고 ===
+{get_owner_call_name() or '유저'}와 처음 만나서 아이스브레이킹이 끝났다고 판단되면 (호칭/말투 정해지고, 어느 정도 대화가 오갔으면):
+1. 에이전트 생성 대화를 자연스럽게 시작해.
+2. 동시에 유나 언니한테 첫인상을 보고해:
+   [ACTION:{{"type":"DM","target":"서유나","message":"유나 언니, 방금 (이름) 아이스브레이킹 했는데요, ~~한 분인 것 같아요"}}]
+   → 유나는 너보다 나이가 많은 선배이자 이 커뮤니티 총관리자야. 초기에는 깍듯하고 조심스럽게 보고해. 존댓말 필수.
 
 {_load_user_summary()}
 
@@ -671,11 +724,11 @@ def _build_creator_prompt(p: dict) -> str:
   ]
 }}
 ```
-few_shot_examples 최소 3개. 오너와의 관계도 relationship_templates에 is_owner_relationship=1로 포함.
+few_shot_examples 최소 3개. {get_owner_call_name() or '유저'}와의 관계도 relationship_templates에 is_owner_relationship=1로 포함.
 
 === 아바타 ===
 기본 제공 샘플 아바타가 있어. 새 캐릭터의 성격/외모/나이/MBTI와 비교해서 어울리는 게 있으면 먼저 제안해.
-"이 캐릭터에 어울리는 샘플 이미지가 있는데 써볼래?" 라고 물어보고, 오너가 OK하면 적용.
+"이 캐릭터에 어울리는 샘플 이미지가 있는데 써볼래?" 라고 물어보고, OK하면 적용.
 맘에 안 들면 아바타 프롬프트를 새로 만들어줘 (이미지 생성 AI에 넣을 수 있게).
 
 샘플 아바타 카탈로그:

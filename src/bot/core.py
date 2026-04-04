@@ -220,42 +220,67 @@ async def _ensure_category(guild: discord.Guild, name: str) -> discord.CategoryC
 
 
 async def ensure_channels(guild: discord.Guild):
-    """필요한 채널이 없으면 자동 생성 (카테고리별 정리). 초기 세팅이면 기존 glimi 채널 전부 삭제 후 재생성."""
+    """채널 초기화. 첫 실행이면 mgr-dashboard만, 이후에는 전체 채널 보장."""
     from src import db as _db
-    needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
+    onboarding_done = _db.get_meta("onboarding_phase") == "complete"
     first_run = not _db.get_meta("yuna_greeted")
 
-    # glimi 카테고리 안의 기존 채널 정리
-    glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
-    for cat in glimi_categories:
-        for ch in cat.text_channels:
-            # 초기 세팅이면 전부 삭제, 아니면 불필요한 것만 삭제
-            if first_run or ch.name not in needed:
+    if first_run:
+        # 초기 세팅: 기존 glimi 채널 전부 삭제 + mgr-dashboard만 생성
+        glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
+        for cat in glimi_categories:
+            for ch in cat.text_channels:
                 try:
                     await ch.delete(reason="Glimi 초기화: 채널 정리")
                     log_writer.system(f"채널 삭제: {ch.name}")
                 except Exception:
                     pass
-        # 초기 세팅이면 빈 카테고리도 삭제
-        if first_run and len(cat.channels) == 0:
-            try:
-                await cat.delete()
-                log_writer.system(f"카테고리 삭제: {cat.name}")
-            except Exception:
-                pass
+            if len(cat.channels) == 0:
+                try:
+                    await cat.delete()
+                    log_writer.system(f"카테고리 삭제: {cat.name}")
+                except Exception:
+                    pass
 
-    # 기존 채널 목록 다시 갱신
-    existing = {ch.name: ch for ch in guild.text_channels}
-    log_writer.system(f"기존 채널 {len(existing)}개 확인, 필요 채널 {len(needed)}개")
+        # mgr-dashboard만 생성
+        existing = {ch.name: ch for ch in guild.text_channels}
+        if MGR_CHANNEL not in existing:
+            cat = await _ensure_category(guild, "glimi-mgr")
+            await guild.create_text_channel(MGR_CHANNEL, category=cat)
+            log_writer.system(f"채널 생성: {MGR_CHANNEL}")
+        log_writer.system("초기 세팅: mgr-dashboard 준비 완료")
+    else:
+        # 일반 실행: 전체 채널 보장
+        needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
+        existing = {ch.name: ch for ch in guild.text_channels}
 
-    created = []
-    for ch_name in sorted(needed):
-        if ch_name not in existing:
-            cat_name = _get_category_for_channel(ch_name)
-            category = await _ensure_category(guild, cat_name)
-            await guild.create_text_channel(ch_name, category=category)
-            created.append(ch_name)
-            log_writer.system(f"채널 생성: {ch_name}")
+        # 불필요 채널 삭제
+        glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
+        for cat in glimi_categories:
+            for ch in cat.text_channels:
+                if ch.name not in needed:
+                    try:
+                        await ch.delete(reason="Glimi: 불필요 채널 정리")
+                        log_writer.system(f"채널 삭제: {ch.name}")
+                    except Exception:
+                        pass
+
+        existing = {ch.name: ch for ch in guild.text_channels}
+        log_writer.system(f"기존 채널 {len(existing)}개, 필요 채널 {len(needed)}개")
+
+        created = []
+        for ch_name in sorted(needed):
+            if ch_name not in existing:
+                cat_name = _get_category_for_channel(ch_name)
+                category = await _ensure_category(guild, cat_name)
+                await guild.create_text_channel(ch_name, category=category)
+                created.append(ch_name)
+                log_writer.system(f"채널 생성: {ch_name}")
+
+        if created:
+            log_writer.system(f"채널 {len(created)}개 생성 완료")
+        else:
+            log_writer.system("모든 채널 이미 존재")
 
     # 카테고리 순서 정렬
     from src.core.sync import CATEGORY_ORDER
@@ -266,12 +291,19 @@ async def ensure_channels(guild: discord.Guild):
                 await cat.edit(position=i)
             except Exception:
                 pass
-
-    if created:
-        log_writer.system(f"채널 {len(created)}개 생성 완료")
-    else:
-        log_writer.system("모든 채널 이미 존재")
     log_writer.system("카테고리 정렬 완료")
+
+
+async def create_onboarding_channel(guild: discord.Guild, ch_name: str) -> discord.TextChannel:
+    """온보딩 중 단계별 채널 생성"""
+    existing = discord.utils.get(guild.text_channels, name=ch_name)
+    if existing:
+        return existing
+    cat_name = _get_category_for_channel(ch_name)
+    category = await _ensure_category(guild, cat_name)
+    ch = await guild.create_text_channel(ch_name, category=category)
+    log_writer.system(f"온보딩 채널 생성: {ch_name}")
+    return ch
 
 
 async def sync_avatars(guild: discord.Guild):

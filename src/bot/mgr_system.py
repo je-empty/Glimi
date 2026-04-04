@@ -691,6 +691,10 @@ async def execute_yuna_command(
     elif cmd == "멤버목록":
         pass  # QUERY로 처리됨
 
+    # ── 온보딩 완료 (유나가 프로필 수집 충분하다고 판단) ──
+    elif cmd == "온보딩완료":
+        await _trigger_onboarding_phase2(guild)
+
     else:
         log.warning(f"[유나CMD] 알 수 없는 명령: {cmd}")
 
@@ -1068,7 +1072,7 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
         conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (value, user_id))
         conn.commit()
         conn.close()
-        await send_as_agent(report_channel, MGR_ID, f"{user_name} 프로필 수정: {field_path} → {value}")
+        log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 
     # JSON 필드 (예: personality.gender, speech.style)
@@ -1086,10 +1090,153 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
         conn.execute(f"UPDATE users SET {parts[0]} = ? WHERE id = ?", (_json.dumps(blob, ensure_ascii=False), user_id))
         conn.commit()
         conn.close()
-        await send_as_agent(report_channel, MGR_ID, f"{user_name} 프로필 수정: {field_path} → {value}")
+        log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 
     await send_as_agent(report_channel, MGR_ID, f"유저 프로필 필드 '{field_path}'를 찾을 수 없어")
+
+
+async def _trigger_onboarding_phase2(guild):
+    """온보딩 Phase 2 트리거 — 유나가 [CMD:온보딩완료]를 보냈을 때 호출"""
+    phase = db.get_meta("onboarding_phase")
+    if phase == "complete":
+        return
+    db.set_meta("onboarding_phase", "channels_setup")
+    import asyncio
+    asyncio.get_event_loop().create_task(_onboarding_setup_channels(guild))
+
+
+async def _onboarding_setup_channels(guild):
+    """온보딩 Phase 2: 시스템 채널 생성 + 크리에이터 소개. onboarding_phase가 complete이면 실행 안 함."""
+    if db.get_meta("onboarding_phase") == "complete":
+        return
+    import asyncio
+    from src.bot.core import create_onboarding_channel, send_as_agent, _split_for_chat
+    from src.core.runtime import runtime
+
+    await asyncio.sleep(2)
+
+    # 1. mgr-system-log 생성 + 유나 설명
+    log_ch = await create_onboarding_channel(guild, MGR_SYSTEM_LOG)
+    mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
+    if mgr_ch:
+        prompt = (
+            "[상황] 오너 프로필 세팅이 끝났어. 이제 시스템 채널을 만들었어.\n"
+            f"[지시] 방금 #{MGR_SYSTEM_LOG} 채널을 만들었다고 알려줘.\n"
+            "이 채널은 시스템 로그가 올라오는 곳이라고 설명해. "
+            "에이전트들 활동, CMD 실행 결과, 봇 상태 등이 여기 기록된다고.\n"
+            "그리고 자연스럽게 '이제 에이전트를 만들어볼까?' 라고 전환해.\n"
+            "곧 크리에이터가 인사할 거라고 말해.\n"
+            "[스타일] 카톡처럼 짧게. 자연스러운 너의 말투로.\n"
+            "[금지] [CMD:...], [QUERY:...], [ACTION:...] 태그 사용 금지."
+        )
+        loop = asyncio.get_event_loop()
+        responses = await loop.run_in_executor(
+            None,
+            lambda: runtime.generate_response(MGR_ID, MGR_CHANNEL, prompt, log_user_message=False)
+        )
+        import re as _re
+        cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+        for resp in responses:
+            resp = cmd_pattern.sub('', resp).strip()
+            if not resp:
+                continue
+            for part in _split_for_chat(resp):
+                await send_as_agent(mgr_ch, MGR_ID, part)
+                await asyncio.sleep(1)
+
+    await asyncio.sleep(3)
+
+    # 2. mgr-creator 생성
+    creator_ch = await create_onboarding_channel(guild, CREATOR_CHANNEL)
+
+    await asyncio.sleep(2)
+
+    # 3. 크리에이터(하나) 인사
+    CREATOR_ID = "agent-creator-001"
+    runtime.activate_agent(CREATOR_ID)
+    creator_profile = load_profile(CREATOR_ID)
+    creator_name = creator_profile["name"] if creator_profile else "하나"
+
+    # 오너 정보 가져오기
+    conn = db.get_conn()
+    user = conn.execute("SELECT * FROM users LIMIT 1").fetchone()
+    conn.close()
+    user = dict(user) if user else {}
+    import json as _json
+    owner_name = user.get("name", "?")
+    pers = user.get("personality")
+    if isinstance(pers, str):
+        try:
+            pers = _json.loads(pers)
+        except Exception:
+            pers = {}
+    pers = pers or {}
+    owner_nickname = pers.get("nickname", "")
+    owner_age = user.get("age", "?")
+    owner_gender = pers.get("gender", "")
+    call_name = owner_nickname if owner_nickname else owner_name
+
+    # 유나가 정한 말투 정보 가져오기
+    speech_raw = user.get("speech")
+    speech_info = ""
+    if speech_raw:
+        try:
+            s = _json.loads(speech_raw) if isinstance(speech_raw, str) else speech_raw
+            speech_info = s.get("style", "")
+        except Exception:
+            pass
+
+    creator_age = creator_profile.get("age", "?") if creator_profile else "?"
+    older = int(owner_age) > int(creator_age) if str(owner_age).isdigit() and str(creator_age).isdigit() else True
+
+    creator_prompt = (
+        f"[상황] 유나가 너를 소개해줬어. 오너 정보: 이름={owner_name}, 별명={owner_nickname or '없음'}, 나이={owner_age}, 성별={owner_gender}\n"
+        f"{'유나랑은 ' + speech_info + '로 대화하기로 했대.' if speech_info else ''}\n"
+        f"[지시] 너({creator_name})는 에이전트 크리에이터야. {call_name}에게 처음 인사하는 상황이야.\n"
+        f"[포함할 내용]\n"
+        f"- 자기소개 (이름, 성격, 역할: 새 에이전트의 외모/성격/배경을 디자인해서 만들어주는 크리에이터)\n"
+        f"- 자연스럽게 아이스브레이킹 (가벼운 대화)\n"
+        f"- 어떻게 불러줄지 물어봐 (이름/별명)\n"
+        f"- 존댓말/반말 선호도 물어봐\n"
+        f"- 에이전트를 만들 준비가 되면 말해달라고 (급하지 않게)\n"
+        f"[규칙]\n"
+        f"- '오너' '오너분' 쓰지 마. {call_name} 이름이나 별명으로 불러.\n"
+        f"- {call_name}은(는) {owner_age}살. {'너보다 연상이니까 존댓말로 시작.' if older else '나이 비슷하거나 모르니까 일단 존댓말.'}\n"
+        f"- 질문 한 번에 하나씩.\n"
+        f"- 너의 나이는 굳이 말하지 마.\n"
+        f"[스타일] 카톡처럼 짧은 메시지 여러 개로. 자연스럽고 친근하게. 로봇 같은 정형화된 말투 금지.\n"
+        f"[금지] [CMD:...], [QUERY:...], [ACTION:...] 태그 사용 금지."
+    )
+
+    loop = asyncio.get_event_loop()
+    responses = await loop.run_in_executor(
+        None,
+        lambda: runtime.generate_response(CREATOR_ID, CREATOR_CHANNEL, creator_prompt, log_user_message=False)
+    )
+    import re as _re
+    cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+    if creator_ch:
+        for resp in responses:
+            resp = cmd_pattern.sub('', resp).strip()
+            if not resp:
+                continue
+            for part in _split_for_chat(resp):
+                await send_as_agent(creator_ch, CREATOR_ID, part)
+                await asyncio.sleep(1)
+
+    # 카테고리 순서 정렬
+    from src.core.sync import CATEGORY_ORDER
+    for i, cat_name in enumerate(CATEGORY_ORDER):
+        cat = discord.utils.get(guild.categories, name=cat_name)
+        if cat:
+            try:
+                await cat.edit(position=i)
+            except Exception:
+                pass
+
+    db.set_meta("onboarding_phase", "complete")
+    log_writer.system("온보딩 Phase 2 완료: 시스템 채널 + 크리에이터 인사")
 
 
 async def yuna_edit_relationship(report_channel, args_str):

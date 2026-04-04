@@ -65,13 +65,25 @@ async def on_ready():
         log_writer.system("아바타 동기화 중...")
         await sync_avatars(guild)
 
+    from src import db as _db
+    first_run = not _db.get_meta("yuna_greeted")
     profiles = list_all_profiles()
-    log_writer.system(f"에이전트 활성화 중... ({len(profiles)}명)")
-    for i, p in enumerate(profiles, 1):
-        name = p.get("name", p["id"])
-        agent_type = p.get("type", "?")
-        log_writer.system(f"  [{i}/{len(profiles)}] {name} ({agent_type}) 활성화")
-        runtime.activate_agent(p["id"])
+
+    if first_run:
+        # 초기: mgr/creator만 활성화 (페르소나는 온보딩 완료 후)
+        mgr_profiles = [p for p in profiles if p.get("type") in ("mgr", "creator")]
+        log_writer.system(f"에이전트 활성화 중... (관리자 {len(mgr_profiles)}명)")
+        for i, p in enumerate(mgr_profiles, 1):
+            name = p.get("name", p["id"])
+            log_writer.system(f"  [{i}/{len(mgr_profiles)}] {name} ({p.get('type', '?')}) 활성화")
+            runtime.activate_agent(p["id"])
+    else:
+        log_writer.system(f"에이전트 활성화 중... ({len(profiles)}명)")
+        for i, p in enumerate(profiles, 1):
+            name = p.get("name", p["id"])
+            agent_type = p.get("type", "?")
+            log_writer.system(f"  [{i}/{len(profiles)}] {name} ({agent_type}) 활성화")
+            runtime.activate_agent(p["id"])
 
     log.info("Glimi 봇 준비 완료")
     log_writer.system("봇 준비 완료")
@@ -220,9 +232,14 @@ async def _check_owner_profile(guild):
             f"- 여기가 어떤 곳인지 (AI 에이전트들이 같이 생활하면서 관계 맺는 커뮤니티)\n"
             f"- 프로필 세팅 끝나야 에이전트들과 대화 시작할 수 있다는 안내\n"
             f"- 호칭/말투 질문\n"
-            f"{'[참고] 세팅 끝나면 물어볼 정보: ' + missing_str if missing else ''}\n"
+            f"[수집할 정보] MBTI, 직업/하는 일, 에니어그램, 취미 등 — 다 옵셔널이야. "
+            f"자연스럽게 대화하면서 하나씩 물어봐. 모르겠다 하면 넘어가.\n"
+            f"{'현재 누락: ' + missing_str if missing else ''}\n"
+            f"[온보딩 완료 조건] 호칭/말투가 정해지고 기본적인 대화가 이루어졌다고 판단되면 "
+            f"[CMD:온보딩완료] 를 보내. 그러면 다음 단계(에이전트 생성)로 넘어가.\n"
+            f"모든 정보를 다 수집할 필요 없어 — 적당히 친해졌으면 온보딩완료 보내도 돼.\n"
             f"[스타일] 카톡처럼 짧은 메시지 여러 개로. 자연스럽고 친근하게. 로봇 같은 정형화된 말투 절대 금지.\n"
-            f"[금지] [CMD:...], [QUERY:...], [ACTION:...] 태그 절대 사용하지 마. 순수 대화만 해."
+            f"[금지] [CMD:온보딩완료] 외의 CMD/QUERY/ACTION 태그는 이 첫 인사에서 사용하지 마."
         )
 
     log_writer.system("유나 응답 생성 중... (Claude API 호출)")
