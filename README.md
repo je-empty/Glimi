@@ -70,9 +70,13 @@ graph TB
         subgraph chaos_dm["chaos-dm"]
             DM_A["dm-A"]
             DM_B["dm-B"]
+            DM_C["dm-C"]
         end
-        subgraph chaos_internal["chaos-internal-dm"]
-            INT_AB["internal-dm-A-B<br/>🔒 Read-only"]
+        subgraph chaos_internal_dm["chaos-internal-dm"]
+            INT_AB["internal-dm-A-B<br/>🔒 1:1 Secret"]
+        end
+        subgraph chaos_internal_group["chaos-internal-group"]
+            INT_ABC["internal-group-A-B-C<br/>🔒 Multi-DM Secret"]
         end
     end
 
@@ -91,15 +95,18 @@ graph TB
         Dash["Dashboard"]
     end
 
-    Owner -->|"DM"| DM_A & DM_B
-    Owner -.->|"spy"| INT_AB
-    DM_A & DM_B & INT_AB & Dashboard & MgrCreator --> Bot
+    Owner -->|"DM"| DM_A & DM_B & DM_C
+    Owner -.->|"spy 🔍"| INT_AB & INT_ABC
+    DM_A & DM_B & DM_C --> Bot
+    INT_AB & INT_ABC --> Bot
+    Dashboard & MgrCreator --> Bot
     Bot --> Runtime --> Memory --> DB
-    ConvEngine -->|"autonomous chat"| INT_AB
-    DevRunner -->|"fix code → restart"| Bot
+    ConvEngine -->|"autonomous"| INT_AB & INT_ABC
+    DevRunner -->|"fix → restart"| Bot
     Wizard & Dash --> Bot
 
     style INT_AB fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style INT_ABC fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
     style ConvEngine fill:#2d2d2d,stroke:#4af5a3,color:#fff
 ```
@@ -119,28 +126,34 @@ graph TB
     subgraph Personas["Persona Agents"]
         A["Agent A<br/>Personality · MBTI<br/>Speech · Emotion · Memory"]
         B["Agent B<br/>Personality · MBTI<br/>Speech · Emotion · Memory"]
-        C["Agent ...<br/>Dynamic creation"]
+        C["Agent C<br/>Personality · MBTI<br/>Speech · Emotion · Memory"]
     end
 
     Owner["👤 Owner"]
 
-    Owner <-->|"DM"| A
-    Owner <-->|"DM"| B
-    Owner -.->|"read-only"| AB_Chat
+    Owner <-->|"DM"| A & B & C
+    Owner -.->|"spy 🔍"| AB_Chat & ABC_Chat
 
-    A -->|"[ACTION] DM request"| Manager
-    B -->|"[ACTION] Multi-DM request"| Manager
-    Manager -->|"approve → create channel"| AB_Chat
+    A -->|"[ACTION]<br/>DM request"| Manager
+    C -->|"[ACTION]<br/>Multi-DM request"| Manager
+    Manager -->|"approve"| AB_Chat & ABC_Chat
 
-    A <-->|"autonomous chat"| AB_Chat["🔒 A ↔ B<br/>Secret Channel"]
-    B <-->|"autonomous chat"| AB_Chat
-    A <-->|"relationship evolution<br/>intimacy · nicknames"| B
+    A <-->|"1:1"| AB_Chat["🔒 A ↔ B<br/>Secret DM"]
+    B <-->|"1:1"| AB_Chat
 
-    Manager -->|"facilitate · monitor<br/>emotion adjust · turn limit"| A & B
-    Manager -.->|"periodic reports"| Owner
-    Creator -->|"create profile"| C
+    A <-->|""| ABC_Chat["🔒 A ↔ B ↔ C<br/>Secret Multi-DM"]
+    B <-->|""| ABC_Chat
+    C <-->|""| ABC_Chat
+
+    A <-->|"intimacy<br/>nicknames"| B
+    B <-->|"intimacy<br/>nicknames"| C
+
+    Manager -->|"facilitate · monitor<br/>turn limit"| A & B & C
+    Manager -.->|"reports"| Owner
+    Creator -->|"create"| Personas
 
     style AB_Chat fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style ABC_Chat fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
 ```

@@ -70,9 +70,13 @@ graph TB
         subgraph chaos_dm["chaos-dm"]
             DM_A["dm-A"]
             DM_B["dm-B"]
+            DM_C["dm-C"]
         end
-        subgraph chaos_internal["chaos-internal-dm"]
-            INT_AB["internal-dm-A-B<br/>🔒 읽기전용"]
+        subgraph chaos_internal_dm["chaos-internal-dm"]
+            INT_AB["internal-dm-A-B<br/>🔒 1:1 비밀"]
+        end
+        subgraph chaos_internal_group["chaos-internal-group"]
+            INT_ABC["internal-group-A-B-C<br/>🔒 멀티DM 비밀"]
         end
     end
 
@@ -91,15 +95,18 @@ graph TB
         Dash["Dashboard"]
     end
 
-    Owner -->|"DM"| DM_A & DM_B
-    Owner -.->|"엿보기"| INT_AB
-    DM_A & DM_B & INT_AB & Dashboard & MgrCreator --> Bot
+    Owner -->|"DM"| DM_A & DM_B & DM_C
+    Owner -.->|"엿보기 🔍"| INT_AB & INT_ABC
+    DM_A & DM_B & DM_C --> Bot
+    INT_AB & INT_ABC --> Bot
+    Dashboard & MgrCreator --> Bot
     Bot --> Runtime --> Memory --> DB
-    ConvEngine -->|"자율 대화"| INT_AB
+    ConvEngine -->|"자율 대화"| INT_AB & INT_ABC
     DevRunner -->|"코드 수정 → 재시작"| Bot
     Wizard & Dash --> Bot
 
     style INT_AB fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style INT_ABC fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
     style ConvEngine fill:#2d2d2d,stroke:#4af5a3,color:#fff
 ```
@@ -119,28 +126,34 @@ graph TB
     subgraph Personas["Persona Agents"]
         A["Agent A<br/>고유 성격 · MBTI<br/>말투 · 감정 · 기억"]
         B["Agent B<br/>고유 성격 · MBTI<br/>말투 · 감정 · 기억"]
-        C["Agent ...<br/>런타임 중 동적 생성"]
+        C["Agent C<br/>고유 성격 · MBTI<br/>말투 · 감정 · 기억"]
     end
 
     Owner["👤 Owner"]
 
-    Owner <-->|"DM"| A
-    Owner <-->|"DM"| B
-    Owner -.->|"읽기전용"| AB_Chat
+    Owner <-->|"DM"| A & B & C
+    Owner -.->|"엿보기 🔍"| AB_Chat & ABC_Chat
 
-    A -->|"[ACTION] DM 요청"| Manager
-    B -->|"[ACTION] 멀티DM 요청"| Manager
-    Manager -->|"승인 → 채널 생성"| AB_Chat
+    A -->|"[ACTION]<br/>DM 요청"| Manager
+    C -->|"[ACTION]<br/>멀티DM 요청"| Manager
+    Manager -->|"승인"| AB_Chat & ABC_Chat
 
-    A <-->|"자율 대화"| AB_Chat["🔒 A ↔ B<br/>비밀 채널"]
-    B <-->|"자율 대화"| AB_Chat
-    A <-->|"관계 진화<br/>친밀도·별칭"| B
+    A <-->|"1:1"| AB_Chat["🔒 A ↔ B<br/>비밀 DM"]
+    B <-->|"1:1"| AB_Chat
 
-    Manager -->|"대화 촉진·감시<br/>감정 조정·턴 제한"| A & B
-    Manager -.->|"주기적 보고"| Owner
-    Creator -->|"프로필 생성"| C
+    A <-->|""| ABC_Chat["🔒 A ↔ B ↔ C<br/>비밀 멀티DM"]
+    B <-->|""| ABC_Chat
+    C <-->|""| ABC_Chat
+
+    A <-->|"친밀도<br/>별칭"| B
+    B <-->|"친밀도<br/>별칭"| C
+
+    Manager -->|"대화 촉진·감시<br/>턴 제한"| A & B & C
+    Manager -.->|"보고"| Owner
+    Creator -->|"생성"| Personas
 
     style AB_Chat fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style ABC_Chat fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
 ```
