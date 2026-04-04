@@ -44,6 +44,8 @@ Here, agents live in a Discord server as real members. They have DMs with you, s
 - **Evolving relationships** — intimacy scores, dynamics, nicknames that change through conversations
 - **Real-time emotions** — each agent has an emotion state (1-10 intensity) that affects their responses
 - **Spy mode** — read agent private conversations in read-only `internal-*` channels
+- **Guided onboarding** — Manager walks you through profile setup, introduces Creator for agent building
+- **Supervisor system** — invisible background agents that monitor onboarding progress and nudge agents when they stall
 - **Self-healing** — Manager detects runtime errors, triggers Dev Runner (Opus) to auto-fix code and restart
 - **Runtime agent creation** — Creator agent designs new personas with full profiles + avatar prompts for image AI (DALL-E, Midjourney, Gemini)
 - **Sample avatar catalog** — pre-built character illustrations matched by personality/age/MBTI, or generate new prompts
@@ -80,11 +82,12 @@ flowchart LR
         DB[("SQLite DB")]
         Sync["🔄 Sync"]
         DevRunner["🔧 Dev Runner\n(Opus)"]
+        Supervisor["👁 Supervisors\n(Background)"]
     end
 
     subgraph Discord["Discord Channels"]
         direction TB
-        Mgr["📋 mgr-dashboard\nmgr-creator"]
+        Mgr["📋 mgr-dashboard\nmgr-creator\nmgr-system-log"]
         DM["💬 dm-A · dm-B · dm-C\n(Owner ↔ Agent)"]
         SecDM["🔒 internal-dm-A-B\n(Agent Secret 1:1)"]
         SecGrp["🔒 internal-group-A-B-C\n(Agent Secret Multi-DM)"]
@@ -98,33 +101,33 @@ flowchart LR
     Runtime <--> DB
     Sync <-->|"bidirectional"| DB & Discord
     DevRunner -->|"fix code → restart"| Bot
+    Supervisor -.->|"monitor & nudge"| Runtime
 
     style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
     style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
+    style Supervisor fill:#1a1a2e,stroke:#9a4aff,color:#fff
 ```
 
 ---
 
 ## Agent System
 
-### System Agents
-
-**🔵 Manager** — The invisible admin. Monitors all agents, approves/rejects DM requests, facilitates conversations, enforces turn limits to prevent infinite loops, manages emotions and relationships, reports status to owner, and triggers the dev bot when errors occur. Communicates with Creator via private DM channel.
-
-**🟡 Creator** (Opus model) — Designs new agent personas on request. Generates complete profile JSON (personality, appearance, speech patterns, relationships) and **avatar prompts** ready for image AI (DALL-E, Midjourney, Gemini). Can suggest matching samples from the built-in avatar catalog. Communicates only with Manager.
-
-> Persona agents don't know Manager or Creator exist. Their ACTION requests (DMs, group chats) go through an invisible approval system.
+### Agent Hierarchy
 
 ```mermaid
 flowchart TB
     Owner["👤 Owner"]
 
-    subgraph SysAgents["System Agents"]
+    subgraph Visible["Visible to Owner"]
         direction LR
-        Manager["🔵 Manager\n──────\nDM approval\nConversation control\nEmotion mgmt\nError → dev bot"]
-        Creator["🟡 Creator\n──────\nProfile design\nAvatar prompts\n(Opus model)"]
+        Manager["🔵 Manager (Yuna)\n──────\nCommunity admin\nOnboarding\nDM approval\nEmotion mgmt\nError → dev bot"]
+        Creator["🟡 Creator (Hana)\n──────\nProfile design\nAvatar prompts\nAgent creation"]
+    end
+
+    subgraph Invisible["Invisible (Background)"]
+        Supervisor["👁 Supervisors\n──────\nOnboarding watchdog\nProgress monitoring\nAgent nudging\n(uses Haiku for judgment)"]
     end
 
     subgraph Personas["Persona Agents"]
@@ -146,6 +149,9 @@ flowchart TB
     Manager -->|"monitor all"| A & B & C
     Creator -.->|"create"| Personas
 
+    Supervisor -.->|"nudge\n(inner thought)"| Manager & Creator
+    Supervisor -.->|"judge context\n(Haiku)"| Manager & Creator
+
     A & B & C -->|"ACTION request"| Manager
     Manager -->|"approve"| SecDM & SecGrp
 
@@ -159,7 +165,66 @@ flowchart TB
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
+    style Supervisor fill:#1a1a2e,stroke:#9a4aff,color:#fff
 ```
+
+### System Agents
+
+**🔵 Manager (Yuna)** — Community admin. Handles onboarding (profile collection → channel setup → Creator introduction), monitors all agents, approves/rejects DM requests, manages emotions and relationships, reports to owner, triggers dev bot on errors.
+
+**🟡 Creator (Hana)** — Designs new agent personas. Generates complete profile JSON (personality, appearance, speech patterns, relationships) and avatar prompts for image AI. Reports icebreaking results to Manager.
+
+**👁 Supervisors** — Invisible background watchers. Agents don't know they exist. Use `generate_response_force` to inject thoughts as if they're the agent's own inner voice. Currently: OnboardingSupervisor (monitors onboarding progress, uses Haiku for context judgment).
+
+> Persona agents don't know Manager, Creator, or Supervisors exist. Their ACTION requests go through an invisible approval system. Supervisor nudges feel like their own thoughts.
+
+### Onboarding Flow
+
+```mermaid
+sequenceDiagram
+    participant U as 👤 Owner
+    participant Y as 🔵 Manager (Yuna)
+    participant S as 👁 Supervisor
+    participant H as 🟡 Creator (Hana)
+
+    Note over Y: mgr-dashboard created
+
+    Y->>U: Greeting + ask honorific/speech style
+    U->>Y: Set preferences
+
+    loop Profile Collection
+        Y->>U: Ask info (MBTI, job, hobby...)
+        U->>Y: Provide info
+        Y->>Y: [CMD:프로필수정] save to DB
+        S-->>S: Monitor progress (Haiku judgment)
+        S-.->Y: Nudge if stalled (inner thought)
+    end
+
+    Y->>Y: [CMD:프로필수집완료]
+    Note over Y: Auto: create mgr-system-log
+    Y->>U: Explain system-log channel
+    Note over Y: Auto: create mgr-creator
+    Y->>U: Introduce Creator (Hana)
+
+    H->>U: Greeting + icebreaking
+    S-->>S: Monitor Hana's progress
+    H->>H: [ACTION:DM → Yuna] Report
+    Note over H: internal-dm channel created
+
+    Y->>U: "Heard from Hana..." + explain channel types
+    Y->>U: "Any questions?"
+    Y->>Y: [CMD:온보딩완료]
+    Note over S: Supervisor deactivated
+```
+
+### Agent States (Dashboard)
+
+| Icon | State | Meaning |
+|------|-------|---------|
+| 🧠 | **Thinking** | Claude inference in progress |
+| 💬 | **Speaking** | Sending messages to Discord |
+| 🟢 | **Active** | Idle, ready |
+| ⚪ | **Inactive** | Disabled |
 
 ### Agent Profiles
 
@@ -209,8 +274,8 @@ cd Glimi
 
 The Wizard walks you through everything:
 1. **Create community** — set ID, enter your profile (name, nickname, birth, gender)
-2. **Discord bot setup** — step-by-step guide with token input
-3. **Start server** → agents auto-initialize, channels auto-create
+2. **Discord bot setup** — token verification + permission check
+3. **Start server** → auto-onboarding with Manager (Yuna)
 4. **Open Dashboard** → real-time monitoring
 
 ```bash
@@ -221,17 +286,17 @@ The Wizard walks you through everything:
 
 ## Discord Channel Structure
 
-Channels are auto-organized into categories:
+Channels are auto-organized into categories and created progressively during onboarding:
 
-| Category | Channel | Purpose |
-|----------|---------|---------|
-| `glimi-mgr` | `mgr-dashboard` | Owner ↔ Manager DM |
-| | `mgr-creator` | Manager ↔ Creator DM |
-| | `mgr-system-log` | Critical system logs |
-| `glimi-dm` | `dm-{name}` | Owner ↔ Agent 1:1 DM |
-| `glimi-group` | `group-{names}` | Owner + Agents multi-DM |
-| `glimi-internal-dm` | `internal-dm-{A}-{B}` | Agent secret 1:1 DM (**owner read-only**) |
-| `glimi-internal-group` | `internal-group-{names}` | Agent secret multi-DM (**owner read-only**) |
+| Category | Channel | Created | Purpose |
+|----------|---------|---------|---------|
+| `glimi-mgr` | `mgr-dashboard` | On first boot | Owner ↔ Manager DM |
+| | `mgr-system-log` | After profile setup | System logs |
+| | `mgr-creator` | After profile setup | Owner ↔ Creator DM |
+| `glimi-dm` | `dm-{name}` | After agent creation | Owner ↔ Agent 1:1 DM |
+| `glimi-group` | `group-{names}` | On demand | Owner + Agents multi-DM |
+| `glimi-internal-dm` | `internal-dm-{A}-{B}` | On demand | Agent secret 1:1 DM (**owner read-only**) |
+| `glimi-internal-group` | `internal-group-{names}` | On demand | Agent secret multi-DM (**owner read-only**) |
 
 ---
 
@@ -241,13 +306,50 @@ Real-time monitoring via Textual TUI. Works over SSH — no GUI needed.
 
 | Tab | Function |
 |-----|----------|
-| **Overview** | Agent cards (expand when thinking), channel summary, recent messages |
-| **Agents** | Agent list → detail view (profile, live inference log, memory by channel, relationships) |
-| **Channels** | Channel list → message viewer + related memories. Edit mode (e key) for message management |
-| **Sync** | Scan Discord vs DB → select channels → bidirectional sync (DB is source of truth) |
+| **Overview** | Agent cards (expand on thinking/speaking), channel summary, recent messages |
+| **Agents** | Agent list → detail view (profile, memory by channel, relationships) |
+| **Channels** | Channel list → message viewer. Edit mode (e key) for message management |
+| **Sync** | Scan Discord vs DB → select channels → bidirectional sync |
+| **Health** | Bot process, DB, Discord connection status |
+| **Logs** | System log viewer |
+| **Dev** | Dev Runner status + output |
 | **Usage** | AI usage stats (session, weekly, per-agent breakdown) |
 
 Actions: **Refresh** · **Restart** (reload code changes) · **Wizard** (switch back, bot stays running)
+
+---
+
+## Supervisor System
+
+Supervisors are invisible background agents that monitor and intervene when needed. No agent knows they exist — nudges are injected as the agent's own inner thoughts via `generate_response_force`.
+
+```mermaid
+flowchart LR
+    Event["Agent finishes\nspeaking"]
+    Wait["Wait 15s"]
+    Check{"User\nresponded?"}
+    Judge["Haiku judges\nconversation context"]
+    Action{"Judgment"}
+    Nudge["Inject inner thought\n(generate_response_force)"]
+    Force["Force trigger\nnext phase"]
+    Skip["Do nothing"]
+
+    Event --> Wait --> Check
+    Check -->|"Yes"| Skip
+    Check -->|"No"| Judge --> Action
+    Action -->|"Stalled/Off-track"| Nudge
+    Action -->|"Conditions met"| Force
+    Action -->|"Normal progress"| Skip
+
+    style Judge fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style Nudge fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Force fill:#3a1a1a,stroke:#ff4a4a,color:#fff
+```
+
+**Current supervisors:**
+- `OnboardingSupervisor` — monitors onboarding from profile collection through Creator icebreaking. Auto-deactivates on completion.
+
+**Extensible:** Add new `Supervisor` subclass to `SUPERVISORS` list in `supervisors.py`.
 
 ---
 
@@ -280,7 +382,7 @@ The Dashboard also has an **Auto Fix** button (F key) that triggers the same flo
 
 | Component | Technology |
 |-----------|-----------|
-| **Agent Brain** | Claude Code CLI (Sonnet for personas, Opus for Creator/Dev Runner) |
+| **Agent Brain** | Claude Code CLI (Sonnet for personas/Manager, Opus for Creator/Dev Runner, Haiku for Supervisors) |
 | **Discord** | discord.py with Webhook-based per-agent avatars |
 | **Database** | SQLite per-community (conversations, memories, relationships, trash) |
 | **TUI** | Textual + Rich (Wizard, Dashboard) |
