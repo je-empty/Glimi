@@ -68,6 +68,9 @@ async def on_ready():
     log.info("Chaos 봇 준비 완료")
     log_writer.system("봇 준비 완료")
 
+    # 유저 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
+    await _check_owner_profile(guild)
+
     # 유나 자율 감시 + 시스템 로그 동기화 시작
     if not yuna_watcher.is_running():
         yuna_watcher.start()
@@ -79,6 +82,52 @@ async def on_ready():
         await check_dev_results()
     except Exception as e:
         log.error(f"[Dev] 결과 체크 오류: {e}")
+
+
+async def _check_owner_profile(guild):
+    """유저 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청"""
+    from src import db
+    from src.core.profile import get_user_name, get_user_id
+
+    user_name = get_user_name()
+    user_id = get_user_id()
+
+    # 이미 유저 정보가 있으면 스킵
+    if user_name and user_name != "유저" and user_id != "owner":
+        return
+
+    # 디코 서버 오너 정보로 기본 세팅
+    if guild:
+        owner_member = guild.owner
+        if not owner_member:
+            # 서버 오너가 아닌 경우, 봇이 아닌 첫 번째 멤버
+            for member in guild.members:
+                if not member.bot:
+                    owner_member = member
+                    break
+
+        if owner_member:
+            conn = db.get_conn()
+            existing = conn.execute("SELECT 1 FROM users").fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO users (id, name) VALUES (?, ?)",
+                    (str(owner_member.id), owner_member.display_name),
+                )
+                db.set_meta("active_user_id", str(owner_member.id))
+                conn.commit()
+                log_writer.system(f"유저 자동 등록: {owner_member.display_name} (#{owner_member.id})")
+            conn.close()
+
+            # 유나가 추가 정보 요청
+            mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
+            if mgr_ch:
+                await asyncio.sleep(3)
+                await send_as_agent(mgr_ch, MGR_ID,
+                    f"{owner_member.display_name}, 처음이네! 나한테 몇 가지 알려줘~")
+                await asyncio.sleep(1)
+                await send_as_agent(mgr_ch, MGR_ID,
+                    "나이, MBTI, 그리고 나한테 뭐라고 불러줬으면 좋겠는지 알려줘")
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────

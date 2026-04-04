@@ -1761,24 +1761,21 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
                     log_writer.system(f"✓ {sender_name} ACTION DM: → {target_name}")
                     await send_as_agent(mgr_ch, agent_id, f"{target_name}한테 DM 보냈어")
 
-                    # 대상 에이전트 응답 트리거
+                    # 자율 대화 시작 (역질문도 이어감, 턴 제한 적용)
                     actual_ch_name = target_ch.name
                     db.log_message(actual_ch_name, agent_id, message)
 
-                    async def _trigger_response():
-                        loop = asyncio.get_event_loop()
-                        responses = await loop.run_in_executor(
-                            None,
-                            lambda: runtime.generate_response(
-                                target["id"], actual_ch_name, message, log_user_message=False
-                            )
-                        )
-                        for resp in responses:
-                            for part in _split_for_chat(resp):
-                                await send_as_agent(target_ch, target["id"], part)
-                                await asyncio.sleep(0.5)
+                    async def _send_fn(ch_name, aid, msg):
+                        await send_as_agent(target_ch, aid, msg)
 
-                    asyncio.create_task(_trigger_response())
+                    asyncio.create_task(
+                        start_conversation(
+                            actual_ch_name,
+                            [agent_id, target["id"]],
+                            _send_fn,
+                            context=message,
+                        )
+                    )
             return
 
         sender_name = runtime.get_agent_name(agent_id)
