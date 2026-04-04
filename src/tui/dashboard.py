@@ -338,6 +338,11 @@ Screen {
     display: none;
 }
 
+#sync-buttons {
+    display: none;
+    margin: 0 2;
+}
+
 /* ── 기타 ── */
 .section-title {
     padding: 0 2;
@@ -557,11 +562,12 @@ class DashboardScreen(Screen):
         if view == "sync":
             content.display = True
             manage_list.display = True
-            sync_btns = self.query_one("#sync-buttons", Horizontal)
-            sync_btns.display = True
-            # Start는 스캔 후에만 활성
-            scanned = hasattr(self, '_sync_scan_data') and self._sync_scan_data
-            self.query_one("#btn-sync-start", Button).disabled = not scanned
+            try:
+                self.query_one("#sync-buttons", Horizontal).display = True
+                scanned = hasattr(self, '_sync_scan_data') and self._sync_scan_data
+                self.query_one("#btn-sync-start", Button).disabled = not scanned
+            except Exception:
+                pass
             content.update(self._render_sync_view())
             self._update_sync_list()
         elif view == "overview":
