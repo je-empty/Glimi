@@ -117,7 +117,11 @@ def _resolve_speaker(msg, agent_map: dict, user_id: str) -> Optional[str]:
 
 async def sync_community(
     on_progress: Optional[Callable[[str], None]] = None,
+    channels_filter: Optional[set[str]] = None,
 ) -> dict:
+    """
+    channels_filter: 지정하면 해당 채널만 메시지 동기화 (채널 구조는 항상 전체 싱크)
+    """
     token = _get_token()
     if not token:
         return {"ok": False, "error": "토큰 미설정"}
@@ -277,6 +281,10 @@ async def sync_community(
             from src.bot.core import _get_avatar_bytes
 
             for ch_name, ch in surviving.items():
+                # 채널 필터 적용
+                if channels_filter and ch_name not in channels_filter:
+                    continue
+
                 conn = db.get_conn()
                 db_count = conn.execute(
                     "SELECT COUNT(*) FROM conversations WHERE channel=?", (ch_name,)
@@ -363,13 +371,24 @@ async def sync_community(
                         try:
                             await webhooks[wh_key].send(content=content, username=display_name)
                             sent += 1
-                            if sent % 5 == 0:
-                                await asyncio.sleep(1)
+                            if sent % 20 == 0:
                                 _progress(f"  {ch_name}: {sent}/{len(messages)}건")
+                            await asyncio.sleep(0.5)
+                        except discord_lib.HTTPException as e:
+                            if e.status == 429:
+                                retry = getattr(e, 'retry_after', 10)
+                                _progress(f"  rate limit — {retry:.0f}초 대기")
+                                await asyncio.sleep(retry + 1)
+                                try:
+                                    await webhooks[wh_key].send(content=content, username=display_name)
+                                    sent += 1
+                                except Exception:
+                                    result["errors"].append(f"재시도 실패 ({ch_name} #{msg.get('id','')})")
                             else:
-                                await asyncio.sleep(0.3)
+                                result["errors"].append(f"DB→디코 ({ch_name}): {e}")
+                                await asyncio.sleep(2)
                         except Exception as e:
-                            result["errors"].append(f"DB→디코 실패 ({ch_name} #{msg.get('id','')}): {e}")
+                            result["errors"].append(f"DB→디코 ({ch_name} #{msg.get('id','')}): {e}")
                             await asyncio.sleep(2)
 
                     total_db_to_discord += sent
@@ -414,7 +433,7 @@ async def sync_community(
             await client.close()
 
     try:
-        await asyncio.wait_for(client.start(token), timeout=300)  # 5분 타임아웃
+        await asyncio.wait_for(client.start(token), timeout=1800)  # 30분 타임아웃
     except (asyncio.CancelledError, asyncio.TimeoutError):
         if not result["ok"]:
             result["error"] = "시간 초과"
@@ -435,10 +454,13 @@ async def sync_community(
     return result
 
 
-def run_sync(on_progress: Optional[Callable[[str], None]] = None) -> dict:
+def run_sync(
+    on_progress: Optional[Callable[[str], None]] = None,
+    channels_filter: Optional[set[str]] = None,
+) -> dict:
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(sync_community(on_progress))
+        return loop.run_until_complete(sync_community(on_progress, channels_filter))
     finally:
         loop.close()
 
