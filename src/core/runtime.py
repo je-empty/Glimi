@@ -440,13 +440,9 @@ class AgentRuntime:
             if not raw:
                 return ["..."]
 
-            # Raw CLI 출력 로깅
-            for line in raw.split("\n"):
-                line = line.strip()
-                if line:
-                    log_writer.agent_thinking(agent_id, line)
-
-            return self._parse_response(raw, agent_name=name)
+            responses = self._parse_response(raw, agent_name=name)
+            log_writer.agent_thinking(agent_id, f"메시지 {len(responses)}건 준비")
+            return responses
 
         except subprocess.TimeoutExpired:
             log_writer.system(f"❌ CLI 타임아웃 (60초)")
@@ -523,12 +519,9 @@ class AgentRuntime:
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
 
+            _msg_count = 0
             for line in process.stdout:
                 raw_line = line.rstrip("\n")
-                if raw_line.strip():
-                    # Raw CLI 출력 그대로 로깅
-                    log_writer.agent_thinking(agent_id, raw_line)
-
                 line = raw_line.strip()
                 if not line:
                     continue
@@ -555,6 +548,8 @@ class AgentRuntime:
                     seen.add(key)
 
                 messages.append(cleaned)
+                _msg_count += 1
+                log_writer.agent_thinking(agent_id, f"메시지 {_msg_count}건 준비")
                 on_message(cleaned)
 
             process.wait(timeout=60)
