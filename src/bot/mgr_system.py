@@ -56,8 +56,10 @@ async def parse_and_execute_actions(
     for resp in responses:
         cmds = CMD_PATTERN.findall(resp)
         queries = QUERY_PATTERN.findall(resp)
+        actions = ACTION_PATTERN.findall(resp)
         clean_text = CMD_PATTERN.sub('', resp)
-        clean_text = QUERY_PATTERN.sub('', clean_text).strip()
+        clean_text = QUERY_PATTERN.sub('', clean_text)
+        clean_text = ACTION_PATTERN.sub('', clean_text).strip()
 
         if queries:
             has_query = True
@@ -73,6 +75,13 @@ async def parse_and_execute_actions(
             except Exception as e:
                 log.error(f"[유나CMD] 실행 실패: {cmd_str} → {e}")
                 await send_as_agent(report_channel, MGR_ID, f"명령 실행 실패했어.. ({str(e)[:60]})")
+
+        # ACTION 처리 (유나 → 직접 실행, 페르소나 → 유나에게 전달)
+        for action in actions:
+            try:
+                await _forward_action_to_yuna(MGR_ID, action.strip(), guild)
+            except Exception as e:
+                log.error(f"[ACTION] 실행 실패: {action} → {e}")
 
         # QUERY 수집
         for q_str in queries:

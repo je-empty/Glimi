@@ -144,8 +144,14 @@ async def _get_plain_webhook(channel: discord.TextChannel) -> discord.Webhook:
 # ── 시스템 로그 ─────────────────────────────────────────
 
 
-async def send_system_log(msg: str):
-    """시스템 로그를 mgr-system-log 디코 채널에 전송"""
+# 디코 시스템 로그에 보낼 키워드 (크리티컬만)
+_DISCORD_LOG_KEYWORDS = {"❌", "ACTION", "CMD:", "개발요청", "에러", "크래시", "비정상"}
+
+
+async def send_system_log(msg: str, force: bool = False):
+    """시스템 로그를 mgr-system-log 디코 채널에 전송 (크리티컬만)"""
+    if not force and not any(kw in msg for kw in _DISCORD_LOG_KEYWORDS):
+        return
     if not bot.guilds:
         return
     guild = bot.guilds[0]
@@ -157,13 +163,13 @@ async def send_system_log(msg: str):
             pass
 
 
-def queue_system_log(msg: str):
-    """동기 코드에서 시스템 로그 디코 전송 예약"""
+def queue_system_log(msg: str, force: bool = False):
+    """동기 코드에서 시스템 로그 디코 전송 예약 (크리티컬만)"""
     log_writer.system(msg)
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            loop.create_task(send_system_log(msg))
+            loop.create_task(send_system_log(msg, force))
     except Exception:
         pass
 
