@@ -1,5 +1,5 @@
 """
-Project Chaos — Yuna Autonomous System
+Project Glimi — Yuna Autonomous System
 
 유나(agent-mgr-001)의 자율 행동 시스템.
 CMD/QUERY 태그 파싱, 실행, 개발 요청, ACTION 승인 등.
@@ -730,7 +730,7 @@ async def yuna_create_room(report_channel, args_str, guild):
         dm_name = f"dm-{participants[0]['name']}"
         dm_ch = discord.utils.get(guild.text_channels, name=dm_name)
         if not dm_ch:
-            category = discord.utils.get(guild.categories, name="chaos")
+            category = discord.utils.get(guild.categories, name="glimi")
             dm_ch = await guild.create_text_channel(dm_name, category=category or guild.text_channels[0].category)
             CHANNEL_AGENT_MAP[dm_name] = participants[0]["id"]
             AGENT_CHANNEL_MAP[participants[0]["id"]] = dm_name
@@ -763,7 +763,7 @@ async def yuna_create_room(report_channel, args_str, guild):
         await send_as_agent(report_channel, MGR_ID, f"이미 있어: #{ch_name}")
         return
 
-    category = discord.utils.get(guild.categories, name="chaos")
+    category = discord.utils.get(guild.categories, name="glimi")
     new_ch = await guild.create_text_channel(
         ch_name, category=category or guild.text_channels[0].category
     )
@@ -815,7 +815,7 @@ async def yuna_start_conversation(report_channel, args_str, guild):
     prefix = "internal-dm" if len(participants) == 2 else "internal-group"
     ch_name = f"{prefix}-{'-'.join(names)}"
 
-    category = discord.utils.get(guild.categories, name="chaos")
+    category = discord.utils.get(guild.categories, name="glimi")
     # 기존 채널 검색 (이름 순서 반대도 체크)
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
     if not target_ch and len(names) == 2:

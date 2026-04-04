@@ -1,5 +1,5 @@
 #!/bin/bash
-# Project Chaos — 터미널에서 직접 개발 요청
+# Project Glimi — 터미널에서 직접 개발 요청
 # 봇 없이 dev_runner.py를 바로 실행한다.
 #
 # 사용법:

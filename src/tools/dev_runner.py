@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Chaos — 개발자 에이전트
+Project Glimi — 개발자 에이전트
 
 Claude Code CLI(Opus)를 실행하여 프로젝트 코드를 직접 수정한다.
 CLAUDE.md는 Claude Code가 cwd에서 자동 발견하므로 별도 주입 불필요.
@@ -50,7 +50,7 @@ def run(description: str, requested_by: str = "terminal") -> dict:
                 "claude",
                 "-p", description,
                 "--append-system-prompt",
-                "너는 Project Chaos의 개발자 에이전트야. "
+                "너는 Project Glimi의 개발자 에이전트야. "
                 "코드를 읽고 수정하고 새 기능을 추가하는 역할이야. "
                 "수정 후 변경 사항을 명확히 보고해.",
                 "--output-format", "text",

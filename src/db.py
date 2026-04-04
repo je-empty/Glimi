@@ -1,5 +1,5 @@
 """
-chaos.db SQLite 데이터베이스 레이어
+community.db SQLite 데이터베이스 레이어
 """
 import sqlite3
 import json

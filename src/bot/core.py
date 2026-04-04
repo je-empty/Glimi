@@ -1,5 +1,5 @@
 """
-Project Chaos — Bot Core
+Project Glimi — Bot Core
 
 Webhook 관리, 메시지 전송, 채널 매핑, 유틸리티 함수.
 """
@@ -62,7 +62,7 @@ async def get_agent_webhook(channel: discord.TextChannel, agent_id: str) -> disc
         return _webhook_cache[cache_key]
     profile = load_profile(agent_id)
     name = profile["name"] if profile else agent_id
-    wh_name = f"chaos-{agent_id}"
+    wh_name = f"glimi-{agent_id}"
     webhooks = await channel.webhooks()
     for wh in webhooks:
         if wh.name == wh_name:
@@ -127,7 +127,7 @@ async def update_agent_webhook_avatar(channel: discord.TextChannel, agent_id: st
 
 async def _get_plain_webhook(channel: discord.TextChannel) -> discord.Webhook:
     """아바타 없는 일반 Webhook (오너 메시지 전송용)"""
-    wh_name = "chaos-plain"
+    wh_name = "glimi-plain"
     cache_key = (channel.id, wh_name)
     if cache_key in _webhook_cache:
         return _webhook_cache[cache_key]
@@ -198,16 +198,16 @@ def _build_channel_maps():
 def _get_category_for_channel(ch_name: str) -> str:
     """채널 이름 → 디스코드 카테고리 이름"""
     if ch_name.startswith("mgr"):
-        return "chaos-mgr"
+        return "glimi-mgr"
     elif ch_name.startswith("internal-group-"):
-        return "chaos-internal-group"
+        return "glimi-internal-group"
     elif ch_name.startswith("internal-dm-") or ch_name.startswith("internal-"):
-        return "chaos-internal-dm"
+        return "glimi-internal-dm"
     elif ch_name.startswith("group-"):
-        return "chaos-group"
+        return "glimi-group"
     elif ch_name.startswith("dm-"):
-        return "chaos-dm"
-    return "chaos"
+        return "glimi-dm"
+    return "glimi"
 
 
 async def _ensure_category(guild: discord.Guild, name: str) -> discord.CategoryChannel:
@@ -250,18 +250,18 @@ async def ensure_channels(guild: discord.Guild):
 
 
 async def sync_avatars(guild: discord.Guild):
-    """chaos 카테고리들 내 모든 Webhook 아바타를 로컬 이미지와 동기화"""
-    chaos_categories = [c for c in guild.categories if c.name.startswith("chaos")]
-    if not chaos_categories:
+    """glimi 카테고리들 내 모든 Webhook 아바타를 로컬 이미지와 동기화"""
+    glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
+    if not glimi_categories:
         return
     updated = 0
-    for cat in chaos_categories:
+    for cat in glimi_categories:
         for channel in cat.text_channels:
             webhooks = await channel.webhooks()
             for wh in webhooks:
-                if not wh.name.startswith("chaos-"):
+                if not wh.name.startswith("glimi-"):
                     continue
-                agent_id = wh.name.replace("chaos-", "", 1)
+                agent_id = wh.name.replace("glimi-", "", 1)
                 avatar_bytes = _get_avatar_bytes(agent_id)
                 if not avatar_bytes:
                     continue

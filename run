@@ -1,5 +1,5 @@
 #!/bin/bash
-# Project Chaos — 메인 진입점
+# Project Glimi — 메인 진입점
 #
 # ./run            → Wizard (커뮤니티 관리)
 # ./run dev        → dev 커뮤니티 대시보드 바로 실행
@@ -56,7 +56,7 @@ _cleanup
 
 # ── 실행 ──────────────────────────────────────────────
 
-echo -e "${CYAN}◈ Project Chaos${NC}"
+echo -e "${CYAN}◈ Project Glimi${NC}"
 
 if [ -z "$1" ]; then
     python -m src.tui.wizard

@@ -1,8 +1,8 @@
 #!/bin/bash
-# Project Chaos — 전체 종료
+# Project Glimi — 전체 종료
 cd "$(dirname "$0")/.."
 
-echo "Chaos 종료중..."
+echo "Glimi 종료중..."
 pkill -f "src.discord_bot" 2>/dev/null
 pkill -f "src.tui.dashboard" 2>/dev/null
 pkill -f "src.tools.dev_runner" 2>/dev/null

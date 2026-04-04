@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Chaos — Discord Bot (Entry Point)
+Project Glimi — Discord Bot (Entry Point)
 
 에이전트들과 디스코드에서 대화하는 중계 봇
 

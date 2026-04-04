@@ -1,5 +1,5 @@
 """
-Project Chaos — Bot 공유 상태 및 인스턴스
+Project Glimi — Bot 공유 상태 및 인스턴스
 
 모든 bot 하위 모듈이 공유하는 상태, 상수, bot 인스턴스.
 """
@@ -31,7 +31,7 @@ logging.basicConfig(
 )
 logging.getLogger("discord").setLevel(logging.WARNING)
 logging.getLogger("discord.http").setLevel(logging.WARNING)
-log = logging.getLogger("chaos")
+log = logging.getLogger("glimi")
 
 # ── Bot 인스턴스 ──────────────────────────────────────
 

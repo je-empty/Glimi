@@ -1,5 +1,5 @@
 [project]
-name = "chaos"
+name = "glimi"
 version = "0.1.0"
 description = "Claude Agent 기반 소셜 시뮬레이션 시스템"
 requires-python = ">=3.11"
@@ -12,5 +12,5 @@ dependencies = [
 ]
 
 [project.scripts]
-chaos-cli = "src.cli:main"
-chaos-bot = "src.discord_bot:main"
+glimi-cli = "src.cli:main"
+glimi-bot = "src.discord_bot:main"

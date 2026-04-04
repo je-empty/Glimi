@@ -1,5 +1,5 @@
 """
-Project Chaos — Background Tasks, Events & Error Handling
+Project Glimi — Background Tasks, Events & Error Handling
 
 discord_bot.py에서 분리:
 - on_disconnect / on_resumed / on_ready 이벤트
@@ -65,7 +65,7 @@ async def on_ready():
     for p in list_all_profiles():
         runtime.activate_agent(p["id"])
 
-    log.info("Chaos 봇 준비 완료")
+    log.info("Glimi 봇 준비 완료")
     log_writer.system("봇 준비 완료")
 
     # 오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청

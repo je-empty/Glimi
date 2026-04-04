@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Chaos — Interactive Dashboard TUI (Textual)
+Project Glimi — Interactive Dashboard TUI (Textual)
 
 커뮤니티 대시보드: 봇 상태, 에이전트, 채널, 로그를 실시간 모니터링.
 마우스 + 키보드 모두 지원.
@@ -731,7 +731,7 @@ class DashboardScreen(Screen):
         think_s = f"[bright_yellow]🧠 {len(thinking)}[/bright_yellow]" if thinking else ""
 
         parts = [
-            f"[bright_magenta bold]◈ Chaos[/bright_magenta bold]",
+            f"[bright_magenta bold]◈ Glimi[/bright_magenta bold]",
             bot_s,
             f"[dim]{now}[/dim]",
             f"Agents: [cyan]{total}[/cyan]",
@@ -1744,10 +1744,10 @@ class DashboardScreen(Screen):
                 async def on_ready():
                     for guild in client.guilds:
                         for cat in guild.categories:
-                            if cat.name.startswith("chaos"):
+                            if cat.name.startswith("glimi"):
                                 for ch in cat.text_channels:
                                     if ch.name == ch_name:
-                                        await ch.delete(reason="Chaos DB")
+                                        await ch.delete(reason="Glimi DB")
                     await client.close()
 
                 bot_was_running = self._bot_proc and self._bot_proc.poll() is None
@@ -1924,7 +1924,7 @@ class DashboardScreen(Screen):
                     guild = client.guilds[0]
                     on_progress(f"서버: {guild.name}")
                     for cat in guild.categories:
-                        if cat.name.startswith("chaos"):
+                        if cat.name.startswith("glimi"):
                             for ch in cat.text_channels:
                                 count = 0
                                 try:
@@ -2332,7 +2332,7 @@ class DashboardScreen(Screen):
 # App
 # ══════════════════════════════════════════════════════════
 
-class ChaosDashboard(App):
+class GlimiDashboard(App):
     CSS = DASHBOARD_CSS
     BINDINGS = [
         Binding("q", "quit", "Quit", show=True),
@@ -2340,14 +2340,14 @@ class ChaosDashboard(App):
 
     def on_mount(self):
         cid = os.environ.get("CHAOS_COMMUNITY", "default")
-        self.title = f"Project Chaos — {cid}"
+        self.title = f"Project Glimi — {cid}"
         self.sub_title = ""
         self.push_screen(DashboardScreen())
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Chaos Dashboard")
+    parser = argparse.ArgumentParser(description="Glimi Dashboard")
     parser.add_argument("community_id", nargs="?", help="커뮤니티 ID")
     args = parser.parse_args()
 
@@ -2361,7 +2361,7 @@ def main():
         community.set_community(args.community_id)
 
     try:
-        result = ChaosDashboard().run()
+        result = GlimiDashboard().run()
     except Exception as e:
         import traceback
         try:

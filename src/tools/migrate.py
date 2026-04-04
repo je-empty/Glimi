@@ -6,7 +6,7 @@
   python -m src.tools.migrate
 
 용도 2: 기존 DB 업그레이드 (이전 형식 DB를 새 스키마로)
-  python -m src.tools.migrate --upgrade-db path/to/old/chaos.db
+  python -m src.tools.migrate --upgrade-db path/to/old/community.db
 """
 import json
 import os
@@ -290,7 +290,7 @@ def _verify_migration(original_states: dict):
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--upgrade-db":
         if len(sys.argv) < 3:
-            print("사용법: python -m src.tools.migrate --upgrade-db path/to/chaos.db")
+            print("사용법: python -m src.tools.migrate --upgrade-db path/to/community.db")
             sys.exit(1)
         upgrade_old_db(sys.argv[2])
     else:

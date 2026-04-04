@@ -1,5 +1,5 @@
 #!/bin/bash
-# Project Chaos — 메인 실행 래퍼
+# Project Glimi — 메인 실행 래퍼
 # 봇 실행 + 개발 요청 처리 + 자동 재시작
 #
 # 사용: ./run.sh [community_id]
@@ -22,7 +22,7 @@ if [ -n "$1" ]; then
     export CHAOS_COMMUNITY="$1"
 fi
 
-echo -e "${CYAN}◈ Project Chaos — run.sh${NC}"
+echo -e "${CYAN}◈ Project Glimi — run.sh${NC}"
 if [ -n "$CHAOS_COMMUNITY" ]; then
     echo -e "  커뮤니티: ${GREEN}${CHAOS_COMMUNITY}${NC}"
 fi
@@ -35,7 +35,7 @@ mkdir -p dev
 PID_FILE="dev/.bot.pid"
 
 cleanup() {
-    echo -e "\n${YELLOW}Chaos 종료${NC}"
+    echo -e "\n${YELLOW}Glimi 종료${NC}"
     if [ -f "$PID_FILE" ]; then
         kill "$(cat $PID_FILE)" 2>/dev/null || true
         rm -f "$PID_FILE"
@@ -62,13 +62,13 @@ while true; do
     # exit code 42 = 개발 요청
     if [ $EXIT_CODE -eq 42 ]; then
         # tmux 안이면 이 윈도우로 전환 (개발 과정 실시간 확인)
-        tmux select-window -t chaos:0 2>/dev/null || true
+        tmux select-window -t glimi:0 2>/dev/null || true
 
         echo -e "${CYAN}[run.sh] 개발자 에이전트 실행...${NC}"
         python -m src.tools.dev_runner
 
         # 개발 완료 → 모니터로 복귀
-        tmux select-window -t chaos:1 2>/dev/null || true
+        tmux select-window -t glimi:1 2>/dev/null || true
 
         echo -e "${GREEN}[run.sh] 봇 재시작${NC}"
         sleep 2

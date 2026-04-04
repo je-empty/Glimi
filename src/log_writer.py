@@ -1,5 +1,5 @@
 """
-Project Chaos — 로그 라이터
+Project Glimi — 로그 라이터
 
 로그:
   logs/system.log    — 시스템 이벤트 (유일한 로그 파일)

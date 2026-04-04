@@ -1,5 +1,5 @@
 """
-Project Chaos — 커뮤니티 컨텍스트 관리
+Project Glimi — 커뮤니티 컨텍스트 관리
 
 커뮤니티 = DB 하나 + .env 하나 + 아바타 + 로그
 communities/ 디렉토리 아래 커뮤니티별 서브디렉토리로 격리.
@@ -320,7 +320,7 @@ def main():
 
 
 def _print_usage():
-    print("Project Chaos — 커뮤니티 관리")
+    print("Project Glimi — 커뮤니티 관리")
     print()
     print("사용:")
     print("  python -m src.community list                          커뮤니티 목록")

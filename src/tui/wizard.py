@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Chaos — Community Wizard (Textual TUI)
+Project Glimi — Community Wizard (Textual TUI)
 
 커뮤니티 생성/관리/삭제, 봇 토큰 설정, 프로세스 관리,
 디스코드 채널 정리, 커뮤니티 내보내기/가져오기를 통합 관리.
@@ -141,17 +141,17 @@ async def _discord_connect(token: str, timeout: float = 12.0) -> dict:
     async def on_ready():
         guilds = []
         for g in client.guilds:
-            chaos_cat = discord_lib.utils.get(g.categories, name="chaos")
-            chaos_channels = []
-            if chaos_cat:
-                chaos_channels = [
+            glimi_cat = discord_lib.utils.get(g.categories, name="glimi")
+            glimi_channels = []
+            if glimi_cat:
+                glimi_channels = [
                     {"name": ch.name, "id": ch.id}
-                    for ch in g.text_channels if ch.category == chaos_cat
+                    for ch in g.text_channels if ch.category == glimi_cat
                 ]
             guilds.append({
                 "id": g.id, "name": g.name,
                 "member_count": g.member_count,
-                "chaos_channels": chaos_channels,
+                "glimi_channels": glimi_channels,
             })
         result.update(ok=True, bot_name=client.user.name,
                       bot_id=client.user.id, guilds=guilds)
@@ -189,15 +189,15 @@ async def _discord_delete_channels(token: str, guild_id: int, channel_ids: list[
                 ch = guild.get_channel(cid)
                 if ch:
                     try:
-                        await ch.delete(reason="Chaos Wizard")
+                        await ch.delete(reason="Glimi Wizard")
                         deleted.append(ch.name)
                     except Exception:
                         pass
-            chaos_cat = discord_lib.utils.get(guild.categories, name="chaos")
-            if chaos_cat and len(chaos_cat.channels) == 0:
+            glimi_cat = discord_lib.utils.get(guild.categories, name="glimi")
+            if glimi_cat and len(glimi_cat.channels) == 0:
                 try:
-                    await chaos_cat.delete()
-                    deleted.append("[category] chaos")
+                    await glimi_cat.delete()
+                    deleted.append("[category] glimi")
                 except Exception:
                     pass
         await client.close()
@@ -1014,8 +1014,8 @@ class ManageScreen(Screen):
             guilds = result.get("guilds", [])
             guild_info = ""
             for g in guilds:
-                ch_count = len(g.get("chaos_channels", []))
-                guild_info += f"\n  Server: {g['name']} ({g['member_count']}명, chaos채널 {ch_count}개)"
+                ch_count = len(g.get("glimi_channels", []))
+                guild_info += f"\n  Server: {g['name']} ({g['member_count']}명, glimi채널 {ch_count}개)"
             msg = f"[green]연결 성공! Bot: {result['bot_name']}[/green]{guild_info}"
         else:
             msg = f"[red]연결 실패: {result.get('error', '?')}[/red]"
@@ -1050,8 +1050,8 @@ class ManageScreen(Screen):
             lines.pop()  # "연결 중..." 제거
             if result.get("ok"):
                 for g in result.get("guilds", []):
-                    ch = len(g.get("chaos_channels", []))
-                    lines.append(f"Discord   [green]OK[/green] — {g['name']} (chaos {ch}ch)")
+                    ch = len(g.get("glimi_channels", []))
+                    lines.append(f"Discord   [green]OK[/green] — {g['name']} (glimi {ch}ch)")
             else:
                 lines.append(f"Discord   [red]{result.get('error', '?')}[/red]")
         else:
@@ -1220,7 +1220,7 @@ class ManageScreen(Screen):
                     else:
                         self._finalize_delete()
                 self.app.push_screen(
-                    ConfirmDialog("디스코드 서버의 chaos 채널도 삭제할까요?", danger=True),
+                    ConfirmDialog("디스코드 서버의 glimi 채널도 삭제할까요?", danger=True),
                     on_discord,
                 )
             else:
@@ -1252,7 +1252,7 @@ class ManageScreen(Screen):
         info = loop.run_until_complete(_discord_connect(token))
         if info.get("ok"):
             for g in info.get("guilds", []):
-                channels = g.get("chaos_channels", [])
+                channels = g.get("glimi_channels", [])
                 if channels:
                     ids = [ch["id"] for ch in channels]
                     deleted = loop.run_until_complete(_discord_delete_channels(token, g["id"], ids))
@@ -1352,13 +1352,13 @@ class DiscordScreen(Screen):
 
         lines = [f"[green]Bot: {result['bot_name']}[/green]", ""]
         for g in self._guilds:
-            channels = g.get("chaos_channels", [])
+            channels = g.get("glimi_channels", [])
             lines.append(f"[bold]{g['name']}[/bold] ({g['member_count']}명)")
             if channels:
                 for ch in channels:
                     lines.append(f"  #{ch['name']}")
             else:
-                lines.append("  [dim]chaos 채널 없음[/dim]")
+                lines.append("  [dim]glimi 채널 없음[/dim]")
             lines.append("")
 
         self.app.call_from_thread(
@@ -1371,10 +1371,10 @@ class DiscordScreen(Screen):
             menu = self.query_one("#discord-menu", OptionList)
             menu.clear_options()
             for g in self._guilds:
-                channels = g.get("chaos_channels", [])
+                channels = g.get("glimi_channels", [])
                 if channels:
                     menu.add_option(Option(
-                        f"  Delete All ({g['name']})    chaos 채널 전체 삭제",
+                        f"  Delete All ({g['name']})    glimi 채널 전체 삭제",
                         id=f"deleteall:{g['id']}",
                     ))
                     for ch in channels:
@@ -1393,13 +1393,13 @@ class DiscordScreen(Screen):
             guild_id = int(oid.split(":")[1])
             guild = next((g for g in self._guilds if g["id"] == guild_id), None)
             if guild:
-                channels = guild.get("chaos_channels", [])
+                channels = guild.get("glimi_channels", [])
                 def on_confirm(yes: bool):
                     if yes:
                         self._delete_channels(guild_id, [ch["id"] for ch in channels])
                 self.app.push_screen(
                     ConfirmDialog(
-                        f"[red]{guild['name']}의 chaos 채널 {len(channels)}개를 모두 삭제할까요?[/red]",
+                        f"[red]{guild['name']}의 glimi 채널 {len(channels)}개를 모두 삭제할까요?[/red]",
                         danger=True,
                     ),
                     on_confirm,
@@ -1689,7 +1689,7 @@ class ExportImportScreen(Screen):
                 return
             self._preview_and_apply_db(db_path)
         self.app.push_screen(
-            InputDialog("DB 파일 경로", placeholder="/path/to/chaos.db"),
+            InputDialog("DB 파일 경로", placeholder="/path/to/community.db"),
             on_path,
         )
 
@@ -1779,8 +1779,8 @@ class ExportImportScreen(Screen):
 # Wizard App
 # ══════════════════════════════════════════════════════════
 
-class ChaosWizard(App):
-    TITLE = "Project Chaos"
+class GlimiWizard(App):
+    TITLE = "Project Glimi"
     SUB_TITLE = "Community Wizard"
     CSS = WIZARD_CSS
     BINDINGS = [
@@ -1795,7 +1795,7 @@ class ChaosWizard(App):
 
 def main():
     try:
-        app = ChaosWizard()
+        app = GlimiWizard()
         result = app.run()
     except Exception as e:
         import traceback

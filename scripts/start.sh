@@ -1,5 +1,5 @@
 #!/bin/bash
-# Project Chaos — 통합 실행
+# Project Glimi — 통합 실행
 # 세팅 안 되어 있으면 자동 세팅 → 기존 프로세스 정리 → 모니터(+봇) 시작
 #
 # 실행: ./start.sh [community_id]
@@ -74,7 +74,7 @@ pkill -9 -f "src.discord_bot" 2>/dev/null
 pkill -9 -f "src.tui.dashboard" 2>/dev/null
 pkill -9 -f "src.tools.dev_runner" 2>/dev/null
 
-echo -e "${GREEN}◈ Project Chaos 시작${NC}"
+echo -e "${GREEN}◈ Project Glimi 시작${NC}"
 if [ -n "$CHAOS_COMMUNITY" ]; then
     echo -e "  커뮤니티: ${GREEN}${CHAOS_COMMUNITY}${NC}"
 fi

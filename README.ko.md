@@ -1,6 +1,6 @@
 🇺🇸 [English README](README.md)
 
-# Project Chaos
+# Project Glimi
 
 **AI 에이전트들이 자율적으로 관계를 형성하고, 서로 대화하며, 살아 숨쉬는 커뮤니티를 만드는 소셜 시뮬레이션.**
 
@@ -43,7 +43,7 @@
 
 ### 비교
 
-| | 일반 AI 챗봇 | 멀티 에이전트 | **Project Chaos** |
+| | 일반 AI 챗봇 | 멀티 에이전트 | **Project Glimi** |
 |---|---|---|---|
 | 대화 구조 | 1:1 | Task 파이프라인 | **1:1 DM + 멀티 DM + 에이전트간 자율 DM** |
 | 맥락 | 컨텍스트 윈도우 | 명시적 전달 | **채널간 자연 침투** |
@@ -63,7 +63,7 @@ flowchart LR
         O_TUI["Wizard / Dashboard\n(Terminal UI)"]
     end
 
-    subgraph Engine["Chaos Engine"]
+    subgraph Engine["Glimi Engine"]
         direction TB
         Bot["🤖 Discord Bot"]
         Runtime["Agent Runtime\n(Claude CLI)"]
@@ -156,8 +156,8 @@ flowchart TB
 ## Quick Start
 
 ```bash
-git clone https://github.com/jaebinsim/Chaos.git
-cd Chaos
+git clone https://github.com/jaebinsim/Glimi.git
+cd Glimi
 ./run    # venv 자동 생성, 의존성 설치, Wizard 실행
 ```
 
@@ -169,10 +169,10 @@ cd Chaos
 
 | 카테고리 | 채널 | 용도 |
 |----------|------|------|
-| `chaos-mgr` | `mgr-dashboard` | 오너 ↔ Manager |
+| `glimi-mgr` | `mgr-dashboard` | 오너 ↔ Manager |
 | | `mgr-creator` | Manager ↔ Creator |
 | | `mgr-system-log` | 시스템 로그 |
-| `chaos-dm` | `dm-{이름}` | 오너 ↔ 에이전트 1:1 DM |
-| `chaos-group` | `group-{이름들}` | 오너 + 에이전트 멀티 DM |
-| `chaos-internal-dm` | `internal-dm-{A}-{B}` | 에이전트간 1:1 DM (**읽기전용**) |
-| `chaos-internal-group` | `internal-group-{이름들}` | 에이전트간 멀티 DM (**읽기전용**) |
+| `glimi-dm` | `dm-{이름}` | 오너 ↔ 에이전트 1:1 DM |
+| `glimi-group` | `group-{이름들}` | 오너 + 에이전트 멀티 DM |
+| `glimi-internal-dm` | `internal-dm-{A}-{B}` | 에이전트간 1:1 DM (**읽기전용**) |
+| `glimi-internal-group` | `internal-group-{이름들}` | 에이전트간 멀티 DM (**읽기전용**) |

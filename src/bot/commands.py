@@ -1,5 +1,5 @@
 """
-Project Chaos — Bot Commands
+Project Glimi — Bot Commands
 discord_bot.py에서 추출한 @bot.command 핸들러 모음
 """
 import os
@@ -130,9 +130,9 @@ async def cmd_internal(ctx, speaker_name: str, listener_name: str, *, context: s
 
 
 @bot.command(name="도움")
-async def cmd_help_chaos(ctx):
-    """Chaos 명령어 도움말"""
-    help_text = """🌀 **Project Chaos 명령어**
+async def cmd_help_glimi(ctx):
+    """Glimi 명령어 도움말"""
+    help_text = """🌀 **Project Glimi 명령어**
 
 **채팅**: 각 dm-채널에서 그냥 메시지 보내면 됨
 **!상태** — 에이전트 감정 상태 조회
@@ -247,7 +247,7 @@ async def cmd_create_agent(ctx, *, concept: str):
 
         # 채널 생성
         guild = ctx.guild
-        category = discord.utils.get(guild.categories, name="chaos")
+        category = discord.utils.get(guild.categories, name="glimi")
         if category and not discord.utils.get(guild.text_channels, name=ch_name):
             await guild.create_text_channel(ch_name, category=category)
 
@@ -759,10 +759,10 @@ async def cmd_apply_avatars(ctx):
     guild = ctx.guild
     agents = db.list_agents()
 
-    # chaos 카테고리의 모든 채널
-    category = discord.utils.get(guild.categories, name="chaos")
+    # glimi 카테고리의 모든 채널
+    category = discord.utils.get(guild.categories, name="glimi")
     if not category:
-        await send_as_agent(ctx.channel, hana_id, "chaos 카테고리를 못 찾겠어")
+        await send_as_agent(ctx.channel, hana_id, "glimi 카테고리를 못 찾겠어")
         return
 
     channels = [ch for ch in guild.text_channels if ch.category == category]
@@ -843,7 +843,7 @@ async def cmd_create_room(ctx, *args):
 
     # 채널 생성
     guild = ctx.guild
-    category = discord.utils.get(guild.categories, name="chaos")
+    category = discord.utils.get(guild.categories, name="glimi")
     existing = discord.utils.get(guild.text_channels, name=ch_name)
 
     if existing:
@@ -931,7 +931,7 @@ async def cmd_start_convo(ctx, *args):
     # 대화할 채널 찾기 또는 생성
     ch_name = f"internal-{'-'.join(names)}"
     guild = ctx.guild
-    category = discord.utils.get(guild.categories, name="chaos")
+    category = discord.utils.get(guild.categories, name="glimi")
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
 
     if not target_ch:

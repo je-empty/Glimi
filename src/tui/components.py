@@ -1,5 +1,5 @@
 """
-Project Chaos — 공통 TUI 컴포넌트
+Project Glimi — 공통 TUI 컴포넌트
 """
 from textual import on
 from textual.binding import Binding

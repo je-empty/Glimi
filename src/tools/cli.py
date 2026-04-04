@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Chaos — CLI 테스트 인터페이스 (rich UI)
+Project Glimi — CLI 테스트 인터페이스 (rich UI)
 """
 import sys
 import os
@@ -63,7 +63,7 @@ def print_header():
 
     header = Text()
     header.append("  ◈  ", style="bright_magenta bold")
-    header.append("Project Chaos", style="bold bright_white")
+    header.append("Project Glimi", style="bold bright_white")
     header.append("  ◈", style="bright_magenta bold")
 
     console.print()
@@ -400,7 +400,7 @@ def main():
         try:
             choice = Prompt.ask("[bright_magenta]>[/bright_magenta]").strip()
         except (EOFError, KeyboardInterrupt):
-            console.print("\n  [dim]Chaos 종료[/dim]\n")
+            console.print("\n  [dim]Glimi 종료[/dim]\n")
             break
 
         if choice == "1":
@@ -430,7 +430,7 @@ def main():
             view_log()
 
         elif choice in ("q", "Q"):
-            console.print("\n  [dim]Chaos 종료[/dim]\n")
+            console.print("\n  [dim]Glimi 종료[/dim]\n")
             break
 
 

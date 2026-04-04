@@ -1,5 +1,5 @@
 """
-Project Chaos — Discord ↔ DB 동기화
+Project Glimi — Discord ↔ DB 동기화
 
 1. 채널 동기화: 불필요한 Discord 채널 삭제, 필요한 채널 생성 (카테고리별)
 2. 메시지 동기화: Discord 메시지 → DB 보충 (LLM 토큰 소모 없음, Discord API만 사용)
@@ -25,22 +25,22 @@ def _sync_error_log(msg: str):
 
 
 # 카테고리 순서
-CATEGORY_ORDER = ["chaos-mgr", "chaos-dm", "chaos-group", "chaos-internal-dm", "chaos-internal-group"]
+CATEGORY_ORDER = ["glimi-mgr", "glimi-dm", "glimi-group", "glimi-internal-dm", "glimi-internal-group"]
 
 
 def _get_category_for_channel(ch_name: str) -> str:
     """채널 이름 → 디스코드 카테고리 이름"""
     if ch_name.startswith("mgr"):
-        return "chaos-mgr"
+        return "glimi-mgr"
     elif ch_name.startswith("internal-group-"):
-        return "chaos-internal-group"
+        return "glimi-internal-group"
     elif ch_name.startswith("internal-dm-") or ch_name.startswith("internal-"):
-        return "chaos-internal-dm"
+        return "glimi-internal-dm"
     elif ch_name.startswith("group-"):
-        return "chaos-group"
+        return "glimi-group"
     elif ch_name.startswith("dm-"):
-        return "chaos-dm"
-    return "chaos"
+        return "glimi-dm"
+    return "glimi"
 
 
 def _get_token() -> Optional[str]:
@@ -57,7 +57,7 @@ def _get_token() -> Optional[str]:
 
 
 def _get_expected_channels() -> set[str]:
-    """DB 기반으로 존재해야 할 chaos 채널 목록"""
+    """DB 기반으로 존재해야 할 glimi 채널 목록"""
     channels = set()
     agents = db.list_agents()
     for a in agents:
@@ -170,20 +170,20 @@ async def sync_community(
 
             # ═══ 1. 채널 정리 ═══
             _progress("채널 정리 중...")
-            chaos_categories = [c for c in guild.categories if c.name.startswith("chaos")]
-            all_chaos_channels = []
-            for cat in chaos_categories:
+            glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
+            all_glimi_channels = []
+            for cat in glimi_categories:
                 for ch in cat.text_channels:
-                    all_chaos_channels.append(ch)
+                    all_glimi_channels.append(ch)
 
             expected = _get_expected_channels()
 
             surviving = {}
-            for ch in all_chaos_channels:
+            for ch in all_glimi_channels:
                 correct_cat = _get_category_for_channel(ch.name)
                 if ch.name not in expected:
                     try:
-                        await ch.delete(reason="Chaos Sync: 불필요")
+                        await ch.delete(reason="Glimi Sync: 불필요")
                         result["channels_deleted"].append(ch.name)
                         _progress(f"  삭제: {ch.name}")
                     except Exception as e:
@@ -204,7 +204,7 @@ async def sync_community(
                     surviving[ch.name] = ch
                 else:
                     try:
-                        await ch.delete(reason="Chaos Sync: 중복")
+                        await ch.delete(reason="Glimi Sync: 중복")
                     except Exception:
                         pass
 
@@ -224,7 +224,7 @@ async def sync_community(
                     _progress(f"  카테고리 생성: {cat_name}")
 
                 # mgr 카테고리는 특정 순서
-                if cat_name == "chaos-mgr":
+                if cat_name == "glimi-mgr":
                     needed = [ch for ch in MGR_ORDER if ch not in surviving]
 
                 for ch_name in needed:
@@ -237,7 +237,7 @@ async def sync_community(
                         result["errors"].append(f"생성 실패 ({ch_name}): {e}")
 
             # mgr 채널 순서 정렬
-            mgr_cat = discord_lib.utils.get(guild.categories, name="chaos-mgr")
+            mgr_cat = discord_lib.utils.get(guild.categories, name="glimi-mgr")
             if mgr_cat:
                 for i, name in enumerate(MGR_ORDER):
                     ch = surviving.get(name)
@@ -251,7 +251,7 @@ async def sync_community(
             # ═══ 3. 빈 카테고리 정리 ═══
             _progress("빈 카테고리 정리 중...")
             for cat in list(guild.categories):
-                if cat.name.startswith("chaos") and len(cat.text_channels) == 0 and len(cat.voice_channels) == 0:
+                if cat.name.startswith("glimi") and len(cat.text_channels) == 0 and len(cat.voice_channels) == 0:
                     try:
                         result["categories_deleted"].append(cat.name)
                         await cat.delete()
@@ -261,7 +261,7 @@ async def sync_community(
 
             # ═══ 4. 카테고리 순서 정렬 ═══
             _progress("카테고리 순서 정리 중...")
-            # 기존 non-chaos 카테고리 위치 파악
+            # 기존 non-glimi 카테고리 위치 파악
             existing_cats = {c.name: c for c in guild.categories}
             for i, cat_name in enumerate(CATEGORY_ORDER):
                 cat = existing_cats.get(cat_name)
@@ -370,7 +370,7 @@ async def sync_community(
 
                         wh_key = display_name
                         if wh_key not in webhooks:
-                            wh_name = f"chaos-{speaker_id}" if speaker_id in agents_by_id else f"chaos-user"
+                            wh_name = f"glimi-{speaker_id}" if speaker_id in agents_by_id else f"glimi-user"
                             existing_whs = await ch.webhooks()
                             wh = next((w for w in existing_whs if w.name == wh_name), None)
                             if not wh:
@@ -510,10 +510,10 @@ async def restore_messages(
             # 아바타 로드
             from src.bot.core import _get_avatar_bytes
 
-            # chaos 채널 매핑
+            # glimi 채널 매핑
             discord_channels = {}
             for cat in guild.categories:
-                if cat.name.startswith("chaos"):
+                if cat.name.startswith("glimi"):
                     for ch in cat.text_channels:
                         discord_channels[ch.name] = ch
 
@@ -574,7 +574,7 @@ async def restore_messages(
                     # Webhook 가져오기/생성
                     wh_key = display_name
                     if wh_key not in webhooks:
-                        wh_name = f"chaos-restore-{wh_key}"
+                        wh_name = f"glimi-restore-{wh_key}"
                         # 기존 webhook 찾기
                         existing = await dc_ch.webhooks()
                         wh = None

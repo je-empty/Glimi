@@ -1,1 +1,1 @@
-# Project Chaos - src package
+# Project Glimi - src package
