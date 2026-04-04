@@ -60,36 +60,39 @@ Agents don't just chat with the owner 1:1 — they **autonomously converse with 
 flowchart LR
     subgraph Owner["👤 Owner"]
         direction TB
-        Wizard["Wizard (TUI)"]
-        Dash["Dashboard (TUI)"]
+        O_TUI["Wizard / Dashboard\n(Terminal UI)"]
     end
 
-    subgraph Core["Chaos Engine"]
+    subgraph Engine["Chaos Engine"]
+        direction TB
         Bot["🤖 Discord Bot"]
         Runtime["Agent Runtime\n(Claude CLI)"]
-        DB[("DB\nmemory\nrelationships")]
+        DB[("SQLite DB")]
+        Sync["🔄 Sync"]
         DevRunner["🔧 Dev Runner\n(Opus)"]
     end
 
-    subgraph Channels["Discord Channels"]
+    subgraph Discord["Discord Channels"]
         direction TB
-        DM["dm-A, dm-B, dm-C\n(Owner ↔ Agent)"]
-        Secret1["🔒 internal-dm-A-B\n(Agent 1:1)"]
-        Secret2["🔒 internal-group-A-B-C\n(Agent Multi-DM)"]
-        Mgr["mgr-dashboard\nmgr-creator"]
+        Mgr["📋 mgr-dashboard\nmgr-creator"]
+        DM["💬 dm-A · dm-B · dm-C\n(Owner ↔ Agent)"]
+        SecDM["🔒 internal-dm-A-B\n(Agent Secret 1:1)"]
+        SecGrp["🔒 internal-group-A-B-C\n(Agent Secret Multi-DM)"]
     end
 
-    Owner -->|"chat"| DM
-    Owner -.->|"spy 🔍"| Secret1 & Secret2
-    DM & Secret1 & Secret2 & Mgr <--> Bot
+    Owner <-->|"chat"| Mgr & DM
+    Owner -.->|"spy 🔍"| SecDM & SecGrp
+    O_TUI <--> Bot
+    Discord <--> Bot
     Bot <--> Runtime
     Runtime <--> DB
-    DevRunner -->|"fix code\nrestart"| Bot
-    Dash & Wizard <--> Bot
+    Sync <-->|"bidirectional"| DB & Discord
+    DevRunner -->|"fix code → restart"| Bot
 
-    style Secret1 fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style Secret2 fill:#2d2d2d,stroke:#f5a142,color:#fff
+    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
+    style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
 ```
 
 ---
@@ -100,39 +103,53 @@ flowchart LR
 flowchart TB
     Owner["👤 Owner"]
 
-    subgraph System["System Agents"]
+    subgraph SysAgents["System Agents"]
         direction LR
-        Manager["🔵 Manager\n─────────\nDM approval\nConversation control\nEmotion & relationship\nError → dev request"]
-        Creator["🟡 Creator (Opus)\n─────────\nProfile generation\nAvatar prompts\nfor DALL-E / Gemini"]
-        Manager <--->|"mgr-creator"| Creator
+        Manager["🔵 Manager\n──────\nDM approval\nConversation control\nEmotion mgmt\nError → dev bot"]
+        Creator["🟡 Creator\n──────\nProfile design\nAvatar prompts\n(Opus model)"]
     end
 
-    subgraph Agents["Persona Agents"]
+    subgraph Personas["Persona Agents"]
         direction LR
-        A["Agent A"] --- B["Agent B"] --- C["Agent C"]
+        A["Agent A"]
+        B["Agent B"]
+        C["Agent C"]
     end
 
-    Owner <--->|"1:1 DM"| Agents
-    Owner -.->|"spy 🔍"| SecretDM & SecretGroup
+    SecDM["🔒 Secret DM\nA ↔ B"]
+    SecGrp["🔒 Secret Multi-DM\nA · B · C"]
 
-    A <-->|"autonomous"| SecretDM["🔒 A ↔ B\nSecret DM"]
-    A & B & C <-->|"autonomous"| SecretGroup["🔒 A·B·C\nSecret Multi-DM"]
+    %% Owner connections
+    Owner <-->|"DM"| Manager & Creator
+    Owner <-->|"DM"| A & B & C
+    Owner -.->|"spy 🔍"| SecDM & SecGrp
+    Manager -.->|"reports"| Owner
 
-    Agents -->|"ACTION\nDM request"| Manager
-    Manager -->|"approve\ncreate channel"| SecretDM & SecretGroup
-    Manager -->|"monitor · turn limit"| Agents
-    Manager -.->|"status reports"| Owner
-    Creator -.->|"create new"| Agents
+    %% Manager system
+    Manager <-->|"mgr-creator"| Creator
+    Manager -->|"monitor all"| A & B & C
+    Creator -.->|"create"| Personas
 
-    style SecretDM fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style SecretGroup fill:#2d2d2d,stroke:#f5a142,color:#fff
+    %% Agent requests
+    A & B & C -->|"ACTION request"| Manager
+    Manager -->|"approve"| SecDM & SecGrp
+
+    %% Secret channels
+    A <--> SecDM
+    B <--> SecDM
+    A <--> SecGrp
+    B <--> SecGrp
+    C <--> SecGrp
+
+    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
 ```
 
-**Manager** — DM/Multi-DM request approval, conversation facilitation & turn limits, emotion/relationship management, periodic monitoring & owner reports, error detection → dev bot
+**Manager** — Owner & agents all DM directly. Approves/rejects agent DM requests. Monitors all agents (emotions, relationships, turn limits). Reports status to owner. Triggers dev bot on errors.
 
-**Creator** (Opus) — Full profile JSON generation (personality, appearance, speech, relationships). **Avatar prompts** for image AI (DALL-E, Midjourney, Gemini) — copy-paste ready. Works with Manager via mgr-creator.
+**Creator** (Opus) — Generates full profile JSON + **avatar prompts** for image AI (DALL-E, Midjourney, Gemini). Works with Manager via mgr-creator.
 
 ---
 

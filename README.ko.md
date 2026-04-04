@@ -60,36 +60,39 @@
 flowchart LR
     subgraph Owner["👤 Owner"]
         direction TB
-        Wizard["Wizard (TUI)"]
-        Dash["Dashboard (TUI)"]
+        O_TUI["Wizard / Dashboard\n(Terminal UI)"]
     end
 
-    subgraph Core["Chaos Engine"]
+    subgraph Engine["Chaos Engine"]
+        direction TB
         Bot["🤖 Discord Bot"]
         Runtime["Agent Runtime\n(Claude CLI)"]
-        DB[("DB\n메모리\n관계")]
+        DB[("SQLite DB")]
+        Sync["🔄 Sync"]
         DevRunner["🔧 Dev Runner\n(Opus)"]
     end
 
-    subgraph Channels["Discord Channels"]
+    subgraph Discord["Discord Channels"]
         direction TB
-        DM["dm-A, dm-B, dm-C\n(오너 ↔ 에이전트)"]
-        Secret1["🔒 internal-dm-A-B\n(에이전트 1:1)"]
-        Secret2["🔒 internal-group-A-B-C\n(에이전트 멀티DM)"]
-        Mgr["mgr-dashboard\nmgr-creator"]
+        Mgr["📋 mgr-dashboard\nmgr-creator"]
+        DM["💬 dm-A · dm-B · dm-C\n(오너 ↔ 에이전트)"]
+        SecDM["🔒 internal-dm-A-B\n(에이전트 비밀 1:1)"]
+        SecGrp["🔒 internal-group-A-B-C\n(에이전트 비밀 멀티DM)"]
     end
 
-    Owner -->|"대화"| DM
-    Owner -.->|"엿보기 🔍"| Secret1 & Secret2
-    DM & Secret1 & Secret2 & Mgr <--> Bot
+    Owner <-->|"대화"| Mgr & DM
+    Owner -.->|"엿보기 🔍"| SecDM & SecGrp
+    O_TUI <--> Bot
+    Discord <--> Bot
     Bot <--> Runtime
     Runtime <--> DB
-    DevRunner -->|"코드 수정\n재시작"| Bot
-    Dash & Wizard <--> Bot
+    Sync <-->|"양방향"| DB & Discord
+    DevRunner -->|"코드 수정 → 재시작"| Bot
 
-    style Secret1 fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style Secret2 fill:#2d2d2d,stroke:#f5a142,color:#fff
+    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
+    style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
 ```
 
 ---
@@ -100,37 +103,51 @@ flowchart LR
 flowchart TB
     Owner["👤 Owner"]
 
-    subgraph System["시스템 에이전트"]
+    subgraph SysAgents["시스템 에이전트"]
         direction LR
-        Manager["🔵 Manager\n─────────\nDM 요청 승인·거절\n대화 촉진·턴 제한\n감정·관계 관리\n에러 → 개발 요청"]
-        Creator["🟡 Creator (Opus)\n─────────\n프로필 JSON 생성\n아바타 프롬프트\n(DALL-E / Gemini용)"]
-        Manager <--->|"mgr-creator"| Creator
+        Manager["🔵 Manager\n──────\nDM 승인·거절\n대화 촉진·턴 제한\n감정·관계 관리\n에러 → 개발봇"]
+        Creator["🟡 Creator\n──────\n프로필 JSON 생성\n아바타 프롬프트\n(Opus 모델)"]
     end
 
-    subgraph Agents["페르소나 에이전트"]
+    subgraph Personas["페르소나 에이전트"]
         direction LR
-        A["Agent A"] --- B["Agent B"] --- C["Agent C"]
+        A["Agent A"]
+        B["Agent B"]
+        C["Agent C"]
     end
 
-    Owner <--->|"1:1 DM"| Agents
-    Owner -.->|"엿보기 🔍"| SecretDM & SecretGroup
+    SecDM["🔒 비밀 DM\nA ↔ B"]
+    SecGrp["🔒 비밀 멀티DM\nA · B · C"]
 
-    A <-->|"자율 대화"| SecretDM["🔒 A ↔ B\n비밀 DM"]
-    A & B & C <-->|"자율 대화"| SecretGroup["🔒 A·B·C\n비밀 멀티DM"]
+    %% 오너 연결
+    Owner <-->|"DM"| Manager & Creator
+    Owner <-->|"DM"| A & B & C
+    Owner -.->|"엿보기 🔍"| SecDM & SecGrp
+    Manager -.->|"보고"| Owner
 
-    Agents -->|"ACTION\nDM 요청"| Manager
-    Manager -->|"승인\n채널 생성"| SecretDM & SecretGroup
-    Manager -->|"감시·턴 제한"| Agents
-    Manager -.->|"상황 보고"| Owner
-    Creator -.->|"새 에이전트 생성"| Agents
+    %% 시스템
+    Manager <-->|"mgr-creator"| Creator
+    Manager -->|"전원 감시"| A & B & C
+    Creator -.->|"생성"| Personas
 
-    style SecretDM fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style SecretGroup fill:#2d2d2d,stroke:#f5a142,color:#fff
+    %% 에이전트 요청
+    A & B & C -->|"ACTION 요청"| Manager
+    Manager -->|"승인"| SecDM & SecGrp
+
+    %% 비밀 채널
+    A <--> SecDM
+    B <--> SecDM
+    A <--> SecGrp
+    B <--> SecGrp
+    C <--> SecGrp
+
+    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
 ```
 
-**Manager** — DM/멀티DM 승인·거절, 대화 촉진·턴 제한, 감정·관계 관리, 상황 감시·보고, 에러 → 개발봇
+**Manager** — 오너와 모든 에이전트가 직접 DM 가능. 에이전트 DM 요청 승인·거절. 전 에이전트 감시(감정, 관계, 턴 제한). 오너에게 보고. 에러 → 개발봇.
 
 **Creator** (Opus) — 전체 프로필 JSON + **아바타 프롬프트** (DALL-E, Midjourney, Gemini에 복붙). mgr-creator에서 Manager와 1:1 소통
 
