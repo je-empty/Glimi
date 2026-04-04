@@ -1110,20 +1110,30 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
 
 
 async def _trigger_onboarding_phase2(guild):
-    """온보딩 Phase 2 트리거 — 유나가 [CMD:프로필수집완료]를 보냈을 때 호출"""
+    """온보딩 Phase 2 트리거"""
     phase = db.get_meta("onboarding_phase")
-    if phase == "complete":
+    if phase in ("complete", "channels_done", "channels_setup"):
+        log_writer.system(f"[온보딩 Phase 2] 이미 진행/완료 (phase={phase}) — 스킵")
         return
     db.set_meta("onboarding_phase", "channels_setup")
+    log_writer.system("[온보딩 Phase 2] 트리거됨")
     import asyncio
-    asyncio.get_event_loop().create_task(_onboarding_setup_channels(guild))
+
+    async def _safe_setup():
+        try:
+            await _onboarding_setup_channels(guild)
+        except Exception as e:
+            log_writer.system(f"❌ [온보딩 Phase 2] 오류: {type(e).__name__}: {e}")
+
+    asyncio.get_event_loop().create_task(_safe_setup())
 
 
 async def _onboarding_setup_channels(guild):
     """온보딩 Phase 2: 시스템 채널 생성 + 크리에이터 소개."""
     phase = db.get_meta("onboarding_phase")
-    if phase in ("complete", "channels_done", "channels_setup"):
+    if phase in ("complete", "channels_done"):
         return
+    log_writer.system("[온보딩 Phase 2] 시작: 채널 생성 + 크리에이터 소개")
     import asyncio
     from src.bot.core import create_onboarding_channel, send_as_agent, _split_for_chat
     from src.core.runtime import runtime
