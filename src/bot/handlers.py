@@ -22,6 +22,13 @@ from src.bot.mgr_system import (
 )
 
 
+# 메시지 병합 버퍼 — 유저가 빠르게 연속 메시지 보내면 합쳐서 처리
+_msg_buffer: dict[str, list] = {}  # channel_name → [(message, text, timestamp)]
+_msg_buffer_tasks: dict[str, asyncio.Task] = {}
+
+MSG_MERGE_WINDOW = 3.0  # 초 — 이 시간 내 연속 메시지는 병합
+
+
 @bot.event
 async def on_message(message: discord.Message):
     if message.author == bot.user or message.webhook_id:
@@ -48,20 +55,45 @@ async def on_message(message: discord.Message):
     if not user_message:
         return
 
-    try:
-        if channel_name in CHANNEL_AGENT_MAP:
-            agent_id = CHANNEL_AGENT_MAP[channel_name]
-            await handle_dm(message, agent_id, channel_name, user_message)
+    # 에이전트 채널인지 확인
+    is_agent_channel = channel_name in CHANNEL_AGENT_MAP or channel_name.startswith("group-")
+    if not is_agent_channel:
+        return
+
+    # 메시지 버퍼에 추가
+    if channel_name not in _msg_buffer:
+        _msg_buffer[channel_name] = []
+    _msg_buffer[channel_name].append((message, user_message))
+
+    # 기존 대기 태스크 취소 (새 메시지 왔으니 타이머 리셋)
+    if channel_name in _msg_buffer_tasks:
+        _msg_buffer_tasks[channel_name].cancel()
+
+    # N초 후 버퍼 처리
+    async def _flush_buffer(ch_name):
+        await asyncio.sleep(MSG_MERGE_WINDOW)
+        msgs = _msg_buffer.pop(ch_name, [])
+        _msg_buffer_tasks.pop(ch_name, None)
+        if not msgs:
             return
 
-        if channel_name.startswith("group-"):
-            await handle_group(message, channel_name, user_message)
-            return
-    except Exception as e:
-        log.error(f"[on_message] 처리 중 오류 ({channel_name}): {e}", exc_info=True)
-        log_writer.system(f"❌ on_message 오류 ({channel_name}): {e}")
-        from src.bot.tasks import _handle_runtime_error
-        await _handle_runtime_error(message.guild, channel_name, e)
+        # 병합: 여러 메시지를 줄바꿈으로 합침
+        first_msg = msgs[0][0]  # discord.Message (첫 번째)
+        merged_text = "\n".join(text for _, text in msgs)
+
+        try:
+            if ch_name in CHANNEL_AGENT_MAP:
+                agent_id = CHANNEL_AGENT_MAP[ch_name]
+                await handle_dm(first_msg, agent_id, ch_name, merged_text)
+            elif ch_name.startswith("group-"):
+                await handle_group(first_msg, ch_name, merged_text)
+        except Exception as e:
+            log.error(f"[on_message] 처리 중 오류 ({ch_name}): {e}", exc_info=True)
+            log_writer.system(f"❌ on_message 오류 ({ch_name}): {e}")
+            from src.bot.tasks import _handle_runtime_error
+            await _handle_runtime_error(first_msg.guild, ch_name, e)
+
+    _msg_buffer_tasks[channel_name] = asyncio.create_task(_flush_buffer(channel_name))
 
 
 def _is_image_action(action_str: str) -> bool:
