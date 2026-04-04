@@ -195,11 +195,11 @@ SUPERVISORS: list[Supervisor] = [
 ]
 
 _active: list[Supervisor] = []
+_pending_check: asyncio.Event | None = None
 
 
-@tasks.loop(seconds=15)
-async def supervisor_loop():
-    """활성 감시자들 실행"""
+async def _run_checks():
+    """활성 감시자 체크 실행"""
     if not bot.guilds:
         return
     guild = bot.guilds[0]
@@ -215,20 +215,37 @@ async def supervisor_loop():
             log_writer.system(f"[sup:{sup.name}] 오류: {e}")
 
 
-@supervisor_loop.before_loop
-async def _supervisor_wait():
-    await bot.wait_until_ready()
-    await asyncio.sleep(30)
+async def notify_idle(channel_name: str):
+    """에이전트 응답 완료 후 호출 — 일정 시간 후 유저 응답 없으면 감시자 실행"""
+    if not _active:
+        return
+
+    # 관련 채널인지 체크
+    relevant = any(
+        channel_name in (MGR_CHANNEL, CREATOR_CHANNEL) or channel_name.startswith("internal-")
+        for _ in [1]
+    )
+    if not relevant:
+        return
+
+    await asyncio.sleep(15)  # 15초 대기 — 유저 응답 기다림
+
+    # 대기 후에도 마지막 메시지가 에이전트 것이면 (유저가 응답 안 함) → 체크
+    recent = db.get_recent_messages(channel_name, limit=1)
+    if recent:
+        from src.core.profile import get_user_id
+        last_speaker = recent[-1]["speaker"]
+        if last_speaker != get_user_id():
+            # 에이전트가 마지막 발화 → 유저 응답 없음 → 감시자 체크
+            await _run_checks()
 
 
 def start_supervisors():
-    """필요한 감시자 활성화 + 루프 시작"""
+    """필요한 감시자 활성화"""
     global _active
     _active = [s for s in SUPERVISORS if s.should_run()]
     if _active:
         names = [s.name for s in _active]
         log_writer.system(f"[supervisor] 활성화: {', '.join(names)}")
-        if not supervisor_loop.is_running():
-            supervisor_loop.start()
     else:
         log_writer.system("[supervisor] 활성화할 감시자 없음")

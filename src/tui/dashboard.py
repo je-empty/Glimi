@@ -562,6 +562,8 @@ class DashboardScreen(Screen):
                 try:
                     lines = log_writer.tail(log_path, 30)
                     for line in lines[seen_lines:]:
+                        if "[sup:" in line or "[supervisor]" in line:
+                            continue
                         self.app.call_from_thread(self._init_loading.update_detail, line)
                         # 로그 키워드로 모달 타이틀 자동 변경
                         low = line.lower()
@@ -1116,9 +1118,9 @@ class DashboardScreen(Screen):
             border_style="dim", box=box.ROUNDED, padding=(0, 1),
         ))
 
-        # 시스템 로그
+        # 시스템 로그 (supervisor 로그 제외)
         sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
-        log_lines = log_writer.tail(sys_log, 6)
+        log_lines = [l for l in log_writer.tail(sys_log, 15) if "[sup:" not in l][-6:]
         if log_lines:
             items.append(Panel(
                 "\n".join(log_lines),

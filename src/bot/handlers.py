@@ -194,13 +194,16 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
                 is_mgr, message.guild, sent_msgs
             )
 
-        # 전송 완료 → speaking 해제 + 메모리 요약 체크
+        # 전송 완료 → speaking 해제 + 메모리 요약 + supervisor 알림
         log_writer.mark_speaking_done(agent_id)
         try:
             from src.core.memory import check_and_summarize
             check_and_summarize(agent_id, channel_name)
         except Exception:
             pass
+        # supervisor에 idle 감지 요청 (백그라운드)
+        from src.bot.supervisors import notify_idle
+        asyncio.create_task(notify_idle(channel_name))
 
         # 톡방 요청 감지 (페르소나만)
         if not is_mgr and message.guild:
@@ -313,13 +316,15 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                     False, message.guild, sent_msgs
                 )
 
-            # 전송 완료 → speaking 해제 + 메모리 요약
+            # 전송 완료 → speaking 해제 + 메모리 요약 + supervisor 알림
             log_writer.mark_speaking_done(agent_id)
             try:
                 from src.core.memory import check_and_summarize
                 check_and_summarize(agent_id, channel_name)
             except Exception:
                 pass
+            from src.bot.supervisors import notify_idle
+            asyncio.create_task(notify_idle(channel_name))
 
             if message.guild:
                 for m in sent_msgs:
