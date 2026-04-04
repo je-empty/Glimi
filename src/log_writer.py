@@ -47,6 +47,18 @@ def system(msg: str):
     _append(os.path.join(_get_log_dir(), "system.log"), f"[{_ts()}] {msg}")
 
 
+def error(msg: str, exc: Exception = None):
+    """에러 로그 — system.log + error.log 양쪽에 기록"""
+    import traceback as _tb
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines = [f"[{ts}] {msg}"]
+    if exc:
+        lines.append(_tb.format_exc())
+    entry = "\n".join(lines)
+    _append(os.path.join(_get_log_dir(), "system.log"), f"[{_ts()}] ❌ {msg}")
+    _append(os.path.join(_get_log_dir(), "error.log"), entry)
+
+
 # ── Agent (no-op — 로그 파일 안 만듦) ────────────────
 
 def agent_thinking(agent_id: str, msg: str):

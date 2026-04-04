@@ -9,6 +9,7 @@ Project Chaos — Discord ↔ DB 동기화
 봇이 실행 중이면 먼저 중지해야 합니다.
 """
 import asyncio
+import os
 import traceback
 from datetime import datetime, timezone
 from typing import Optional, Callable
@@ -16,6 +17,16 @@ from typing import Optional, Callable
 import discord as discord_lib
 
 from src import db, community, log_writer
+
+
+def _sync_error_log(msg: str):
+    """sync 에러를 별도 로그 파일에 기록"""
+    log_dir = community.get_community_dir() / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "sync_error.log"
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"[{ts}] {msg}\n")
 
 
 # 카테고리 순서
@@ -151,6 +162,7 @@ async def sync_community(
             # 유저 ID 가져오기
             from src.core.profile import get_user_id, get_user_name
             user_id = get_user_id()
+            user_name = get_user_name()
 
             # 에이전트 이름 → ID 매핑
             agent_map = {a["name"]: a["id"] for a in db.list_agents()}
@@ -414,6 +426,14 @@ async def sync_community(
     except Exception as e:
         if not result["ok"]:
             result["error"] = str(e)
+
+    # 에러를 별도 로그 파일에 기록
+    if result.get("errors") or result.get("error"):
+        _sync_error_log(f"=== Sync {'완료' if result['ok'] else '실패'} ===")
+        if result.get("error"):
+            _sync_error_log(f"FATAL: {result['error']}")
+        for err in result.get("errors", []):
+            _sync_error_log(err)
 
     return result
 
