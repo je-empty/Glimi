@@ -129,9 +129,10 @@ async def _check_owner_profile(guild):
                 conn.close()
                 user = dict(user) if user else {}
 
-                name = user.get("name", owner_member.display_name)
-                age = user.get("age")
+                # 유나가 AI로 첫 인사 + 추가 정보 요청 생성
                 import json as _json
+                name = user.get("name", owner_member.display_name)
+                age = user.get("age", "?")
                 pers = user.get("personality")
                 if isinstance(pers, str):
                     try:
@@ -142,34 +143,39 @@ async def _check_owner_profile(guild):
                 gender = pers.get("gender", "")
                 nickname = pers.get("nickname", "")
 
-                # 유나 나이 기반 말투 조정 (유나 18살)
-                call_name = nickname or name
-                await asyncio.sleep(3)
-
-                if age and age > 18:
-                    await send_as_agent(mgr_ch, MGR_ID, f"{call_name} 안녕~ 나 서유나야! 잘 부탁해")
-                elif age and age <= 18:
-                    await send_as_agent(mgr_ch, MGR_ID, f"{call_name} 안녕! 나 유나~ 반가워!")
-                else:
-                    await send_as_agent(mgr_ch, MGR_ID, f"{call_name} 안녕! 나 서유나야 반가워~")
-
-                # 빈 필드만 질문
-                await asyncio.sleep(2)
-                questions = []
+                # 빈 필드 체크
+                missing = []
                 if not user.get("mbti"):
-                    questions.append("MBTI 뭐야?")
+                    missing.append("MBTI")
                 if not user.get("background"):
-                    questions.append("뭐하는 사람이야?")
+                    missing.append("직업/하는 일")
                 if not user.get("enneagram"):
-                    questions.append("에니어그램 알아? 모르면 넘어가도 돼~")
+                    missing.append("에니어그램(모르면 패스)")
 
-                if questions:
-                    await send_as_agent(mgr_ch, MGR_ID, "몇 가지만 알려줘")
-                    for q in questions:
-                        await asyncio.sleep(1.5)
-                        await send_as_agent(mgr_ch, MGR_ID, q)
-                else:
-                    await send_as_agent(mgr_ch, MGR_ID, "준비 다 됐어!")
+                # 유나한테 첫 인사 생성 시키기
+                info = f"이름:{name}, 나이:{age}, 성별:{gender}, 별칭:{nickname}"
+                ask = f"아직 모르는 정보: {', '.join(missing)}" if missing else "기본 정보 다 있음"
+
+                greeting_prompt = (
+                    f"새로운 사람이 서버에 왔어. 기본 정보: {info}\n"
+                    f"{ask}\n"
+                    f"첫 인사해줘. 자연스럽게 너 소개하고, "
+                    f"{'모르는 정보를 한 줄씩 물어봐' if missing else '반갑다고 인사해'}. "
+                    f"카톡처럼 짧게."
+                )
+
+                await asyncio.sleep(3)
+                loop = asyncio.get_event_loop()
+                responses = await loop.run_in_executor(
+                    None,
+                    lambda: runtime.generate_response(
+                        MGR_ID, MGR_CHANNEL, greeting_prompt, log_user_message=False
+                    )
+                )
+                for resp in responses:
+                    for part in _split_for_chat(resp):
+                        await send_as_agent(mgr_ch, MGR_ID, part)
+                        await asyncio.sleep(1)
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────
