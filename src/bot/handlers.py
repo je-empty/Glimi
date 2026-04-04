@@ -179,9 +179,11 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             if msg is None:
                 break
 
-            await asyncio.sleep(0.3 + random.uniform(0, 0.5))
+            # 메시지 길이에 비례한 타이핑 딜레이 (읽고 쓰는 시간 시뮬레이션)
+            type_delay = min(len(msg) * 0.03, 2.0) + random.uniform(0.3, 0.8)
+            await asyncio.sleep(0.5 + random.uniform(0, 0.3))
             async with message.channel.typing():
-                await asyncio.sleep(0.2 + random.uniform(0, 0.3))
+                await asyncio.sleep(type_delay)
 
             await _handle_msg(msg)
 
@@ -295,11 +297,13 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                 if first:
                     log_writer.mark_speaking(agent_id)
                 else:
-                    await asyncio.sleep(0.3 + random.uniform(0, 0.4))
+                    type_delay = min(len(msg) * 0.03, 2.0) + random.uniform(0.3, 0.8)
+                    await asyncio.sleep(0.5 + random.uniform(0, 0.3))
                 first = False
 
                 async with message.channel.typing():
-                    await asyncio.sleep(0.2 + random.uniform(0, 0.3))
+                    type_delay = min(len(msg) * 0.03, 2.0) if not first else 0.3
+                    await asyncio.sleep(type_delay + random.uniform(0, 0.3))
                 await _handle_group_msg(msg)
 
             # 버퍼에 남은 불완전 태그 처리

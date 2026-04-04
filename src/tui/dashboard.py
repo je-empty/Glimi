@@ -941,27 +941,35 @@ class DashboardScreen(Screen):
         agent_type = agent.get("type", "persona")
         ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
 
-        if thinking and expanded:
-            # ── 확장 카드 (추론 중, 상단 배치) ──
-            think_sec = log_writer.thinking_seconds(aid)
-            elapsed = f"{int(think_sec//60)}:{int(think_sec%60):02d}" if think_sec >= 60 else f"{int(think_sec)}s"
+        if (thinking or speaking) and expanded:
+            # ── 확장 카드 (추론/전송 중, 상단 배치) ──
+            if thinking:
+                active_sec = log_writer.thinking_seconds(aid)
+                state_label = "[bright_yellow bold]🧠 THINKING[/bright_yellow bold]"
+                border_color = "bright_yellow"
+            else:
+                active_sec = log_writer.speaking_seconds(aid)
+                state_label = "[bright_cyan bold]💬 SPEAKING[/bright_cyan bold]"
+                border_color = "bright_cyan"
+            elapsed = f"{int(active_sec//60)}:{int(active_sec%60):02d}" if active_sec >= 60 else f"{int(active_sec)}s"
             bar_len = 30
-            filled = int(think_sec % bar_len)
+            filled = int(active_sec % bar_len)
             progress = "".join("▓" if i == filled else "░" for i in range(bar_len))
 
             lines = [
-                f"  [bright_yellow bold]🧠 THINKING[/bright_yellow bold]  {elapsed}  {em} {agent['current_emotion']}  {type_str}",
+                f"  {state_label}  {elapsed}  {em} {agent['current_emotion']}  {type_str}",
                 f"  [{c}]{progress}[/{c}]",
             ]
 
-            # 추론 로그
-            sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
-            all_sys = log_writer.tail(sys_log_path, 50)
-            t_lines = [l for l in all_sys if f"[{aid}]" in l]
-            if t_lines:
-                lines.append(f"  {'─' * 50}")
-                for l in t_lines[-4:]:
-                    lines.append(f"  [dim]{_trunc(l, 70)}[/dim]")
+            # 추론 로그 (thinking일 때만)
+            if thinking:
+                sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
+                all_sys = log_writer.tail(sys_log_path, 50)
+                t_lines = [l for l in all_sys if f"[{aid}]" in l]
+                if t_lines:
+                    lines.append(f"  {'─' * 50}")
+                    for l in t_lines[-4:]:
+                        lines.append(f"  [dim]{_trunc(l, 70)}[/dim]")
 
             # 최근 대화 (CMD/QUERY/ACTION 제외)
             recent = [m for m in db.get_recent_messages(ch_name, limit=10)
@@ -975,8 +983,8 @@ class DashboardScreen(Screen):
             return Panel(
                 "\n".join(lines),
                 title=f" [{c} bold]{agent['name']}[/{c} bold] ",
-                subtitle=f"[bright_yellow] ● {elapsed} [/bright_yellow]",
-                border_style="bright_yellow", box=box.HEAVY, padding=(0, 1),
+                subtitle=f"[{border_color}] ● {elapsed} [/{border_color}]",
+                border_style=border_color, box=box.HEAVY, padding=(0, 1),
             )
         else:
             # ── 컴팩트 카드 (고정 크기) ──
@@ -1039,18 +1047,19 @@ class DashboardScreen(Screen):
                 if row:
                     items.append(Columns(row, equal=True, expand=True))
 
-        # Speaking 에이전트 — 컴팩트 카드 (thinking과 idle 사이)
+        # Speaking 에이전트 — 확장 카드
         if speaking_agents:
-            row = []
-            for a in speaking_agents:
-                row.append(self._render_agent_card(a))
-                if len(row) == 3:
+            if len(speaking_agents) == 1:
+                items.append(self._render_agent_card(speaking_agents[0], expanded=True))
+            else:
+                row = []
+                for a in speaking_agents:
+                    row.append(self._render_agent_card(a, expanded=True))
+                    if len(row) == 2:
+                        items.append(Columns(row, equal=True, expand=True))
+                        row = []
+                if row:
                     items.append(Columns(row, equal=True, expand=True))
-                    row = []
-            if row:
-                while len(row) < 3:
-                    row.append(Text(""))
-                items.append(Columns(row, equal=True, expand=True))
 
         # 나머지 — 컴팩트 카드 3열
         if idle:
