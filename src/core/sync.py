@@ -305,33 +305,32 @@ async def sync_community(
                 discord_count = len(discord_msgs)
                 _progress(f"  {ch_name}: 디코 {discord_count} / DB {db_count}")
 
-                # ── Discord → DB (디코에 있고 DB에 없는 메시지) ──
-                if discord_msgs:
+                # DB가 기준 — 디코에 DB보다 많은 메시지가 있으면 삭제
+                if discord_count > db_count and discord_msgs:
+                    # DB에 있는 메시지 내용 set
                     conn = db.get_conn()
-                    ch_synced = 0
-                    for msg in discord_msgs:
-                        if not msg.content:
-                            continue
-                        speaker = _resolve_speaker(msg, agent_map, user_id)
-                        if not speaker:
-                            continue
-                        exists = conn.execute(
-                            "SELECT 1 FROM conversations WHERE channel=? AND speaker=? AND message=? LIMIT 1",
-                            (ch_name, speaker, msg.content),
-                        ).fetchone()
-                        if not exists:
-                            conn.execute(
-                                "INSERT INTO conversations (channel, speaker, message, timestamp) VALUES (?, ?, ?, ?)",
-                                (ch_name, speaker, msg.content, msg.created_at.isoformat()),
-                            )
-                            ch_synced += 1
-                    conn.commit()
+                    db_messages = set()
+                    for row in conn.execute(
+                        "SELECT message FROM conversations WHERE channel=?", (ch_name,)
+                    ).fetchall():
+                        db_messages.add(row[0])
                     conn.close()
-                    total_discord_to_db += ch_synced
-                    if ch_synced:
-                        _progress(f"  {ch_name}: 디코→DB +{ch_synced}건")
 
-                # ── DB → Discord (DB가 기준 — DB에 있는데 디코에 없는 메시지) ──
+                    # 디코에만 있는 메시지 삭제
+                    deleted = 0
+                    for msg in discord_msgs:
+                        if msg.content and msg.content not in db_messages:
+                            try:
+                                await msg.delete()
+                                deleted += 1
+                                await asyncio.sleep(0.5)
+                            except Exception:
+                                pass
+                    if deleted:
+                        total_discord_to_db += deleted  # 카운트 재활용 (삭제 건수)
+                        _progress(f"  {ch_name}: 디코 메시지 {deleted}건 삭제 (DB 기준)")
+
+                # ── DB → Discord (DB에 있는데 디코에 없는 메시지 복원) ──
                 if db_count > discord_count:
                     need = db_count - discord_count
                     _progress(f"  {ch_name}: DB→디코 복원 ({need}건 누락)...")
@@ -407,7 +406,7 @@ async def sync_community(
                 result["channels_scanned"] += 1
                 await asyncio.sleep(0.3)
 
-            result["messages_synced"] = total_discord_to_db
+            result["messages_deleted_from_discord"] = total_discord_to_db
             result["messages_restored"] = total_db_to_discord
 
             # ═══ 6. 유저 프로필 동기화 ═══

@@ -1894,7 +1894,8 @@ class DashboardScreen(Screen):
                 lines.append(f"[yellow]채널 삭제:[/yellow] {', '.join(result['channels_deleted'])}")
             if result.get("categories_deleted"):
                 lines.append(f"[yellow]카테고리 삭제:[/yellow] {', '.join(result['categories_deleted'])}")
-            lines.append(f"[cyan]디코→DB:[/cyan] +{result['messages_synced']}건")
+            if result.get("messages_deleted_from_discord"):
+                lines.append(f"[red]디코 메시지 삭제:[/red] {result['messages_deleted_from_discord']}건")
             if result.get("messages_restored"):
                 lines.append(f"[green]DB→디코 복원:[/green] +{result['messages_restored']}건")
             lines.append(f"[dim]{result.get('channels_scanned', 0)}개 채널 스캔[/dim]")
@@ -1902,7 +1903,10 @@ class DashboardScreen(Screen):
                 lines.append(f"\n[yellow]경고 {len(result['errors'])}건:[/yellow]")
                 for e in result["errors"][:5]:
                     lines.append(f"  [dim]{e}[/dim]")
-            if not result["channels_created"] and not result["channels_deleted"] and result["messages_synced"] == 0 and not result.get("errors"):
+            no_change = (not result["channels_created"] and not result["channels_deleted"]
+                         and not result.get("messages_deleted_from_discord")
+                         and not result.get("messages_restored") and not result.get("errors"))
+            if no_change:
                 lines.append("\n[dim]변경 없음 — 이미 동기화 상태[/dim]")
             self.app.call_from_thread(self._show_sync_result, "\n".join(lines))
 
@@ -2046,16 +2050,17 @@ class DashboardScreen(Screen):
         scan_data = getattr(self, '_sync_scan_data', None)
         selected_count = len(self._sync_selected_channels)
 
-        # 액션 버튼
+        # 액션 버튼 — 눈에 띄게
         manage_list.add_option(Option(
-            f"  [cyan bold]🔍 Scan Discord[/cyan bold]  (메시지 수 비교)",
+            f"  [black on cyan] 🔍 Scan Discord [/black on cyan]  메시지 수 비교 확인",
             id="sync_scan",
         ))
         manage_list.add_option(Option(
-            f"  [green bold]▶ Start Sync[/green bold]  ({selected_count}개 선택, 없으면 전체)",
+            f"  [black on green] ▶ Start Sync [/black on green]  {selected_count}개 선택 (없으면 전체)",
             id="sync_start",
         ))
         manage_list.add_option(None)
+        manage_list.add_option(Option(f"  [dim]{'─' * 50}[/dim]"))
 
         overview = db.get_channel_overview()
 
