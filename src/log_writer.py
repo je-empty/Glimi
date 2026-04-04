@@ -7,6 +7,7 @@ Project Chaos — 로그 라이터
   logs/.dev-active    — 개발모드 플래그
 """
 import os
+import time
 from datetime import datetime
 from threading import Lock
 
@@ -90,6 +91,15 @@ def mark_done(agent_id: str):
 
 def is_thinking(agent_id: str) -> bool:
     return os.path.exists(os.path.join(_get_log_dir(), f".thinking-{agent_id}"))
+
+
+def thinking_seconds(agent_id: str) -> float:
+    """추론 시작 후 경과 초 (추론 중이 아니면 0)"""
+    p = os.path.join(_get_log_dir(), f".thinking-{agent_id}")
+    try:
+        return time.time() - os.path.getmtime(p)
+    except (FileNotFoundError, OSError):
+        return 0
 
 
 def mark_dev_active():

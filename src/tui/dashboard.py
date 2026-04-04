@@ -364,18 +364,19 @@ class DashboardScreen(Screen):
             # 네비게이션
             with Horizontal(classes="nav-bar"):
                 yield Button("Overview", variant="primary", id="nav-overview")
+                yield Button("Agents", id="nav-agents")
                 yield Button("Channels", id="nav-channels")
                 yield Button("Health", id="nav-health")
                 yield Button("Dev", id="nav-dev")
                 yield Button("Logs", id="nav-logs")
-                yield Button("Manage", id="nav-manage")
+                yield Button("DB", id="nav-manage")
                 yield Button("Refresh", variant="primary", id="nav-refresh")
                 yield Button("Restart", variant="error", id="nav-restart")
                 yield Button("Sync", variant="success", id="nav-sync")
                 yield Button("Wizard", variant="warning", id="nav-wizard")
-            # 콘텐츠 영역 (카드 등)
+            # 콘텐츠 영역
             yield Static(id="content", classes="content-area")
-            # 에이전트 선택 목록 (하단)
+            # Agents 뷰용 에이전트 선택
             yield OptionList(id="agent-list", classes="agent-selector")
             # Manage 뷰용 채널/메시지 선택
             yield OptionList(id="manage-list", classes="content-area")
@@ -391,7 +392,7 @@ class DashboardScreen(Screen):
         _cache.refresh()
         self._refresh_all()
         self.set_interval(1.0, self._tick)
-        self.query_one("#agent-list", OptionList).focus()
+        self.query_one("#nav-overview", Button).focus()
 
     # ── Bot / Dev 프로세스 관리 ──────────────────────────
 
@@ -496,36 +497,43 @@ class DashboardScreen(Screen):
         manage_list = self.query_one("#manage-list", OptionList)
         view = self._current_view
 
-        # 기본: 모든 리스트 숨김
+        # 기본: 리스트 숨김
+        agent_list.display = False
         manage_list.display = False
 
-        # overview에서만 에이전트 목록 표시
         if view == "overview":
-            agent_list.display = True
             content.display = True
-            self._update_agent_list()
             content.update(self._render_overview())
-        else:
-            agent_list.display = False
+        elif view == "agents":
+            agent_list.display = True
+            content.display = False
+            self._update_agent_list()
+        elif view.startswith("agent:"):
             content.display = True
-            if view.startswith("agent:"):
-                content.update(self._render_agent_detail(view.split(":", 1)[1]))
-            elif view == "channels":
-                content.update(self._render_channels())
-            elif view.startswith("channel:"):
-                content.update(self._render_channel_detail(view.split(":", 1)[1]))
-            elif view == "health":
-                content.update(self._render_health())
-            elif view == "dev":
-                content.update(self._render_dev())
-            elif view == "logs":
-                content.update(self._render_logs())
-            elif view == "manage" or view.startswith("manage:"):
-                manage_list.display = True
-                content.update(self._render_manage())
-                self._update_manage_list()
-            else:
-                content.update(self._render_overview())
+            content.update(self._render_agent_detail(view.split(":", 1)[1]))
+        elif view == "channels":
+            content.display = True
+            content.update(self._render_channels())
+        elif view.startswith("channel:"):
+            content.display = True
+            content.update(self._render_channel_detail(view.split(":", 1)[1]))
+        elif view == "health":
+            content.display = True
+            content.update(self._render_health())
+        elif view == "dev":
+            content.display = True
+            content.update(self._render_dev())
+        elif view == "logs":
+            content.display = True
+            content.update(self._render_logs())
+        elif view == "manage" or view.startswith("manage:"):
+            content.display = True
+            manage_list.display = True
+            content.update(self._render_manage())
+            self._update_manage_list()
+        else:
+            content.display = True
+            content.update(self._render_overview())
 
     def _update_agent_list(self):
         """에이전트 OptionList 갱신"""
@@ -593,22 +601,30 @@ class DashboardScreen(Screen):
         c = _get_color(aid)
         thinking = log_writer.is_thinking(aid)
         em = E_EMOJI.get(agent["current_emotion"], "")
-        intensity = agent.get("emotion_intensity", 0)
         sec = _seconds_since(agent.get("last_active"))
         type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
         type_str = type_map.get(agent.get("type", ""), "")
-        bar = "".join("█" if i < intensity else "░" for i in range(10))
 
         agent_type = agent.get("type", "persona")
         ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
 
         if thinking:
-            # ── 확장 카드 ──
+            # ── 확장 카드 (추론 중) ──
+            think_sec = log_writer.thinking_seconds(aid)
+            think_min = int(think_sec // 60)
+            think_s = int(think_sec % 60)
+            elapsed = f"{think_min}:{think_s:02d}" if think_min else f"{think_s}s"
+
+            # 추론 진행 바 (애니메이션 느낌)
+            bar_len = 20
+            filled = int((think_sec % bar_len))
+            progress = "".join("▓" if i == filled else "░" for i in range(bar_len))
+
             lines = []
-            lines.append(f"  [bright_yellow bold]🧠 추론중[/bright_yellow bold]")
-            lines.append(f"  {em} {agent['current_emotion']}  [{c}]{bar}[/{c}] {intensity}/10")
-            lines.append(f"  [dim]{type_str}  ·  {_ago(sec)}[/dim]")
-            lines.append(f"  {'─' * 40}")
+            lines.append(f"  [bright_yellow bold]🧠 추론중[/bright_yellow bold]  [bright_yellow]{elapsed}[/bright_yellow]")
+            lines.append(f"  [{c}]{progress}[/{c}]")
+            lines.append(f"  {em} {agent['current_emotion']}  ·  {type_str}")
+            lines.append(f"  {'─' * 44}")
 
             # 추론 로그
             sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
@@ -616,8 +632,8 @@ class DashboardScreen(Screen):
             thinking_lines = [l for l in all_sys if f"[{aid}]" in l]
             if thinking_lines:
                 for l in thinking_lines[-6:]:
-                    lines.append(f"  [dim]{_trunc(l, 80)}[/dim]")
-                lines.append(f"  {'─' * 40}")
+                    lines.append(f"  [dim]{_trunc(l, 76)}[/dim]")
+                lines.append(f"  {'─' * 44}")
 
             # 최근 대화
             recent = db.get_recent_messages(ch_name, limit=4)
@@ -630,28 +646,28 @@ class DashboardScreen(Screen):
             return Panel(
                 "\n".join(lines),
                 title=f" [{c} bold]{agent['name']}[/{c} bold] ",
-                subtitle=f"[bright_yellow] ACTIVE [/bright_yellow]",
+                subtitle=f"[bright_yellow] ● THINKING {elapsed} [/bright_yellow]",
                 border_style="bright_yellow", box=box.HEAVY, padding=(0, 1),
             )
         else:
             # ── 컴팩트 카드 ──
             status_icon = "[green]●[/green]" if agent["status"] == "active" else "[dim]○[/dim]"
             lines = []
-            lines.append(f"  {status_icon} {em} {agent['current_emotion']}  [{c}]{bar}[/{c}]")
-            lines.append(f"  [dim]{type_str}  ·  {_ago(sec)}[/dim]")
+            lines.append(f"  {status_icon}  {em} {agent['current_emotion']}  [dim]{type_str}[/dim]")
+            lines.append(f"  [dim]{_ago(sec)}[/dim]")
 
             # 마지막 메시지
             recent = db.get_recent_messages(ch_name, limit=1)
             if recent:
                 r = recent[-1]
                 speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
-                lines.append(f"  [dim]{speaker}: {_trunc(r['message'], 40)}[/dim]")
+                lines.append(f"  [dim]{speaker}: {_trunc(r['message'], 38)}[/dim]")
 
             return Panel(
                 "\n".join(lines),
                 title=f" [{c} bold]{agent['name']}[/{c} bold] ",
                 border_style=c if agent["status"] == "active" else "dim",
-                box=box.ROUNDED, padding=(0, 0),
+                box=box.ROUNDED, padding=(0, 1),
             )
 
     def _render_overview(self):
@@ -1120,6 +1136,22 @@ class DashboardScreen(Screen):
                 "  [yellow]🧹 채널 메시지 전체 삭제[/yellow]  (DB만, 채널 유지)",
                 id=f"clear_ch:{ch_name}",
             ))
+            manage_list.add_option(None)  # 구분선
+
+            # 개별 메시지 삭제 옵션
+            recent = db.get_recent_messages(ch_name, limit=30)
+            for r in recent:
+                msg_id = r.get("id", "")
+                sid = r["speaker"]
+                name = get_user_name() if sid == get_user_id() else _speaker_name(sid)
+                msg = _trunc(r["message"], 45)
+                ts = r["timestamp"][11:16] if r["timestamp"] else ""
+                manage_list.add_option(Option(
+                    f"  [dim]#{msg_id} {ts}[/dim]  {name}: {msg}",
+                    id=f"del_msg:{ch_name}:{msg_id}",
+                ))
+
+            manage_list.add_option(None)
             manage_list.add_option(Option(
                 "  [dim]← 채널 목록으로[/dim]",
                 id="back_manage",
@@ -1144,6 +1176,12 @@ class DashboardScreen(Screen):
         elif oid.startswith("clear_ch:"):
             ch_name = oid.split(":", 1)[1]
             self._do_clear_channel(ch_name)
+        elif oid.startswith("del_msg:"):
+            # del_msg:channel_name:msg_id
+            parts = oid.split(":", 2)
+            ch_name = parts[1]
+            msg_id = parts[2]
+            self._do_delete_message(ch_name, msg_id)
 
     @work(thread=True)
     def _do_delete_channel(self, ch_name):
@@ -1226,6 +1264,24 @@ class DashboardScreen(Screen):
         self.app.call_from_thread(self.app.pop_screen)
         self.app.call_from_thread(self._set_view, f"manage:channel:{ch_name}")
 
+    def _do_delete_message(self, ch_name, msg_id):
+        """개별 메시지 삭제 — DB + 관련 메모리"""
+        conn = db.get_conn()
+        row = conn.execute("SELECT * FROM conversations WHERE id = ?", (msg_id,)).fetchone()
+        if row:
+            conn.execute("DELETE FROM conversations WHERE id = ?", (msg_id,))
+            # 이 메시지를 포함하는 메모리 범위도 정리
+            conn.execute(
+                "DELETE FROM memories WHERE channel = ? AND msg_id_from <= ? AND msg_id_to >= ?",
+                (ch_name, int(msg_id), int(msg_id)),
+            )
+            conn.commit()
+            log_writer.system(f"[DB] 메시지 삭제: #{msg_id} ({ch_name})")
+        conn.close()
+        _cache.refresh()
+        self._current_view = f"manage:channel:{ch_name}"
+        self._refresh_all()
+
     def _set_view(self, view: str):
         self._current_view = view
         self._refresh_all()
@@ -1234,6 +1290,7 @@ class DashboardScreen(Screen):
 
     _NAV_MAP = {
         "nav-overview": "overview",
+        "nav-agents": "agents",
         "nav-channels": "channels",
         "nav-health": "health",
         "nav-dev": "dev",
@@ -1266,7 +1323,7 @@ class DashboardScreen(Screen):
         elif self._current_view.startswith("channel:"):
             self._current_view = "channels"
         elif self._current_view.startswith("agent:"):
-            self._current_view = "overview"
+            self._current_view = "agents"
             self._refresh_all()
             self.query_one("#agent-list", OptionList).focus()
             return
