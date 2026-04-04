@@ -349,7 +349,7 @@ async def execute_yuna_query(query_str: str, guild: discord.Guild = None) -> str
             bot_tag = " [BOT]" if member.bot else ""
             lines = [
                 f"[멤버 정보: {member.display_name}]{bot_tag}",
-                f"  유저명: @{member.name} (ID: {member.id})",
+                f"  오너명: @{member.name} (ID: {member.id})",
                 f"  닉네임: {member.nick or '없음'}",
                 f"  역할: {roles or '없음'}",
                 f"  서버 가입: {joined}",

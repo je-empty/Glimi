@@ -120,20 +120,20 @@ class AgentRuntime:
         if cross_recent:
             prompt_parts.append(cross_recent)
 
-        # 대화 이력 — mgr 채널은 유저 메시지가 묻히지 않게 보장
+        # 대화 이력 — mgr 채널은 오너 메시지가 묻히지 않게 보장
         if recent:
             if prompt_parts:
                 prompt_parts.append("")
 
             if agent_type == "mgr" and (channel.startswith("mgr-") or channel.startswith("dm-")):
-                # mgr/dm 채널에서만 유저 메시지 + 직전 유나 응답만 (유나 보고 반복 방지)
+                # mgr/dm 채널에서만 오너 메시지 + 직전 유나 응답만 (유나 보고 반복 방지)
                 # internal- 채널(에이전트간 대화)에서는 전체 이력 필요
                 filtered = []
                 for msg in recent:
                     if msg["speaker"] == get_user_id():
                         filtered.append(msg)
                     elif len(filtered) == 0 or filtered[-1]["speaker"] == get_user_id():
-                        # 유저 메시지 바로 다음 유나 응답만 포함
+                        # 오너 메시지 바로 다음 유나 응답만 포함
                         filtered.append(msg)
                 for msg in filtered[-15:]:
                     speaker = get_user_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
@@ -149,7 +149,7 @@ class AgentRuntime:
     def _build_prompt(self, agent_info: dict, channel: str, recent: list[dict],
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
         """프롬프트 구성. Returns: (full_prompt, system_prompt, model)
-        speaker_name: 마지막 발화자 이름 (빈 문자열이면 유저 이름 사용)
+        speaker_name: 마지막 발화자 이름 (빈 문자열이면 오너 이름 사용)
         """
         context = self._build_context(agent_info, channel, recent)
         name = speaker_name or get_user_name()
@@ -483,7 +483,7 @@ class AgentRuntime:
         _limit = 50 if profile.get("type") == "mgr" else RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
-        # 유저 메시지 먼저 로깅
+        # 오너 메시지 먼저 로깅
         if log_user_message:
             db.log_message(channel, get_user_id(), user_message)
             log_writer.chat(channel, get_user_name(), user_message)

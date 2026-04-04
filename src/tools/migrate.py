@@ -60,7 +60,7 @@ def migrate_json_to_db():
         agent_count += 1
         print(f"  [에이전트] {profile['id']} ({profile['name']})")
 
-    # 2. 유저 프로필 마이그레이션
+    # 2. 오너 프로필 마이그레이션
     user_count = 0
     for fname in os.listdir(PROFILES_DIR):
         if fname.startswith("agent-") or not fname.endswith(".json"):
@@ -74,7 +74,7 @@ def migrate_json_to_db():
         db.save_user(user)
         db.set_meta("active_user_id", user["id"])
         user_count += 1
-        print(f"  [유저] {user['id']} ({user['name']})")
+        print(f"  [오너] {user['id']} ({user['name']})")
 
     # 3. 검증
     print(f"\n마이그레이션 완료: 에이전트 {agent_count}개, 유저 {user_count}명")
@@ -127,7 +127,7 @@ def upgrade_old_db(old_db_path: str):
     1. 백업 생성
     2. 스키마 업그레이드 (새 테이블 + 컬럼 추가)
     3. JSON 프로필에서 프로필 데이터 병합 (기존 emotion/status 보존)
-    4. 유저 프로필 마이그레이션
+    4. 오너 프로필 마이그레이션
     5. 검증
     """
     if not os.path.exists(old_db_path):
@@ -212,7 +212,7 @@ def upgrade_old_db(old_db_path: str):
         for oid in orphans:
             print(f"  [경고] {oid} — DB에만 존재 (JSON 프로필 없음, 대화/메모리는 보존됨)")
 
-        # ── 5. 유저 프로필 마이그레이션 ──
+        # ── 5. 오너 프로필 마이그레이션 ──
         user_count = 0
         for fname in os.listdir(PROFILES_DIR):
             if fname.startswith("agent-") or not fname.endswith(".json"):
@@ -226,7 +226,7 @@ def upgrade_old_db(old_db_path: str):
             db.save_user(user)
             db.set_meta("active_user_id", user["id"])
             user_count += 1
-            print(f"  [유저] {user['id']} ({user['name']})")
+            print(f"  [오너] {user['id']} ({user['name']})")
 
         # ── 6. 검증 ──
         print(f"\n마이그레이션 완료: 에이전트 {agent_count}개, 유저 {user_count}명")

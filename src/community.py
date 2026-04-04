@@ -144,7 +144,7 @@ def init_community(community_id: str, copy_assets: bool = True):
             env_path.write_text(
                 "# 디스코드 봇 토큰 (필수)\n"
                 "DISCORD_BOT_TOKEN=\n\n"
-                "# 오너 디스코드 유저 ID (선택)\n"
+                "# 오너 디스코드 오너 ID (선택)\n"
                 "# DISCORD_OWNER_ID=\n"
             )
 

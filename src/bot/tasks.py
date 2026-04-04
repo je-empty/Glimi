@@ -68,7 +68,7 @@ async def on_ready():
     log.info("Chaos 봇 준비 완료")
     log_writer.system("봇 준비 완료")
 
-    # 유저 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
+    # 오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
     await _check_owner_profile(guild)
 
     # 유나 자율 감시 + 시스템 로그 동기화 시작
@@ -85,15 +85,15 @@ async def on_ready():
 
 
 async def _check_owner_profile(guild):
-    """유저 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청"""
+    """오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청"""
     from src import db
     from src.core.profile import get_user_name, get_user_id
 
     user_name = get_user_name()
     user_id = get_user_id()
 
-    # 이미 유저 정보가 있으면 스킵
-    if user_name and user_name != "유저" and user_id != "owner":
+    # 이미 오너 정보가 있으면 스킵
+    if user_name and user_name != "오너" and user_id != "owner":
         return
 
     # 디코 서버 오너 정보로 기본 세팅
@@ -116,7 +116,7 @@ async def _check_owner_profile(guild):
                 )
                 db.set_meta("active_user_id", str(owner_member.id))
                 conn.commit()
-                log_writer.system(f"유저 자동 등록: {owner_member.display_name} (#{owner_member.id})")
+                log_writer.system(f"오너 자동 등록: {owner_member.display_name} (#{owner_member.id})")
             conn.close()
 
             # 유나가 추가 정보 요청

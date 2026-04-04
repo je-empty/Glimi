@@ -3,7 +3,7 @@ Project Chaos — Discord ↔ DB 동기화
 
 1. 채널 동기화: 불필요한 Discord 채널 삭제, 필요한 채널 생성 (카테고리별)
 2. 메시지 동기화: Discord 메시지 → DB 보충 (LLM 토큰 소모 없음, Discord API만 사용)
-3. 유저 프로필 동기화: Discord 사용자 이름/ID 매핑
+3. 오너 프로필 동기화: Discord 오너 이름/ID 매핑
 
 주의: 같은 토큰으로 두 클라이언트를 동시에 열 수 없으므로,
 봇이 실행 중이면 먼저 중지해야 합니다.
@@ -110,7 +110,7 @@ def _resolve_speaker(msg, agent_map: dict, user_id: str) -> Optional[str]:
         # Webhook = 에이전트 발화
         return agent_map.get(msg.author.display_name)
     elif not msg.author.bot:
-        # 유저 메시지
+        # 오너 메시지
         return user_id
     return None
 
@@ -158,7 +158,7 @@ async def sync_community(
             guild = client.guilds[0]
             _progress(f"서버 연결: {guild.name}")
 
-            # 유저 ID 가져오기
+            # 오너 ID 가져오기
             from src.core.profile import get_user_id, get_user_name
             user_id = get_user_id()
             user_name = get_user_name()
@@ -409,8 +409,8 @@ async def sync_community(
             result["messages_deleted_from_discord"] = total_discord_to_db
             result["messages_restored"] = total_db_to_discord
 
-            # ═══ 6. 유저 프로필 동기화 ═══
-            _progress("유저 프로필 확인 중...")
+            # ═══ 6. 오너 프로필 동기화 ═══
+            _progress("오너 프로필 확인 중...")
             # Discord 서버의 오너(봇을 운영하는 사용자) 정보 동기화
             for member in guild.members:
                 if member.bot:
@@ -422,7 +422,7 @@ async def sync_community(
                     # 기존 user_id(이름 기반)로 저장된 게 있으면 스킵
                     existing_by_name = conn.execute("SELECT 1 FROM users WHERE name=?", (member.display_name,)).fetchone()
                     if not existing_by_name:
-                        _progress(f"  유저 발견: {member.display_name} (#{member.id})")
+                        _progress(f"  오너 발견: {member.display_name} (#{member.id})")
                 conn.close()
 
             result["ok"] = True
@@ -560,7 +560,7 @@ async def restore_messages(
                     ts = msg.get("timestamp", "")[:16]
 
                     if speaker_id == user_id:
-                        # 유저 메시지
+                        # 오너 메시지
                         display_name = user_name
                         avatar = None
                     elif speaker_id in agents:

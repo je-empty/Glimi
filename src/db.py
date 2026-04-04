@@ -143,7 +143,7 @@ def init_db():
             config_json TEXT
         );
 
-        -- ── 유저 테이블 (N명 지원) ──
+        -- ── 오너 테이블 (N명 지원) ──
 
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
@@ -789,11 +789,11 @@ def save_agent_profile(profile: dict):
 
 
 # ══════════════════════════════════════════════════════
-# 유저 CRUD
+# 오너 CRUD
 # ══════════════════════════════════════════════════════
 
 def get_user(user_id: Optional[str] = None) -> Optional[dict]:
-    """유저 프로필 로드. user_id 없으면 active_user 또는 첫 번째 유저."""
+    """오너 프로필 로드. user_id 없으면 active_user 또는 첫 번째 유저."""
     conn = get_conn()
     if not user_id:
         row = conn.execute("SELECT value FROM meta WHERE key = 'active_user_id'").fetchone()
@@ -813,7 +813,7 @@ def get_user(user_id: Optional[str] = None) -> Optional[dict]:
 
 
 def save_user(user: dict):
-    """유저 프로필 저장"""
+    """오너 프로필 저장"""
     conn = get_conn()
     conn.execute("""
         INSERT OR REPLACE INTO users
@@ -832,7 +832,7 @@ def save_user(user: dict):
 
 
 def list_users() -> list[dict]:
-    """전체 유저 목록"""
+    """전체 오너 목록"""
     conn = get_conn()
     rows = conn.execute("SELECT * FROM users").fetchall()
     conn.close()
@@ -870,7 +870,7 @@ _PROFILE_TABLES = [
 
 
 def export_agents(output_path: str):
-    """에이전트 + 유저 정의만 별도 DB로 추출 (채팅/메모리 제외)"""
+    """에이전트 + 오너 정의만 별도 DB로 추출 (채팅/메모리 제외)"""
     conn = get_conn()
     conn.execute(f"ATTACH DATABASE ? AS export_db", (output_path,))
 
@@ -892,7 +892,7 @@ def export_agents(output_path: str):
 
 
 def import_agents(input_path: str):
-    """별도 DB에서 에이전트 + 유저 정의 가져오기"""
+    """별도 DB에서 에이전트 + 오너 정의 가져오기"""
     conn = get_conn()
     conn.execute(f"ATTACH DATABASE ? AS import_db", (input_path,))
 

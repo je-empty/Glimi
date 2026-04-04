@@ -18,7 +18,7 @@ _user_profile_cache: Optional[dict] = None
 
 
 def get_user_profile(user_id: Optional[str] = None) -> dict:
-    """유저(봇 오너) 프로필 로드 — DB 기반"""
+    """오너(봇 오너) 프로필 로드 — DB 기반"""
     global _user_profile_cache
     if _user_profile_cache is not None and user_id is None:
         return _user_profile_cache
@@ -26,17 +26,17 @@ def get_user_profile(user_id: Optional[str] = None) -> dict:
     if u:
         _user_profile_cache = u
         return u
-    _user_profile_cache = {"id": "owner", "name": "유저"}
+    _user_profile_cache = {"id": "owner", "name": "오너"}
     return _user_profile_cache
 
 
 def get_user_name() -> str:
-    """유저 표시 이름"""
+    """오너 표시 이름"""
     return get_user_profile().get("name", "유저")
 
 
 def get_user_id() -> str:
-    """유저 ID"""
+    """오너 ID"""
     return get_user_profile().get("id", "owner")
 
 
@@ -62,7 +62,7 @@ def invalidate_cache(agent_id: str = None):
 
 
 def _load_user_summary() -> str:
-    """유저 프로필 요약 (캐시됨)"""
+    """오너 프로필 요약 (캐시됨)"""
     global _user_summary_cache
     if _user_summary_cache is not None:
         return _user_summary_cache
