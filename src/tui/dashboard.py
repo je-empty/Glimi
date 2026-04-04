@@ -66,8 +66,9 @@ def _venv_python() -> str:
 
 _COLOR_POOL = [
     "bright_magenta", "bright_red", "bright_cyan", "yellow", "green",
-    "white", "bright_yellow", "bright_green", "magenta", "red",
-    "bright_white", "dark_orange", "deep_pink1", "spring_green1",
+    "bright_yellow", "bright_green", "magenta", "red",
+    "dark_orange", "deep_pink1", "spring_green1", "dodger_blue1",
+    "orchid", "turquoise2", "salmon1",
 ]
 _TYPE_COLORS = {"mgr": "bright_blue", "creator": "bright_yellow"}
 _agent_colors: dict[str, str] = {}
