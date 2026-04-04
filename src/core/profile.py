@@ -242,6 +242,9 @@ def _build_action_system_prompt(agent_type: str) -> str:
   [QUERY:{"type":"프로필","name":"이름"}]
   [QUERY:{"type":"관계","name":"이름"}]
 
+--- ACTION (DM 보내기) ---
+  [ACTION:{"type":"DM","target":"이름","message":"메시지"}]
+
 레거시 형식(스페이스 구분)도 호환되지만 JSON 권장.
 """
     if agent_type == "creator":
