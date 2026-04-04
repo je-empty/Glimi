@@ -252,20 +252,42 @@ class AgentRuntime:
 
         # 채널 타입별 설명
         if channel.startswith("dm-"):
-            return f"[지금 대화 중: {owner_name}과(와) 1:1 대화]"
+            return (
+                f"[지금 대화 중: {owner_name}과(와) 1:1 대화. "
+                f"이 대화에는 너와 {owner_name}만 있어. 다른 사람은 볼 수 없어.]"
+            )
         elif channel.startswith("group-"):
             members = f"{owner_name}, " + ", ".join(names) if names else owner_name
-            return f"[지금 대화 중: {members}과(와) 단체 대화]"
+            return (
+                f"[지금 대화 중: {members}과(와) 단체 대화. "
+                f"이 대화에는 여기 있는 사람들만 참여 중이야. "
+                f"다른 사람을 초대하고 싶으면 유나한테 요청해.]"
+            )
         elif channel.startswith("internal-dm-"):
             partner = names[0] if names else "?"
-            return f"[지금 대화 중: {partner}과(와) 둘만의 대화 ({owner_name}은 읽기만 가능)]"
+            return (
+                f"[지금 대화 중: {partner}과(와) 둘만의 대화. "
+                f"{owner_name}이 이 대화를 읽을 수는 있지만 참여는 못 해. "
+                f"여기엔 너와 {partner}만 있어.]"
+            )
         elif channel.startswith("internal-group-"):
             members = ", ".join(names) if names else "?"
-            return f"[지금 대화 중: {members}과(와) 단체 대화 ({owner_name}은 읽기만 가능)]"
+            return (
+                f"[지금 대화 중: {members}과(와) 단체 대화. "
+                f"{owner_name}이 읽을 수는 있지만 참여는 못 해. "
+                f"여기엔 지금 있는 멤버만 참여 중이야. "
+                f"다른 사람을 초대하고 싶으면 유나한테 요청해.]"
+            )
         elif channel == "mgr-dashboard":
-            return f"[지금 대화 중: {owner_name}과(와) 관리 채널]"
+            return (
+                f"[지금 대화 중: {owner_name}과(와) 관리 채널. "
+                f"여기엔 너와 {owner_name}만 있어.]"
+            )
         elif channel == "mgr-creator":
-            return f"[지금 대화 중: {owner_name}과(와) 에이전트 생성 채널]"
+            return (
+                f"[지금 대화 중: {owner_name}과(와) 에이전트 생성 채널. "
+                f"여기엔 너와 {owner_name}만 있어.]"
+            )
         elif channel == "mgr-system-log":
             return "[시스템 로그 채널]"
 
