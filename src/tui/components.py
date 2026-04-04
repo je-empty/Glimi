@@ -18,8 +18,9 @@ class LoadingOverlay(ModalScreen):
         background: rgba(0, 0, 0, 0.7);
     }
     LoadingOverlay > Vertical {
-        width: 80;
-        height: 30;
+        width: 70;
+        height: auto;
+        max-height: 35;
         background: $panel;
         border: round $accent;
         padding: 1 2;
@@ -30,10 +31,12 @@ class LoadingOverlay(ModalScreen):
         text-style: bold;
     }
     LoadingOverlay RichLog {
-        height: 1fr;
+        height: auto;
+        max-height: 25;
         border: round $primary-darken-2;
         padding: 0 1;
         margin: 1 0;
+        display: none;
     }
     """
 
@@ -53,9 +56,12 @@ class LoadingOverlay(ModalScreen):
             pass
 
     def update_detail(self, detail: str):
-        """실시간 로그 추가"""
+        """실시간 로그 추가 (첫 줄부터 자동 표시)"""
         try:
-            self.query_one("#loading-log", RichLog).write(f"[dim]{detail}[/dim]")
+            log = self.query_one("#loading-log", RichLog)
+            if not log.display:
+                log.display = True
+            log.write(f"[dim]{detail}[/dim]")
         except Exception:
             pass
 

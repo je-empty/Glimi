@@ -1742,27 +1742,61 @@ class DashboardScreen(Screen):
     @work(thread=True)
     def _run_sync(self):
         import time
+        import traceback as _tb
 
         def on_progress(msg):
-            self.app.call_from_thread(self._loading.update_detail, msg)
+            try:
+                self.app.call_from_thread(self._loading.update_detail, msg)
+            except Exception:
+                pass
 
-        # 봇 중지 (같은 토큰 동시 접속 불가)
-        on_progress("봇 일시 중지...")
         bot_was_running = self._bot_proc and self._bot_proc.poll() is None
-        if bot_was_running:
-            self._stop_bot()
-            time.sleep(2)
+        error_msg = None
+        error_detail = ""
+        result = None
 
-        result = run_sync(on_progress=on_progress)
+        try:
+            # 봇 중지
+            on_progress("봇 일시 중지...")
+            if bot_was_running:
+                self._stop_bot()
+                time.sleep(2)
 
-        # 봇 재시작
-        if bot_was_running:
-            on_progress("봇 재시작...")
-            self.app.call_from_thread(self._start_bot)
-            time.sleep(3)
+            result = run_sync(on_progress=on_progress)
+
+        except Exception as e:
+            error_msg = str(e)
+            error_detail = _tb.format_exc()
+            log_writer.error(f"[Sync] 크래시: {e}", e)
+
+        finally:
+            # 항상 봇 재시작
+            if bot_was_running:
+                try:
+                    on_progress("봇 재시작...")
+                    self.app.call_from_thread(self._start_bot)
+                    time.sleep(3)
+                except Exception:
+                    pass
+
+            # 항상 로딩 닫기
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
 
         # 결과 표시
-        if result["ok"]:
+        if error_msg:
+            self.app.call_from_thread(
+                self._show_error_dialog, "동기화 크래시", error_msg, error_detail, "sync"
+            )
+        elif result and not result["ok"]:
+            err = result.get("error", "알 수 없는 오류")
+            detail = "\n".join(result.get("errors", [])[:10])
+            self.app.call_from_thread(
+                self._show_error_dialog, "동기화 실패", err, detail, "sync"
+            )
+        elif result:
             lines = ["[green bold]동기화 완료[/green bold]\n"]
             if result["channels_created"]:
                 lines.append(f"[green]채널 생성:[/green] {', '.join(result['channels_created'])}")
@@ -1780,27 +1814,7 @@ class DashboardScreen(Screen):
                     lines.append(f"  [dim]{e}[/dim]")
             if not result["channels_created"] and not result["channels_deleted"] and result["messages_synced"] == 0 and not result.get("errors"):
                 lines.append("\n[dim]변경 없음 — 이미 동기화 상태[/dim]")
-            msg = "\n".join(lines)
-        else:
-            # 에러 — 봇 재시작 후 에러 다이얼로그
-            if bot_was_running:
-                on_progress("봇 재시작...")
-                self.app.call_from_thread(self._start_bot)
-                time.sleep(3)
-            error_msg = result.get("error", "알 수 없는 오류")
-            error_detail = "\n".join(result.get("errors", [])[:10])
-            self.app.call_from_thread(self.app.pop_screen)  # 로딩 닫기
-            self.app.call_from_thread(
-                self._show_error_dialog,
-                "동기화 실패",
-                error_msg,
-                error_detail,
-                "sync",
-            )
-            return
-
-        self.app.call_from_thread(self.app.pop_screen)
-        self.app.call_from_thread(self._show_sync_result, msg)
+            self.app.call_from_thread(self._show_sync_result, "\n".join(lines))
 
     def _show_error_dialog(self, title: str, error_msg: str, detail: str, context: str):
         """에러 다이얼로그 표시 — Auto Fix 선택 시 개발봇에 요청"""
