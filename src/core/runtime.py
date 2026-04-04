@@ -31,7 +31,10 @@ CLAUDE_AVAILABLE = _check_claude_cli()
 AGENT_MODELS = {
     "persona": "claude-sonnet-4-6",
     "mgr": "claude-sonnet-4-6",
-    "creator": "claude-sonnet-4-6",  # 대화 문맥 유지를 위해 소넷 통일
+    "creator": "claude-sonnet-4-6",  # 대화는 소넷
+}
+AGENT_TASK_MODELS = {
+    "creator": "claude-opus-4-6",  # 프로필 JSON 생성은 opus
 }
 OPUS_MODEL = "claude-opus-4-6"
 
@@ -153,9 +156,7 @@ class AgentRuntime:
 
     def _build_prompt(self, agent_info: dict, channel: str, recent: list[dict],
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
-        """프롬프트 구성. Returns: (full_prompt, system_prompt, model)
-        speaker_name: 마지막 발화자 이름 (빈 문자열이면 오너 이름 사용)
-        """
+        """프롬프트 구성. Returns: (full_prompt, system_prompt, model)"""
         context = self._build_context(agent_info, channel, recent)
         name = speaker_name or get_user_name()
         full_prompt = context + f"{name}: {user_message}"
@@ -164,6 +165,34 @@ class AgentRuntime:
         model = AGENT_MODELS.get(agent_info["profile"].get("type", "persona"), "claude-sonnet-4-6")
 
         return full_prompt, system_prompt, model
+
+    def _build_handoff_summary(self, agent_id: str, channel: str) -> str:
+        """모델 전환 시 이전 대화 맥락 요약 생성 (haiku로 빠르게)"""
+        recent = db.get_recent_messages(channel, limit=15)
+        if not recent:
+            return ""
+
+        lines = []
+        for r in recent:
+            speaker = get_user_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+            lines.append(f"{speaker}: {r['message']}")
+        conversation = "\n".join(lines[-10:])
+
+        try:
+            result = subprocess.run(
+                ["claude", "-p",
+                 f"아래 대화를 3~4문장으로 요약해. 누가 뭘 요청했고 어디까지 진행됐는지 핵심만:\n\n{conversation}",
+                 "--output-format", "text", "--model", "claude-haiku-4-5-20251001"],
+                capture_output=True, text=True, timeout=15,
+                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return f"[이전 대화 요약] {result.stdout.strip()}"
+        except Exception:
+            pass
+
+        # haiku 실패 시 최근 3턴만 직접 포함
+        return "[이전 대화 (최근)] " + " / ".join(lines[-3:])
 
     def _get_cross_channel_recent(self, agent_id: str, current_channel: str) -> str:
         """다른 채널 근황 — 요약 없는 채널만 마지막 메시지 1줄로 보충
@@ -473,10 +502,18 @@ class AgentRuntime:
             agent_info, channel, recent, user_message
         )
 
-        # model override 체크
+        # model override 체크 + 모델 전환 시 맥락 핸드오프
         if hasattr(self, '_model_override') and self._model_override:
+            base_model = model
             model = self._model_override
             self._model_override = ""
+
+            if base_model != model:
+                # 모델 전환 — 이전 대화 요약 주입
+                handoff = self._build_handoff_summary(agent_id, channel)
+                if handoff:
+                    full_prompt = handoff + "\n\n" + full_prompt
+                log_writer.agent_thinking(agent_id, f"모델 전환: {base_model} → {model}")
 
         log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
