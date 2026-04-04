@@ -424,7 +424,7 @@ class InputDialog(ModalScreen[str]):
 DISCORD_SETUP_GUIDE = """\
 [bold cyan]Discord Bot 설정 가이드[/bold cyan]
 
-[bold]1.[/bold] [link=https://discord.com/developers/applications]discord.com/developers/applications[/link] 접속
+[bold]1.[/bold] discord.com/developers/applications 접속
 [bold]2.[/bold] [bold]New Application[/bold] → 이름 입력 → Create
 [bold]3.[/bold] [bold]Bot[/bold] 메뉴 → [bold]Reset Token[/bold] → 토큰 복사
 
@@ -1647,8 +1647,18 @@ class ChaosWizard(App):
 # ══════════════════════════════════════════════════════════
 
 def main():
-    app = ChaosWizard()
-    result = app.run()
+    try:
+        app = ChaosWizard()
+        result = app.run()
+    except Exception as e:
+        import traceback
+        from src import log_writer
+        try:
+            log_writer.error(f"[Wizard] 크래시: {e}", e)
+        except Exception:
+            pass
+        traceback.print_exc()
+        sys.exit(1)
 
     # wizard에서 대시보드 전환 요청 시 대시보드 실행
     if isinstance(result, tuple) and result[0] == "dashboard":

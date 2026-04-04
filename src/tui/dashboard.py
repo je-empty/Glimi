@@ -2360,7 +2360,16 @@ def main():
     if args.community_id:
         community.set_community(args.community_id)
 
-    result = ChaosDashboard().run()
+    try:
+        result = ChaosDashboard().run()
+    except Exception as e:
+        import traceback
+        try:
+            log_writer.error(f"[Dashboard] 크래시: {e}", e)
+        except Exception:
+            pass
+        traceback.print_exc()
+        sys.exit(1)
 
     if result == "wizard":
         py = _venv_python()
