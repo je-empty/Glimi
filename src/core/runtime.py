@@ -76,12 +76,17 @@ class AgentRuntime:
     # ── Prompt building ──────────────────────────────
 
     def _build_context(self, agent_info: dict, channel: str, recent: list[dict]) -> str:
-        """에이전트 맥락 구성 (감정 + 메모리 + 대화이력). 마지막 발화는 포함하지 않음."""
+        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력)."""
         profile = agent_info["profile"]
         agent_id = profile["id"]
         agent_type = profile.get("type", "persona")
 
         prompt_parts = []
+
+        # 채널 정보
+        ch_info = self._describe_channel(channel, agent_id)
+        if ch_info:
+            prompt_parts.append(ch_info)
 
         # 현재 감정
         agent_state = db.get_agent(agent_id)
@@ -229,6 +234,42 @@ class AgentRuntime:
         if not lines:
             return ""
         return "[최근 다른 대화]\n" + "\n".join(lines)
+
+    def _describe_channel(self, channel: str, my_agent_id: str) -> str:
+        """채널 정보를 에이전트가 이해할 수 있는 형태로 설명"""
+        participants = db.get_channel_participants(channel)
+
+        # 참가자 이름 변환
+        names = []
+        for pid in participants:
+            if pid == my_agent_id:
+                continue  # 자기 자신은 제외
+            profile = load_profile(pid)
+            if profile:
+                names.append(profile["name"])
+
+        owner_name = get_user_name()
+
+        # 채널 타입별 설명
+        if channel.startswith("dm-"):
+            return f"[지금 대화 중: {owner_name}과(와) 1:1 대화]"
+        elif channel.startswith("group-"):
+            members = f"{owner_name}, " + ", ".join(names) if names else owner_name
+            return f"[지금 대화 중: {members}과(와) 단체 대화]"
+        elif channel.startswith("internal-dm-"):
+            partner = names[0] if names else "?"
+            return f"[지금 대화 중: {partner}과(와) 둘만의 대화 ({owner_name}은 읽기만 가능)]"
+        elif channel.startswith("internal-group-"):
+            members = ", ".join(names) if names else "?"
+            return f"[지금 대화 중: {members}과(와) 단체 대화 ({owner_name}은 읽기만 가능)]"
+        elif channel == "mgr-dashboard":
+            return f"[지금 대화 중: {owner_name}과(와) 관리 채널]"
+        elif channel == "mgr-creator":
+            return f"[지금 대화 중: {owner_name}과(와) 에이전트 생성 채널]"
+        elif channel == "mgr-system-log":
+            return "[시스템 로그 채널]"
+
+        return ""
 
     def _build_activity_digest(self) -> str:
         """유나 전용: 최근 활동 요약 (토큰 절약형, ~100-150 토큰)"""
