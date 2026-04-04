@@ -291,50 +291,56 @@ async def sync_community(
                 ).fetchone()[0]
                 conn.close()
 
-                # Discord 메시지 수 확인
-                discord_count = 0
+                # Discord 메시지 내용 가져오기 (전체)
+                discord_msgs = []
                 try:
-                    async for _ in ch.history(limit=1):
-                        discord_count = 1
-                except Exception:
-                    pass
+                    discord_msgs = await _fetch_all_messages(ch, after=None, progress_fn=_progress)
+                except discord_lib.Forbidden:
+                    _progress(f"  {ch_name}: 권한 없음 (스킵)")
+                    result["channels_scanned"] += 1
+                    continue
+                except Exception as e:
+                    result["errors"].append(f"메시지 로드 실패 ({ch_name}): {e}")
+
+                discord_count = len(discord_msgs)
+                _progress(f"  {ch_name}: 디코 {discord_count} / DB {db_count}")
 
                 # ── Discord → DB (디코에 있고 DB에 없는 메시지) ──
-                if discord_count > 0:
-                    try:
-                        discord_msgs = await _fetch_all_messages(ch, after=None, progress_fn=_progress)
-                    except Exception as e:
-                        result["errors"].append(f"디코→DB 실패 ({ch_name}): {e}")
-                        discord_msgs = []
+                if discord_msgs:
+                    conn = db.get_conn()
+                    ch_synced = 0
+                    for msg in discord_msgs:
+                        if not msg.content:
+                            continue
+                        speaker = _resolve_speaker(msg, agent_map, user_id)
+                        if not speaker:
+                            continue
+                        exists = conn.execute(
+                            "SELECT 1 FROM conversations WHERE channel=? AND speaker=? AND message=? LIMIT 1",
+                            (ch_name, speaker, msg.content),
+                        ).fetchone()
+                        if not exists:
+                            conn.execute(
+                                "INSERT INTO conversations (channel, speaker, message, timestamp) VALUES (?, ?, ?, ?)",
+                                (ch_name, speaker, msg.content, msg.created_at.isoformat()),
+                            )
+                            ch_synced += 1
+                    conn.commit()
+                    conn.close()
+                    total_discord_to_db += ch_synced
+                    if ch_synced:
+                        _progress(f"  {ch_name}: 디코→DB +{ch_synced}건")
 
-                    if discord_msgs:
-                        conn = db.get_conn()
-                        ch_synced = 0
-                        for msg in discord_msgs:
-                            if not msg.content:
-                                continue
-                            speaker = _resolve_speaker(msg, agent_map, user_id)
-                            if not speaker:
-                                continue
-                            exists = conn.execute(
-                                "SELECT 1 FROM conversations WHERE channel=? AND speaker=? AND message=? LIMIT 1",
-                                (ch_name, speaker, msg.content),
-                            ).fetchone()
-                            if not exists:
-                                conn.execute(
-                                    "INSERT INTO conversations (channel, speaker, message, timestamp) VALUES (?, ?, ?, ?)",
-                                    (ch_name, speaker, msg.content, msg.created_at.isoformat()),
-                                )
-                                ch_synced += 1
-                        conn.commit()
-                        conn.close()
-                        total_discord_to_db += ch_synced
-                        if ch_synced:
-                            _progress(f"  {ch_name}: 디코→DB +{ch_synced}건")
+                # ── DB → Discord (DB가 기준 — DB에 있는데 디코에 없는 메시지) ──
+                if db_count > discord_count:
+                    need = db_count - discord_count
+                    _progress(f"  {ch_name}: DB→디코 복원 ({need}건 누락)...")
 
-                # ── DB → Discord (DB에 있고 디코에 없는 메시지) ──
-                if db_count > 0 and discord_count == 0:
-                    _progress(f"  {ch_name}: DB→디코 복원 중 ({db_count}건)...")
+                    # 디코에 이미 있는 메시지 내용 set (중복 방지)
+                    discord_contents = set()
+                    for dm in discord_msgs:
+                        if dm.content:
+                            discord_contents.add(dm.content)
 
                     conn = db.get_conn()
                     messages = [dict(r) for r in conn.execute(
@@ -343,9 +349,13 @@ async def sync_community(
                     ).fetchall()]
                     conn.close()
 
+                    # 디코에 없는 메시지만 필터
+                    to_send = [m for m in messages if m["message"] not in discord_contents]
+                    _progress(f"  {ch_name}: {len(to_send)}건 전송 예정")
+
                     webhooks = {}
                     sent = 0
-                    for msg in messages:
+                    for msg in to_send:
                         speaker_id = msg["speaker"]
                         content = msg["message"]
 
@@ -372,7 +382,7 @@ async def sync_community(
                             await webhooks[wh_key].send(content=content, username=display_name)
                             sent += 1
                             if sent % 20 == 0:
-                                _progress(f"  {ch_name}: {sent}/{len(messages)}건")
+                                _progress(f"  {ch_name}: {sent}/{len(to_send)}건")
                             await asyncio.sleep(0.5)
                         except discord_lib.HTTPException as e:
                             if e.status == 429:
