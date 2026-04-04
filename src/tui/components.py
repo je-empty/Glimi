@@ -18,16 +18,20 @@ class LoadingOverlay(ModalScreen):
         background: rgba(0, 0, 0, 0.7);
     }
     LoadingOverlay > Vertical {
-        width: 70;
+        width: 50;
         height: auto;
-        max-height: 35;
         background: $panel;
         border: round $accent;
         padding: 1 2;
+        content-align: center middle;
+    }
+    LoadingOverlay > Vertical.has-log {
+        width: 75;
+        max-height: 35;
     }
     LoadingOverlay #loading-title {
         text-align: center;
-        padding: 1 0 0 0;
+        padding: 1 0;
         text-style: bold;
     }
     LoadingOverlay RichLog {
@@ -61,6 +65,7 @@ class LoadingOverlay(ModalScreen):
             log = self.query_one("#loading-log", RichLog)
             if not log.display:
                 log.display = True
+                self.query_one("Vertical").add_class("has-log")
             log.write(f"[dim]{detail}[/dim]")
         except Exception:
             pass
