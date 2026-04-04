@@ -890,8 +890,22 @@ class DashboardScreen(Screen):
                 dot = "[green]●[/green]" if active else "[dim]○[/dim]"
                 ts = ch["last_active"][11:16] if ch["last_active"] else ""
                 cnt = ch["msg_count"]
+                # 참가자 표시
+                parts = ch.get("participants", [])
+                if parts:
+                    part_names = []
+                    for pid in parts:
+                        agent = _cache.all_agents.get(pid)
+                        if agent:
+                            part_names.append(agent["name"])
+                        elif pid == get_user_id():
+                            part_names.append(get_user_name())
+                    members = ", ".join(part_names) if part_names else ""
+                    members_str = f"  [dim]({members})[/dim]" if members else ""
+                else:
+                    members_str = ""
                 agent_list.add_option(Option(
-                    f"    {dot} {ch['channel']}  [dim]{cnt}건  {ts}[/dim]",
+                    f"    {dot} {ch['channel']}{members_str}  [dim]{cnt}건  {ts}[/dim]",
                     id=f"ch:{ch['channel']}",
                 ))
 
@@ -1429,11 +1443,21 @@ class DashboardScreen(Screen):
 
         content = "\n".join(lines) if lines else "[dim]메시지 없음[/dim]"
 
-        # 관련 에이전트 메모리
+        # 참가자 표시
+        parts = db.get_channel_participants(channel_name)
+        part_names = []
+        for pid in parts:
+            agent = _cache.all_agents.get(pid)
+            if agent:
+                part_names.append(agent["name"])
+            elif pid == get_user_id():
+                part_names.append(get_user_name())
+        members_info = f"  [dim]참가자: {', '.join(part_names)}[/dim]" if part_names else ""
+
         items = []
         items.append(Panel(
             content,
-            title=f"[bold]{icon} {channel_name}[/bold]{active_s}  [dim]({len(rows)}건)[/dim]",
+            title=f"[bold]{icon} {channel_name}[/bold]{active_s}{members_info}  [dim]({len(rows)}건)[/dim]",
             subtitle="[dim]ESC 뒤로  │  e 편집모드[/dim]",
             border_style=color, box=box.ROUNDED, padding=(0, 1),
         ))

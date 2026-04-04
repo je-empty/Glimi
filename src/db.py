@@ -652,49 +652,8 @@ def _migrate_schema():
             conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {col_type}")
             print(f"[DB] agents.{col} 추가")
 
-    # channels 테이블 자동 채우기 (기존 DB 호환)
-    try:
-        existing_channels = [r["channel"] for r in
-            conn.execute("SELECT DISTINCT channel FROM conversations").fetchall()]
-        registered = set(r["channel"] for r in
-            conn.execute("SELECT channel FROM channels").fetchall())
-        for ch in existing_channels:
-            if ch not in registered:
-                # 채널 이름에서 참가자 추론
-                participants = _infer_participants(ch, conn)
-                conn.execute("INSERT OR IGNORE INTO channels (channel, participants) VALUES (?, ?)",
-                    (ch, json.dumps(participants)))
-        conn.commit()
-    except Exception:
-        pass
-
     conn.commit()
     conn.close()
-
-
-def _infer_participants(ch_name: str, conn) -> list[str]:
-    """채널 이름에서 참가자 에이전트 ID를 추론"""
-    agents = [dict(r) for r in conn.execute("SELECT id, name FROM agents").fetchall()]
-    name_to_id = {a["name"]: a["id"] for a in agents}
-
-    if ch_name.startswith("mgr-dashboard") or ch_name.startswith("mgr-system-log"):
-        mgr = next((a["id"] for a in agents if a.get("id", "").startswith("agent-mgr")), None)
-        return [mgr] if mgr else []
-    if ch_name.startswith("mgr-creator"):
-        creator = next((a["id"] for a in agents if a.get("id", "").startswith("agent-creator")), None)
-        return [creator] if creator else []
-    if ch_name.startswith("dm-"):
-        name = ch_name[3:]
-        return [name_to_id[name]] if name in name_to_id else []
-
-    # internal-dm/group, group — 이름으로 추론
-    for prefix in ("internal-dm-", "internal-group-", "group-"):
-        if ch_name.startswith(prefix):
-            rest = ch_name[len(prefix):]
-            parts = rest.split("-")
-            ids = [name_to_id[p] for p in parts if p in name_to_id]
-            return ids
-    return []
 
 
 def _migrate_satellite_tables():

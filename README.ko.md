@@ -35,12 +35,6 @@
     B: "아 그냥... 별거 아니야" (멀티 DM에서 한 얘기가 떠오르지만 직접 말 안 함)
 ```
 
-- **1:1 DM 엿보기**: `internal-dm-A-B` 채널에서 비밀 대화 읽기전용
-- **멀티 DM 엿보기**: `internal-group-A-B-C` 채널에서 그룹 대화 읽기전용
-- DM 맥락이 에이전트간 자율 대화에 반영, 역방향도 간접 반영
-- 에이전트는 "사적 대화" 인식 → 오너에게 직접 전달 안 함
-- **새 에이전트는 런타임 중 동적 생성** — Creator(Opus)가 전체 프로필 + 이미지 생성 AI(GPT, Gemini 등)에 바로 넣을 수 있는 아바타 프롬프트까지 생성
-
 ### 비교
 
 | | 일반 AI 챗봇 | 멀티 에이전트 | **Project Glimi** |
@@ -70,11 +64,12 @@ flowchart LR
         DB[("SQLite DB")]
         Sync["🔄 Sync"]
         DevRunner["🔧 Dev Runner\n(Opus)"]
+        Supervisor["👁 Supervisors\n(Background)"]
     end
 
     subgraph Discord["Discord Channels"]
         direction TB
-        Mgr["📋 mgr-dashboard\nmgr-creator"]
+        Mgr["📋 mgr-dashboard\nmgr-creator\nmgr-system-log"]
         DM["💬 dm-A · dm-B · dm-C\n(오너 ↔ 에이전트)"]
         SecDM["🔒 internal-dm-A-B\n(에이전트 비밀 1:1)"]
         SecGrp["🔒 internal-group-A-B-C\n(에이전트 비밀 멀티DM)"]
@@ -88,25 +83,31 @@ flowchart LR
     Runtime <--> DB
     Sync <-->|"양방향"| DB & Discord
     DevRunner -->|"코드 수정 → 재시작"| Bot
+    Supervisor -.->|"감시 & 재촉"| Runtime
 
     style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
     style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
+    style Supervisor fill:#1a1a2e,stroke:#9a4aff,color:#fff
 ```
 
 ---
 
-## 에이전트 구조
+## 에이전트 계층 구조
 
 ```mermaid
 flowchart TB
     Owner["👤 Owner"]
 
-    subgraph SysAgents["시스템 에이전트"]
+    subgraph Visible["오너에게 보이는 에이전트"]
         direction LR
-        Manager["🔵 Manager\n──────\nDM 승인·거절\n대화 촉진·턴 제한\n감정·관계 관리\n에러 → 개발봇"]
-        Creator["🟡 Creator\n──────\n프로필 JSON 생성\n아바타 프롬프트\n(Opus 모델)"]
+        Manager["🔵 Manager (유나)\n──────\n커뮤니티 관리자\n온보딩\nDM 승인\n감정 관리\n에러 → 개발봇"]
+        Creator["🟡 Creator (하나)\n──────\n프로필 디자인\n아바타 프롬프트\n에이전트 생성"]
+    end
+
+    subgraph Invisible["보이지 않는 에이전트"]
+        Supervisor["👁 Supervisors\n──────\n온보딩 감시\n진행 모니터링\n에이전트 재촉\n(Haiku로 맥락 판단)"]
     end
 
     subgraph Personas["페르소나 에이전트"]
@@ -119,22 +120,20 @@ flowchart TB
     SecDM["🔒 비밀 DM\nA ↔ B"]
     SecGrp["🔒 비밀 멀티DM\nA · B · C"]
 
-    %% 오너 연결
     Owner <-->|"DM"| Manager & Creator
     Owner <-->|"DM"| A & B & C
     Owner -.->|"엿보기 🔍"| SecDM & SecGrp
     Manager -.->|"보고"| Owner
 
-    %% 시스템
     Manager <-->|"private DM"| Creator
     Manager -->|"전원 감시"| A & B & C
     Creator -.->|"생성"| Personas
 
-    %% 에이전트 요청
+    Supervisor -.->|"재촉\n(내면의 생각)"| Manager & Creator
+
     A & B & C -->|"ACTION 요청"| Manager
     Manager -->|"승인"| SecDM & SecGrp
 
-    %% 비밀 채널
     A <--> SecDM
     B <--> SecDM
     A <--> SecGrp
@@ -145,11 +144,66 @@ flowchart TB
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
     style Manager fill:#1a3a5c,stroke:#4a9eff,color:#fff
     style Creator fill:#3a3a1a,stroke:#f5c542,color:#fff
+    style Supervisor fill:#1a1a2e,stroke:#9a4aff,color:#fff
 ```
 
-**Manager** — 오너와 모든 에이전트가 직접 DM 가능. 에이전트 DM 요청 승인·거절. 전 에이전트 감시(감정, 관계, 턴 제한). 오너에게 보고. 에러 → 개발봇.
+### 시스템 에이전트
 
-**Creator** (Opus) — 전체 프로필 JSON + **아바타 프롬프트** (DALL-E, Midjourney, Gemini에 복붙). mgr-creator에서 Manager와 1:1 소통
+**🔵 Manager (유나)** — 커뮤니티 관리자. 온보딩(프로필 수집 → 채널 세팅 → Creator 소개), 에이전트 감시, DM 승인/거절, 감정/관계 관리, 오너에게 보고, 에러 시 개발봇 트리거.
+
+**🟡 Creator (하나)** — 에이전트 디자이너. 프로필 JSON(성격, 외모, 말투, 관계) + 이미지 AI용 아바타 프롬프트 생성. 아이스브레이킹 후 Manager에게 보고.
+
+**👁 Supervisors** — 보이지 않는 백그라운드 감시자. 어떤 에이전트도 이들의 존재를 모름. `generate_response_force`로 에이전트의 내면 생각처럼 지시를 주입. 현재: OnboardingSupervisor (온보딩 진행 감시, Haiku로 대화 맥락 판단).
+
+> 페르소나 에이전트는 Manager, Creator, Supervisor의 존재를 모릅니다. ACTION 요청은 보이지 않는 승인 시스템을 거칩니다.
+
+### 온보딩 플로우
+
+```mermaid
+sequenceDiagram
+    participant U as 👤 오너
+    participant Y as 🔵 Manager (유나)
+    participant S as 👁 Supervisor
+    participant H as 🟡 Creator (하나)
+
+    Note over Y: mgr-dashboard 생성
+
+    Y->>U: 인사 + 호칭/말투 질문
+    U->>Y: 선호 설정
+
+    loop 프로필 수집
+        Y->>U: 정보 질문 (MBTI, 직업, 취미...)
+        U->>Y: 정보 제공
+        Y->>Y: [CMD:프로필수정] DB 저장
+        S-->>S: 진행 상황 감시 (Haiku 판단)
+        S-.->Y: 멈추면 재촉 (내면의 생각)
+    end
+
+    Y->>Y: [CMD:프로필수집완료]
+    Note over Y: 자동: mgr-system-log 생성
+    Y->>U: 시스템 로그 채널 설명
+    Note over Y: 자동: mgr-creator 생성
+    Y->>U: Creator(하나) 소개
+
+    H->>U: 인사 + 아이스브레이킹
+    S-->>S: 하나 진행 감시
+    H->>H: [ACTION:DM → 유나] 보고
+    Note over H: internal-dm 채널 자동 생성
+
+    Y->>U: "하나한테 들었어..." + 채널 구조 설명
+    Y->>U: "더 궁금한 거 있어?"
+    Y->>Y: [CMD:온보딩완료]
+    Note over S: Supervisor 비활성화
+```
+
+### 에이전트 상태 (대시보드)
+
+| 아이콘 | 상태 | 의미 |
+|--------|------|------|
+| 🧠 | **Thinking** | Claude 추론 중 |
+| 💬 | **Speaking** | 디스코드 메시지 전송 중 |
+| 🟢 | **Active** | 대기 중 |
+| ⚪ | **Inactive** | 비활성 |
 
 ---
 
@@ -161,18 +215,100 @@ cd Glimi
 ./run    # venv 자동 생성, 의존성 설치, Wizard 실행
 ```
 
-> Python 3.11+, Node.js, Claude Code CLI (`npm install -g @anthropic-ai/claude-code`) 필요. Claude Code Max 플랜 필요.
+> Python 3.11+, Node.js, Claude Code CLI (`npm install -g @anthropic-ai/claude-code`) 필요. Claude Code Max 플랜 권장.
 
 ---
 
 ## 디스코드 채널 구조
 
-| 카테고리 | 채널 | 용도 |
-|----------|------|------|
-| `glimi-mgr` | `mgr-dashboard` | 오너 ↔ Manager |
-| | `mgr-creator` | Manager ↔ Creator |
-| | `mgr-system-log` | 시스템 로그 |
-| `glimi-dm` | `dm-{이름}` | 오너 ↔ 에이전트 1:1 DM |
-| `glimi-group` | `group-{이름들}` | 오너 + 에이전트 멀티 DM |
-| `glimi-internal-dm` | `internal-dm-{A}-{B}` | 에이전트간 1:1 DM (**읽기전용**) |
-| `glimi-internal-group` | `internal-group-{이름들}` | 에이전트간 멀티 DM (**읽기전용**) |
+온보딩 중 단계적으로 생성됩니다:
+
+| 카테고리 | 채널 | 생성 시점 | 용도 |
+|----------|------|-----------|------|
+| `glimi-mgr` | `mgr-dashboard` | 첫 부팅 | 오너 ↔ Manager |
+| | `mgr-system-log` | 프로필 세팅 후 | 시스템 로그 |
+| | `mgr-creator` | 프로필 세팅 후 | 오너 ↔ Creator |
+| `glimi-dm` | `dm-{이름}` | 에이전트 생성 후 | 오너 ↔ 에이전트 1:1 DM |
+| `glimi-group` | `group-{이름들}` | 필요 시 | 오너 + 에이전트 멀티 DM |
+| `glimi-internal-dm` | `internal-dm-{A}-{B}` | 필요 시 | 에이전트간 1:1 DM (**읽기전용**) |
+| `glimi-internal-group` | `internal-group-{이름들}` | 필요 시 | 에이전트간 멀티 DM (**읽기전용**) |
+
+---
+
+## Supervisor 시스템
+
+Supervisor는 보이지 않는 백그라운드 감시자입니다. 어떤 에이전트도 이들의 존재를 모릅니다 — 재촉은 `generate_response_force`를 통해 에이전트의 내면 생각으로 주입됩니다.
+
+```mermaid
+flowchart LR
+    Event["에이전트\n전송 완료"]
+    Wait["15초 대기"]
+    Check{"유저가\n응답했나?"}
+    Judge["Haiku가\n대화 맥락 판단"]
+    Action{"판단 결과"}
+    Nudge["내면의 생각 주입\n(generate_response_force)"]
+    Force["다음 단계\n강제 트리거"]
+    Skip["아무것도 안 함"]
+
+    Event --> Wait --> Check
+    Check -->|"예"| Skip
+    Check -->|"아니오"| Judge --> Action
+    Action -->|"멈춤/딴길"| Nudge
+    Action -->|"조건 충족"| Force
+    Action -->|"정상 진행"| Skip
+
+    style Judge fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style Nudge fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Force fill:#3a1a1a,stroke:#ff4a4a,color:#fff
+```
+
+**현재 감시자:**
+- `OnboardingSupervisor` — 프로필 수집부터 Creator 아이스브레이킹까지 온보딩 전 과정 감시. 완료 시 자동 비활성화.
+
+**확장:** `supervisors.py`의 `SUPERVISORS` 리스트에 새 `Supervisor` 서브클래스 등록.
+
+---
+
+## 대시보드 (터미널 UI)
+
+Textual 기반 실시간 모니터링. SSH에서도 동작합니다.
+
+| 탭 | 기능 |
+|----|------|
+| **Overview** | 에이전트 카드 (Thinking/Speaking 시 확장), 채널 요약, 최근 대화 |
+| **Agents** | 에이전트 목록 → 상세 (프로필, 메모리, 관계) |
+| **Channels** | 채널 목록 (참가자 표시) → 메시지 뷰어. 편집 모드 (e키) |
+| **Sync** | Discord ↔ DB 양방향 동기화 |
+| **Health** | 봇 프로세스, DB, Discord 연결 상태 |
+| **Logs** | 시스템 로그 뷰어 |
+| **Dev** | Dev Runner 상태 + 출력 |
+| **Usage** | AI 사용량 통계 |
+
+---
+
+## 기술 스택
+
+| 구성요소 | 기술 |
+|----------|------|
+| **에이전트 두뇌** | Claude Code CLI (페르소나/Manager: Sonnet, Creator/Dev: Opus, Supervisor: Haiku) |
+| **디스코드** | discord.py + Webhook 기반 에이전트별 아바타 |
+| **데이터베이스** | 커뮤니티별 SQLite (대화, 메모리, 관계, 채널, 휴지통) |
+| **TUI** | Textual + Rich (Wizard, Dashboard) |
+| **명령 시스템** | JSON 형식 CMD/QUERY/ACTION + 별칭 해석 |
+
+---
+
+## 로드맵
+
+- **로컬 LLM 지원** — Ollama, llama.cpp
+- **웹 대시보드** — TUI → 브라우저 기반 UI
+- **자동 감정** — 대화 감정 분석 → 자동 감정 업데이트
+- **이벤트 시스템** — 시간 기반 트리거 (생일, 기념일, 예약 대화)
+- **멀티유저** — 게스트 접근 + 권한 계층
+- **음성** — Discord 음성 채널 연동
+
+---
+
+## 라이선스
+
+개발 중. 라이선스 미정.
