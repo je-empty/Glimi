@@ -58,6 +58,8 @@ def init_db():
             type TEXT NOT NULL,
             intimacy_score INTEGER DEFAULT 50 CHECK(intimacy_score BETWEEN 0 AND 100),
             dynamics TEXT,
+            pet_name_a_to_b TEXT,
+            pet_name_b_to_a TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(agent_a, agent_b)
@@ -543,6 +545,13 @@ def _migrate_schema():
     if "related_agent_id" not in mem_cols:
         conn.execute("ALTER TABLE memories ADD COLUMN related_agent_id TEXT")
         print("[DB] memories.related_agent_id 추가")
+
+    # relationships 테이블 별칭 컬럼 추가
+    rel_cols = [r["name"] for r in conn.execute("PRAGMA table_info(relationships)").fetchall()]
+    for col in ("pet_name_a_to_b", "pet_name_b_to_a"):
+        if col not in rel_cols:
+            conn.execute(f"ALTER TABLE relationships ADD COLUMN {col} TEXT")
+            print(f"[DB] relationships.{col} 추가")
 
     # agents 테이블 프로필 컬럼 추가
     agent_cols = [r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()]

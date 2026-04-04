@@ -652,24 +652,28 @@ class AgentRuntime:
         name = profile["name"]
         agent_type = profile.get("type", "persona")
 
+        # 사용자 호칭: relationship_to_owner.pet_name → user name → 기본값
+        rel = profile.get("relationship_to_owner", {})
+        owner_call = rel.get("pet_name") or get_user_name() or "사용자"
+
         if agent_type == "mgr":
             return [
-                f"오빠 나 {name}이야",
-                "테스트 모드라 보고 못 해 ㅠ",
-                "Claude Code 연결하면 제대로 할게"
+                f"{owner_call} 나 {name}인데",
+                "지금 Claude Code 연결이 끊겨서 추론이 안 돼",
+                "연결 복구되면 바로 할게"
             ]
         elif agent_type == "creator":
             return [
-                f"나 {name}! 테스트 모드~",
-                "캐릭터 생성은 Claude Code 연동 후에!"
+                f"{owner_call} 나 {name}~",
+                "Claude Code 연결 끊겨서 지금은 작업 못 해 ㅠ"
             ]
         else:
             speech = profile.get("speech", {})
             exprs = speech.get("signature_expressions", [])
             sample = exprs[0] if exprs else "응"
             return [
-                f"[테스트] {name}: {sample}",
-                "(Claude Code 연결 시 실제 대화 가능)",
+                f"{owner_call} {sample}",
+                f"나 {name}인데 지금 Claude Code 연결이 끊겨있어",
             ]
 
     def refresh_agent(self, agent_id: str):
