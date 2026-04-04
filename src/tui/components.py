@@ -10,7 +10,9 @@ from textual.widgets import Static, Button, RichLog
 
 
 class LoadingOverlay(ModalScreen):
-    """로딩 + 실시간 로그 오버레이"""
+    """로딩 + 스피너 + 실시간 로그 오버레이"""
+
+    _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
     DEFAULT_CSS = """
     LoadingOverlay {
@@ -34,6 +36,10 @@ class LoadingOverlay(ModalScreen):
         padding: 1 0;
         text-style: bold;
     }
+    LoadingOverlay #loading-elapsed {
+        text-align: center;
+        color: $text-muted;
+    }
     LoadingOverlay RichLog {
         height: auto;
         max-height: 25;
@@ -47,15 +53,32 @@ class LoadingOverlay(ModalScreen):
     def __init__(self, message: str = "로딩 중..."):
         super().__init__()
         self._message = message
+        self._tick = 0
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static(f"⏳ {self._message}", id="loading-title", markup=True)
+            yield Static(f"{self._SPINNER[0]} {self._message}", id="loading-title", markup=True)
+            yield Static("", id="loading-elapsed", markup=True)
             yield RichLog(id="loading-log", markup=True, wrap=True)
 
-    def update_message(self, message: str):
+    def on_mount(self):
+        self.set_interval(0.1, self._spin)
+
+    def _spin(self):
+        self._tick += 1
+        frame = self._SPINNER[self._tick % len(self._SPINNER)]
+        elapsed = self._tick // 10
         try:
-            self.query_one("#loading-title", Static).update(f"⏳ {message}")
+            self.query_one("#loading-title", Static).update(f"{frame} {self._message}")
+            self.query_one("#loading-elapsed", Static).update(f"[dim]{elapsed}s[/dim]")
+        except Exception:
+            pass
+
+    def update_message(self, message: str):
+        self._message = message
+        try:
+            frame = self._SPINNER[self._tick % len(self._SPINNER)]
+            self.query_one("#loading-title", Static).update(f"{frame} {message}")
         except Exception:
             pass
 
@@ -102,10 +125,11 @@ class ConfirmDialog(ModalScreen[bool]):
         Binding("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, message: str, danger: bool = False):
+    def __init__(self, message: str, danger: bool = False, default_no: bool = False):
         super().__init__()
         self._message = message
         self._danger = danger
+        self._default_no = default_no
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -118,6 +142,10 @@ class ConfirmDialog(ModalScreen[bool]):
                     yield Button("Yes", variant="primary", id="yes")
                 yield Button("No", variant="default", id="no")
             yield Static("[dim]Y / N[/dim]", markup=True)
+
+    def on_mount(self):
+        if self._default_no:
+            self.query_one("#no", Button).focus()
 
     @on(Button.Pressed, "#yes")
     def on_yes(self):

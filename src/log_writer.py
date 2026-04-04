@@ -114,6 +114,50 @@ def thinking_seconds(agent_id: str) -> float:
         return 0
 
 
+def mark_bot_ready():
+    try:
+        open(os.path.join(_get_log_dir(), ".bot-ready"), "w").close()
+    except OSError:
+        pass
+
+
+def clear_bot_ready():
+    try:
+        os.remove(os.path.join(_get_log_dir(), ".bot-ready"))
+    except FileNotFoundError:
+        pass
+
+
+def is_bot_ready() -> bool:
+    return os.path.exists(os.path.join(_get_log_dir(), ".bot-ready"))
+
+
+def mark_onboarding():
+    try:
+        open(os.path.join(_get_log_dir(), ".onboarding"), "w").close()
+    except OSError:
+        pass
+
+
+def mark_onboarding_done():
+    try:
+        os.remove(os.path.join(_get_log_dir(), ".onboarding"))
+    except FileNotFoundError:
+        pass
+    try:
+        open(os.path.join(_get_log_dir(), ".onboarding-done"), "w").close()
+    except OSError:
+        pass
+
+
+def is_onboarding() -> bool:
+    return os.path.exists(os.path.join(_get_log_dir(), ".onboarding"))
+
+
+def is_onboarding_done() -> bool:
+    return os.path.exists(os.path.join(_get_log_dir(), ".onboarding-done"))
+
+
 def mark_dev_active():
     try:
         open(os.path.join(_get_log_dir(), ".dev-active"), "w").close()
@@ -152,7 +196,7 @@ def clear_flags():
     if not os.path.exists(log_dir):
         return
     for name in os.listdir(log_dir):
-        if name.startswith(".thinking-") or name == ".dev-active":
+        if name.startswith(".thinking-") or name in (".dev-active", ".bot-ready", ".onboarding", ".onboarding-done"):
             try:
                 os.remove(os.path.join(log_dir, name))
             except FileNotFoundError:

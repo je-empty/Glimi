@@ -97,7 +97,7 @@ async def parse_and_execute_actions(
         if followup:
             cleaned.extend(followup)
 
-    return cleaned if cleaned else responses
+    return cleaned
 
 
 async def execute_yuna_query(query_str: str, guild: discord.Guild = None) -> str:
@@ -1001,16 +1001,27 @@ async def yuna_edit_profile(report_channel, args_str):
 
     agent_name, field_path, value = parts[0], parts[1], parts[2]
 
+    # 에이전트에서 먼저 검색
     agents = db.list_agents()
     target = next((a for a in agents if a["name"] == agent_name), None)
-    if not target:
+
+    if target:
+        profile = load_profile(target["id"])
+        if not profile:
+            await send_as_agent(report_channel, MGR_ID, f"{agent_name} 프로필 로드 실패")
+            return
+    else:
+        # 유저(오너)에서 검색
+        conn = db.get_conn()
+        user = conn.execute("SELECT * FROM users WHERE name LIKE ?", (f"%{agent_name}%",)).fetchone()
+        conn.close()
+        if user:
+            await _edit_user_profile(report_channel, dict(user), field_path, value)
+            return
         await send_as_agent(report_channel, MGR_ID, f"{agent_name} 찾을 수 없어")
         return
 
     profile = load_profile(target["id"])
-    if not profile:
-        await send_as_agent(report_channel, MGR_ID, f"{agent_name} 프로필 로드 실패")
-        return
 
     # 필드 경로 탐색 + 수정
     keys = field_path.split(".")
@@ -1039,6 +1050,46 @@ async def yuna_edit_profile(report_channel, args_str):
     except (KeyError, IndexError, TypeError) as e:
         await send_as_agent(report_channel, MGR_ID,
             f"프로필 수정 실패: {field_path} 경로가 잘못됐어 ({str(e)[:40]})")
+
+
+async def _edit_user_profile(report_channel, user: dict, field_path: str, value: str):
+    """유저(오너) 프로필 필드 수정"""
+    import json as _json
+    user_id = user["id"]
+    user_name = user.get("name", "?")
+
+    # 단순 필드 (users 테이블 직접 컬럼)
+    simple_fields = {"name", "age", "birth_year", "mbti", "enneagram", "background"}
+    # JSON blob 필드
+    json_fields = {"personality", "appearance", "daily_life", "speech"}
+
+    if field_path in simple_fields:
+        conn = db.get_conn()
+        conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (value, user_id))
+        conn.commit()
+        conn.close()
+        await send_as_agent(report_channel, MGR_ID, f"{user_name} 프로필 수정: {field_path} → {value}")
+        return
+
+    # JSON 필드 (예: personality.gender, speech.style)
+    parts = field_path.split(".", 1)
+    if parts[0] in json_fields and len(parts) == 2:
+        conn = db.get_conn()
+        raw = conn.execute(f"SELECT {parts[0]} FROM users WHERE id = ?", (user_id,)).fetchone()
+        blob = {}
+        if raw and raw[0]:
+            try:
+                blob = _json.loads(raw[0]) if isinstance(raw[0], str) else raw[0]
+            except Exception:
+                blob = {}
+        blob[parts[1]] = value
+        conn.execute(f"UPDATE users SET {parts[0]} = ? WHERE id = ?", (_json.dumps(blob, ensure_ascii=False), user_id))
+        conn.commit()
+        conn.close()
+        await send_as_agent(report_channel, MGR_ID, f"{user_name} 프로필 수정: {field_path} → {value}")
+        return
+
+    await send_as_agent(report_channel, MGR_ID, f"유저 프로필 필드 '{field_path}'를 찾을 수 없어")
 
 
 async def yuna_edit_relationship(report_channel, args_str):

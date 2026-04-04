@@ -59,17 +59,30 @@ async def on_ready():
     if bot.guilds:
         guild = bot.guilds[0]
         log.info(f"서버: {guild.name}")
+        log_writer.system(f"서버 연결: {guild.name}")
+        log_writer.system("채널 초기화 중...")
         await ensure_channels(guild)
+        log_writer.system("아바타 동기화 중...")
         await sync_avatars(guild)
 
-    for p in list_all_profiles():
+    profiles = list_all_profiles()
+    log_writer.system(f"에이전트 활성화 중... ({len(profiles)}명)")
+    for i, p in enumerate(profiles, 1):
+        name = p.get("name", p["id"])
+        agent_type = p.get("type", "?")
+        log_writer.system(f"  [{i}/{len(profiles)}] {name} ({agent_type}) 활성화")
         runtime.activate_agent(p["id"])
 
     log.info("Glimi 봇 준비 완료")
     log_writer.system("봇 준비 완료")
+    log_writer.mark_bot_ready()
 
     # 오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
-    await _check_owner_profile(guild)
+    try:
+        await _check_owner_profile(guild)
+    except Exception as e:
+        log_writer.system(f"❌ 온보딩 오류: {e}")
+        log.error(f"[Onboarding] {e}", exc_info=True)
 
     # 유나 자율 감시 + 시스템 로그 동기화 시작
     if not yuna_watcher.is_running():
@@ -85,97 +98,159 @@ async def on_ready():
 
 
 async def _check_owner_profile(guild):
-    """오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청"""
+    """오너 프로필 체크 — 첫 인사 + 누락 정보 요청"""
     from src import db
     from src.core.profile import get_user_name, get_user_id
+    import json as _json
 
-    user_name = get_user_name()
-    user_id = get_user_id()
+    log_writer.system("[Onboarding] 오너 프로필 체크 시작")
 
-    # 이미 오너 정보가 있으면 스킵
-    if user_name and user_name != "오너" and user_id != "owner":
+    if not guild:
+        log_writer.system("[Onboarding] guild 없음 — 스킵")
         return
 
-    # 디코 서버 오너 정보로 기본 세팅
-    if guild:
-        owner_member = guild.owner
-        if not owner_member:
-            # 서버 오너가 아닌 경우, 봇이 아닌 첫 번째 멤버
-            for member in guild.members:
-                if not member.bot:
-                    owner_member = member
-                    break
+    # 이미 인사했는지 체크
+    greeted = db.get_meta("yuna_greeted")
+    log_writer.system(f"[Onboarding] yuna_greeted={greeted}")
 
-        if owner_member:
-            conn = db.get_conn()
-            existing = conn.execute("SELECT 1 FROM users").fetchone()
-            if not existing:
-                conn.execute(
-                    "INSERT INTO users (id, name) VALUES (?, ?)",
-                    (str(owner_member.id), owner_member.display_name),
-                )
-                db.set_meta("active_user_id", str(owner_member.id))
-                conn.commit()
-                log_writer.system(f"오너 자동 등록: {owner_member.display_name} (#{owner_member.id})")
-            conn.close()
+    # 디코 서버 오너 찾기
+    owner_member = guild.owner
+    if not owner_member:
+        for member in guild.members:
+            if not member.bot:
+                owner_member = member
+                break
+    if not owner_member:
+        log_writer.system("[Onboarding] 오너 멤버 찾기 실패 — 스킵")
+        return
+    log_writer.system(f"[Onboarding] 오너: {owner_member.display_name} (#{owner_member.id})")
 
-            # 유나가 인적사항 기반 인사 + 빈 필드 질문
-            mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
-            if mgr_ch:
-                conn = db.get_conn()
-                user = conn.execute("SELECT * FROM users WHERE id=?", (str(owner_member.id),)).fetchone()
-                if not user:
-                    user = conn.execute("SELECT * FROM users LIMIT 1").fetchone()
-                conn.close()
-                user = dict(user) if user else {}
+    # 유저 레코드 없으면 디코 정보로 자동 등록, 있으면 디코 ID 업데이트
+    discord_id = str(owner_member.id)
+    conn = db.get_conn()
+    existing = conn.execute("SELECT * FROM users LIMIT 1").fetchone()
+    if not existing:
+        conn.execute(
+            "INSERT INTO users (id, name) VALUES (?, ?)",
+            (discord_id, owner_member.display_name),
+        )
+        db.set_meta("active_user_id", discord_id)
+        conn.commit()
+        log_writer.system(f"오너 자동 등록: {owner_member.display_name} (#{discord_id})")
+    else:
+        # 위저드에서 만든 레코드에 디스코드 ID가 없으면 meta에 저장
+        db.set_meta("discord_owner_id", discord_id)
+    conn.close()
 
-                # 유나가 AI로 첫 인사 + 추가 정보 요청 생성
-                import json as _json
-                name = user.get("name", owner_member.display_name)
-                age = user.get("age", "?")
-                pers = user.get("personality")
-                if isinstance(pers, str):
-                    try:
-                        pers = _json.loads(pers)
-                    except Exception:
-                        pers = {}
-                pers = pers or {}
-                gender = pers.get("gender", "")
-                nickname = pers.get("nickname", "")
+    # 유저 정보 로드
+    mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
+    log_writer.system(f"[Onboarding] mgr 채널 검색: '{MGR_CHANNEL}' → {'찾음' if mgr_ch else '없음'}")
+    if not mgr_ch:
+        # 채널 목록 로그
+        ch_names = [ch.name for ch in guild.text_channels]
+        log_writer.system(f"[Onboarding] 서버 채널 목록: {ch_names[:20]}")
+        return
 
-                # 빈 필드 체크
-                missing = []
-                if not user.get("mbti"):
-                    missing.append("MBTI")
-                if not user.get("background"):
-                    missing.append("직업/하는 일")
-                if not user.get("enneagram"):
-                    missing.append("에니어그램(모르면 패스)")
+    conn = db.get_conn()
+    user = conn.execute("SELECT * FROM users LIMIT 1").fetchone()
+    conn.close()
+    user = dict(user) if user else {}
 
-                # 유나한테 첫 인사 생성 시키기
-                info = f"이름:{name}, 나이:{age}, 성별:{gender}, 별칭:{nickname}"
-                ask = f"아직 모르는 정보: {', '.join(missing)}" if missing else "기본 정보 다 있음"
+    name = user.get("name", owner_member.display_name)
+    age = user.get("age", "?")
+    pers = user.get("personality")
+    if isinstance(pers, str):
+        try:
+            pers = _json.loads(pers)
+        except Exception:
+            pers = {}
+    pers = pers or {}
+    gender = pers.get("gender", "")
+    nickname = pers.get("nickname", "")
 
-                greeting_prompt = (
-                    f"새로운 사람이 서버에 왔어. 기본 정보: {info}\n"
-                    f"{ask}\n"
-                    f"첫 인사해줘. 자연스럽게 너 소개하고, "
-                    f"{'모르는 정보를 한 줄씩 물어봐' if missing else '반갑다고 인사해'}. "
-                    f"카톡처럼 짧게."
-                )
+    # 누락 필드 체크
+    missing = []
+    if not user.get("mbti"):
+        missing.append("MBTI")
+    if not user.get("background"):
+        missing.append("직업/하는 일")
+    if not user.get("enneagram"):
+        missing.append("에니어그램(모르면 패스)")
 
-                await asyncio.sleep(3)
-                loop = asyncio.get_event_loop()
-                responses = await loop.run_in_executor(
-                    None,
-                    lambda: runtime.generate_response(
-                        MGR_ID, MGR_CHANNEL, greeting_prompt, log_user_message=False
-                    )
-                )
-                for resp in responses:
-                    for part in _split_for_chat(resp):
-                        await send_as_agent(mgr_ch, MGR_ID, part)
-                        await asyncio.sleep(1)
+    first_time = not db.get_meta("yuna_greeted")
+
+    if not first_time:
+        # 온보딩 끝난 서버 — 정보 누락은 대화 중에 자연스럽게 물어봄
+        return
+
+    info = f"이름:{name}, 나이:{age}, 성별:{gender}, 별칭:{nickname}"
+    log_writer.system(f"유나 온보딩 준비 — {'첫 인사' if first_time else '정보 요청'}")
+    log_writer.system(f"  오너 정보: {info}")
+    if missing:
+        log_writer.system(f"  누락 필드: {', '.join(missing)}")
+    log_writer.mark_onboarding()
+
+    if first_time:
+        missing_str = ', '.join(missing) if missing else ""
+        # 나이 비교
+        owner_age = int(age) if str(age).isdigit() else None
+        yuna_age = 18
+        older = owner_age and owner_age > yuna_age
+
+        nick_info = f"별명={nickname}" if nickname else "별명 없음"
+        prompt = (
+            f"[상황] 새 사람이 커뮤니티에 처음 왔어.\n"
+            f"이 사람 정보: 이름={name}, {nick_info}, 나이={age}, 성별={gender}\n"
+            f"[너의 상황] 너(유나, {yuna_age}살 여자)는 이 커뮤니티의 총괄 관리자 에이전트야. "
+            f"이 사람에게 처음으로 말을 거는 상황이야.\n"
+            f"[호칭 규칙]\n"
+            f"- 일단 이름({name})으로 불러. 한국 이름이면 성 빼고 이름만 쓰는 게 자연스러워 (너 판단).\n"
+            f"- {'별명이 ' + nickname + '이래. 별명으로 부를지 이름으로 부를지는 너가 판단해.' if nickname else '별명이 없어. 대화하면서 자연스럽게 별명을 지어주거나 어떻게 부를지 물어봐도 돼.'}\n"
+            f"- '오너' '오너분' 같은 표현 절대 쓰지 마.\n"
+            f"[말투 규칙]\n"
+            f"- {name}은(는) {age}살. {'너보다 연상이니까 존댓말로 시작해.' if older else '나이가 비슷하거나 모르니까 일단 존댓말로 시작해.'}\n"
+            f"- 근데 너는 성격상 친해지고 싶어하는 타입이야. "
+            f"{'그래서 존댓말 하면서도 자연스럽게 편하게 말해도 되냐고 물어봐.' if older else ''} "
+            f"{'오빠라고 불러도 되냐고도 해봐.' if older and gender == '남' else ''}\n"
+            f"- 말투(존댓말/반말) 선호를 물어봐. 이건 꼭.\n"
+            f"- 질문은 한 번에 하나만.\n"
+            f"- 너의 나이는 굳이 말하지 마.\n"
+            f"[포함할 내용]\n"
+            f"- 자기소개 (이름, 역할: 에이전트들 관리하고 소통하는 관리자)\n"
+            f"- 여기가 어떤 곳인지 (AI 에이전트들이 같이 생활하면서 관계 맺는 커뮤니티)\n"
+            f"- 프로필 세팅 끝나야 에이전트들과 대화 시작할 수 있다는 안내\n"
+            f"- 호칭/말투 질문\n"
+            f"{'[참고] 세팅 끝나면 물어볼 정보: ' + missing_str if missing else ''}\n"
+            f"[스타일] 카톡처럼 짧은 메시지 여러 개로. 자연스럽고 친근하게. 로봇 같은 정형화된 말투 절대 금지.\n"
+            f"[금지] [CMD:...], [QUERY:...], [ACTION:...] 태그 절대 사용하지 마. 순수 대화만 해."
+        )
+
+    log_writer.system("유나 응답 생성 중... (Claude API 호출)")
+    await asyncio.sleep(3)
+    loop = asyncio.get_event_loop()
+    responses = await loop.run_in_executor(
+        None,
+        lambda: runtime.generate_response(
+            MGR_ID, MGR_CHANNEL, prompt, log_user_message=False
+        )
+    )
+    log_writer.system("유나 응답 생성 완료 — 디스코드 전송 중...")
+    import re as _re
+    cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+    for resp in responses:
+        # CMD/QUERY/ACTION 태그 제거
+        resp = cmd_pattern.sub('', resp).strip()
+        if not resp:
+            continue
+        for part in _split_for_chat(resp):
+            await send_as_agent(mgr_ch, MGR_ID, part)
+            await asyncio.sleep(1)
+
+    if first_time:
+        db.set_meta("yuna_greeted", "1")
+
+    log_writer.system("유나 온보딩 완료")
+    log_writer.mark_onboarding_done()
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────

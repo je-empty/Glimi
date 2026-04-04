@@ -92,9 +92,10 @@ def _load_user_summary() -> str:
         _user_summary_cache = ""
         return ""
 
-    p = user.get("personality", {})
-    a = user.get("appearance", {})
-    d = user.get("daily_life", {})
+    p = user.get("personality") or {}
+    a = user.get("appearance") or {}
+    d = user.get("daily_life") or {}
+    s = user.get("speech") or {}
     name = user.get("name", "?")
     age = user.get("age", "?")
 
@@ -102,7 +103,7 @@ def _load_user_summary() -> str:
         f"[{name}] {name}/{age}살 | {d.get('occupation', '?')} | "
         f"{a.get('summary', '?')} | {a.get('height', '?')} | "
         f"성격: {p.get('keywords', '')} | "
-        f"말투: {user.get('speech', {}).get('style_description', '?')}"
+        f"말투: {s.get('style_description', '?')}"
     )
     return _user_summary_cache
 

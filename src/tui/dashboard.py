@@ -371,6 +371,7 @@ class DashboardScreen(Screen):
         super().__init__()
         self._bot_proc: subprocess.Popen | None = None
         self._dev_proc: subprocess.Popen | None = None
+        self._init_loading: LoadingOverlay | None = None
         self._prev_dev = False
         self._current_view = "overview"  # overview, agent, channel, channels, health, dev, logs, manage
 
@@ -384,12 +385,12 @@ class DashboardScreen(Screen):
                 yield Button("Overview", variant="primary", id="nav-overview")
                 yield Button("Agents", id="nav-agents")
                 yield Button("Channels", id="nav-channels")
-                yield Button("Health", id="nav-health")
                 yield Button("Dev", id="nav-dev")
                 yield Button("Logs", id="nav-logs")
+                yield Button("Refresh", variant="primary", id="nav-refresh")
+                yield Button("Health", id="nav-health")
                 yield Button("Sync", id="nav-sync")
                 yield Button("Usage", id="nav-usage")
-                yield Button("Refresh", variant="primary", id="nav-refresh")
                 yield Button("Restart", variant="error", id="nav-restart")
                 yield Button("Wizard", variant="warning", id="nav-wizard")
             # Back 버튼 (서브페이지에서만 표시)
@@ -412,7 +413,28 @@ class DashboardScreen(Screen):
         os.makedirs(os.path.join(PROJECT_ROOT, "logs", "agents"), exist_ok=True)
         os.makedirs(os.path.join(PROJECT_ROOT, "logs", "chat"), exist_ok=True)
         os.makedirs(os.path.join(PROJECT_ROOT, "dev"), exist_ok=True)
+        # 이전 봇 프로세스 정리 (다른 커뮤니티 봇이 남아있을 수 있음)
+        if _is_bot_running():
+            try:
+                with open(PID_FILE) as f:
+                    old_pid = int(f.read().strip())
+                os.kill(old_pid, signal.SIGTERM)
+            except Exception:
+                pass
+            try:
+                os.remove(PID_FILE)
+            except FileNotFoundError:
+                pass
+        # 이전 로그 정리
+        _log_path = os.path.join(log_writer.get_log_dir(), "system.log")
+        try:
+            open(_log_path, "w").close()
+        except OSError:
+            pass
         self._start_bot()
+        self._init_loading = LoadingOverlay("Discord 초기 세팅 중... (완료 전까지 디스코드를 건드리지 마세요)")
+        self.app.push_screen(self._init_loading)
+        self._wait_bot_ready()
         _cache.refresh()
         self._refresh_all()
         self.set_interval(1.0, self._tick)
@@ -496,7 +518,112 @@ class DashboardScreen(Screen):
 
     # ── Tick / Refresh ──────────────────────────────────
 
+    @work(thread=True)
+    def _wait_bot_ready(self):
+        """봇 초기화 + 온보딩 대기 → 단계별 문구 변경 → 완료 시 로딩 해제"""
+        import time as _time
+        log_path = os.path.join(log_writer.get_log_dir(), "system.log")
+        seen_lines = 0
+        phase = "discord"  # discord → onboarding → done
+
+        for _ in range(600):  # 최대 5분 (0.5초 간격)
+            _time.sleep(0.5)
+
+            # 시스템 로그 실시간 표시
+            if self._init_loading and os.path.exists(log_path):
+                try:
+                    lines = log_writer.tail(log_path, 30)
+                    for line in lines[seen_lines:]:
+                        self.app.call_from_thread(self._init_loading.update_detail, line)
+                    seen_lines = len(lines)
+                except Exception:
+                    pass
+
+            # 단계 전환
+            if phase == "discord" and log_writer.is_bot_ready():
+                if log_writer.is_onboarding():
+                    phase = "onboarding"
+                    self.app.call_from_thread(
+                        self._init_loading.update_message,
+                        "유나 온보딩 중... (디스코드를 건드리지 마세요)"
+                    )
+                elif log_writer.is_onboarding_done():
+                    break
+                else:
+                    # bot ready + onboarding 안 시작 → 3초 대기 후 탈출
+                    phase = "wait_onboarding"
+                    _wait_count = 0
+
+            elif phase == "wait_onboarding":
+                _wait_count += 1
+                if log_writer.is_onboarding():
+                    phase = "onboarding"
+                    self.app.call_from_thread(
+                        self._init_loading.update_message,
+                        "유나 온보딩 중... (디스코드를 건드리지 마세요)"
+                    )
+                elif log_writer.is_onboarding_done() or _wait_count > 6:
+                    break  # 3초(6 * 0.5) 대기 후 온보딩 없으면 진행
+
+            elif phase == "onboarding":
+                if log_writer.is_onboarding_done():
+                    break
+
+            # 봇 크래시 또는 프로세스 없음 → 탈출
+            if self._bot_proc and self._bot_proc.poll() is not None:
+                exit_code = self._bot_proc.poll()
+                # 로딩 닫고 에러 표시
+                if self._init_loading:
+                    try:
+                        self.app.call_from_thread(self.app.pop_screen)
+                    except Exception:
+                        pass
+                    self._init_loading = None
+                # 시스템 로그에서 마지막 에러 줄 가져오기
+                err_lines = []
+                if os.path.exists(log_path):
+                    err_lines = log_writer.tail(log_path, 10)
+                err_msg = (
+                    f"봇 프로세스가 비정상 종료되었습니다 (exit code: {exit_code})\n\n"
+                    + "\n".join(err_lines[-5:])
+                )
+                self.app.call_from_thread(
+                    self.app.push_screen,
+                    ErrorDialog("봇 초기화 실패", err_msg),
+                )
+                return
+            if self._bot_proc is None:
+                break
+
+        # 타임아웃 체크 (5분 루프 다 돌았는데 아직 완료 안 됨)
+        if self._init_loading and not log_writer.is_bot_ready():
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
+            self._init_loading = None
+            err_lines = log_writer.tail(log_path, 10) if os.path.exists(log_path) else []
+            err_msg = (
+                "봇 초기화가 5분 내에 완료되지 않았습니다.\n"
+                "네트워크 또는 토큰 문제일 수 있습니다.\n\n"
+                + "\n".join(err_lines[-5:])
+            )
+            self.app.call_from_thread(
+                self.app.push_screen,
+                ErrorDialog("봇 초기화 타임아웃", err_msg),
+            )
+            return
+
+        # 정상 완료 — 로딩 해제
+        if self._init_loading:
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
+            self._init_loading = None
+
     def _tick(self):
+
         # 모달이 떠있으면 UI 갱신만 스킵 (봇 상태 체크는 계속)
         _cache.refresh()
         self._check_bot_status()

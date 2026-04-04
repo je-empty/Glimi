@@ -220,10 +220,33 @@ async def _ensure_category(guild: discord.Guild, name: str) -> discord.CategoryC
 
 
 async def ensure_channels(guild: discord.Guild):
-    """필요한 채널이 없으면 자동 생성 (카테고리별 정리)"""
-    existing = {ch.name: ch for ch in guild.text_channels}
-    # 중복 제거 (set)
+    """필요한 채널이 없으면 자동 생성 (카테고리별 정리). 초기 세팅이면 기존 glimi 채널 전부 삭제 후 재생성."""
+    from src import db as _db
     needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
+    first_run = not _db.get_meta("yuna_greeted")
+
+    # glimi 카테고리 안의 기존 채널 정리
+    glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
+    for cat in glimi_categories:
+        for ch in cat.text_channels:
+            # 초기 세팅이면 전부 삭제, 아니면 불필요한 것만 삭제
+            if first_run or ch.name not in needed:
+                try:
+                    await ch.delete(reason="Glimi 초기화: 채널 정리")
+                    log_writer.system(f"채널 삭제: {ch.name}")
+                except Exception:
+                    pass
+        # 초기 세팅이면 빈 카테고리도 삭제
+        if first_run and len(cat.channels) == 0:
+            try:
+                await cat.delete()
+                log_writer.system(f"카테고리 삭제: {cat.name}")
+            except Exception:
+                pass
+
+    # 기존 채널 목록 다시 갱신
+    existing = {ch.name: ch for ch in guild.text_channels}
+    log_writer.system(f"기존 채널 {len(existing)}개 확인, 필요 채널 {len(needed)}개")
 
     created = []
     for ch_name in sorted(needed):
@@ -232,6 +255,7 @@ async def ensure_channels(guild: discord.Guild):
             category = await _ensure_category(guild, cat_name)
             await guild.create_text_channel(ch_name, category=category)
             created.append(ch_name)
+            log_writer.system(f"채널 생성: {ch_name}")
 
     # 카테고리 순서 정렬
     from src.core.sync import CATEGORY_ORDER
@@ -244,19 +268,24 @@ async def ensure_channels(guild: discord.Guild):
                 pass
 
     if created:
-        log.info(f"채널 생성: {', '.join(created)}")
+        log_writer.system(f"채널 {len(created)}개 생성 완료")
     else:
-        log.info("모든 채널 이미 존재")
+        log_writer.system("모든 채널 이미 존재")
+    log_writer.system("카테고리 정렬 완료")
 
 
 async def sync_avatars(guild: discord.Guild):
     """glimi 카테고리들 내 모든 Webhook 아바타를 로컬 이미지와 동기화"""
     glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
     if not glimi_categories:
+        log_writer.system("아바타 동기화: glimi 카테고리 없음 — 스킵")
         return
     updated = 0
+    total_channels = sum(len(cat.text_channels) for cat in glimi_categories)
+    scanned = 0
     for cat in glimi_categories:
         for channel in cat.text_channels:
+            scanned += 1
             webhooks = await channel.webhooks()
             for wh in webhooks:
                 if not wh.name.startswith("glimi-"):
@@ -268,10 +297,11 @@ async def sync_avatars(guild: discord.Guild):
                 try:
                     await wh.edit(avatar=avatar_bytes)
                     updated += 1
+                    log_writer.system(f"  Webhook 아바타 업데이트: {agent_id} → #{channel.name}")
                 except Exception:
                     pass
-    if updated:
-        log.info(f"아바타 동기화: {updated}개 Webhook 업데이트")
+            log_writer.system(f"Webhook 스캔: #{channel.name} ({scanned}/{total_channels})")
+    log_writer.system(f"아바타 동기화 완료: {updated}개 Webhook 업데이트")
 
 
 # ── 유틸리티 ────────────────────────────────────────────
