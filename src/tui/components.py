@@ -119,3 +119,69 @@ class ConfirmDialog(ModalScreen[bool]):
 
     def action_cancel(self):
         self.dismiss(False)
+
+
+class MessageActionDialog(ModalScreen[str]):
+    """메시지 액션 선택 다이얼로그"""
+
+    DEFAULT_CSS = """
+    MessageActionDialog {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    MessageActionDialog > Vertical {
+        width: 65;
+        height: auto;
+        max-height: 24;
+        background: $panel;
+        border: round $accent;
+        padding: 1 2;
+    }
+    MessageActionDialog .action-bar {
+        height: 3;
+        margin: 1 0 0 0;
+    }
+    MessageActionDialog .action-bar Button {
+        margin: 0 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("d", "delete", "Delete"),
+    ]
+
+    def __init__(self, speaker: str, message: str, msg_id: str, channel: str):
+        super().__init__()
+        self._speaker = speaker
+        self._message = message
+        self._msg_id = msg_id
+        self._channel = channel
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(
+                f"[bold]{self._speaker}[/bold]\n"
+                f"{self._message}\n\n"
+                f"[dim]#{self._msg_id} · {self._channel}[/dim]",
+                markup=True,
+            )
+            yield Static("")
+            with Horizontal(classes="action-bar"):
+                yield Button("Delete", variant="error", id="act-delete")
+                yield Button("Cancel", variant="default", id="act-cancel")
+            yield Static("[dim]D 삭제 / ESC 취소[/dim]", markup=True)
+
+    @on(Button.Pressed, "#act-delete")
+    def on_delete(self):
+        self.dismiss("delete")
+
+    @on(Button.Pressed, "#act-cancel")
+    def on_cancel_btn(self):
+        self.dismiss("")
+
+    def action_delete(self):
+        self.dismiss("delete")
+
+    def action_cancel(self):
+        self.dismiss("")

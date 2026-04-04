@@ -49,7 +49,7 @@ from src import db
 from src.core.profile import load_profile, get_user_name, get_user_id
 from src.core.sync import run_sync
 from src import log_writer
-from src.tui.components import LoadingOverlay, ConfirmDialog
+from src.tui.components import LoadingOverlay, ConfirmDialog, MessageActionDialog
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PID_FILE = os.path.join(PROJECT_ROOT, "dev", ".bot.pid")
@@ -1528,7 +1528,18 @@ class DashboardScreen(Screen):
             parts = oid.split(":", 2)
             ch_name = parts[1]
             msg_id = parts[2]
-            self._do_delete_message(ch_name, msg_id)
+            # 메시지 내용 가져오기
+            conn = db.get_conn()
+            row = conn.execute("SELECT * FROM conversations WHERE id=?", (msg_id,)).fetchone()
+            conn.close()
+            if row:
+                row = dict(row)
+                sid = row["speaker"]
+                speaker = get_user_name() if sid == get_user_id() else _speaker_name(sid)
+                self.app.push_screen(
+                    MessageActionDialog(speaker, row["message"], msg_id, ch_name),
+                    lambda action, c=ch_name, m=msg_id: self._handle_msg_action(action, c, m),
+                )
         elif oid == "trash_view":
             self._current_view = "manage:trash"
             self._refresh_all()
@@ -1613,6 +1624,10 @@ class DashboardScreen(Screen):
         _cache.refresh()
         self.app.call_from_thread(self.app.pop_screen)
         self.app.call_from_thread(self._set_view, f"channel:{ch_name}:edit")
+
+    def _handle_msg_action(self, action: str, ch_name: str, msg_id: str):
+        if action == "delete":
+            self._do_delete_message(ch_name, msg_id)
 
     def _do_delete_message(self, ch_name, msg_id):
         """개별 메시지 삭제 — 휴지통"""
