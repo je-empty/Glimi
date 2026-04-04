@@ -159,8 +159,10 @@ async def sync_community(
             user_id = get_user_id()
             user_name = get_user_name()
 
-            # 에이전트 이름 → ID 매핑
-            agent_map = {a["name"]: a["id"] for a in db.list_agents()}
+            # 에이전트 매핑
+            all_agents = db.list_agents()
+            agent_map = {a["name"]: a["id"] for a in all_agents}  # name→id (Discord→DB용)
+            agents_by_id = {a["id"]: a for a in all_agents}       # id→agent (DB→Discord용)
 
             # ═══ 1. 채널 정리 ═══
             _progress("채널 정리 중...")
@@ -342,8 +344,8 @@ async def sync_community(
                         if speaker_id == user_id:
                             display_name = user_name
                             avatar = None
-                        elif speaker_id in agents:
-                            display_name = agents[speaker_id]["name"]
+                        elif speaker_id in agents_by_id:
+                            display_name = agents_by_id[speaker_id]["name"]
                             avatar = _get_avatar_bytes(speaker_id)
                         else:
                             display_name = speaker_id
@@ -351,7 +353,7 @@ async def sync_community(
 
                         wh_key = display_name
                         if wh_key not in webhooks:
-                            wh_name = f"chaos-{speaker_id}" if speaker_id in agents else f"chaos-user"
+                            wh_name = f"chaos-{speaker_id}" if speaker_id in agents_by_id else f"chaos-user"
                             existing_whs = await ch.webhooks()
                             wh = next((w for w in existing_whs if w.name == wh_name), None)
                             if not wh:

@@ -488,9 +488,7 @@ class DashboardScreen(Screen):
     # ── Tick / Refresh ──────────────────────────────────
 
     def _tick(self):
-        # 모달이 떠있으면 tick 스킵
-        if len(self.app.screen_stack) > 2:  # App screen + DashboardScreen + modal
-            return
+        # 모달이 떠있으면 UI 갱신만 스킵 (봇 상태 체크는 계속)
         _cache.refresh()
         self._check_bot_status()
 
@@ -516,7 +514,14 @@ class DashboardScreen(Screen):
         self._refresh_all()
 
     def _refresh_all(self):
-        # 상태 바 업데이트
+        # 모달 떠있으면 상태바만
+        try:
+            if len(self.app.screen_stack) > 2:
+                self._update_status_bar()
+                return
+        except Exception:
+            pass
+
         self._update_status_bar()
 
         content = self.query_one("#content", Static)
