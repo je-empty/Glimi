@@ -176,6 +176,13 @@ class OnboardingSupervisor(Supervisor):
                 )
             return
 
+        # internal-dm이 running 상태면 ChannelConversationSupervisor가 관리 → 여기선 대기
+        for n in ch_names:
+            if n.startswith("internal-dm-") and ("유나" in n or "하나" in n):
+                int_status = db.get_channel_status(n)
+                if int_status.get("status") == "running":
+                    return  # CS에 위임
+
         # 하나가 보고 안 함 — 대화 활발하면 대기
         idle = self._get_idle_seconds(CREATOR_CHANNEL)
         if idle < 30:
