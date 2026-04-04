@@ -137,8 +137,9 @@ class OnboardingSupervisor(Supervisor):
         if judgment in ("멈춤", "잡담", "stopped", "chatting", "idle"):
             log_writer.system(f"[sup:onboarding] 대화 판단: {judgment} — 유나 재촉")
             await self._nudge_yuna(guild,
-                "프로필 수집을 마무리하고 다음 단계로 넘어가야겠다. "
-                "아직 안 물어본 게 있으면 물어보고, 충분히 물어봤으면 마무리하자."
+                "대화가 좀 멈춘 것 같다. 상황 판단해서 적절히 행동하자. "
+                "프로필 수집이 아직이면 다음 질문을 하고, 충분히 했으면 마무리. "
+                "유저가 답을 안 하는 것 같으면 가볍게 말 걸어도 되고 기다려도 돼."
             )
         elif judgment in ("진행중", "progressing", "ongoing"):
             pass  # 정상 진행 중
@@ -175,10 +176,15 @@ class OnboardingSupervisor(Supervisor):
                 )
             return
 
-        # 하나가 보고 안 함 — 맥락 판단
+        # 하나가 보고 안 함 — 대화 활발하면 대기
         idle = self._get_idle_seconds(CREATOR_CHANNEL)
-        if idle < 10:
-            return
+        if idle < 30:
+            return  # 아직 대화 중 — 서두르지 않음
+
+        # 하나 채널 대화가 최소 5턴 미만이면 아직 아이스브레이킹 중
+        creator_all = db.get_recent_messages(CREATOR_CHANNEL, limit=20)
+        if len(creator_all) < 8:
+            return  # 대화 부족 — 더 기다림
 
         loop = asyncio.get_event_loop()
         judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
@@ -191,8 +197,10 @@ class OnboardingSupervisor(Supervisor):
         if judgment in ("충분", "enough", "done", "멈춤", "stopped"):
             log_writer.system(f"[sup:onboarding] 하나 판단: {judgment} — 재촉")
             await self._nudge_agent(guild, CREATOR_ID, CREATOR_CHANNEL,
-                "아이스브레이킹은 충분히 한 것 같다. "
-                "에이전트 생성 얘기를 시작하고, 유나 언니한테 보고도 해야지."
+                "대화가 멈춘 것 같다. 상황 판단해서 적절히. "
+                "아이스브레이킹이 충분했으면 에이전트 생성 얘기 꺼내고 유나 언니한테 보고. "
+                "아직 부족하면 유저한테 가볍게 말 걸어봐. "
+                "이미 보고했으면 다시 보내지 마."
             )
 
     # ── 유틸리티 ──
@@ -221,7 +229,8 @@ class OnboardingSupervisor(Supervisor):
         await self._inject_and_send(agent_id, ch_name, ch, system_msg)
 
     async def _inject_and_send(self, agent_id, ch_name, channel, instruction):
-        """에이전트에게 강제 지시 주입 (에이전트는 자기 내면의 생각으로 인식)"""
+        """에이전트에게 강제 지시 주입 (에이전트는 자기 내면의 생각으로 인식).
+        에이전트가 판단해서 메시지를 안 보낼 수도 있음."""
         loop = asyncio.get_event_loop()
         responses = await loop.run_in_executor(
             None,
@@ -230,13 +239,18 @@ class OnboardingSupervisor(Supervisor):
             )
         )
         cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+        sent_count = 0
         for resp in responses:
             clean = cmd_pat.sub('', resp).strip()
-            if clean:
+            # "..." 또는 빈 응답은 에이전트가 아무 말 안 하기로 한 것
+            if clean and clean != "..." and clean != "(무시)":
                 for part in _split_for_chat(clean):
                     await send_as_agent(channel, agent_id, part)
                     await asyncio.sleep(0.1)
                     db.log_message(ch_name, agent_id, part)
+                    sent_count += 1
+        if sent_count == 0:
+            log_writer.system(f"[sup:{self.name}] {agent_id} 재촉 응답 없음 (에이전트가 불필요 판단)")
 
 
 # ── 감시자 레지스트리 + 루프 ────────────────────────────
