@@ -236,10 +236,9 @@ Screen {
 .content-area {
     margin: 0 2;
     padding: 1 2;
-    height: 1fr;
+    height: auto;
     background: $panel;
     border: round $primary-darken-2;
-    overflow-y: auto;
 }
 
 /* ── 에이전트 그리드 ── */
@@ -326,11 +325,16 @@ Screen {
 /* ── 에이전트 선택 목록 ── */
 .agent-selector {
     height: auto;
-    max-height: 8;
+    max-height: 80vh;
     margin: 0 2;
     background: $panel;
     border: round $primary-darken-2;
     padding: 0 1;
+}
+
+#nav-back {
+    margin: 0 2;
+    display: none;
 }
 
 /* ── 기타 ── */
@@ -353,6 +357,7 @@ class DashboardScreen(Screen):
         Binding("ctrl+r", "restart", "재시작"),
         Binding("s", "sync", "동기화"),
         Binding("e", "toggle_edit", "편집"),
+        Binding("delete", "go_back", "뒤로"),
         Binding("w", "go_wizard", "Wizard"),
         Binding("escape", "go_back", "복귀"),
     ]
@@ -381,6 +386,8 @@ class DashboardScreen(Screen):
                 yield Button("Restart", variant="error", id="nav-restart")
                 yield Button("Sync", variant="success", id="nav-sync")
                 yield Button("Wizard", variant="warning", id="nav-wizard")
+            # Back 버튼 (서브페이지에서만 표시)
+            yield Button("← Back", variant="default", id="nav-back")
             # 콘텐츠 영역
             yield Static(id="content", classes="content-area")
             # Agents 뷰용 에이전트 선택
@@ -510,12 +517,15 @@ class DashboardScreen(Screen):
         agent_list.display = False
         manage_list.display = False
 
-        # 탭 활성 표시
+        # Back 버튼: 서브페이지에서만 표시
+        back_btn = self.query_one("#nav-back", Button)
+        is_subpage = view.startswith("agent:") or view.startswith("channel:") or view.startswith("manage:")
+        back_btn.display = is_subpage
+
         # 탭 활성 표시
         view_base = view.split(":")[0] if ":" in view else view
-        # channel → channels 매핑
-        if view_base == "channel":
-            view_base = "channels"
+        _TAB_ALIAS = {"channel": "channels", "agent": "agents", "manage": "channels"}
+        view_base = _TAB_ALIAS.get(view_base, view_base)
         for btn_id, tab_view in self._NAV_MAP.items():
             try:
                 btn = self.query_one(f"#{btn_id}", Button)
@@ -940,6 +950,7 @@ class DashboardScreen(Screen):
             ))
 
         # ── 메모리 (채널별 전체) ──
+        items.append(Text.from_markup("\n[bold magenta]━━ 🧠 Memory ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold magenta]"))
         conn = db.get_conn()
         memories = [dict(r) for r in conn.execute(
             "SELECT * FROM memories WHERE agent_id = ? ORDER BY channel, level DESC, id DESC",
@@ -987,7 +998,8 @@ class DashboardScreen(Screen):
                 border_style="dim", box=box.ROUNDED, padding=(0, 1),
             ))
 
-        # ── 채팅 로그 (이 에이전트 관련 모든 채널) ──
+        # ── 채팅 로그 ──
+        items.append(Text.from_markup("\n[bold cyan]━━ 💬 Chat Logs ━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]"))
         agent_type = agent.get("type", "persona")
         agent_name = agent["name"]
 
@@ -1625,7 +1637,7 @@ class DashboardScreen(Screen):
     }
 
     # Sync, Wizard는 액션 버튼 — Enter/클릭으로만 실행
-    _ACTION_BUTTONS = {"nav-refresh", "nav-restart", "nav-sync", "nav-wizard"}
+    _ACTION_BUTTONS = {"nav-refresh", "nav-restart", "nav-sync", "nav-wizard", "nav-back"}
 
     def on_button_pressed(self, event: Button.Pressed):
         """클릭 또는 Enter — 모든 버튼 처리"""
@@ -1807,6 +1819,8 @@ class DashboardScreen(Screen):
             # 리스트 뷰는 리스트에 포커스
             if view in ("agents", "channels"):
                 self.query_one("#agent-list", OptionList).focus()
+        elif button.id == "nav-back":
+            self.action_go_back()
         elif button.id == "nav-refresh":
             self.action_refresh()
         elif button.id == "nav-restart":
