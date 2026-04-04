@@ -1565,6 +1565,8 @@ class DashboardScreen(Screen):
                 ConfirmDialog("[red bold]휴지통 비우기[/red bold]\n\n복원 불가능합니다.", danger=True),
                 lambda yes: self._do_empty_trash() if yes else None,
             )
+        elif oid == "sync_scan":
+            self._run_sync_scan()
         elif oid == "sync_start":
             self._start_sync()
         elif oid.startswith("sync_ch:"):
@@ -1734,6 +1736,81 @@ class DashboardScreen(Screen):
         self._refresh_all()
 
     # ── Sync ─────────────────────────────────────────────
+
+    def _run_sync_scan(self):
+        """Discord 메시지 수 스캔"""
+        self._loading = LoadingOverlay("Discord 스캔 중...")
+        self.app.push_screen(self._loading)
+        self._do_sync_scan()
+
+    @work(thread=True)
+    def _do_sync_scan(self):
+        import time
+        import asyncio as _aio
+
+        def on_progress(msg):
+            try:
+                self.app.call_from_thread(self._loading.update_detail, msg)
+            except Exception:
+                pass
+
+        bot_was_running = self._bot_proc and self._bot_proc.poll() is None
+
+        try:
+            on_progress("봇 일시 중지...")
+            if bot_was_running:
+                self._stop_bot()
+                time.sleep(2)
+
+            from src.core.sync import _get_token, _fetch_all_messages
+            import discord as discord_lib
+
+            token = _get_token()
+            scan_result = {}
+
+            async def _scan():
+                intents = discord_lib.Intents.default()
+                intents.guilds = True
+                intents.message_content = True
+                client = discord_lib.Client(intents=intents)
+
+                @client.event
+                async def on_ready():
+                    guild = client.guilds[0]
+                    on_progress(f"서버: {guild.name}")
+                    for cat in guild.categories:
+                        if cat.name.startswith("chaos"):
+                            for ch in cat.text_channels:
+                                count = 0
+                                try:
+                                    async for _ in ch.history(limit=None):
+                                        count += 1
+                                except Exception:
+                                    pass
+                                scan_result[ch.name] = count
+                                on_progress(f"  {ch.name}: {count}건")
+                    await client.close()
+
+                await _aio.wait_for(client.start(token), timeout=120)
+
+            loop = _aio.new_event_loop()
+            loop.run_until_complete(_scan())
+            loop.close()
+
+            self._sync_scan_data = scan_result
+            on_progress(f"스캔 완료: {sum(scan_result.values())}건")
+
+        except Exception as e:
+            log_writer.error(f"[Sync Scan] {e}", e)
+        finally:
+            if bot_was_running:
+                self.app.call_from_thread(self._start_bot)
+                time.sleep(2)
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
+            self.app.call_from_thread(self._set_view, "sync")
 
     def _start_sync(self):
         """Sync 탭에서 Start 누르면 실행"""
@@ -1911,20 +1988,33 @@ class DashboardScreen(Screen):
             self._sync_selected_channels = set()
 
         selected = len(self._sync_selected_channels)
+        scan_data = getattr(self, '_sync_scan_data', None)
 
-        # DB vs 디코 상태 요약
         overview = db.get_channel_overview()
         total_db = sum(ch["msg_count"] for ch in overview)
-        ch_count = len(overview)
 
         lines = [
             f"[bold]🔄 Discord ↔ DB Sync[/bold]",
             "",
-            f"DB: [cyan]{ch_count}[/cyan]개 채널, [cyan]{total_db:,}[/cyan]건 메시지",
-            "",
-            f"채널을 선택하고 [green bold]▶ Start[/green bold]로 싱크 (선택 없으면 전체)",
-            f"[dim]채널 구조 (그룹/생성/삭제)는 항상 자동 싱크됩니다[/dim]",
+            f"DB: [cyan]{len(overview)}[/cyan]개 채널, [cyan]{total_db:,}[/cyan]건 메시지",
         ]
+
+        if scan_data:
+            total_discord = sum(scan_data.values())
+            diff = total_db - total_discord
+            lines.append(f"Discord: [cyan]{total_discord:,}[/cyan]건 메시지")
+            if diff > 0:
+                lines.append(f"[yellow]→ {diff:,}건 싱크 필요 (DB → Discord)[/yellow]")
+            elif diff < 0:
+                lines.append(f"[yellow]→ {-diff:,}건 싱크 필요 (Discord → DB)[/yellow]")
+            else:
+                lines.append(f"[green]→ 동기화 완료 상태[/green]")
+        else:
+            lines.append(f"Discord: [dim]스캔 필요 (🔍 Scan 실행)[/dim]")
+
+        lines.append("")
+        lines.append(f"[dim]🔍 Scan: 디코 메시지 수 확인  │  ▶ Start: 싱크 실행[/dim]")
+
         if selected:
             lines.append(f"\n[cyan]선택: {selected}개 채널[/cyan]")
 
@@ -1941,30 +2031,27 @@ class DashboardScreen(Screen):
         if not hasattr(self, '_sync_selected_channels'):
             self._sync_selected_channels = set()
 
+        scan_data = getattr(self, '_sync_scan_data', None)
+
         selected_count = len(self._sync_selected_channels)
         manage_list.add_option(Option(
-            f"  [green bold]▶ Start Sync[/green bold]  ({selected_count}개 선택)",
+            f"  [cyan bold]🔍 Scan[/cyan bold]  Discord 메시지 수 확인",
+            id="sync_scan",
+        ))
+        manage_list.add_option(Option(
+            f"  [green bold]▶ Start Sync[/green bold]  ({selected_count}개 선택, 없으면 전체)",
             id="sync_start",
         ))
         manage_list.add_option(None)
 
-        # 채널별 DB 건수 표시
         overview = db.get_channel_overview()
-        # 건수 큰 순 정렬
         overview.sort(key=lambda x: -x["msg_count"])
 
         for ch in overview:
             ch_name = ch["channel"]
-            count = ch["msg_count"]
+            db_count = ch["msg_count"]
             selected = ch_name in self._sync_selected_channels
             check = "[green]✓[/green]" if selected else "[dim]○[/dim]"
-
-            # 예상 시간 (0.5초/건)
-            est_sec = int(count * 0.5)
-            if est_sec >= 60:
-                est_str = f"~{est_sec // 60}분"
-            else:
-                est_str = f"~{est_sec}초"
 
             # 채널 아이콘
             if ch_name.startswith("dm-"):
@@ -1976,8 +2063,22 @@ class DashboardScreen(Screen):
             else:
                 icon = "📋"
 
+            # 디코 메시지 수 (스캔 데이터 있으면 비교 표시)
+            if scan_data and ch_name in scan_data:
+                dc_count = scan_data[ch_name]
+                diff = db_count - dc_count
+                if diff > 0:
+                    status = f"[yellow]+{diff}[/yellow]"
+                elif diff < 0:
+                    status = f"[cyan]+{-diff}[/cyan]"
+                else:
+                    status = "[green]✓[/green]"
+                count_str = f"DB:{db_count} DC:{dc_count} {status}"
+            else:
+                count_str = f"DB:[yellow]{db_count}[/yellow]"
+
             manage_list.add_option(Option(
-                f"  {check}  {icon} {ch_name}  [yellow]{count}건[/yellow]  [dim]{est_str}[/dim]",
+                f"  {check}  {icon} {ch_name}  {count_str}",
                 id=f"sync_ch:{ch_name}",
             ))
 
