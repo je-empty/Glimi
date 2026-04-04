@@ -1571,8 +1571,48 @@ async def handle_room_request_detection(
 
 
 async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
-    """페르소나의 ACTION 요청을 유나에게 전달 → 유나가 승인/거절"""
+    """페르소나의 ACTION 요청을 유나에게 전달 → 유나가 승인/거절
+    유나 자신의 ACTION은 직접 CMD로 변환 실행"""
     if not guild:
+        return
+
+    # 유나가 ACTION을 쓴 경우 → CMD로 직접 실행
+    if agent_id == MGR_ID:
+        parts = action_str.split(None, 1)
+        action_type = parts[0].upper() if parts else ""
+        action_args = parts[1] if len(parts) > 1 else ""
+
+        mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
+        if not mgr_ch:
+            return
+
+        if action_type == "DM":
+            # DM 이름 메시지 → CMD로 변환: internal-dm 채널에서 직접 전송
+            dm_parts = action_args.split(None, 1)
+            target_name = dm_parts[0] if dm_parts else ""
+            message = dm_parts[1] if len(dm_parts) > 1 else ""
+            if target_name and message:
+                # 대상 에이전트의 internal-dm 채널에서 메시지 전송
+                from src.core.profile import load_profile
+                target = None
+                for a in db.list_agents():
+                    if a["name"] == target_name:
+                        target = a
+                        break
+                if target:
+                    ch_name = f"internal-dm-{runtime.get_agent_name(MGR_ID)}-{target_name}"
+                    target_ch = discord.utils.get(guild.text_channels, name=ch_name)
+                    if not target_ch:
+                        # 채널 없으면 생성
+                        from src.bot.core import _get_category_for_channel, _ensure_category
+                        cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
+                        target_ch = await guild.create_text_channel(ch_name, category=cat)
+                    await send_as_agent(target_ch, MGR_ID, message)
+                    log_writer.system(f"✓ Manager ACTION DM: → {target_name}")
+                    await send_as_agent(mgr_ch, MGR_ID, f"{target_name}한테 DM 보냈어")
+            return
+
+        log_writer.system(f"Manager ACTION 직접 실행: {action_type} {action_args[:50]}")
         return
 
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
