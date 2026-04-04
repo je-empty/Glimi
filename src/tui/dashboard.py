@@ -503,6 +503,13 @@ class DashboardScreen(Screen):
             self._current_view = "overview"
         self._prev_dev = dev_active
 
+        # 편집 모드/에이전트 상세에서는 UI 갱신 스킵 (스크롤 위치 유지)
+        view = self._current_view
+        if view.endswith(":edit") or view.startswith("agent:") or view.startswith("channel:"):
+            # 상태바만 갱신
+            self._update_status_bar()
+            return
+
         self._refresh_all()
 
     def _refresh_all(self):
