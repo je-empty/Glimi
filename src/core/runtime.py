@@ -266,16 +266,14 @@ class AgentRuntime:
         elif channel.startswith("internal-dm-"):
             partner = names[0] if names else "?"
             return (
-                f"[지금 대화 중: {partner}과(와) 둘만의 대화. "
-                f"{owner_name}이 이 대화를 읽을 수는 있지만 참여는 못 해. "
-                f"여기엔 너와 {partner}만 있어.]"
+                f"[지금 대화 중: {partner}과(와) 둘만의 사적인 대화. "
+                f"여기엔 너와 {partner}만 있어. 다른 사람은 아무도 못 봐.]"
             )
         elif channel.startswith("internal-group-"):
             members = ", ".join(names) if names else "?"
             return (
                 f"[지금 대화 중: {members}과(와) 단체 대화. "
-                f"{owner_name}이 읽을 수는 있지만 참여는 못 해. "
-                f"여기엔 지금 있는 멤버만 참여 중이야. "
+                f"여기엔 지금 있는 멤버만 참여 중이야. 다른 사람은 아무도 못 봐. "
                 f"다른 사람을 초대하고 싶으면 유나한테 요청해.]"
             )
         elif channel == "mgr-dashboard":
