@@ -1,0 +1,37 @@
+[
+  {
+    "file": "quiet-gentle-21f-infj.png",
+    "tags": ["조용한", "다정한", "차분한", "내성적", "긴 머리", "INFJ", "INFP", "20대"],
+    "description": "검은 긴 생머리, 차분하고 조용한 인상, 하얀 피부"
+  },
+  {
+    "file": "boyish-energetic-26f-enfp.png",
+    "tags": ["활발한", "보이시한", "외향적", "쿨한", "ENFP", "ENTP", "20대"],
+    "description": "보이시하면서 예쁜 얼굴, 밝은 웃음, 키 큰 편"
+  },
+  {
+    "file": "cheerful-teen-15f-esfp.png",
+    "tags": ["활발한", "애교", "솔직한", "건강한", "ESFP", "ESTP", "10대"],
+    "description": "밝고 건강한 느낌, 중학생~고등학생, 활기찬 표정"
+  },
+  {
+    "file": "warm-social-21f-enfj.png",
+    "tags": ["사교적인", "따뜻한", "화사한", "화장", "ENFJ", "ESFJ", "20대"],
+    "description": "화사한 인상, 초승달 눈, 화장 잘 하는 대학생"
+  },
+  {
+    "file": "shy-dreamy-15f-infp.png",
+    "tags": ["소심한", "몽글몽글", "귀여운", "동글동글", "INFP", "ISFP", "10대"],
+    "description": "작고 귀여운 느낌, 큰 눈, 동글동글한 얼굴, 멍한 표정"
+  },
+  {
+    "file": "bright-outgoing-26f-enfp2.png",
+    "tags": ["밝은", "에너지", "보조개", "분위기메이커", "ENFP", "ESFP", "20대"],
+    "description": "밝고 화사한 인상, 보조개, 분위기 메이커"
+  },
+  {
+    "file": "mature-caring-34f-esfj.png",
+    "tags": ["성숙한", "따뜻한", "책임감", "단정한", "ESFJ", "ISFJ", "30대"],
+    "description": "편안하고 단정한 인상, 성숙한 분위기, 따뜻한 웃음"
+  }
+]

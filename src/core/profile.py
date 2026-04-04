@@ -3,6 +3,7 @@
 """
 import json
 import os
+from pathlib import Path
 from typing import Optional
 from src import db, community
 
@@ -292,6 +293,24 @@ def _build_pet_name_section(agent_id: str) -> str:
             if their_call:
                 lines.append(f"  {other['name']}이(가) 너를 '{their_call}'로 불러")
     return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _load_sample_catalog() -> str:
+    """샘플 아바타 카탈로그 로드"""
+    import json as _json
+    catalog_path = Path(__file__).parent.parent.parent / "assets" / "sample_avatars" / "catalog.json"
+    if not catalog_path.exists():
+        return "(샘플 없음)"
+    try:
+        with open(catalog_path, "r", encoding="utf-8") as f:
+            catalog = _json.load(f)
+        lines = []
+        for item in catalog:
+            tags = ", ".join(item["tags"][:5])
+            lines.append(f"  - {item['file']}: {item['description']} [{tags}]")
+        return "\n".join(lines)
+    except Exception:
+        return "(카탈로그 로드 실패)"
 
 
 def _build_persona_prompt(p: dict) -> str:
@@ -629,11 +648,19 @@ def _build_creator_prompt(p: dict) -> str:
 ```
 few_shot_examples 최소 3개. 오너와의 관계도 relationship_templates에 is_owner_relationship=1로 포함.
 
-=== 아바타 프롬프트 생성 ===
-프로필 정보를 보고 아바타 이미지용 프롬프트를 2줄로 만들어.
+=== 아바타 ===
+기본 제공 샘플 아바타가 있어. 새 캐릭터의 성격/외모/나이/MBTI와 비교해서 어울리는 게 있으면 먼저 제안해.
+"이 캐릭터에 어울리는 샘플 이미지가 있는데 써볼래?" 라고 물어보고, 오너가 OK하면 적용.
+맘에 안 들면 아바타 프롬프트를 새로 만들어줘 (이미지 생성 AI에 넣을 수 있게).
 
+샘플 아바타 카탈로그:
+{_load_sample_catalog()}
+
+아바타 프롬프트 생성 시 포맷:
 1줄: Anime-style profile illustration, Korean [나이대], [복장], clean lineart, soft cel shading, pastel gradient background, bust-up shot
 2줄: [헤어], [표정/눈빛], [배경 color]
+
+샘플 적용: [CMD:{{"cmd":"아바타적용","name":"에이전트이름","sample":"파일명"}}]
 
 {_build_action_system_prompt("creator")}"""
     return prompt

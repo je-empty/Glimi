@@ -667,6 +667,10 @@ async def execute_yuna_command(
     elif cmd == "디코복구":
         await yuna_restore_discord(report_channel, args_str, guild)
 
+    # ── 샘플 아바타 적용 ──
+    elif cmd == "아바타적용":
+        await _apply_sample_avatar(report_channel, args_str, guild)
+
     # ── ACTION 승인 ──
     elif cmd == "ACTION승인":
         await yuna_approve_action(report_channel, args_str, guild)
@@ -1691,6 +1695,60 @@ async def handle_room_request_detection(
         for msg in cleaned:
             await send_as_agent(mgr_ch, MGR_ID, msg)
             await asyncio.sleep(0.5)
+
+
+async def _apply_sample_avatar(report_channel, args_str, guild):
+    """샘플 아바타를 에이전트에 적용"""
+    import shutil
+    parts = args_str.split(None, 1)
+    agent_name = _resolve_agent_name(parts[0]) if parts else ""
+    sample_file = parts[1].strip() if len(parts) > 1 else ""
+
+    # JSON 파싱 시도
+    if args_str.strip().startswith("{"):
+        try:
+            import json as _json
+            data = _json.loads(args_str)
+            agent_name = _resolve_agent_name(data.get("name", ""))
+            sample_file = data.get("sample", "")
+        except Exception:
+            pass
+
+    if not agent_name or not sample_file:
+        await send_as_agent(report_channel, MGR_ID, "에이전트 이름이랑 샘플 파일명이 필요해")
+        return
+
+    # 에이전트 찾기
+    target = None
+    for a in db.list_agents():
+        if a["name"] == agent_name:
+            target = a
+            break
+    if not target:
+        await send_as_agent(report_channel, MGR_ID, f"{agent_name} 못 찾겠어")
+        return
+
+    # 샘플 파일 확인
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sample_path = os.path.join(project_root, "assets", "sample_avatars", sample_file)
+    if not os.path.exists(sample_path):
+        await send_as_agent(report_channel, MGR_ID, f"샘플 파일 못 찾겠어: {sample_file}")
+        return
+
+    # 커뮤니티 아바타 디렉토리에 복사 (agent_id.png)
+    avatar_filename = f"{target['id']}.png"
+    dst = os.path.join(community.get_avatars_dir(), avatar_filename)
+    shutil.copy2(sample_path, dst)
+
+    # DB에 avatar_filename 업데이트
+    conn = db.get_conn()
+    conn.execute("UPDATE agents SET avatar_filename=? WHERE id=?", (avatar_filename, target["id"]))
+    conn.commit()
+    conn.close()
+
+    log_writer.system(f"✓ 샘플 아바타 적용: {agent_name} ← {sample_file}")
+    await send_as_agent(report_channel, target["id"] if target["type"] != "persona" else MGR_ID,
+                        f"{agent_name} 아바타 적용했어!")
 
 
 # ── ACTION 전달 ──────────────────────────────────────────
