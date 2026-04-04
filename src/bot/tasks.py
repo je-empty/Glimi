@@ -367,11 +367,13 @@ async def yuna_watcher():
     if not new_events:
         return
 
-    # 유나에게 활동 보고만 (대화 시작은 오빠가 시킬 때만)
+    # 유나에게 활동 알림 — 특이사항만 보고, 일상 대화는 무시
     notify = "\n".join(new_events)
     notify_prompt = (
         f"[자동알림] 최근 활동:\n{notify}\n\n"
-        f"특이사항 있으면 오빠한테 보고. 별거 아니면 가볍게 한마디만 하거나 안 해도 됨."
+        f"이건 참고용이야. 대부분은 무시해도 돼.\n"
+        f"정말 특이하거나 이상한 대화가 있을 때만 {get_user_name()}한테 말 걸어.\n"
+        f"일상적인 대화면 아무것도 하지 마. 응답하지 마."
     )
 
     try:
@@ -385,6 +387,9 @@ async def yuna_watcher():
         if responses and guild:
             responses = await parse_and_execute_actions(mgr_channel, responses, guild)
         for resp in responses:
+            # 빈 응답("...", 공백 등)은 유나가 안 보내기로 한 것
+            if not resp or resp.strip() in ("", "...", "(무시)"):
+                continue
             for part in _split_for_chat(resp):
                 await send_as_agent(mgr_channel, MGR_ID, part)
                 await asyncio.sleep(0.3 + random.uniform(0, 0.4))

@@ -202,25 +202,27 @@ async def start_conversation(
                     runtime.generate_agent_to_agent(sid, lid, ch, context=ctx)
             )
 
-            # 디스코드에 전송 (ACTION 태그 처리)
+            # 디스코드에 전송 (CMD/QUERY/ACTION 태그 처리)
             import re
+            TAG_RE = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
             ACTION_RE = re.compile(r'\[ACTION:((?:[^\[\]]|\[[^\]]*\])*)\]')
             for i, msg in enumerate(responses):
                 if i > 0:
                     await asyncio.sleep(random.uniform(0.5, 1.5))
-                if ACTION_RE.search(msg):
-                    actions = ACTION_RE.findall(msg)
-                    clean = ACTION_RE.sub('', msg).strip()
-                    if clean:
-                        await send_fn(speaker_id, clean)
-                    # ACTION 전달은 discord_bot에서 처리
-                    from src.discord_bot import _forward_action_to_yuna
+
+                actions = ACTION_RE.findall(msg)
+                # 모든 태그 제거 후 순수 텍스트만 전송
+                clean = TAG_RE.sub('', msg).strip()
+                if clean:
+                    await send_fn(speaker_id, clean)
+
+                # ACTION 전달
+                if actions:
+                    from src.bot.mgr_system import _forward_action_to_yuna
                     import asyncio as _aio
-                    for guild in __import__('src.discord_bot', fromlist=['bot']).bot.guilds:
+                    for guild in __import__('src.bot', fromlist=['bot']).bot.guilds:
                         for action in actions:
                             _aio.create_task(_forward_action_to_yuna(speaker_id, action.strip(), guild))
-                else:
-                    await send_fn(speaker_id, msg)
 
             # 턴 기록
             state.record_turn(speaker_id, responses)

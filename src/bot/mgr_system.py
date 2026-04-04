@@ -1850,11 +1850,25 @@ async def _cmd_profile_create(report_channel, json_str):
         runtime.activate_agent(profile["id"])
         runtime.refresh_agent("agent-mgr-001")
 
+        # dm 채널 자동 생성 (persona만)
+        if agent_type == "persona" and report_channel.guild:
+            dm_name = f"dm-{profile['name']}"
+            from src.bot.core import _get_category_for_channel, _ensure_category
+            existing = discord.utils.get(report_channel.guild.text_channels, name=dm_name)
+            if not existing:
+                cat = await _ensure_category(report_channel.guild, _get_category_for_channel(dm_name))
+                await report_channel.guild.create_text_channel(dm_name, category=cat)
+                log_writer.system(f"dm 채널 생성: {dm_name}")
+            db.set_channel_participants(dm_name, [profile["id"]])
+            CHANNEL_AGENT_MAP[dm_name] = profile["id"]
+            AGENT_CHANNEL_MAP[profile["id"]] = dm_name
+
         await send_as_agent(report_channel, creator_id, f"프로필 생성 완료: {profile['name']} ({profile['id']})")
         log_writer.system(f"프로필 생성: {profile['name']} ({profile['id']})")
 
     except Exception as e:
-        await send_as_agent(report_channel, creator_id, f"프로필 생성 실패: {str(e)[:80]}")
+        log_writer.system(f"[프로필생성] 실패: {type(e).__name__}: {str(e)[:100]}")
+        await send_as_agent(report_channel, creator_id, "프로필 생성에 문제가 있었어... 다시 해볼게")
 
 
 async def _cmd_profile_delete(report_channel, args_str):
@@ -2062,7 +2076,7 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
 
                     async def _send_fn(aid, msg):
                         await send_as_agent(target_ch, aid, msg)
-                        db.log_message(actual_ch_name, aid, msg)
+                        # DB 로깅은 runtime.generate_agent_to_agent에서 처리
 
                     asyncio.create_task(
                         start_conversation(
