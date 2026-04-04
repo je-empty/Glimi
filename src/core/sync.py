@@ -20,13 +20,8 @@ from src import db, community, log_writer
 
 
 def _sync_error_log(msg: str):
-    """sync 에러를 별도 로그 파일에 기록"""
-    log_dir = community.get_community_dir() / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / "sync_error.log"
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(f"[{ts}] {msg}\n")
+    """sync 에러를 runtime_error.log에 기록"""
+    log_writer.error(f"[Sync] {msg}")
 
 
 # 카테고리 순서

@@ -107,33 +107,19 @@ def _get_db_stats(community_id: str) -> Optional[dict]:
 
 
 def _is_bot_running(community_id: str) -> bool:
+    """커뮤니티별 PID 파일로만 판단 (정확한 체크)"""
+    pid_file = PROJECT_ROOT / "dev" / f".bot-{community_id}.pid"
+    if not pid_file.exists():
+        return False
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", f"CHAOS_COMMUNITY={community_id}.*src.discord_bot"],
-            capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            return True
-        pid_file = PROJECT_ROOT / "dev" / f".bot-{community_id}.pid"
-        if pid_file.exists():
-            pid = int(pid_file.read_text().strip())
-            try:
-                os.kill(pid, 0)
-                return True
-            except ProcessLookupError:
-                pid_file.unlink(missing_ok=True)
-        # 일반 PID 파일
-        general_pid = PROJECT_ROOT / "dev" / ".bot.pid"
-        if general_pid.exists():
-            try:
-                pid = int(general_pid.read_text().strip())
-                os.kill(pid, 0)
-                return True
-            except (ProcessLookupError, ValueError):
-                pass
+        pid = int(pid_file.read_text().strip())
+        os.kill(pid, 0)  # 프로세스 존재 확인
+        return True
+    except (ProcessLookupError, ValueError):
+        pid_file.unlink(missing_ok=True)  # 죽은 PID 정리
         return False
-    except Exception:
-        return False
+    except PermissionError:
+        return True  # 권한 없으면 살아있는 것
 
 
 def _get_community_ids() -> list[str]:

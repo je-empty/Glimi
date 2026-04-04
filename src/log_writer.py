@@ -48,7 +48,7 @@ def system(msg: str):
 
 
 def error(msg: str, exc: Exception = None):
-    """에러 로그 — system.log + error.log 양쪽에 기록"""
+    """에러 로그 — system.log + runtime_error.log 양쪽에 기록"""
     import traceback as _tb
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [f"[{ts}] {msg}"]
@@ -56,7 +56,7 @@ def error(msg: str, exc: Exception = None):
         lines.append(_tb.format_exc())
     entry = "\n".join(lines)
     _append(os.path.join(_get_log_dir(), "system.log"), f"[{_ts()}] ❌ {msg}")
-    _append(os.path.join(_get_log_dir(), "error.log"), entry)
+    _append(os.path.join(_get_log_dir(), "runtime_error.log"), entry)
 
 
 # ── Agent (no-op — 로그 파일 안 만듦) ────────────────
