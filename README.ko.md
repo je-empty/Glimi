@@ -126,7 +126,7 @@ flowchart TB
     Manager -.->|"보고"| Owner
 
     %% 시스템
-    Manager <-->|"mgr-creator"| Creator
+    Manager <-->|"private DM"| Creator
     Manager -->|"전원 감시"| A & B & C
     Creator -.->|"생성"| Personas
 
