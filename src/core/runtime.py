@@ -440,9 +440,7 @@ class AgentRuntime:
             if not raw:
                 return ["..."]
 
-            responses = self._parse_response(raw, agent_name=name)
-            log_writer.agent_thinking(agent_id, f"메시지 {len(responses)}건 준비")
-            return responses
+            return self._parse_response(raw, agent_name=name)
 
         except subprocess.TimeoutExpired:
             log_writer.system(f"❌ CLI 타임아웃 (60초)")
@@ -548,8 +546,6 @@ class AgentRuntime:
                     seen.add(key)
 
                 messages.append(cleaned)
-                _msg_count += 1
-                log_writer.agent_thinking(agent_id, f"메시지 {_msg_count}건 준비")
                 on_message(cleaned)
 
             process.wait(timeout=60)

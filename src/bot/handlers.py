@@ -184,11 +184,8 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             if msg is None:
                 break
 
-            await asyncio.sleep(0.3 + random.uniform(0, 0.5))
-            async with message.channel.typing():
-                await asyncio.sleep(0.2 + random.uniform(0, 0.3))
-
             await _handle_msg(msg)
+            await asyncio.sleep(0.1)  # rate limit 방지
 
         # 버퍼에 남은 불완전 태그 처리 (닫히지 않은 채 끝남)
         if _tag_buffer:
@@ -304,13 +301,10 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
 
                 if first:
                     log_writer.mark_speaking(agent_id)
-                else:
-                    await asyncio.sleep(0.3 + random.uniform(0, 0.4))
                 first = False
 
-                async with message.channel.typing():
-                    await asyncio.sleep(0.2 + random.uniform(0, 0.3))
                 await _handle_group_msg(msg)
+                await asyncio.sleep(0.1)  # rate limit 방지
 
             # 버퍼에 남은 불완전 태그 처리
             if _tag_buffer:
