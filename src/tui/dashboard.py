@@ -66,7 +66,7 @@ def _venv_python() -> str:
 # ══════════════════════════════════════════════════════════
 
 _COLOR_POOL = [
-    "bright_magenta", "bright_cyan", "bright_green", "bright_yellow",
+    "bright_magenta", "bright_cyan", "bright_green",
     "bright_red", "dodger_blue1", "spring_green1", "orchid",
     "salmon1", "turquoise2", "deep_pink1", "gold1",
     "medium_purple1", "dark_orange", "pale_green1", "sky_blue1",
@@ -804,8 +804,16 @@ class DashboardScreen(Screen):
             for a in agents:
                 c = _get_color(a["id"])
                 thinking = log_writer.is_thinking(a["id"])
+                speaking = log_writer.is_speaking(a["id"])
                 em = E_EMOJI.get(a["current_emotion"], "")
-                icon = "🧠" if thinking else "🟢" if a["status"] == "active" else "⚪"
+                if thinking:
+                    icon = "🧠"
+                elif speaking:
+                    icon = "💬"
+                elif a["status"] == "active":
+                    icon = "🟢"
+                else:
+                    icon = "⚪"
                 type_map = {"mgr": "MGR", "creator": "CRT", "persona": ""}
                 type_str = type_map.get(a.get("type", ""), "")
                 type_badge = f" [dim]({type_str})[/dim]" if type_str else ""
@@ -890,12 +898,15 @@ class DashboardScreen(Screen):
         dev = log_writer.is_dev_active()
         thinking = [a for a in _cache.all_agents.values()
                     if log_writer.is_thinking(a["id"])]
+        speaking_list = [a for a in _cache.all_agents.values()
+                        if log_writer.is_speaking(a["id"])]
         total = len(_cache.all_agents)
         now = datetime.now().strftime("%H:%M:%S")
 
         bot_s = "[green bold]● Running[/green bold]" if bot else "[red bold]● Stopped[/red bold]"
         dev_s = "[bright_yellow bold]🔧 Dev[/bright_yellow bold]" if dev else ""
         think_s = f"[bright_yellow]🧠 {len(thinking)}[/bright_yellow]" if thinking else ""
+        speak_s = f"[bright_cyan]💬 {len(speaking_list)}[/bright_cyan]" if speaking_list else ""
 
         parts = [
             f"[bright_magenta bold]◈ Glimi[/bright_magenta bold]",
@@ -906,6 +917,8 @@ class DashboardScreen(Screen):
         ]
         if think_s:
             parts.append(think_s)
+        if speak_s:
+            parts.append(speak_s)
         if dev_s:
             parts.append(dev_s)
 
@@ -920,6 +933,7 @@ class DashboardScreen(Screen):
         aid = agent["id"]
         c = _get_color(aid)
         thinking = log_writer.is_thinking(aid)
+        speaking = log_writer.is_speaking(aid)
         em = E_EMOJI.get(agent["current_emotion"], "")
         sec = _seconds_since(agent.get("last_active"))
         type_map = {"mgr": "Mgr", "creator": "Cre", "persona": "Per"}
@@ -971,10 +985,12 @@ class DashboardScreen(Screen):
             if thinking:
                 think_sec = log_writer.thinking_seconds(aid)
                 elapsed = f"{int(think_sec)}s"
-                bar = "[bright_yellow]" + "▓" * 10 + "[/bright_yellow]"
                 line1 = f"  {status} {em}  [bright_yellow]🧠{elapsed}[/bright_yellow]  {type_str}"
+            elif speaking:
+                speak_sec = log_writer.speaking_seconds(aid)
+                elapsed = f"{int(speak_sec)}s"
+                line1 = f"  {status} {em}  [bright_cyan]💬{elapsed}[/bright_cyan]  {type_str}"
             else:
-                bar = "[dim]░░░░░░░░░░[/dim]"
                 line1 = f"  {status} {em} {agent['current_emotion'][:4]}  {type_str}  [dim]{_ago(sec)}[/dim]"
 
             # 마지막 메시지
@@ -986,7 +1002,7 @@ class DashboardScreen(Screen):
             else:
                 line2 = f"  [dim]대화 없음[/dim]"
 
-            border = "bright_yellow" if thinking else (c if agent["status"] == "active" else "dim")
+            border = "bright_yellow" if thinking else "bright_cyan" if speaking else (c if agent["status"] == "active" else "dim")
             return Panel(
                 f"{line1}\n{line2}",
                 title=f" [{c}]{agent['name']}[/{c}] ",
@@ -1004,7 +1020,10 @@ class DashboardScreen(Screen):
             )
 
         thinking = [a for a in agents if log_writer.is_thinking(a["id"])]
-        idle = [a for a in agents if not log_writer.is_thinking(a["id"])]
+        speaking_agents = [a for a in agents
+                          if not log_writer.is_thinking(a["id"]) and log_writer.is_speaking(a["id"])]
+        idle = [a for a in agents
+                if not log_writer.is_thinking(a["id"]) and not log_writer.is_speaking(a["id"])]
 
         # 추론 중 — 확장 카드 (2열 분할)
         if thinking:
@@ -1020,7 +1039,20 @@ class DashboardScreen(Screen):
                 if row:
                     items.append(Columns(row, equal=True, expand=True))
 
-        # 나머지 — 컴팩트 카드 3열 (추론 중이어도 여기에 컴팩트 버전도 표시하지 않음)
+        # Speaking 에이전트 — 컴팩트 카드 (thinking과 idle 사이)
+        if speaking_agents:
+            row = []
+            for a in speaking_agents:
+                row.append(self._render_agent_card(a))
+                if len(row) == 3:
+                    items.append(Columns(row, equal=True, expand=True))
+                    row = []
+            if row:
+                while len(row) < 3:
+                    row.append(Text(""))
+                items.append(Columns(row, equal=True, expand=True))
+
+        # 나머지 — 컴팩트 카드 3열
         if idle:
             row = []
             for a in idle:
@@ -1098,14 +1130,21 @@ class DashboardScreen(Screen):
         c = _get_color(agent_id)
         em = E_EMOJI.get(agent["current_emotion"], "")
         thinking = log_writer.is_thinking(agent_id)
+        speaking = log_writer.is_speaking(agent_id)
         sec = _seconds_since(agent.get("last_active"))
         items = []
 
         # ── 프로필 정보 ──
         info_lines = []
         type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
-        status_str = "[bright_yellow]🧠 추론중[/bright_yellow]" if thinking else \
-                     "[green]● 활성[/green]" if agent["status"] == "active" else f"[dim]{agent['status']}[/dim]"
+        if thinking:
+            status_str = "[bright_yellow]🧠 추론중[/bright_yellow]"
+        elif speaking:
+            status_str = "[bright_cyan]💬 전송중[/bright_cyan]"
+        elif agent["status"] == "active":
+            status_str = "[green]● 활성[/green]"
+        else:
+            status_str = f"[dim]{agent['status']}[/dim]"
 
         info_lines.append(f"{status_str}  │  {em} {agent['current_emotion']} ({agent.get('emotion_intensity', 0)}/10)  │  [dim]{_ago(sec)}[/dim]")
         info_lines.append(f"[dim]{agent_id} · {type_map.get(agent.get('type', ''), '')}[/dim]")
@@ -1387,33 +1426,6 @@ class DashboardScreen(Screen):
             subtitle="[dim]ESC 뒤로  │  e 편집모드[/dim]",
             border_style=color, box=box.ROUNDED, padding=(0, 1),
         ))
-
-        # 이 채널 관련 메모리
-        conn = db.get_conn()
-        mems = [dict(m) for m in conn.execute(
-            "SELECT * FROM memories WHERE channel=? ORDER BY level DESC, id DESC",
-            (channel_name,)
-        ).fetchall()]
-        conn.close()
-
-        if mems:
-            mem_lines = []
-            for m in mems:
-                level_tag = f"[magenta]L{m['level']}[/magenta]" if m["level"] == 2 else f"[cyan]L{m['level']}[/cyan]"
-                agent_name = ""
-                agent = _cache.all_agents.get(m.get("agent_id", ""))
-                if agent:
-                    ac = _get_color(agent["id"])
-                    agent_name = f" [{ac}]{agent['name']}[/{ac}]"
-                ts = m["created_at"][:16] if m.get("created_at") else ""
-                mem_lines.append(f"  {level_tag}{agent_name} [dim]{ts}[/dim]")
-                mem_lines.append(f"    {m['content']}")
-                mem_lines.append("")
-            items.append(Panel(
-                "\n".join(mem_lines).rstrip(),
-                title=f"[bold]🧠 메모리[/bold]  [dim]({len(mems)}건)[/dim]",
-                border_style="magenta", box=box.ROUNDED, padding=(0, 1),
-            ))
 
         return Group(*items)
 

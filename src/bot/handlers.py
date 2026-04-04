@@ -167,6 +167,7 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             gen_task = loop.run_in_executor(None, _generate)
             first_msg = await msg_queue.get()
             if first_msg is not None:
+                log_writer.mark_speaking(agent_id)
                 await _handle_msg(first_msg)
 
         # 이후 메시지 스트리밍
@@ -191,8 +192,8 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
                 is_mgr, message.guild, sent_msgs
             )
 
-        # 전송 완료 → thinking 해제
-        log_writer.mark_done(agent_id)
+        # 전송 완료 → speaking 해제
+        log_writer.mark_speaking_done(agent_id)
 
         # 톡방 요청 감지 (페르소나만)
         if not is_mgr and message.guild:
@@ -291,7 +292,9 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                 if msg is None:
                     break
 
-                if not first:
+                if first:
+                    log_writer.mark_speaking(agent_id)
+                else:
                     await asyncio.sleep(0.3 + random.uniform(0, 0.4))
                 first = False
 
@@ -306,8 +309,8 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                     False, message.guild, sent_msgs
                 )
 
-            # 전송 완료 → thinking 해제
-            log_writer.mark_done(agent_id)
+            # 전송 완료 → speaking 해제
+            log_writer.mark_speaking_done(agent_id)
 
             if message.guild:
                 for m in sent_msgs:

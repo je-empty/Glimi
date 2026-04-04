@@ -114,6 +114,32 @@ def thinking_seconds(agent_id: str) -> float:
         return 0
 
 
+def mark_speaking(agent_id: str):
+    try:
+        open(os.path.join(_get_log_dir(), f".speaking-{agent_id}"), "w").close()
+    except OSError:
+        pass
+
+
+def mark_speaking_done(agent_id: str):
+    try:
+        os.remove(os.path.join(_get_log_dir(), f".speaking-{agent_id}"))
+    except FileNotFoundError:
+        pass
+
+
+def is_speaking(agent_id: str) -> bool:
+    return os.path.exists(os.path.join(_get_log_dir(), f".speaking-{agent_id}"))
+
+
+def speaking_seconds(agent_id: str) -> float:
+    p = os.path.join(_get_log_dir(), f".speaking-{agent_id}")
+    try:
+        return time.time() - os.path.getmtime(p)
+    except (FileNotFoundError, OSError):
+        return 0
+
+
 def mark_bot_ready():
     try:
         open(os.path.join(_get_log_dir(), ".bot-ready"), "w").close()
@@ -196,7 +222,7 @@ def clear_flags():
     if not os.path.exists(log_dir):
         return
     for name in os.listdir(log_dir):
-        if name.startswith(".thinking-") or name in (".dev-active", ".bot-ready", ".onboarding", ".onboarding-done"):
+        if name.startswith(".thinking-") or name.startswith(".speaking-") or name in (".dev-active", ".bot-ready", ".onboarding", ".onboarding-done"):
             try:
                 os.remove(os.path.join(log_dir, name))
             except FileNotFoundError:
