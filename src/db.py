@@ -157,6 +157,20 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT
         );
+
+        -- ── 휴지통 ──
+
+        CREATE TABLE IF NOT EXISTS trash (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_type TEXT NOT NULL,  -- 'message', 'channel', 'memory'
+            original_table TEXT NOT NULL,
+            original_id INTEGER,
+            channel TEXT,
+            data TEXT NOT NULL,  -- JSON blob of deleted row(s)
+            deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_trash_type ON trash(item_type, channel);
     """)
     conn.commit()
     conn.close()
@@ -875,3 +889,95 @@ def import_agents(input_path: str):
     conn.execute("DETACH DATABASE import_db")
     conn.close()
     print(f"[DB] 에이전트 정의 import 완료: {input_path}")
+
+
+# === 휴지통 ===
+
+def trash_messages(channel: str, message_ids: list[int] = None):
+    """메시지를 휴지통으로 이동 (message_ids=None이면 채널 전체)"""
+    import json as _json
+    conn = get_conn()
+
+    if message_ids:
+        rows = conn.execute(
+            f"SELECT * FROM conversations WHERE id IN ({','.join('?' * len(message_ids))})",
+            message_ids,
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM conversations WHERE channel = ?", (channel,)
+        ).fetchall()
+
+    if rows:
+        data = [dict(r) for r in rows]
+        conn.execute(
+            "INSERT INTO trash (item_type, original_table, channel, data) VALUES (?, ?, ?, ?)",
+            ("message", "conversations", channel, _json.dumps(data, ensure_ascii=False)),
+        )
+        ids = [r["id"] for r in rows]
+        conn.execute(
+            f"DELETE FROM conversations WHERE id IN ({','.join('?' * len(ids))})", ids
+        )
+        # 관련 메모리도 휴지통으로
+        mems = conn.execute(
+            "SELECT * FROM memories WHERE channel = ?", (channel,)
+        ).fetchall()
+        if mems:
+            conn.execute(
+                "INSERT INTO trash (item_type, original_table, channel, data) VALUES (?, ?, ?, ?)",
+                ("memory", "memories", channel, _json.dumps([dict(m) for m in mems], ensure_ascii=False)),
+            )
+            conn.execute("DELETE FROM memories WHERE channel = ?", (channel,))
+
+    conn.commit()
+    conn.close()
+    return len(rows)
+
+
+def trash_list() -> list[dict]:
+    """휴지통 목록"""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, item_type, channel, deleted_at, LENGTH(data) as data_size FROM trash ORDER BY deleted_at DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def trash_restore(trash_id: int) -> dict:
+    """휴지통에서 복원"""
+    import json as _json
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM trash WHERE id = ?", (trash_id,)).fetchone()
+    if not row:
+        conn.close()
+        return {"ok": False, "error": "항목 없음"}
+
+    data = _json.loads(row["data"])
+    table = row["original_table"]
+    restored = 0
+
+    for item in data:
+        item.pop("id", None)  # auto-increment
+        cols = ", ".join(item.keys())
+        placeholders = ", ".join("?" * len(item))
+        try:
+            conn.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", list(item.values()))
+            restored += 1
+        except Exception:
+            pass
+
+    conn.execute("DELETE FROM trash WHERE id = ?", (trash_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "restored": restored, "type": row["item_type"], "channel": row["channel"]}
+
+
+def trash_empty():
+    """휴지통 비우기"""
+    conn = get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM trash").fetchone()[0]
+    conn.execute("DELETE FROM trash")
+    conn.commit()
+    conn.close()
+    return count

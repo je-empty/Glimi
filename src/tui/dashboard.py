@@ -42,7 +42,7 @@ from src import db
 from src.core.profile import load_profile, get_user_name, get_user_id
 from src.core.sync import run_sync
 from src import log_writer
-from src.tui.components import LoadingOverlay
+from src.tui.components import LoadingOverlay, ConfirmDialog
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PID_FILE = os.path.join(PROJECT_ROOT, "dev", ".bot.pid")
@@ -501,6 +501,15 @@ class DashboardScreen(Screen):
         agent_list.display = False
         manage_list.display = False
 
+        # 탭 활성 표시
+        view_base = view.split(":")[0] if ":" in view else view
+        for btn_id, tab_view in self._NAV_MAP.items():
+            try:
+                btn = self.query_one(f"#{btn_id}", Button)
+                btn.variant = "primary" if tab_view == view_base else "default"
+            except Exception:
+                pass
+
         if view == "overview":
             content.display = True
             content.update(self._render_overview())
@@ -652,9 +661,27 @@ class DashboardScreen(Screen):
         else:
             # ── 컴팩트 카드 ──
             status_icon = "[green]●[/green]" if agent["status"] == "active" else "[dim]○[/dim]"
+            # 추론 바 (비활성 = 회색)
+            idle_bar = "[dim]" + "░" * 20 + "[/dim]"
+
             lines = []
             lines.append(f"  {status_icon}  {em} {agent['current_emotion']}  [dim]{type_str}[/dim]")
-            lines.append(f"  [dim]{_ago(sec)}[/dim]")
+            lines.append(f"  {idle_bar}  [dim]idle · {_ago(sec)}[/dim]")
+
+            # 관계 요약
+            rels = db.get_all_relationships(aid)
+            if rels:
+                rel_parts = []
+                for r in rels[:3]:
+                    other_id = r["agent_b"] if r["agent_a"] == aid else r["agent_a"]
+                    other = _cache.all_agents.get(other_id)
+                    if other:
+                        intimacy = r.get("intimacy_score", 50)
+                        mini_bar = "█" * (intimacy // 20) + "░" * (5 - intimacy // 20)
+                        oc = _get_color(other_id)
+                        rel_parts.append(f"[{oc}]{other['name'][:4]}[/{oc}][dim]{mini_bar}[/dim]")
+                if rel_parts:
+                    lines.append(f"  {'  '.join(rel_parts)}")
 
             # 마지막 메시지
             recent = db.get_recent_messages(ch_name, limit=1)
@@ -1136,17 +1163,21 @@ class DashboardScreen(Screen):
         view = self._current_view
         items = []
 
+        trash_count = len(db.trash_list())
+        trash_str = f"  [dim]({trash_count}건)[/dim]" if trash_count else ""
+
         if view == "manage":
-            # 채널 목록 표시
             items.append(Panel(
                 "[bold]DB 관리[/bold]\n\n"
-                "아래 채널 목록에서 선택 → Enter로 메시지 관리\n"
-                "[dim]채널 선택 후: 메시지 삭제, 채널 전체 삭제 등[/dim]",
+                "채널 목록에서 선택 → Enter로 메시지 관리\n"
+                f"[dim]삭제 데이터는 휴지통에 보관됩니다{trash_str}[/dim]",
                 border_style="cyan", box=box.ROUNDED, padding=(1, 2),
             ))
         elif view.startswith("manage:channel:"):
             ch_name = view.split(":", 2)[2]
             items.append(self._render_manage_channel(ch_name))
+        elif view == "manage:trash":
+            items.append(self._render_trash())
 
         return Group(*items) if items else Text("[dim]관리 메뉴[/dim]")
 
@@ -1180,15 +1211,43 @@ class DashboardScreen(Screen):
             border_style=color, box=box.ROUNDED, padding=(1, 2),
         )
 
+    def _render_trash(self):
+        """휴지통 뷰"""
+        items = db.trash_list()
+        if not items:
+            return Panel("[dim]휴지통이 비어있습니다.[/dim]", title="[bold]🗑 휴지통[/bold]",
+                         border_style="dim", box=box.ROUNDED, padding=(1, 2))
+        lines = []
+        for t in items:
+            lines.append(
+                f"[dim]#{t['id']}[/dim]  [{t['item_type']}]  "
+                f"{t.get('channel', '?')}  "
+                f"[dim]{t['deleted_at'][:16]}[/dim]"
+            )
+        return Panel(
+            "\n".join(lines),
+            title=f"[bold]🗑 휴지통[/bold]  [dim]({len(items)}건)[/dim]",
+            border_style="yellow", box=box.ROUNDED, padding=(1, 2),
+        )
+
     def _update_manage_list(self):
         """Manage 뷰의 OptionList 갱신"""
         manage_list = self.query_one("#manage-list", OptionList)
         view = self._current_view
 
         if view == "manage":
-            # 채널 목록
             channels = db.get_channel_overview()
             manage_list.clear_options()
+
+            # 휴지통 바로가기
+            trash_count = len(db.trash_list())
+            if trash_count:
+                manage_list.add_option(Option(
+                    f"  [yellow]🗑 휴지통[/yellow]  [dim]({trash_count}건)[/dim]",
+                    id="trash_view",
+                ))
+                manage_list.add_option(None)
+
             for ch in channels:
                 name = ch["channel"]
                 cnt = ch["msg_count"]
@@ -1235,6 +1294,25 @@ class DashboardScreen(Screen):
                 "  [dim]← 채널 목록으로[/dim]",
                 id="back_manage",
             ))
+        elif view == "manage:trash":
+            manage_list.clear_options()
+            items = db.trash_list()
+            for t in items:
+                manage_list.add_option(Option(
+                    f"  [green]↩ 복원[/green]  #{t['id']}  [{t['item_type']}] {t.get('channel', '?')}  [dim]{t['deleted_at'][:16]}[/dim]",
+                    id=f"trash_restore:{t['id']}",
+                ))
+            if items:
+                manage_list.add_option(None)
+                manage_list.add_option(Option(
+                    "  [red]🗑 휴지통 비우기[/red]",
+                    id="trash_empty",
+                ))
+            manage_list.add_option(None)
+            manage_list.add_option(Option(
+                "  [dim]← DB 관리로[/dim]",
+                id="back_manage",
+            ))
 
     @on(OptionList.OptionSelected, "#manage-list")
     def on_manage_selected(self, event: OptionList.OptionSelected):
@@ -1251,20 +1329,41 @@ class DashboardScreen(Screen):
             self._refresh_all()
         elif oid.startswith("del_ch:"):
             ch_name = oid.split(":", 1)[1]
-            self._do_delete_channel(ch_name)
+            self.app.push_screen(
+                ConfirmDialog(f"[red bold]채널 삭제: {ch_name}[/red bold]\n\nDB + Discord에서 삭제됩니다.\n휴지통에 백업됩니다.", danger=True),
+                lambda yes, c=ch_name: self._do_delete_channel(c) if yes else None,
+            )
         elif oid.startswith("clear_ch:"):
             ch_name = oid.split(":", 1)[1]
-            self._do_clear_channel(ch_name)
+            self.app.push_screen(
+                ConfirmDialog(f"[yellow bold]메시지 전체 삭제: {ch_name}[/yellow bold]\n\n채널은 유지, 메시지+메모리 삭제.\n휴지통에 백업됩니다.", danger=True),
+                lambda yes, c=ch_name: self._do_clear_channel(c) if yes else None,
+            )
         elif oid.startswith("del_msg:"):
-            # del_msg:channel_name:msg_id
             parts = oid.split(":", 2)
             ch_name = parts[1]
             msg_id = parts[2]
             self._do_delete_message(ch_name, msg_id)
+        elif oid == "trash_view":
+            self._current_view = "manage:trash"
+            self._refresh_all()
+        elif oid.startswith("trash_restore:"):
+            trash_id = int(oid.split(":", 1)[1])
+            result = db.trash_restore(trash_id)
+            if result["ok"]:
+                log_writer.system(f"[DB] 복원: {result['channel']} ({result['restored']}건)")
+            _cache.refresh()
+            self._current_view = "manage:trash"
+            self._refresh_all()
+        elif oid == "trash_empty":
+            self.app.push_screen(
+                ConfirmDialog("[red bold]휴지통 비우기[/red bold]\n\n복원 불가능합니다.", danger=True),
+                lambda yes: self._do_empty_trash() if yes else None,
+            )
 
     @work(thread=True)
     def _do_delete_channel(self, ch_name):
-        """채널 전체 삭제 — DB(대화+메모리) + Discord"""
+        """채널 전체 삭제 — 휴지통 → DB → Discord"""
         from src.core.sync import _get_token
         import time
 
@@ -1272,13 +1371,9 @@ class DashboardScreen(Screen):
             lambda: self.app.push_screen(LoadingOverlay(f"채널 삭제: {ch_name}"))
         )
 
-        # DB 삭제
-        conn = db.get_conn()
-        conn.execute("DELETE FROM conversations WHERE channel = ?", (ch_name,))
-        conn.execute("DELETE FROM memories WHERE channel = ?", (ch_name,))
-        conn.commit()
-        conn.close()
-        log_writer.system(f"[Manage] DB 삭제: {ch_name}")
+        # 휴지통으로 이동 (DB)
+        count = db.trash_messages(ch_name)
+        log_writer.system(f"[DB] 휴지통: {ch_name} ({count}건)")
 
         # Discord 채널 삭제
         token = _get_token()
@@ -1298,21 +1393,17 @@ class DashboardScreen(Screen):
                             if cat.name.startswith("chaos"):
                                 for ch in cat.text_channels:
                                     if ch.name == ch_name:
-                                        await ch.delete(reason="Chaos Manage")
-                                        log_writer.system(f"[Manage] Discord 삭제: {ch_name}")
+                                        await ch.delete(reason="Chaos DB")
                     await client.close()
 
-                # 봇 일시 중지
                 bot_was_running = self._bot_proc and self._bot_proc.poll() is None
                 if bot_was_running:
                     self._stop_bot()
                     time.sleep(2)
-
                 try:
                     await asyncio.wait_for(client.start(token), timeout=30)
                 except Exception:
                     pass
-
                 if bot_was_running:
                     self.app.call_from_thread(self._start_bot)
 
@@ -1326,39 +1417,31 @@ class DashboardScreen(Screen):
 
     @work(thread=True)
     def _do_clear_channel(self, ch_name):
-        """채널 메시지만 삭제 — DB(대화+메모리), 채널은 유지"""
+        """채널 메시지만 삭제 — 휴지통 → DB"""
         self.app.call_from_thread(
             lambda: self.app.push_screen(LoadingOverlay(f"메시지 삭제: {ch_name}"))
         )
 
-        conn = db.get_conn()
-        count = conn.execute("SELECT COUNT(*) FROM conversations WHERE channel = ?", (ch_name,)).fetchone()[0]
-        conn.execute("DELETE FROM conversations WHERE channel = ?", (ch_name,))
-        conn.execute("DELETE FROM memories WHERE channel = ?", (ch_name,))
-        conn.commit()
-        conn.close()
-        log_writer.system(f"[Manage] 메시지 삭제: {ch_name} ({count}건)")
+        count = db.trash_messages(ch_name)
+        log_writer.system(f"[DB] 휴지통: {ch_name} 메시지 {count}건")
 
         _cache.refresh()
         self.app.call_from_thread(self.app.pop_screen)
         self.app.call_from_thread(self._set_view, f"manage:channel:{ch_name}")
 
     def _do_delete_message(self, ch_name, msg_id):
-        """개별 메시지 삭제 — DB + 관련 메모리"""
-        conn = db.get_conn()
-        row = conn.execute("SELECT * FROM conversations WHERE id = ?", (msg_id,)).fetchone()
-        if row:
-            conn.execute("DELETE FROM conversations WHERE id = ?", (msg_id,))
-            # 이 메시지를 포함하는 메모리 범위도 정리
-            conn.execute(
-                "DELETE FROM memories WHERE channel = ? AND msg_id_from <= ? AND msg_id_to >= ?",
-                (ch_name, int(msg_id), int(msg_id)),
-            )
-            conn.commit()
-            log_writer.system(f"[DB] 메시지 삭제: #{msg_id} ({ch_name})")
-        conn.close()
+        """개별 메시지 삭제 — 휴지통"""
+        db.trash_messages(ch_name, [int(msg_id)])
+        log_writer.system(f"[DB] 휴지통: #{msg_id} ({ch_name})")
         _cache.refresh()
         self._current_view = f"manage:channel:{ch_name}"
+        self._refresh_all()
+
+    def _do_empty_trash(self):
+        count = db.trash_empty()
+        log_writer.system(f"[DB] 휴지통 비움: {count}건")
+        _cache.refresh()
+        self._current_view = "manage:trash"
         self._refresh_all()
 
     def _set_view(self, view: str):
