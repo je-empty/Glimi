@@ -173,6 +173,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS channels (
             channel TEXT PRIMARY KEY,
             participants TEXT NOT NULL DEFAULT '[]',  -- JSON array of agent IDs
+            status TEXT NOT NULL DEFAULT 'idle',  -- idle, running, stopped
+            max_turns INTEGER DEFAULT 0,
+            current_turn INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -494,6 +497,37 @@ def remove_channel_participant(channel: str, agent_id: str):
 def is_channel_participant(channel: str, agent_id: str) -> bool:
     """에이전트가 해당 채널의 참가자인지"""
     return agent_id in get_channel_participants(channel)
+
+
+def set_channel_status(channel: str, status: str, max_turns: int = 0):
+    """채널 대화 상태 설정"""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE channels SET status=?, max_turns=?, current_turn=0 WHERE channel=?",
+        (status, max_turns, channel)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_channel_status(channel: str) -> dict:
+    """채널 상태 반환"""
+    conn = get_conn()
+    row = conn.execute("SELECT status, max_turns, current_turn FROM channels WHERE channel=?", (channel,)).fetchone()
+    conn.close()
+    if not row:
+        return {"status": "idle", "max_turns": 0, "current_turn": 0}
+    return {"status": row["status"], "max_turns": row["max_turns"], "current_turn": row["current_turn"]}
+
+
+def increment_channel_turn(channel: str) -> int:
+    """채널 턴 증가, 현재 턴 반환"""
+    conn = get_conn()
+    conn.execute("UPDATE channels SET current_turn = current_turn + 1 WHERE channel=?", (channel,))
+    conn.commit()
+    row = conn.execute("SELECT current_turn FROM channels WHERE channel=?", (channel,)).fetchone()
+    conn.close()
+    return row["current_turn"] if row else 0
 
 
 if __name__ == "__main__":

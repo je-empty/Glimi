@@ -253,10 +253,123 @@ class OnboardingSupervisor(Supervisor):
             log_writer.system(f"[sup:{self.name}] {agent_id} 재촉 응답 없음 (에이전트가 불필요 판단)")
 
 
+# ── 채널 대화 감시자 ────────────────────────────────────
+
+class ChannelConversationSupervisor(Supervisor):
+    """internal 채널 대화 감시 — running 상태인 채널에서 대화가 멈추면 재촉"""
+    name = "channel-conv"
+    interval = 15
+
+    def should_run(self) -> bool:
+        # running 상태 채널이 있으면 활성화
+        return bool(self._get_running_channels())
+
+    def is_done(self) -> bool:
+        return not self._get_running_channels()
+
+    def _get_running_channels(self) -> list[dict]:
+        """running 상태인 internal 채널 목록"""
+        conn = db.get_conn()
+        rows = conn.execute(
+            "SELECT channel, participants, status, max_turns, current_turn FROM channels WHERE status='running'"
+        ).fetchall()
+        conn.close()
+        result = []
+        for r in rows:
+            ch = r["channel"]
+            # internal 채널만 (dm-*, group-*은 유저 참여라 제외)
+            if ch.startswith("internal-"):
+                import json as _json
+                try:
+                    parts = _json.loads(r["participants"])
+                except Exception:
+                    parts = []
+                result.append({
+                    "channel": ch,
+                    "participants": parts,
+                    "max_turns": r["max_turns"],
+                    "current_turn": r["current_turn"],
+                })
+        return result
+
+    async def check(self, guild: discord.Guild):
+        channels = self._get_running_channels()
+        for ch_info in channels:
+            ch_name = ch_info["channel"]
+            participants = ch_info["participants"]
+
+            # 참가자 중 thinking/speaking 중이면 스킵
+            if any(log_writer.is_thinking(p) or log_writer.is_speaking(p) for p in participants):
+                continue
+
+            # idle 시간 체크
+            idle = self._get_idle_seconds(ch_name)
+            if idle < 20:
+                continue  # 아직 대화 진행 중
+
+            # 맥락 판단 (haiku)
+            loop = asyncio.get_event_loop()
+            judgment = await loop.run_in_executor(None, lambda ch=ch_name: _judge_conversation(
+                ch,
+                "이 대화가 자연스럽게 이어지고 있나? 아니면 한쪽이 멈춰서 대화가 안 되고 있나? "
+                "멈춤이면 누가 다음에 말해야 하나? '진행중', '멈춤:에이전트이름' 중 하나로."
+            ))
+
+            if "멈춤" in judgment or "stopped" in judgment:
+                # 누구한테 재촉할지 판단
+                target_id = self._pick_nudge_target(ch_name, participants, judgment)
+                if target_id:
+                    log_writer.system(f"[sup:channel-conv] #{ch_name} 멈춤 — {target_id} 재촉")
+                    ch = discord.utils.get(guild.text_channels, name=ch_name)
+                    if ch:
+                        await self._inject_and_send(target_id, ch_name, ch,
+                            "대화가 좀 멈춘 것 같다. 상대가 말을 기다리는 것 같으니 자연스럽게 이어가자."
+                        )
+
+    def _pick_nudge_target(self, ch_name: str, participants: list[str], judgment: str) -> str | None:
+        """재촉 대상 결정 — 마지막 발화자가 아닌 사람"""
+        recent = db.get_recent_messages(ch_name, limit=1)
+        if not recent:
+            return participants[0] if participants else None
+        last_speaker = recent[-1]["speaker"]
+        # 마지막 발화자가 아닌 사람에게 재촉
+        for pid in participants:
+            if pid != last_speaker:
+                return pid
+        return participants[0] if participants else None
+
+    def _get_idle_seconds(self, channel: str) -> float:
+        recent = db.get_recent_messages(channel, limit=1)
+        if not recent:
+            return 999
+        try:
+            last_dt = datetime.fromisoformat(recent[-1]["timestamp"])
+            return (datetime.now() - last_dt).total_seconds()
+        except Exception:
+            return 999
+
+    async def _inject_and_send(self, agent_id, ch_name, channel, instruction):
+        """에이전트에게 강제 지시 주입"""
+        loop = asyncio.get_event_loop()
+        responses = await loop.run_in_executor(
+            None,
+            lambda: runtime.generate_response_force(agent_id, ch_name, instruction)
+        )
+        cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+        for resp in responses:
+            clean = cmd_pat.sub('', resp).strip()
+            if clean and clean != "..." and clean != "(무시)":
+                for part in _split_for_chat(clean):
+                    await send_as_agent(channel, agent_id, part)
+                    await asyncio.sleep(0.1)
+                    db.log_message(ch_name, agent_id, part)
+
+
 # ── 감시자 레지스트리 + 루프 ────────────────────────────
 
 SUPERVISORS: list[Supervisor] = [
     OnboardingSupervisor(),
+    ChannelConversationSupervisor(),
 ]
 
 _active: list[Supervisor] = []

@@ -48,6 +48,7 @@ class ConversationState:
 
     def record_turn(self, speaker_id: str, messages: list[str]):
         self.turn_count += 1
+        db.increment_channel_turn(self.channel_name)
         for msg in messages:
             self.messages.append({"speaker": speaker_id, "message": msg})
 
@@ -129,6 +130,9 @@ async def start_conversation(
 
     state = ConversationState(channel_name, participants, max_turns)
     _active_conversations[channel_name] = state
+
+    # DB 채널 상태 running으로
+    db.set_channel_status(channel_name, "running", max_turns)
 
     names = [runtime.get_agent_name(aid) for aid in participants]
     print(f"[대화엔진] 시작: {' ↔ '.join(names)} (채널: {channel_name}, 최대 {max_turns}턴)")
@@ -233,6 +237,7 @@ async def start_conversation(
 
     # 대화 완료
     state.active = False
+    db.set_channel_status(channel_name, "idle")
     print(f"[대화엔진] 완료: {channel_name} (총 {state.turn_count}턴)")
     return state
 
