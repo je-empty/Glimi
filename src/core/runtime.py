@@ -31,7 +31,7 @@ CLAUDE_AVAILABLE = _check_claude_cli()
 AGENT_MODELS = {
     "persona": "claude-sonnet-4-6",
     "mgr": "claude-sonnet-4-6",
-    "creator": "claude-sonnet-4-6",  # 일반 대화는 sonnet, 심화 작업은 discord_bot에서 opus 직접 지정
+    "creator": "claude-opus-4-6",  # 에이전트 생성/수정은 항상 opus
 }
 OPUS_MODEL = "claude-opus-4-6"
 
