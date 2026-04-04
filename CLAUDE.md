@@ -51,7 +51,8 @@ Glimi/
     │   ├── mgr_system.py ← Manager CMD/QUERY/ACTION 시스템
     │   ├── handlers.py   ← 메시지 처리 (DM/그룹)
     │   ├── commands.py   ← 슬래시 명령어
-    │   └── tasks.py      ← 백그라운드 태스크 + 이벤트
+    │   ├── tasks.py      ← 백그라운드 태스크 + 이벤트
+    │   └── supervisors.py ← Supervisor 시스템 (백그라운드 감시자)
     ├── tui/              ← 터미널 UI
     │   ├── wizard.py     ← 통합 관리 Wizard
     │   └── dashboard.py  ← 실시간 대시보드
