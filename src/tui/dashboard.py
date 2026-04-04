@@ -808,7 +808,7 @@ class DashboardScreen(Screen):
                 icon = "🧠" if thinking else "🟢" if a["status"] == "active" else "⚪"
                 type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
                 type_str = type_map.get(a.get("type", ""), a.get("type", ""))
-                label = f"  {icon} [{c}]{a['name']}[/{c}]  {type_str}  {em} {a.get('current_emotion', '')}"
+                label = f"  {icon} [{c}]{a['name']}  {type_str}  {em} {a.get('current_emotion', '')}[/{c}]"
                 agent_list.add_option(Option(label, id=a["id"]))
 
     def _update_channel_list(self):
@@ -851,7 +851,7 @@ class DashboardScreen(Screen):
                             ch_data[ch_name] = {
                                 "channel": ch_name,
                                 "msg_count": len(cnt),
-                                "last_active": cnt[0].get("timestamp"),
+                                "last_active": cnt[0]["timestamp"] if cnt[0]["timestamp"] else None,
                             }
                             break
 
