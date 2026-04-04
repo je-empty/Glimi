@@ -379,10 +379,12 @@ class AgentRuntime:
                 responses = self._call_claude_code(agent_info, channel, recent, user_message)
             else:
                 responses = self._placeholder_response(profile, user_message)
-        finally:
+        except Exception:
             log_writer.mark_done(agent_id)
+            raise
 
         log_writer.agent_thinking(agent_id, f"응답 {len(responses)}건")
+        # mark_done은 호출자(handlers)가 전송 완료 후 처리
 
         # 로깅
         if log_user_message:
@@ -492,7 +494,6 @@ class AgentRuntime:
         log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
         if not CLAUDE_AVAILABLE:
-            log_writer.mark_done(agent_id)
             msgs = self._placeholder_response(profile, user_message)
             for m in msgs:
                 on_message(m)
@@ -583,7 +584,7 @@ class AgentRuntime:
                     on_message(m)
                 messages = fallback
         finally:
-            log_writer.mark_done(agent_id)
+            # mark_done은 호출자(handlers)가 전송 완료 후 처리
             log_writer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
 
         # DB 로깅

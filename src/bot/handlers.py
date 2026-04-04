@@ -191,6 +191,9 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
                 is_mgr, message.guild, sent_msgs
             )
 
+        # 전송 완료 → thinking 해제
+        log_writer.mark_done(agent_id)
+
         # 톡방 요청 감지 (페르소나만)
         if not is_mgr and message.guild:
             for msg in sent_msgs:
@@ -302,6 +305,9 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                     message.channel, agent_id, _tag_buffer,
                     False, message.guild, sent_msgs
                 )
+
+            # 전송 완료 → thinking 해제
+            log_writer.mark_done(agent_id)
 
             if message.guild:
                 for m in sent_msgs:
