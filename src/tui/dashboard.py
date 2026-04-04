@@ -2173,6 +2173,7 @@ class DashboardScreen(Screen):
 
         scan_data = getattr(self, '_sync_scan_data', None)
         selected_count = len(self._sync_selected_channels)
+        overview = db.get_channel_overview()
 
         # 전체 선택/해제
         all_channels = {ch["channel"] for ch in overview}
