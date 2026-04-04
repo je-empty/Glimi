@@ -16,6 +16,13 @@ import asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+# 다른 모듈 import 전에 커뮤니티 환경변수 설정
+# (src.db import 시 community.get_community_id()가 호출됨)
+for _a in sys.argv[1:]:
+    if not _a.startswith("-"):
+        os.environ["CHAOS_COMMUNITY"] = _a
+        break
+
 from datetime import datetime
 from pathlib import Path
 
@@ -1700,9 +1707,13 @@ def main():
     parser.add_argument("community_id", nargs="?", help="커뮤니티 ID")
     args = parser.parse_args()
 
+    # 환경변수를 먼저 설정 (다른 모듈이 import 시 참조)
     if args.community_id:
         os.environ["CHAOS_COMMUNITY"] = args.community_id
-        from src import community
+
+    # community 모듈의 캐시된 값 강제 갱신
+    from src import community
+    if args.community_id:
         community.set_community(args.community_id)
 
     result = ChaosDashboard().run()
