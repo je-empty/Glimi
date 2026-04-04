@@ -404,11 +404,13 @@ class DashboardScreen(Screen):
             log_writer.system("봇 이미 실행 중 — 연결")
             return
         log_writer.system("봇 시작")
-        # stdout/stderr를 DEVNULL로 — 로그는 봇이 log_writer로 자체 기록
-        # DEVNULL이면 대시보드 종료 시 SIGPIPE 문제 없음
+        env = os.environ.copy()
+        cid = os.environ.get("CHAOS_COMMUNITY", "")
+        if cid:
+            env["CHAOS_COMMUNITY"] = cid
         self._bot_proc = subprocess.Popen(
             [_venv_python(), "-u", "-m", "src.discord_bot"],
-            cwd=PROJECT_ROOT,
+            cwd=PROJECT_ROOT, env=env,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
@@ -517,16 +519,13 @@ class DashboardScreen(Screen):
             agent_list.display = True
             content.display = False
             self._update_agent_list()
-            agent_list.focus()
         elif view.startswith("agent:"):
             content.display = True
             content.update(self._render_agent_detail(view.split(":", 1)[1]))
         elif view == "channels":
-            # 채널 목록을 agent_list(OptionList) 재활용
             agent_list.display = True
             content.display = False
             self._update_channel_list()
-            agent_list.focus()
         elif view.startswith("channel:"):
             content.display = True
             content.update(self._render_channel_detail(view.split(":", 1)[1]))
@@ -583,7 +582,24 @@ class DashboardScreen(Screen):
         agent_list = self.query_one("#agent-list", OptionList)
         agent_list.clear_options()
 
-        dm, group, internal, mgr = _classify_channels(_cache.channels)
+        # DB 채널 + 시스템 채널 병합
+        ch_data = {ch["channel"]: ch for ch in _cache.channels}
+        # 시스템 채널 추가 (대화 없어도 표시)
+        for a in _cache.all_agents.values():
+            if a["type"] == "mgr":
+                for sys_ch in ["mgr-dashboard", "mgr-system-log"]:
+                    if sys_ch not in ch_data:
+                        ch_data[sys_ch] = {"channel": sys_ch, "msg_count": 0, "last_active": None}
+            elif a["type"] == "creator":
+                if "mgr-creator" not in ch_data:
+                    ch_data["mgr-creator"] = {"channel": "mgr-creator", "msg_count": 0, "last_active": None}
+            else:
+                dm_ch = f"dm-{a['name']}"
+                if dm_ch not in ch_data:
+                    ch_data[dm_ch] = {"channel": dm_ch, "msg_count": 0, "last_active": None}
+
+        all_channels = list(ch_data.values())
+        dm, group, internal, mgr = _classify_channels(all_channels)
         for label, icon, chs, clr in [
             ("Manager", "📋", mgr, "blue"),
             ("DM", "💬", dm, "cyan"),
@@ -597,8 +613,9 @@ class DashboardScreen(Screen):
                 active = _channel_is_active(_cache.channels, ch["channel"])
                 dot = "[green]●[/green]" if active else "[dim]○[/dim]"
                 ts = ch["last_active"][11:16] if ch["last_active"] else ""
+                cnt = ch["msg_count"]
                 agent_list.add_option(Option(
-                    f"    {dot} {ch['channel']}  [dim]{ch['msg_count']}건  {ts}[/dim]",
+                    f"    {dot} {ch['channel']}  [dim]{cnt}건  {ts}[/dim]",
                     id=f"ch:{ch['channel']}",
                 ))
 
@@ -904,10 +921,10 @@ class DashboardScreen(Screen):
 
         # ── 메모리 (채널별 전체) ──
         conn = db.get_conn()
-        memories = conn.execute(
+        memories = [dict(r) for r in conn.execute(
             "SELECT * FROM memories WHERE agent_id = ? ORDER BY channel, level DESC, id DESC",
             (agent_id,)
-        ).fetchall()
+        ).fetchall()]
         conn.close()
 
         if memories:
@@ -1641,6 +1658,9 @@ class DashboardScreen(Screen):
         if view:
             self._current_view = view
             self._refresh_all()
+            # 리스트 뷰는 리스트에 포커스
+            if view in ("agents", "channels"):
+                self.query_one("#agent-list", OptionList).focus()
         elif button.id == "nav-refresh":
             self.action_refresh()
         elif button.id == "nav-restart":
