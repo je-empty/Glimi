@@ -1,0 +1,82 @@
+{
+  "_meta": {
+    "language": "English",
+    "code": "en"
+  },
+
+  "wizard": {
+    "banner_subtitle": "Agent Social Simulation",
+    "communities_label": "Communities",
+    "communities_hint": "Enter: Dashboard  /  Settings",
+    "actions_label": "Actions",
+    "new_community": "New Community",
+    "export_import": "Export / Import",
+    "quit": "Quit",
+    "no_communities": "No communities yet. Create one below.",
+    "create_title": "New Community",
+    "community_id": "Community ID",
+    "description": "Description",
+    "owner_name": "Your Name",
+    "owner_nickname": "Nickname (optional)",
+    "owner_birth": "Birth Date (YYYY-MM-DD)",
+    "gender": "Gender",
+    "male": "Male",
+    "female": "Female",
+    "bot_token": "Bot Token (required)",
+    "verify": "Verify",
+    "create": "Create",
+    "verifying_token": "Verifying bot token...",
+    "verify_success": "Verification complete",
+    "verify_fail": "Verification failed",
+    "missing_perms": "Missing bot permissions",
+    "no_guilds": "Bot is not in any server",
+    "settings": "Settings"
+  },
+
+  "dashboard": {
+    "loading_discord": "Connecting to Discord...",
+    "loading_channels": "Setting up channels...",
+    "loading_avatars": "Loading avatars...",
+    "loading_agents": "Waking up agents...",
+    "loading_almost": "Almost ready!",
+    "onboarding_prep": "Preparing onboarding... (don't touch Discord)",
+    "bot_start": "Bot starting",
+    "bot_ready": "Bot ready",
+    "bot_already_running": "Bot already running — connecting",
+    "agent_activate": "Activating agents",
+    "status_running": "Running",
+    "status_stopped": "Stopped",
+    "no_agents": "No agents. Initialize DB from Wizard.",
+    "recent_chat": "Recent Chat",
+    "system_logs": "System",
+    "no_messages": "No messages",
+    "tab_overview": "Overview",
+    "tab_agents": "Agents",
+    "tab_channels": "Channels",
+    "tab_sync": "Sync",
+    "tab_health": "Health",
+    "tab_logs": "Logs",
+    "tab_dev": "Dev",
+    "tab_usage": "Usage",
+    "tab_refresh": "Refresh",
+    "tab_restart": "Restart",
+    "tab_wizard": "Wizard"
+  },
+
+  "onboarding": {
+    "profile_check_start": "Checking owner profile",
+    "onboarding_prep": "Preparing onboarding",
+    "yuna_loading": "Bringing Yuna...",
+    "yuna_arrived": "Yuna has arrived!",
+    "onboarding_complete": "Onboarding complete",
+    "phase2_start": "Phase 2: Creating channels + introducing Creator",
+    "phase2_done": "Phase 2 complete: System channels + Creator intro (waiting for final)"
+  },
+
+  "agent_states": {
+    "thinking": "Thinking",
+    "speaking": "Speaking",
+    "active": "Active",
+    "inactive": "Inactive"
+  }
+}

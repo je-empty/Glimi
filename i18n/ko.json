@@ -1,0 +1,82 @@
+{
+  "_meta": {
+    "language": "한국어",
+    "code": "ko"
+  },
+
+  "wizard": {
+    "banner_subtitle": "에이전트 소셜 시뮬레이션",
+    "communities_label": "커뮤니티",
+    "communities_hint": "Enter: 대시보드  /  Settings",
+    "actions_label": "액션",
+    "new_community": "새 커뮤니티 생성",
+    "export_import": "내보내기 · 가져오기",
+    "quit": "종료",
+    "no_communities": "커뮤니티가 없습니다. 아래에서 새로 만들어보세요.",
+    "create_title": "새 커뮤니티",
+    "community_id": "커뮤니티 ID",
+    "description": "설명",
+    "owner_name": "이름",
+    "owner_nickname": "별칭 (선택)",
+    "owner_birth": "생년월일 (YYYY-MM-DD)",
+    "gender": "성별",
+    "male": "남",
+    "female": "여",
+    "bot_token": "봇 토큰 (필수)",
+    "verify": "검증",
+    "create": "생성",
+    "verifying_token": "봇 토큰 검증 중...",
+    "verify_success": "검증 완료",
+    "verify_fail": "검증 실패",
+    "missing_perms": "봇 권한 부족",
+    "no_guilds": "봇이 참여한 서버가 없습니다",
+    "settings": "설정"
+  },
+
+  "dashboard": {
+    "loading_discord": "Discord 연결 중...",
+    "loading_channels": "채널 세팅 중...",
+    "loading_avatars": "아바타 불러오는 중...",
+    "loading_agents": "에이전트 깨우는 중...",
+    "loading_almost": "거의 다 됐어요!",
+    "onboarding_prep": "온보딩 준비 중... (디스코드를 건드리지 마세요)",
+    "bot_start": "봇 시작",
+    "bot_ready": "봇 준비 완료",
+    "bot_already_running": "봇 이미 실행 중 — 연결",
+    "agent_activate": "에이전트 활성화 중",
+    "status_running": "Running",
+    "status_stopped": "Stopped",
+    "no_agents": "에이전트가 없습니다. Wizard에서 DB를 초기화하세요.",
+    "recent_chat": "최근 대화",
+    "system_logs": "시스템",
+    "no_messages": "대화 없음",
+    "tab_overview": "Overview",
+    "tab_agents": "Agents",
+    "tab_channels": "Channels",
+    "tab_sync": "Sync",
+    "tab_health": "Health",
+    "tab_logs": "Logs",
+    "tab_dev": "Dev",
+    "tab_usage": "Usage",
+    "tab_refresh": "Refresh",
+    "tab_restart": "Restart",
+    "tab_wizard": "Wizard"
+  },
+
+  "onboarding": {
+    "profile_check_start": "오너 프로필 체크 시작",
+    "onboarding_prep": "온보딩 준비",
+    "yuna_loading": "유나 불러오는 중...",
+    "yuna_arrived": "유나가 도착했어요!",
+    "onboarding_complete": "온보딩 완료",
+    "phase2_start": "채널 생성 + 크리에이터 소개",
+    "phase2_done": "시스템 채널 + 크리에이터 인사 완료 (최종 완료 대기)"
+  },
+
+  "agent_states": {
+    "thinking": "추론 중",
+    "speaking": "전송 중",
+    "active": "활성",
+    "inactive": "비활성"
+  }
+}
