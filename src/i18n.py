@@ -16,7 +16,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).parent.parent
 _I18N_DIR = _PROJECT_ROOT / "i18n"
 _cache: dict[str, dict] = {}
-_current_lang: str = "ko"
+_current_lang: str = "en"
 
 
 def _load_lang(lang: str) -> dict:
