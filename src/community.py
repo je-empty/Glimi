@@ -41,10 +41,17 @@ _current_id: Optional[str] = None
 # ── 커뮤니티 ID 결정 ─────────────────────────────────────
 
 def set_community(community_id: str):
-    """커뮤니티 ID 설정 (프로세스 시작 시 1회)"""
+    """커뮤니티 ID 설정 (프로세스 시작 시 1회) + 언어 연동"""
     global _current_id
     _current_id = community_id
     os.environ["GLIMI_COMMUNITY"] = community_id
+    # 언어 설정 연동
+    lang = get_language()
+    try:
+        from src.i18n import set_language
+        set_language(lang)
+    except ImportError:
+        pass
 
 
 def get_community_id() -> str:
@@ -77,6 +84,17 @@ def get_community_id() -> str:
     # 4. 없으면 default
     _current_id = "default"
     return "default"
+
+
+def get_language() -> str:
+    """현재 커뮤니티의 언어 설정 반환 (기본: en)"""
+    cid = get_community_id()
+    if REGISTRY_PATH.exists():
+        with open(REGISTRY_PATH, "rb") as f:
+            registry = tomllib.load(f)
+        info = registry.get("community", {}).get(cid, {})
+        return info.get("language", "en")
+    return "en"
 
 
 # ── 경로 헬퍼 ────────────────────────────────────────────

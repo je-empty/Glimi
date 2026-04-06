@@ -709,11 +709,17 @@ class CreateScreen(Screen):
 
             # Page 1: 커뮤니티 정보
             with Container(id="page-1", classes="input-group"):
-                yield Label("Community ID [dim](영문, 하이픈 가능)[/dim]")
+                yield Label("Server ID [dim](영문, 하이픈 가능)[/dim]")
                 yield Input(placeholder="my-server", id="cid-input")
                 yield Static("")
-                yield Label("Description [dim](선택)[/dim]")
-                yield Input(placeholder="내 디스코드 서버", id="desc-input")
+                yield Label("Description [dim](optional)[/dim]")
+                yield Input(placeholder="My Discord server", id="desc-input")
+                yield Static("")
+                yield Label("Language")
+                with Horizontal(classes="action-bar"):
+                    yield Button("English", variant="primary", id="lang-en")
+                    yield Button("한국어", id="lang-ko")
+                yield Static("[cyan]English[/cyan] selected", id="lang-display")
                 yield Static("")
                 yield Button("Next →", variant="primary", id="btn-next")
 
@@ -791,6 +797,20 @@ class CreateScreen(Screen):
     def on_prev(self):
         self._show_page(1)
         self.query_one("#cid-input", Input).focus()
+
+    @on(Button.Pressed, "#lang-en")
+    def on_lang_en(self):
+        self._language = "en"
+        self.query_one("#lang-display", Static).update("[cyan]English[/cyan] selected")
+        self.query_one("#lang-en", Button).variant = "primary"
+        self.query_one("#lang-ko", Button).variant = "default"
+
+    @on(Button.Pressed, "#lang-ko")
+    def on_lang_ko(self):
+        self._language = "ko"
+        self.query_one("#lang-display", Static).update("[cyan]한국어[/cyan] 선택됨")
+        self.query_one("#lang-ko", Button).variant = "primary"
+        self.query_one("#lang-en", Button).variant = "default"
 
     @on(Button.Pressed, "#gender-m")
     def on_gender_m(self):
@@ -918,24 +938,24 @@ class CreateScreen(Screen):
         owner_nickname = self.query_one("#owner-nickname-input", Input).value.strip()
         owner_birth = self.query_one("#owner-birth-input", Input).value.strip()
         owner_gender = getattr(self, '_gender', '')
+        language = getattr(self, '_language', 'en')
         result = self.query_one("#create-result", Static)
 
         if (community.COMMUNITIES_DIR / cid).exists():
-            result.update(f"[red]이미 존재: {cid}[/red]")
+            result.update(f"[red]Already exists: {cid}[/red]")
             return
 
         self._community_id = cid
         community.init_community(cid)
 
-        if desc:
-            reg = community.REGISTRY_PATH
-            if reg.exists():
-                content = reg.read_text()
-                content = content.replace(
-                    f'[community.{cid}]\nname = "{cid}"\ndescription = ""',
-                    f'[community.{cid}]\nname = "{cid}"\ndescription = "{desc}"',
-                )
-                reg.write_text(content)
+        # registry에 description + language 업데이트
+        reg = community.REGISTRY_PATH
+        if reg.exists():
+            content = reg.read_text()
+            old_block = f'[community.{cid}]\nname = "{cid}"\ndescription = ""'
+            new_block = f'[community.{cid}]\nname = "{cid}"\ndescription = "{desc}"\nlanguage = "{language}"'
+            content = content.replace(old_block, new_block)
+            reg.write_text(content)
 
         self._save_owner_profile(cid, owner_name, owner_nickname, owner_birth, owner_gender)
 

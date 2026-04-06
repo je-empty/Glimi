@@ -10,3 +10,4 @@ default = "my-server"
 [community.my-server]
 name = "My Server"
 description = "내 디스코드 서버"
+language = "ko"  # en, ko
