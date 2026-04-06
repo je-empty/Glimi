@@ -307,6 +307,11 @@ Screen {
     margin: 1 0 1 1;
 }
 
+.lang-select-btn {
+    width: auto;
+    min-width: 20;
+}
+
 .menu-list {
     height: auto;
     max-height: 18;
@@ -629,10 +634,7 @@ class MainScreen(Screen):
         action_menu.add_option(Option(f"  {t('wizard.export_import')}", id="export_import"))
         action_menu.add_option(Option(f"  {t('wizard.dev_mode')}", id="devmode"))
         action_menu.add_option(None)
-        from src.i18n import get_language as _gl
-        _cur = _gl()
-        _lang_label = "🌐 한국어로 전환" if _cur == "en" else "🌐 Switch to English"
-        action_menu.add_option(Option(f"  {_lang_label}", id="toggle_lang"))
+        action_menu.add_option(Option("  🌐 Language", id="ui_language"))
         action_menu.add_option(Option(f"  {t('wizard.quit')}", id="quit"))
 
     @on(Button.Pressed)
@@ -653,11 +655,8 @@ class MainScreen(Screen):
             self.app.push_screen(ExportImportScreen())
         elif oid == "devmode":
             self.app.push_screen(DevModeScreen())
-        elif oid == "toggle_lang":
-            from src.i18n import get_language as _gl, save_ui_language
-            new_lang = "ko" if _gl() == "en" else "en"
-            save_ui_language(new_lang)
-            self._refresh_view()
+        elif oid == "ui_language":
+            self.app.push_screen(LanguageScreen("ui"))
 
     def on_key(self, event):
         # 카드 ↔ 액션 메뉴 방향키 전환
@@ -726,10 +725,8 @@ class CreateScreen(Screen):
                 yield Input(placeholder="My Discord server", id="desc-input")
                 yield Static("")
                 yield Label(t("wizard.language"))
-                with Horizontal(classes="action-bar"):
-                    yield Button("English", variant="primary", id="lang-en")
-                    yield Button("한국어", id="lang-ko")
-                yield Static("[cyan]English[/cyan] selected", id="lang-display")
+                yield Button("🌐 English", id="btn-agent-lang", classes="lang-select-btn")
+                yield Static("", id="lang-display")
                 yield Static("")
                 yield Button(t("wizard.next"), variant="primary", id="btn-next")
 
@@ -808,19 +805,15 @@ class CreateScreen(Screen):
         self._show_page(1)
         self.query_one("#cid-input", Input).focus()
 
-    @on(Button.Pressed, "#lang-en")
-    def on_lang_en(self):
-        self._language = "en"
-        self.query_one("#lang-display", Static).update("[cyan]English[/cyan] selected")
-        self.query_one("#lang-en", Button).variant = "primary"
-        self.query_one("#lang-ko", Button).variant = "default"
-
-    @on(Button.Pressed, "#lang-ko")
-    def on_lang_ko(self):
-        self._language = "ko"
-        self.query_one("#lang-display", Static).update("[cyan]한국어[/cyan] 선택됨")
-        self.query_one("#lang-ko", Button).variant = "primary"
-        self.query_one("#lang-en", Button).variant = "default"
+    @on(Button.Pressed, "#btn-agent-lang")
+    def on_agent_lang(self):
+        def _on_result(lang_code):
+            if lang_code:
+                self._language = lang_code
+                flag = {"en": "🇺🇸", "ko": "🇰🇷", "ja": "🇯🇵", "zh": "🇨🇳", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪"}.get(lang_code, "🌐")
+                name = {"en": "English", "ko": "한국어", "ja": "日本語", "zh": "中文", "es": "Español", "fr": "Français", "de": "Deutsch"}.get(lang_code, lang_code)
+                self.query_one("#btn-agent-lang", Button).label = f"{flag} {name}"
+        self.app.push_screen(LanguageScreen("agent"), _on_result)
 
     @on(Button.Pressed, "#gender-m")
     def on_gender_m(self):
@@ -1745,6 +1738,76 @@ class LogScreen(Screen):
 # ══════════════════════════════════════════════════════════
 # 내보내기 / 가져오기
 # ══════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════
+# Language Selection
+# ══════════════════════════════════════════════════════════
+
+LANGUAGES = [
+    ("en", "🇺🇸", "English"),
+    ("ko", "🇰🇷", "한국어"),
+    ("ja", "🇯🇵", "日本語"),
+    ("zh", "🇨🇳", "中文"),
+    ("es", "🇪🇸", "Español"),
+    ("fr", "🇫🇷", "Français"),
+    ("de", "🇩🇪", "Deutsch"),
+]
+
+
+class LanguageScreen(ModalScreen[str]):
+    """언어 선택 모달 — UI 또는 에이전트 언어용"""
+
+    DEFAULT_CSS = """
+    LanguageScreen {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.7);
+    }
+    LanguageScreen > Vertical {
+        width: 40;
+        height: auto;
+        max-height: 20;
+        background: $panel;
+        border: round $accent;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [Binding("backspace", "cancel", "Back")]
+
+    def __init__(self, mode: str = "ui"):
+        """mode: 'ui' (위저드/대시보드 언어) 또는 'agent' (에이전트 언어)"""
+        super().__init__()
+        self._mode = mode
+
+    def compose(self) -> ComposeResult:
+        title = "🌐 UI Language" if self._mode == "ui" else "🌐 Agent Language"
+        with Vertical():
+            yield Static(f"[bold]{title}[/bold]", markup=True)
+            yield Static("")
+            yield OptionList(id="lang-list")
+
+    def on_mount(self):
+        menu = self.query_one("#lang-list", OptionList)
+        from src.i18n import get_language, get_agent_language
+        current = get_language() if self._mode == "ui" else get_agent_language()
+        for code, flag, name in LANGUAGES:
+            check = " ✓" if code == current else ""
+            menu.add_option(Option(f"  {flag}  {name}{check}", id=code))
+        menu.focus()
+
+    @on(OptionList.OptionSelected, "#lang-list")
+    def on_select(self, event: OptionList.OptionSelected):
+        code = event.option_id
+        if not code:
+            return
+        if self._mode == "ui":
+            from src.i18n import save_ui_language
+            save_ui_language(code)
+        self.dismiss(code)
+
+    def action_cancel(self):
+        self.dismiss("")
+
 
 # ══════════════════════════════════════════════════════════
 # Dev Mode 화면
