@@ -884,9 +884,20 @@ class CreateScreen(Screen):
     @work(thread=True)
     def _run_verify(self, token: str):
         """토큰 검증 → 결과 페이지로"""
-        loop = asyncio.new_event_loop()
-        info = loop.run_until_complete(_discord_connect(token, timeout=15))
-        loop.close()
+        try:
+            loop = asyncio.new_event_loop()
+            info = loop.run_until_complete(_discord_connect(token, timeout=15))
+            loop.close()
+        except Exception as e:
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
+            self.app.call_from_thread(
+                self.query_one("#token-error", Static).update,
+                f"[red]Connection error: {e}[/red]"
+            )
+            return
 
         # 로딩 닫기
         try:
@@ -1207,9 +1218,17 @@ class ManageScreen(Screen):
 
     @work(thread=True)
     def _verify_and_save_token(self, token: str):
-        loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(_discord_connect(token, timeout=15))
-        loop.close()
+        try:
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(_discord_connect(token, timeout=15))
+            loop.close()
+        except Exception as e:
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
+            self.app.call_from_thread(self._result, f"[red]Connection error: {e}[/red]")
+            return
 
         # 로딩 닫기
         try:
@@ -1289,9 +1308,12 @@ class ManageScreen(Screen):
             lines.append("Discord   [dim]Connecting...[/dim]")
             self.app.call_from_thread(self._result, "\n".join(lines))
 
-            loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(_discord_connect(token))
-            loop.close()
+            try:
+                loop = asyncio.new_event_loop()
+                result = loop.run_until_complete(_discord_connect(token))
+                loop.close()
+            except Exception as e:
+                result = {"ok": False, "error": str(e)}
             lines.pop()  # "Connecting..." 제거
             if result.get("ok"):
                 for g in result.get("guilds", []):

@@ -610,10 +610,19 @@ class DashboardScreen(Screen):
                 err_lines = []
                 if os.path.exists(log_path):
                     err_lines = log_writer.tail(log_path, 10)
-                err_msg = (
-                    f"봇 프로세스가 비정상 종료되었습니다 (exit code: {exit_code})\n\n"
-                    + "\n".join(err_lines[-5:])
-                )
+                log_text = "\n".join(err_lines[-5:])
+                if "login failed" in log_text.lower() or "improper token" in log_text.lower():
+                    err_msg = (
+                        f"Bot login failed (exit code: {exit_code})\n\n"
+                        "The bot token may be invalid or expired.\n"
+                        "Go to Wizard → Settings → Set Token to update.\n\n"
+                        + log_text
+                    )
+                else:
+                    err_msg = (
+                        f"Bot process crashed (exit code: {exit_code})\n\n"
+                        + log_text
+                    )
                 self.app.call_from_thread(
                     self.app.push_screen,
                     ErrorDialog(t("dashboard.error_bot_crash"), err_msg),
@@ -631,8 +640,9 @@ class DashboardScreen(Screen):
             self._init_loading = None
             err_lines = log_writer.tail(log_path, 10) if os.path.exists(log_path) else []
             err_msg = (
-                "봇 초기화가 5분 내에 완료되지 않았습니다.\n"
-                "네트워크 또는 토큰 문제일 수 있습니다.\n\n"
+                "Bot initialization did not complete within 5 minutes.\n"
+                "This may be a network or token issue.\n"
+                "Go to Wizard → Settings → Set Token to verify.\n\n"
                 + "\n".join(err_lines[-5:])
             )
             self.app.call_from_thread(
