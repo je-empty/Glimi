@@ -184,6 +184,36 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
     return text
 
 
+def _is_tag_complete(text):
+    """CMD/QUERY/ACTION 태그가 완전히 닫혀있는지 — JSON 깊이 체크"""
+    for prefix in ("[CMD:", "[QUERY:", "[ACTION:"):
+        idx = text.find(prefix)
+        if idx < 0:
+            continue
+        depth = 0
+        started_json = False
+        for i in range(idx + len(prefix), len(text)):
+            c = text[i]
+            if c == '{':
+                depth += 1
+                started_json = True
+            elif c == '}':
+                depth -= 1
+            elif c == ']' and depth <= 0:
+                return True
+        if started_json and depth > 0:
+            return False
+        if ']' in text[idx:]:
+            return True
+    return False
+
+
+def _has_open_tag(text):
+    if "[CMD:" not in text and "[QUERY:" not in text and "[ACTION:" not in text:
+        return False
+    return not _is_tag_complete(text)
+
+
 async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
     """메시지 하나를 처리해서 전송 + DB 로깅. mgr/creator면 CMD/QUERY, 페르소나면 ACTION 파싱."""
     from src.bot.core import send_system_log
@@ -259,29 +289,23 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             )
             loop.call_soon_threadsafe(msg_queue.put_nowait, None)
 
-        def _has_complete_tag(text):
-            """CMD/QUERY/ACTION 태그가 완전히 닫혀있는지 확인"""
-            return bool(CMD_PATTERN.search(text) or QUERY_PATTERN.search(text) or ACTION_PATTERN.search(text))
-
-        def _has_open_tag(text):
-            """[CMD: / [QUERY: / [ACTION: 가 열렸지만 완전히 안 닫힌 상태인지"""
-            if "[CMD:" not in text and "[QUERY:" not in text and "[ACTION:" not in text:
-                return False
-            return not _has_complete_tag(text)
-
         async def _handle_msg(msg):
-            """메시지 처리 — CMD/QUERY 태그가 여러 줄에 걸치면 합침"""
+            """메시지 처리 — CMD/QUERY 태그가 여러 줄에 걸치면 합침 (JSON 깊이 추적)"""
             nonlocal _tag_buffer
 
             if _tag_buffer:
-                _tag_buffer += " " + msg
-                if _has_complete_tag(_tag_buffer) or not _has_open_tag(_tag_buffer):
+                _tag_buffer += "\n" + msg
+                if _is_tag_complete(_tag_buffer):
                     full_msg = _tag_buffer
                     _tag_buffer = ""
                     await _process_and_send(
                         message.channel, agent_id, full_msg,
                         is_mgr, message.guild, sent_msgs
                     )
+                elif len(_tag_buffer) > 5000:
+                    # 너무 길면 포기 — 시스템 로그에만
+                    log_writer.system(f"[태그 버퍼] 초과 (5000자) — 드롭")
+                    _tag_buffer = ""
                 return
 
             if _has_open_tag(msg):
@@ -392,27 +416,21 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
             first = True
             _tag_buffer = ""
 
-            def _has_complete_tag_g(text):
-                return bool(CMD_PATTERN.search(text) or QUERY_PATTERN.search(text) or ACTION_PATTERN.search(text))
-
-            def _has_open_tag_g(text):
-                if "[CMD:" not in text and "[QUERY:" not in text and "[ACTION:" not in text:
-                    return False
-                return not _has_complete_tag_g(text)
-
             async def _handle_group_msg(msg_text):
                 nonlocal _tag_buffer
                 if _tag_buffer:
-                    _tag_buffer += " " + msg_text
-                    if _has_complete_tag_g(_tag_buffer) or not _has_open_tag_g(_tag_buffer):
+                    _tag_buffer += "\n" + msg_text
+                    if _is_tag_complete(_tag_buffer):
                         full_msg = _tag_buffer
                         _tag_buffer = ""
                         await _process_and_send(
                             message.channel, agent_id, full_msg,
                             False, message.guild, sent_msgs
                         )
+                    elif len(_tag_buffer) > 5000:
+                        _tag_buffer = ""
                     return
-                if _has_open_tag_g(msg_text):
+                if _has_open_tag(msg_text):
                     _tag_buffer = msg_text
                     return
                 await _process_and_send(
