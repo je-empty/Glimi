@@ -693,7 +693,7 @@ class MainScreen(Screen):
 # ══════════════════════════════════════════════════════════
 
 class CreateScreen(Screen):
-    BINDINGS = [Binding("escape", "go_back", "Back")]
+    BINDINGS = [Binding("backspace", "go_back", "Back")]
 
     def __init__(self):
         super().__init__()
@@ -1059,7 +1059,7 @@ class CreateScreen(Screen):
 
 class ManageScreen(Screen):
     BINDINGS = [
-        Binding("escape", "go_back", "Back"),
+        Binding("backspace", "go_back", "Back"),
         Binding("r", "refresh", "Refresh"),
     ]
 
@@ -1560,7 +1560,7 @@ class ManageScreen(Screen):
 # ══════════════════════════════════════════════════════════
 
 class DiscordScreen(Screen):
-    BINDINGS = [Binding("escape", "go_back", "Back")]
+    BINDINGS = [Binding("backspace", "go_back", "Back")]
 
     def __init__(self, community_id: str):
         super().__init__()
@@ -1694,7 +1694,7 @@ class DiscordScreen(Screen):
 
 class LogScreen(Screen):
     BINDINGS = [
-        Binding("escape", "go_back", "Back"),
+        Binding("backspace", "go_back", "Back"),
         Binding("r", "refresh", "Refresh"),
     ]
 
@@ -1742,7 +1742,7 @@ class LogScreen(Screen):
 
 class DevModeScreen(Screen):
     """개발/QA 도구"""
-    BINDINGS = [Binding("escape", "go_back", "Back")]
+    BINDINGS = [Binding("backspace", "go_back", "Back")]
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -1848,7 +1848,7 @@ class DevModeScreen(Screen):
 
 class DevServerScreen(Screen):
     """서버별 Dev 도구"""
-    BINDINGS = [Binding("escape", "go_back", "Back")]
+    BINDINGS = [Binding("backspace", "go_back", "Back")]
 
     def __init__(self, cid: str):
         super().__init__()
@@ -1989,7 +1989,7 @@ class DevServerScreen(Screen):
 
 
 class ExportImportScreen(Screen):
-    BINDINGS = [Binding("escape", "go_back", "Back")]
+    BINDINGS = [Binding("backspace", "go_back", "Back")]
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)

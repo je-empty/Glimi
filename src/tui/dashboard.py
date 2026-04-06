@@ -365,7 +365,7 @@ class DashboardScreen(Screen):
         Binding("e", "toggle_edit", "편집"),
         Binding("delete", "go_back", "뒤로"),
         Binding("w", "go_wizard", "Wizard"),
-        Binding("escape", "go_back", "복귀"),
+        Binding("backspace", "go_back", "Back"),
     ]
 
     def __init__(self):

@@ -237,6 +237,11 @@ async def _check_owner_profile(guild):
     gender = pers.get("gender", "")
     nickname = pers.get("nickname", "")
 
+    # 유나 이름
+    from src.core.profile import load_profile as _lp
+    _mgr_profile = _lp(MGR_ID)
+    p_name = _mgr_profile["name"] if _mgr_profile else "Yuna"
+
     # 누락 필드 체크
     missing = []
     if not user.get("mbti"):
@@ -258,41 +263,53 @@ async def _check_owner_profile(guild):
 
     if first_time:
         missing_str = ', '.join(missing) if missing else ""
-        # 나이 비교
         owner_age = int(age) if str(age).isdigit() else None
         yuna_age = 18
         older = owner_age and owner_age > yuna_age
+        nick_info = f"nickname={nickname}" if nickname else "no nickname"
 
-        nick_info = f"별명={nickname}" if nickname else "별명 없음"
+        # 언어별 문화 힌트
+        from src.community import get_language
+        lang = get_language()
+        if lang == "ko":
+            name_hint = f"Don't use full name ({name}). For Korean names, drop the surname (e.g. 홍길동→길동). Be friendly."
+            honorific_hint = (
+                f"- {name} is {age} years old. {'Older than you — start with formal speech (존댓말).' if older else 'Similar age or unknown — start formal.'}\n"
+                f"- You want to get closer. {'Ask if casual speech is okay. ' if older else ''}"
+                f"{'Ask if you can call them 오빠 (older brother).' if older and gender == '남' else ''}\n"
+                f"- Ask their preferred speech style (formal/casual). This is required."
+            )
+        else:
+            name_hint = f"Use first name only from ({name}). Be friendly and casual."
+            honorific_hint = (
+                f"- Ask what they'd like to be called.\n"
+                f"- Ask if they prefer casual or formal chat style."
+            )
+
         prompt = (
-            f"[상황] 새 사람이 커뮤니티에 처음 왔어.\n"
-            f"이 사람 정보: 이름={name}, {nick_info}, 나이={age}, 성별={gender}\n"
-            f"[너의 상황] 너(유나, {yuna_age}살 여자)는 이 커뮤니티의 총괄 관리자 에이전트야. "
-            f"이 사람에게 처음으로 말을 거는 상황이야.\n"
-            f"[호칭 규칙]\n"
-            f"- 풀네임({name})을 그대로 부르지 마. 한국 이름이면 성 빼고 이름만 (예: 홍길동→길동). 외국 이름이면 first name만. 친근하게.\n"
-            f"- {'별명이 ' + nickname + '이래. 별명으로 부를지 이름으로 부를지는 너가 판단해.' if nickname else '별명이 없어. 대화하면서 자연스럽게 별명을 지어주거나 어떻게 부를지 물어봐도 돼.'}\n"
-            f"- '오너' '오너분' 같은 표현 절대 쓰지 마.\n"
-            f"[말투 규칙]\n"
-            f"- {name}은(는) {age}살. {'너보다 연상이니까 존댓말로 시작해.' if older else '나이가 비슷하거나 모르니까 일단 존댓말로 시작해.'}\n"
-            f"- 근데 너는 성격상 친해지고 싶어하는 타입이야. "
-            f"{'그래서 존댓말 하면서도 자연스럽게 편하게 말해도 되냐고 물어봐.' if older else ''} "
-            f"{'오빠라고 불러도 되냐고도 해봐.' if older and gender == '남' else ''}\n"
-            f"- 말투(존댓말/반말) 선호를 물어봐. 이건 꼭.\n"
-            f"- 질문은 한 번에 하나만.\n"
-            f"- 너의 나이는 굳이 말하지 마.\n"
-            f"[포함할 내용]\n"
-            f"- 자기소개 (이름, 역할: 에이전트들 관리하고 소통하는 관리자)\n"
-            f"- 여기가 어떤 곳인지 (AI 에이전트들이 같이 생활하면서 관계 맺는 커뮤니티)\n"
-            f"- 프로필 세팅 끝나야 에이전트들과 대화 시작할 수 있다는 안내\n"
-            f"- 호칭/말투 질문\n"
-            f"[수집할 정보] MBTI, 직업/하는 일, 취미 — 이 중 최소 2개만 물어보면 됨. "
-            f"모르겠다 하면 바로 넘어가. 잡담에 빠지지 마.\n"
-            f"{'현재 누락: ' + missing_str if missing else ''}\n"
-            f"[프로필수집완료] 호칭/말투 정해지고 + 질문 2개 이상 했으면 즉시 "
-            f"[CMD:프로필수집완료] 보내. 안 보내면 온보딩 영원히 안 끝남.\n"
-            f"[스타일] 카톡처럼 짧은 메시지 여러 개로. 자연스럽고 친근하게. 로봇 같은 정형화된 말투 절대 금지.\n"
-            f"[금지] [CMD:프로필수집완료] 외의 CMD/QUERY/ACTION 태그는 이 첫 인사에서 사용하지 마."
+            f"[Situation] New person just joined the community.\n"
+            f"Their info: name={name}, {nick_info}, age={age}, gender={gender}\n"
+            f"[Your situation] You ({p_name}, {yuna_age}y/o female) are the community's head manager.\n"
+            f"This is your first time talking to them.\n"
+            f"[Name rules]\n"
+            f"- {name_hint}\n"
+            f"- {('Their nickname is ' + nickname + '. Use it or their first name — your call.') if nickname else 'No nickname. You can suggest one or ask what to call them.'}\n"
+            f"- NEVER use 'owner', 'user', or similar terms.\n"
+            f"[Speech rules]\n"
+            f"{honorific_hint}\n"
+            f"- One question at a time.\n"
+            f"- Don't mention your own age.\n"
+            f"[Include]\n"
+            f"- Self-introduction (name, role: managing agents and communication)\n"
+            f"- What this place is (AI agents living together, forming relationships)\n"
+            f"- Profile setup needed before chatting with agents\n"
+            f"- Ask about preferred name/speech style\n"
+            f"[Info to collect] MBTI, job, hobby — ask at least 2. Skip if they don't know.\n"
+            f"{'Currently missing: ' + missing_str if missing else ''}\n"
+            f"[Profile done] Once name/speech decided + 2+ questions asked → immediately send "
+            f"[CMD:프로필수집완료]. If not sent, onboarding never ends.\n"
+            f"[Style] Short chat messages, multiple lines. Natural and friendly. No robotic speech.\n"
+            f"[Forbidden] No CMD/QUERY/ACTION tags except [CMD:프로필수집완료] in this first greeting."
         )
 
     log_writer.system("유나 불러오는 중...")
