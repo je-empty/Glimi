@@ -461,9 +461,9 @@ class DashboardScreen(Screen):
             return
         # 이미 외부에서 봇이 돌고 있으면 새로 시작하지 않음
         if _is_bot_running():
-            log_writer.system("봇 이미 실행 중 — 연결")
+            log_writer.system("Bot already running — connecting")
             return
-        log_writer.system("봇 시작")
+        log_writer.system("Bot starting")
         env = os.environ.copy()
         cid = os.environ.get("GLIMI_COMMUNITY", "")
         if cid:
@@ -494,7 +494,7 @@ class DashboardScreen(Screen):
             pass
 
     def _run_dev_runner(self):
-        log_writer.system("개발자 에이전트 실행")
+        log_writer.system("Dev runner started")
         dev_log = open(os.path.join(PROJECT_ROOT, "logs", "dev_stdout.log"), "a")
         self._dev_log_file = dev_log
         self._dev_proc = subprocess.Popen(
@@ -517,16 +517,16 @@ class DashboardScreen(Screen):
             pass
 
         if exit_code == 42:
-            log_writer.system(f"봇 종료 (개발 요청, exit={exit_code})")
+            log_writer.system(f"Bot exit (dev request, exit={exit_code})")
             self._run_dev_runner()
         elif exit_code == 0:
-            log_writer.system("봇 정상 종료")
+            log_writer.system("Bot stopped normally")
         else:
-            log_writer.system(f"봇 비정상 종료 (exit={exit_code}) — 5초 후 재시작")
+            log_writer.system(f"Bot crashed (exit={exit_code}) — restarting in 5s")
             self.set_timer(5.0, self._start_bot)
 
         if self._dev_proc and self._dev_proc.poll() is not None:
-            log_writer.system("개발자 에이전트 완료 — 전체 재시작")
+            log_writer.system("Dev runner done — full restart")
             self._dev_proc = None
             self.set_timer(2.0, self._do_full_restart)
 
@@ -558,7 +558,7 @@ class DashboardScreen(Screen):
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_channels"))
                         elif "아바타 동기화" in line:
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_avatars"))
-                        elif "에이전트 활성화" in line:
+                        elif "에이전트 Active화" in line:
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_agents"))
                         elif "봇 준비 완료" in line:
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_almost"))
@@ -656,7 +656,7 @@ class DashboardScreen(Screen):
         self._check_bot_status()
 
         if self._dev_proc and self._dev_proc.poll() is not None:
-            log_writer.system("개발자 에이전트 완료 — 전체 재시작")
+            log_writer.system("Dev runner done — full restart")
             self._dev_proc = None
             self.set_timer(2.0, self._do_full_restart)
 
@@ -702,7 +702,7 @@ class DashboardScreen(Screen):
         is_subpage = view.startswith("agent:") or view.startswith("channel:") or view.startswith("manage:")
         back_btn.display = is_subpage
 
-        # 탭 활성 표시
+        # 탭 Active 표시
         view_base = view.split(":")[0] if ":" in view else view
         _TAB_ALIAS = {"channel": "channels", "agent": "agents", "manage": "channels"}
         view_base = _TAB_ALIAS.get(view_base, view_base)
@@ -974,7 +974,7 @@ class DashboardScreen(Screen):
                     for l in t_lines[-4:]:
                         lines.append(f"  [dim]{_trunc(l, 70)}[/dim]")
 
-            # 최근 대화 (CMD/QUERY/ACTION 제외)
+            # Recent Chat (CMD/QUERY/ACTION 제외)
             recent = [m for m in db.get_recent_messages(ch_name, limit=10)
                       if not _re.search(r'\[(?:CMD|QUERY|ACTION):', m["message"] or "")][-3:]
             if recent:
@@ -1011,7 +1011,7 @@ class DashboardScreen(Screen):
                 speaker = get_user_name() if r["speaker"] == get_user_id() else agent["name"]
                 line2 = f"  [dim]{speaker}: {_trunc(r['message'], 30)}[/dim]"
             else:
-                line2 = f"  [dim]대화 없음[/dim]"
+                line2 = f"  [dim]No messages[/dim]"
 
             border = "bright_yellow" if thinking else "bright_cyan" if speaking else (c if agent["status"] == "active" else "dim")
             return Panel(
@@ -1026,7 +1026,7 @@ class DashboardScreen(Screen):
 
         if not agents:
             return Panel(
-                "[dim]에이전트가 없습니다.\n관리자(Wizard)에서 DB를 초기화하세요.[/dim]",
+                "[dim]No agents.\nInitialize DB from Wizard.[/dim]",
                 border_style="yellow", box=box.ROUNDED, padding=(1, 2),
             )
 
@@ -1090,10 +1090,10 @@ class DashboardScreen(Screen):
                 active = sum(1 for c in chs if _channel_is_active(_cache.channels, c["channel"]))
                 active_s = f" [green]({active} active)[/green]" if active else ""
                 ch_lines.append(f"[{clr} bold]{icon} {label}[/{clr} bold] {len(chs)}{active_s}")
-        ch_summary = "  │  ".join(ch_lines) if ch_lines else "[dim]채널 없음[/dim]"
+        ch_summary = "  │  ".join(ch_lines) if ch_lines else "[dim]No channels[/dim]"
         items.append(Panel(ch_summary, border_style="dim", box=box.ROUNDED, padding=(0, 1)))
 
-        # 최근 대화 (CMD/QUERY/ACTION 태그 포함 메시지 제외)
+        # Recent Chat (CMD/QUERY/ACTION 태그 포함 메시지 제외)
         _cmd_re = _re.compile(r'\[(?:CMD|QUERY|ACTION):')
         chat_lines = []
         for r in (_cache.messages[-20:] if _cache.messages else []):
@@ -1113,9 +1113,9 @@ class DashboardScreen(Screen):
             if len(chat_lines) >= 10:
                 break
 
-        chat_content = "\n".join(chat_lines) if chat_lines else "[dim]대화 없음[/dim]"
+        chat_content = "\n".join(chat_lines) if chat_lines else "[dim]No messages[/dim]"
         items.append(Panel(
-            chat_content, title="[bold]💬 최근 대화[/bold]",
+            chat_content, title="[bold]💬 Recent Chat[/bold]",
             border_style="dim", box=box.ROUNDED, padding=(0, 1),
         ))
 
@@ -1150,11 +1150,11 @@ class DashboardScreen(Screen):
         info_lines = []
         type_map = {"mgr": "Manager", "creator": "Creator", "persona": "Persona"}
         if thinking:
-            status_str = "[bright_yellow]🧠 추론중[/bright_yellow]"
+            status_str = "[bright_yellow]🧠 Thinking[/bright_yellow]"
         elif speaking:
-            status_str = "[bright_cyan]💬 전송중[/bright_cyan]"
+            status_str = "[bright_cyan]💬 Speaking[/bright_cyan]"
         elif agent["status"] == "active":
-            status_str = "[green]● 활성[/green]"
+            status_str = "[green]● Active[/green]"
         else:
             status_str = f"[dim]{agent['status']}[/dim]"
 
@@ -1164,7 +1164,7 @@ class DashboardScreen(Screen):
         if profile:
             parts = []
             if profile.get("age"):
-                parts.append(f"{profile['age']}살")
+                parts.append(f"{profile['age']}y/o")
             if profile.get("mbti"):
                 parts.append(profile["mbti"])
             if profile.get("enneagram"):
@@ -1174,7 +1174,7 @@ class DashboardScreen(Screen):
 
             traits = profile.get("personality", {}).get("traits", [])
             if traits:
-                info_lines.append(f"[bold]성격:[/bold] {' · '.join(traits[:5])}")
+                info_lines.append(f"[bold]Personality:[/bold] {' · '.join(traits[:5])}")
 
             rel = profile.get("relationship_to_owner", {})
             if rel.get("type"):
@@ -1195,7 +1195,7 @@ class DashboardScreen(Screen):
                     tc = _get_color(target_id)
                     rel_type = rel_info.get("type", "?")
                     rel_parts.append(f"[{tc}]{target_name}[/{tc}]({rel_type})")
-                info_lines.append(f"[bold]관계:[/bold] {' · '.join(rel_parts)}")
+                info_lines.append(f"[bold]Relationships:[/bold] {' · '.join(rel_parts)}")
 
         items.append(Panel(
             "\n".join(info_lines),
@@ -1207,7 +1207,7 @@ class DashboardScreen(Screen):
         sys_log_path = os.path.join(log_writer.get_log_dir(), "system.log")
         all_sys = log_writer.tail(sys_log_path, 200)
         thinking_lines = [l for l in all_sys if f"[{agent_id}]" in l]
-        thinking_content = "\n".join(thinking_lines[-20:]) if thinking_lines else "[dim]추론 로그 없음[/dim]"
+        thinking_content = "\n".join(thinking_lines[-20:]) if thinking_lines else "[dim]추론 No logs[/dim]"
         thinking_title = "[bold]🧠 추론 로그[/bold]"
         if thinking:
             thinking_title += "  [bright_yellow]● LIVE[/bright_yellow]"
@@ -1236,7 +1236,7 @@ class DashboardScreen(Screen):
                 )
             items.append(Panel(
                 "\n".join(rel_lines),
-                title=f"[bold]💕 관계[/bold]  [dim]({len(rels_db)}건)[/dim]",
+                title=f"[bold]💕 관계[/bold]  [dim]({len(rels_db)}items)[/dim]",
                 border_style="bright_magenta", box=box.ROUNDED, padding=(0, 1),
             ))
 
@@ -1279,12 +1279,12 @@ class DashboardScreen(Screen):
 
                 items.append(Panel(
                     "\n".join(mem_lines).rstrip(),
-                    title=f"[bold]🧠 {ch_icon} {ch}[/bold]  [dim]({len(mems)}건)[/dim]",
+                    title=f"[bold]🧠 {ch_icon} {ch}[/bold]  [dim]({len(mems)}items)[/dim]",
                     border_style=ch_clr, box=box.ROUNDED, padding=(0, 1),
                 ))
         else:
             items.append(Panel(
-                "[dim]메모리 없음[/dim]",
+                "[dim]No memories[/dim]",
                 title="[bold]🧠 메모리[/bold]",
                 border_style="dim", box=box.ROUNDED, padding=(0, 1),
             ))
@@ -1319,7 +1319,7 @@ class DashboardScreen(Screen):
             ts = r["timestamp"][11:16] if r["timestamp"] else ""
             chat_lines.append(f"[dim]{ts}[/dim] [{sc} bold]{name}[/{sc} bold]: {r['message']}")
 
-        chat_content = "\n".join(chat_lines) if chat_lines else "[dim]대화 없음[/dim]"
+        chat_content = "\n".join(chat_lines) if chat_lines else "[dim]No messages[/dim]"
         items.append(Panel(
             chat_content, title=f"[bold]💬 {primary_ch}[/bold]",
             border_style="cyan", box=box.ROUNDED, padding=(0, 1),
@@ -1391,7 +1391,7 @@ class DashboardScreen(Screen):
             ))
 
         if not items:
-            items.append(Panel("[dim]채널 없음[/dim]", border_style="dim", box=box.ROUNDED))
+            items.append(Panel("[dim]No channels[/dim]", border_style="dim", box=box.ROUNDED))
 
         return Group(*items)
 
@@ -1409,7 +1409,7 @@ class DashboardScreen(Screen):
 
     def _render_channel_detail(self, channel_name):
         active = _channel_is_active(_cache.channels, channel_name)
-        active_s = "  [green bold]● 대화중[/green bold]" if active else ""
+        active_s = "  [green bold]● Active[/green bold]" if active else ""
         color, icon = self._get_channel_style(channel_name)
 
         # 전체 메시지
@@ -1428,7 +1428,7 @@ class DashboardScreen(Screen):
             name = _speaker_name(sid)
             lines.append(f"[dim]{ts}[/dim] [{c} bold]{name}[/{c} bold]: {r['message']}")
 
-        content = "\n".join(lines) if lines else "[dim]메시지 없음[/dim]"
+        content = "\n".join(lines) if lines else "[dim]No messages[/dim]"
 
         # 참가자 표시
         parts = db.get_channel_participants(channel_name)
@@ -1439,12 +1439,12 @@ class DashboardScreen(Screen):
                 part_names.append(agent["name"])
             elif pid == get_user_id():
                 part_names.append(get_user_name())
-        members_info = f"  [dim]참가자: {', '.join(part_names)}[/dim]" if part_names else ""
+        members_info = f"  [dim]Participants: {', '.join(part_names)}[/dim]" if part_names else ""
 
         items = []
         items.append(Panel(
             content,
-            title=f"[bold]{icon} {channel_name}[/bold]{active_s}{members_info}  [dim]({len(rows)}건)[/dim]",
+            title=f"[bold]{icon} {channel_name}[/bold]{active_s}{members_info}  [dim]({len(rows)}items)[/dim]",
             subtitle="[dim]ESC 뒤로  │  e 편집모드[/dim]",
             border_style=color, box=box.ROUNDED, padding=(0, 1),
         ))
@@ -1459,7 +1459,7 @@ class DashboardScreen(Screen):
         conn.close()
         return Panel(
             f"[bold]{icon} {ch_name}[/bold]  │  {count}건  │  [red bold]편집 모드[/red bold]\n\n"
-            f"[dim]메시지 선택 → Enter로 삭제 (휴지통 보관)[/dim]\n"
+            f"[dim]메시지 선택 → Enter로 삭제 (Trash 보관)[/dim]\n"
             f"[dim]ESC로 뷰 모드 복귀[/dim]",
             border_style="red", box=box.ROUNDED, padding=(1, 2),
         )
@@ -1502,12 +1502,12 @@ class DashboardScreen(Screen):
                 id=f"del_msg:{ch_name}:{msg_id}",
             ))
 
-        # 휴지통 바로가기
+        # Trash 바로가기
         trash_count = len(db.trash_list())
         if trash_count:
             manage_list.add_option(None)
             manage_list.add_option(Option(
-                f"  [yellow]🗑 휴지통[/yellow]  [dim]({trash_count}건)[/dim]",
+                f"  [yellow]🗑 Trash[/yellow]  [dim]({trash_count}items)[/dim]",
                 id="trash_view",
             ))
 
@@ -1569,7 +1569,7 @@ class DashboardScreen(Screen):
         # 시스템 로그
         sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
         log_lines = log_writer.tail(sys_log, 15)
-        log_content = "\n".join(log_lines) if log_lines else "[dim]시스템 로그 없음[/dim]"
+        log_content = "\n".join(log_lines) if log_lines else "[dim]시스템 No logs[/dim]"
         items.append(Panel(
             log_content,
             title="[bold]⚙ System Log[/bold]",
@@ -1586,7 +1586,7 @@ class DashboardScreen(Screen):
         sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
         all_lines = log_writer.tail(sys_log, 200)
         dev_lines = [l for l in all_lines if "🔧" in l]
-        content = "\n".join(dev_lines[-30:]) if dev_lines else "[dim]개발 로그 없음[/dim]"
+        content = "\n".join(dev_lines[-30:]) if dev_lines else "[dim]개발 No logs[/dim]"
         return Panel(
             content,
             title=f"[bold]🔧 Dev Runner (Opus)[/bold]  │  {status}",
@@ -1650,7 +1650,7 @@ class DashboardScreen(Screen):
 
         if today_agent:
             claude_lines.append("")
-            claude_lines.append(f"  [bold]오늘 에이전트별[/bold]")
+            claude_lines.append(f"  [bold]Today by agent[/bold]")
             for row in today_agent[:5]:
                 aid = row[0]
                 cnt = row[1]
@@ -1683,7 +1683,7 @@ class DashboardScreen(Screen):
     def _render_logs(self):
         sys_log = os.path.join(log_writer.get_log_dir(), "system.log")
         log_lines = log_writer.tail(sys_log, 40)
-        content = "\n".join(log_lines) if log_lines else "[dim]로그 없음[/dim]"
+        content = "\n".join(log_lines) if log_lines else "[dim]No logs[/dim]"
         return Panel(
             content,
             title="[bold]📋 System Logs[/bold]",
@@ -1697,13 +1697,13 @@ class DashboardScreen(Screen):
         items = []
 
         trash_count = len(db.trash_list())
-        trash_str = f"  [dim]({trash_count}건)[/dim]" if trash_count else ""
+        trash_str = f"  [dim]({trash_count}items)[/dim]" if trash_count else ""
 
         if view == "manage":
             items.append(Panel(
                 "[bold]DB 관리[/bold]\n\n"
                 "채널 목록에서 선택 → Enter로 메시지 관리\n"
-                f"[dim]삭제 데이터는 휴지통에 보관됩니다{trash_str}[/dim]",
+                f"[dim]삭제 데이터는 Trash에 보관됩니다{trash_str}[/dim]",
                 border_style="cyan", box=box.ROUNDED, padding=(1, 2),
             ))
         elif view.startswith("manage:channel:"):
@@ -1732,15 +1732,15 @@ class DashboardScreen(Screen):
         return Panel(
             f"[bold]{icon} {ch_name}[/bold]  │  {count}건\n\n"
             f"[dim]아래 목록에서 메시지를 선택하여 삭제 (Enter)[/dim]\n"
-            f"[dim]삭제된 데이터는 휴지통에 보관됩니다[/dim]",
+            f"[dim]삭제된 데이터는 Trash에 보관됩니다[/dim]",
             border_style=color, box=box.ROUNDED, padding=(1, 2),
         )
 
     def _render_trash(self):
-        """휴지통 뷰"""
+        """Trash 뷰"""
         items = db.trash_list()
         if not items:
-            return Panel("[dim]휴지통이 비어있습니다.[/dim]", title="[bold]🗑 휴지통[/bold]",
+            return Panel("[dim]Trash is empty.[/dim]", title="[bold]🗑 Trash[/bold]",
                          border_style="dim", box=box.ROUNDED, padding=(1, 2))
         lines = []
         for t in items:
@@ -1751,7 +1751,7 @@ class DashboardScreen(Screen):
             )
         return Panel(
             "\n".join(lines),
-            title=f"[bold]🗑 휴지통[/bold]  [dim]({len(items)}건)[/dim]",
+            title=f"[bold]🗑 Trash[/bold]  [dim]({len(items)}items)[/dim]",
             border_style="yellow", box=box.ROUNDED, padding=(1, 2),
         )
 
@@ -1764,11 +1764,11 @@ class DashboardScreen(Screen):
             channels = db.get_channel_overview()
             manage_list.clear_options()
 
-            # 휴지통 바로가기
+            # Trash 바로가기
             trash_count = len(db.trash_list())
             if trash_count:
                 manage_list.add_option(Option(
-                    f"  [yellow]🗑 휴지통[/yellow]  [dim]({trash_count}건)[/dim]",
+                    f"  [yellow]🗑 Trash[/yellow]  [dim]({trash_count}items)[/dim]",
                     id="trash_view",
                 ))
                 manage_list.add_option(None)
@@ -1785,7 +1785,7 @@ class DashboardScreen(Screen):
                 else:
                     icon = "📋"
                 manage_list.add_option(Option(
-                    f"  {icon} {name}  [dim]({cnt}건)[/dim]",
+                    f"  {icon} {name}  [dim]({cnt}items)[/dim]",
                     id=f"ch:{name}",
                 ))
         elif view.startswith("manage:channel:"):
@@ -1840,7 +1840,7 @@ class DashboardScreen(Screen):
             if items:
                 manage_list.add_option(None)
                 manage_list.add_option(Option(
-                    "  [red]🗑 휴지통 비우기[/red]",
+                    "  [red]🗑 Trash 비우기[/red]",
                     id="trash_empty",
                 ))
             manage_list.add_option(None)
@@ -1865,13 +1865,13 @@ class DashboardScreen(Screen):
         elif oid.startswith("del_ch:"):
             ch_name = oid.split(":", 1)[1]
             self.app.push_screen(
-                ConfirmDialog(f"[red bold]채널 삭제: {ch_name}[/red bold]\n\nDB + Discord에서 삭제됩니다.\n휴지통에 백업됩니다.", danger=True),
+                ConfirmDialog(f"[red bold]Channels deleted: {ch_name}[/red bold]\n\nDB + Discord에서 삭제됩니다.\nTrashbacked up.", danger=True),
                 lambda yes, c=ch_name: self._do_delete_channel(c) if yes else None,
             )
         elif oid.startswith("clear_ch:"):
             ch_name = oid.split(":", 1)[1]
             self.app.push_screen(
-                ConfirmDialog(f"[yellow bold]메시지 전체 삭제: {ch_name}[/yellow bold]\n\n채널은 유지, 메시지+메모리 삭제.\n휴지통에 백업됩니다.", danger=True),
+                ConfirmDialog(f"[yellow bold]Delete all messages: {ch_name}[/yellow bold]\n\nChannel preserved, messages+memory deleted.\nTrashbacked up.", danger=True),
                 lambda yes, c=ch_name: self._do_clear_channel(c) if yes else None,
             )
         elif oid.startswith("del_msg:"):
@@ -1897,13 +1897,13 @@ class DashboardScreen(Screen):
             trash_id = int(oid.split(":", 1)[1])
             result = db.trash_restore(trash_id)
             if result["ok"]:
-                log_writer.system(f"[DB] 복원: {result['channel']} ({result['restored']}건)")
+                log_writer.system(f"[DB] Restored: {result['channel']} ({result['restored']}items)")
             _cache.refresh()
             self._current_view = "manage:trash"
             self._refresh_all()
         elif oid == "trash_empty":
             self.app.push_screen(
-                ConfirmDialog("[red bold]휴지통 비우기[/red bold]\n\n복원 불가능합니다.", danger=True),
+                ConfirmDialog("[red bold]Trash 비우기[/red bold]\n\n복원 불가능합니다.", danger=True),
                 lambda yes: self._do_empty_trash() if yes else None,
             )
         elif oid == "sync_toggle_all":
@@ -1924,17 +1924,17 @@ class DashboardScreen(Screen):
 
     @work(thread=True)
     def _do_delete_channel(self, ch_name):
-        """채널 전체 삭제 — 휴지통 → DB → Discord"""
+        """채널 전체 삭제 — Trash → DB → Discord"""
         from src.core.sync import _get_token
         import time
 
         self.app.call_from_thread(
-            lambda: self.app.push_screen(LoadingOverlay(f"채널 삭제: {ch_name}"))
+            lambda: self.app.push_screen(LoadingOverlay(f"Channels deleted: {ch_name}"))
         )
 
-        # 휴지통으로 이동 (DB)
+        # Trash으로 이동 (DB)
         count = db.trash_messages(ch_name)
-        log_writer.system(f"[DB] 휴지통: {ch_name} ({count}건)")
+        log_writer.system(f"[DB] Trash: {ch_name} ({count}items)")
 
         # Discord 채널 삭제
         token = _get_token()
@@ -1978,13 +1978,13 @@ class DashboardScreen(Screen):
 
     @work(thread=True)
     def _do_clear_channel(self, ch_name):
-        """채널 메시지만 삭제 — 휴지통 → DB"""
+        """채널 메시지만 삭제 — Trash → DB"""
         self.app.call_from_thread(
             lambda: self.app.push_screen(LoadingOverlay(f"메시지 삭제: {ch_name}"))
         )
 
         count = db.trash_messages(ch_name)
-        log_writer.system(f"[DB] 휴지통: {ch_name} 메시지 {count}건")
+        log_writer.system(f"[DB] Trash: {ch_name} 메시지 {count}건")
 
         _cache.refresh()
         self.app.call_from_thread(self.app.pop_screen)
@@ -1995,16 +1995,16 @@ class DashboardScreen(Screen):
             self._do_delete_message(ch_name, msg_id)
 
     def _do_delete_message(self, ch_name, msg_id):
-        """개별 메시지 삭제 — 휴지통"""
+        """개별 메시지 삭제 — Trash"""
         db.trash_messages(ch_name, [int(msg_id)])
-        log_writer.system(f"[DB] 휴지통: #{msg_id} ({ch_name})")
+        log_writer.system(f"[DB] Trash: #{msg_id} ({ch_name})")
         _cache.refresh()
         self._current_view = f"channel:{ch_name}:edit"
         self._refresh_all()
 
     def _do_empty_trash(self):
         count = db.trash_empty()
-        log_writer.system(f"[DB] 휴지통 비움: {count}건")
+        log_writer.system(f"[DB] Trash emptied: {count}건")
         _cache.refresh()
         self._current_view = "manage:trash"
         self._refresh_all()
@@ -2250,15 +2250,15 @@ class DashboardScreen(Screen):
         elif result:
             lines = ["[green bold]동기화 완료[/green bold]\n"]
             if result["channels_created"]:
-                lines.append(f"[green]채널 생성:[/green] {', '.join(result['channels_created'])}")
+                lines.append(f"[green]Channels created:[/green] {', '.join(result['channels_created'])}")
             if result["channels_deleted"]:
-                lines.append(f"[yellow]채널 삭제:[/yellow] {', '.join(result['channels_deleted'])}")
+                lines.append(f"[yellow]Channels deleted:[/yellow] {', '.join(result['channels_deleted'])}")
             if result.get("categories_deleted"):
-                lines.append(f"[yellow]카테고리 삭제:[/yellow] {', '.join(result['categories_deleted'])}")
+                lines.append(f"[yellow]Categories deleted:[/yellow] {', '.join(result['categories_deleted'])}")
             if result.get("messages_deleted_from_discord"):
-                lines.append(f"[red]Discord 메시지 삭제:[/red] {result['messages_deleted_from_discord']}건")
+                lines.append(f"[red]Discord messages deleted:[/red] {result['messages_deleted_from_discord']}건")
             if result.get("messages_restored"):
-                lines.append(f"[green]DB→Discord 복원:[/green] +{result['messages_restored']}건")
+                lines.append(f"[green]DB→Discord Restored:[/green] +{result['messages_restored']}건")
             lines.append(f"[dim]{result.get('channels_scanned', 0)}개 채널 스캔[/dim]")
             if result.get("errors"):
                 lines.append(f"\n[yellow]경고 {len(result['errors'])}건:[/yellow]")
@@ -2493,7 +2493,7 @@ class DashboardScreen(Screen):
         self._stop_bot()
         if self._dev_proc and self._dev_proc.poll() is None:
             self._dev_proc.terminate()
-        log_writer.system("대시보드 재시작")
+        log_writer.system("Dashboard restart")
         cid = os.environ.get("GLIMI_COMMUNITY", "")
         py = _venv_python()
         args = [py, "-m", "src.tui.dashboard"]
@@ -2502,12 +2502,12 @@ class DashboardScreen(Screen):
         os.execvp(py, args)
 
     def action_go_wizard(self):
-        """대시보드 종료 → Wizard 전환 (봇은 유지)"""
+        """대시보드 종료 → Switching to Wizard (봇은 유지)"""
         # 봇 프로세스는 detach — 종료하지 않음
         # start_new_session=True + DEVNULL이라 대시보드 종료해도 안 죽음
         self._bot_proc = None
         self._dev_proc = None
-        log_writer.system("Wizard 전환")
+        log_writer.system("Switching to Wizard")
         self.app.exit(result="wizard")
 
     def _handle_nav(self, button: Button):

@@ -60,10 +60,10 @@ async def on_ready():
     if bot.guilds:
         guild = bot.guilds[0]
         log.info(f"서버: {guild.name}")
-        log_writer.system(f"서버 연결: {guild.name}")
-        log_writer.system("채널 초기화 중...")
+        log_writer.system(f"Server connected: {guild.name}")
+        log_writer.system("Initializing channels...")
         await ensure_channels(guild)
-        log_writer.system("아바타 동기화 중...")
+        log_writer.system("Syncing avatars...")
         await sync_avatars(guild)
 
     from src import db as _db
@@ -73,21 +73,21 @@ async def on_ready():
     if first_run:
         # 초기: mgr/creator만 활성화 (페르소나는 온보딩 완료 후)
         mgr_profiles = [p for p in profiles if p.get("type") in ("mgr", "creator")]
-        log_writer.system(f"에이전트 활성화 중... (관리자 {len(mgr_profiles)}명)")
+        log_writer.system(f"Activating agents... (managers {len(mgr_profiles)}명)")
         for i, p in enumerate(mgr_profiles, 1):
             name = p.get("name", p["id"])
             log_writer.system(f"  [{i}/{len(mgr_profiles)}] {name} ({p.get('type', '?')}) 활성화")
             runtime.activate_agent(p["id"])
     else:
-        log_writer.system(f"에이전트 활성화 중... ({len(profiles)}명)")
+        log_writer.system(f"Activating agents... ({len(profiles)}명)")
         for i, p in enumerate(profiles, 1):
             name = p.get("name", p["id"])
             agent_type = p.get("type", "?")
             log_writer.system(f"  [{i}/{len(profiles)}] {name} ({agent_type}) 활성화")
             runtime.activate_agent(p["id"])
 
-    log.info("Glimi 봇 준비 완료")
-    log_writer.system("봇 준비 완료")
+    log.info("Glimi Bot ready")
+    log_writer.system("Bot ready")
     log_writer.mark_bot_ready()
 
     try:
@@ -173,7 +173,7 @@ async def _check_owner_profile(guild):
     from src.core.profile import get_user_name, get_user_id
     import json as _json
 
-    log_writer.system("[Onboarding] 오너 프로필 체크 시작")
+    log_writer.system("[Onboarding] Checking owner profile")
 
     if not guild:
         log_writer.system("[Onboarding] guild 없음 — 스킵")
@@ -191,7 +191,7 @@ async def _check_owner_profile(guild):
                 owner_member = member
                 break
     if not owner_member:
-        log_writer.system("[Onboarding] 오너 멤버 찾기 실패 — 스킵")
+        log_writer.system("[Onboarding] Owner member not found — skip")
         return
     log_writer.system(f"[Onboarding] 오너: {owner_member.display_name} (#{owner_member.id})")
 
@@ -206,7 +206,7 @@ async def _check_owner_profile(guild):
         )
         db.set_meta("active_user_id", discord_id)
         conn.commit()
-        log_writer.system(f"오너 자동 등록: {owner_member.display_name} (#{discord_id})")
+        log_writer.system(f"Owner auto-registered: {owner_member.display_name} (#{discord_id})")
     else:
         # 위저드에서 만든 레코드에 디스코드 ID가 없으면 meta에 저장
         db.set_meta("discord_owner_id", discord_id)

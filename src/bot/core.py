@@ -340,13 +340,13 @@ async def ensure_channels(guild: discord.Guild):
                 for ch in cat.text_channels:
                     try:
                         await ch.delete(reason="Glimi 초기화: 채널 정리")
-                        log_writer.system(f"채널 삭제: {ch.name}")
+                        log_writer.system(f"Channel deleted: {ch.name}")
                     except Exception:
                         pass
                 if len(cat.channels) == 0:
                     try:
                         await cat.delete()
-                        log_writer.system(f"카테고리 삭제: {cat.name}")
+                        log_writer.system(f"Category deleted: {cat.name}")
                     except Exception:
                         pass
             # 플래그 제거
@@ -360,9 +360,9 @@ async def ensure_channels(guild: discord.Guild):
         if MGR_CHANNEL not in existing:
             cat = await _ensure_category(guild, "glimi-mgr")
             await guild.create_text_channel(MGR_CHANNEL, category=cat)
-            log_writer.system(f"채널 생성: {MGR_CHANNEL}")
+            log_writer.system(f"Channel created: {MGR_CHANNEL}")
         db.set_channel_participants(MGR_CHANNEL, [MGR_ID])
-        log_writer.system("초기 세팅: mgr-dashboard 준비 완료")
+        log_writer.system("Initial setup: mgr-dashboard ready")
     else:
         # 일반 실행: 전체 채널 보장
         needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
@@ -375,7 +375,7 @@ async def ensure_channels(guild: discord.Guild):
                 if ch.name not in needed:
                     try:
                         await ch.delete(reason="Glimi: 불필요 채널 정리")
-                        log_writer.system(f"채널 삭제: {ch.name}")
+                        log_writer.system(f"Channel deleted: {ch.name}")
                     except Exception:
                         pass
 
@@ -389,7 +389,7 @@ async def ensure_channels(guild: discord.Guild):
                 category = await _ensure_category(guild, cat_name)
                 await guild.create_text_channel(ch_name, category=category)
                 created.append(ch_name)
-                log_writer.system(f"채널 생성: {ch_name}")
+                log_writer.system(f"Channel created: {ch_name}")
 
             # DB에 참가자 등록 (없으면)
             if not db.get_channel_participants(ch_name):
@@ -403,7 +403,7 @@ async def ensure_channels(guild: discord.Guild):
         if created:
             log_writer.system(f"채널 {len(created)}개 생성 완료")
         else:
-            log_writer.system("모든 채널 이미 존재")
+            log_writer.system("All channels exist")
 
     # 카테고리 순서 정렬
     from src.core.sync import CATEGORY_ORDER
@@ -414,7 +414,7 @@ async def ensure_channels(guild: discord.Guild):
                 await cat.edit(position=i)
             except Exception:
                 pass
-    log_writer.system("카테고리 정렬 완료")
+    log_writer.system("Categories sorted")
 
 
 async def create_onboarding_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
@@ -429,7 +429,7 @@ async def create_onboarding_channel(guild: discord.Guild, ch_name: str, particip
     ch = await guild.create_text_channel(ch_name, category=category)
     if participants:
         db.set_channel_participants(ch_name, participants)
-    log_writer.system(f"온보딩 채널 생성: {ch_name}")
+    log_writer.system(f"온보딩 Channel created: {ch_name}")
     return ch
 
 
@@ -437,7 +437,7 @@ async def sync_avatars(guild: discord.Guild):
     """glimi 카테고리들 내 모든 Webhook 아바타를 로컬 이미지와 동기화"""
     glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
     if not glimi_categories:
-        log_writer.system("아바타 동기화: glimi 카테고리 없음 — 스킵")
+        log_writer.system("Avatar sync: no glimi categories — skip")
         return
     updated = 0
     total_channels = sum(len(cat.text_channels) for cat in glimi_categories)
@@ -460,7 +460,7 @@ async def sync_avatars(guild: discord.Guild):
                 except Exception:
                     pass
             log_writer.system(f"Webhook 스캔: #{channel.name} ({scanned}/{total_channels})")
-    log_writer.system(f"아바타 동기화 완료: {updated}개 Webhook 업데이트")
+    log_writer.system(f"Avatar sync done: {updated}개 Webhook updated")
 
 
 # ── 유틸리티 ────────────────────────────────────────────
