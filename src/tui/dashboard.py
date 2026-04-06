@@ -616,7 +616,7 @@ class DashboardScreen(Screen):
                 )
                 self.app.call_from_thread(
                     self.app.push_screen,
-                    ErrorDialog("봇 초기화 실패", err_msg),
+                    ErrorDialog(t("dashboard.error_bot_crash"), err_msg),
                 )
                 return
             if self._bot_proc is None:
@@ -637,7 +637,7 @@ class DashboardScreen(Screen):
             )
             self.app.call_from_thread(
                 self.app.push_screen,
-                ErrorDialog("봇 초기화 타임아웃", err_msg),
+                ErrorDialog(t("dashboard.error_timeout"), err_msg),
             )
             return
 

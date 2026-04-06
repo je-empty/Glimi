@@ -708,65 +708,65 @@ class CreateScreen(Screen):
             yield Static(BANNER_ART, id="banner")
             yield Static("[bold]New Community[/bold]", id="screen-title", classes="screen-title")
 
-            # Page 1: 커뮤니티 정보
+            # Page 1: Server info
             with Container(id="page-1", classes="input-group"):
-                yield Label("Server ID [dim](영문, 하이픈 가능)[/dim]")
+                yield Label(f"{t('wizard.server_id')} [dim]({t('wizard.server_id_hint')})[/dim]")
                 yield Input(placeholder="my-server", id="cid-input")
                 yield Static("")
-                yield Label("Description [dim](optional)[/dim]")
+                yield Label(f"{t('wizard.description')} [dim]({t('wizard.description_hint')})[/dim]")
                 yield Input(placeholder="My Discord server", id="desc-input")
                 yield Static("")
-                yield Label("Language")
+                yield Label(t("wizard.language"))
                 with Horizontal(classes="action-bar"):
                     yield Button("English", variant="primary", id="lang-en")
                     yield Button("한국어", id="lang-ko")
                 yield Static("[cyan]English[/cyan] selected", id="lang-display")
                 yield Static("")
-                yield Button("Next →", variant="primary", id="btn-next")
+                yield Button(t("wizard.next"), variant="primary", id="btn-next")
 
-            # Page 2: 사용자 정보
+            # Page 2: Owner profile
             with Container(id="page-2", classes="input-group"):
-                yield Label("[bold]사용자 정보[/bold]")
-                yield Label("[dim]에이전트가 이 정보를 기반으로 대화합니다[/dim]")
+                yield Label(f"[bold]{t('wizard.owner_info')}[/bold]")
+                yield Label(f"[dim]{t('wizard.owner_info_hint')}[/dim]")
                 yield Static("")
-                yield Label("이름 [dim](필수)[/dim]")
-                yield Input(placeholder="홍길동", id="owner-name-input")
+                yield Label(f"{t('wizard.name')} [dim]({t('wizard.name_required')})[/dim]")
+                yield Input(placeholder="John Doe", id="owner-name-input")
                 yield Static("")
-                yield Label("별칭 [dim](희망 호칭 — 에이전트별로 다르게 부를 수 있음)[/dim]")
-                yield Input(placeholder="비워두면 이름으로 불러요", id="owner-nickname-input")
+                yield Label(f"{t('wizard.nickname')} [dim]({t('wizard.nickname_hint')})[/dim]")
+                yield Input(placeholder="", id="owner-nickname-input")
                 yield Static("")
-                yield Label("생년월일 [dim](YYYY-MM-DD)[/dim]")
+                yield Label(t("wizard.birth"))
                 yield Input(placeholder="2001-01-01", id="owner-birth-input")
                 yield Static("")
-                yield Label("성별")
+                yield Label(t("wizard.gender"))
                 with Horizontal(classes="action-bar"):
-                    yield Button("남", id="gender-m")
-                    yield Button("여", id="gender-f")
+                    yield Button(t("wizard.male"), id="gender-m")
+                    yield Button(t("wizard.female"), id="gender-f")
                 yield Static("", id="gender-display")
                 yield Static("")
                 with Horizontal(classes="action-bar"):
-                    yield Button("← Back", id="btn-prev")
-                    yield Button("Next →", variant="primary", id="btn-next2")
+                    yield Button(t("wizard.back"), id="btn-prev")
+                    yield Button(t("wizard.next"), variant="primary", id="btn-next2")
 
-            # Page 3: Discord 봇 토큰
+            # Page 3: Discord bot token
             with Container(id="page-3", classes="input-group"):
                 yield Static(DISCORD_SETUP_GUIDE, markup=True)
                 yield Static("")
-                yield Label("Bot Token [dim](필수)[/dim]")
+                yield Label(f"{t('wizard.bot_token')} [dim]({t('wizard.bot_token_required')})[/dim]")
                 yield Input(placeholder="MTIzNDU2...", password=True, id="token-input")
                 yield Static("", id="token-error", classes="result-text")
                 yield Static("")
                 with Horizontal(classes="action-bar"):
-                    yield Button("← Back", id="btn-prev2")
-                    yield Button("Verify →", variant="primary", id="btn-verify")
+                    yield Button(t("wizard.back"), id="btn-prev2")
+                    yield Button(t("wizard.verify"), variant="primary", id="btn-verify")
 
-            # Page 4: 검증 결과 + 생성
+            # Page 4: Verification result + create
             with Container(id="page-4", classes="input-group"):
                 yield Static("", id="verify-result", classes="result-text")
                 yield Static("")
                 with Horizontal(classes="action-bar"):
-                    yield Button("← Back", id="btn-prev3")
-                    yield Button("Create", variant="success", id="btn-create")
+                    yield Button(t("wizard.back"), id="btn-prev3")
+                    yield Button(t("wizard.create"), variant="success", id="btn-create")
 
             yield Static("", id="create-result", classes="result-text")
         yield Footer()
@@ -1135,23 +1135,23 @@ class ManageScreen(Screen):
         menu.clear_options()
 
         if running:
-            menu.add_option(Option("  Open Dashboard         실시간 대시보드", id="dashboard"))
+            menu.add_option(Option(f"  {t('wizard.open_dashboard')}", id="dashboard"))
             menu.add_option(None)
-            menu.add_option(Option("  Stop Server            서버 중지", id="stop"))
-            menu.add_option(Option("  Restart Server         서버 재시작", id="restart"))
+            menu.add_option(Option(f"  {t('wizard.stop_server')}", id="stop"))
+            menu.add_option(Option(f"  {t('wizard.restart_server')}", id="restart"))
         else:
-            menu.add_option(Option("  Start Server           서버 시작", id="start"))
+            menu.add_option(Option(f"  {t('wizard.start_server')}", id="start"))
         menu.add_option(None)
 
-        menu.add_option(Option("  Set Token              봇 토큰 설정", id="token"))
-        menu.add_option(Option("  Health Check           연결 상태 확인", id="health"))
+        menu.add_option(Option(f"  {t('wizard.set_token')}", id="token"))
+        menu.add_option(Option(f"  {t('wizard.health_check')}", id="health"))
         menu.add_option(None)
 
-        menu.add_option(Option("  Init DB                DB 초기화 + 마이그레이션", id="initdb"))
-        menu.add_option(Option("  Discord Channels       디스코드 채널 관리", id="discord"))
-        menu.add_option(Option("  View Logs              로그 보기", id="logs"))
+        menu.add_option(Option(f"  {t('wizard.init_db')}", id="initdb"))
+        menu.add_option(Option(f"  {t('wizard.discord_channels')}", id="discord"))
+        menu.add_option(Option(f"  {t('wizard.view_logs')}", id="logs"))
         menu.add_option(None)
-        menu.add_option(Option("  Delete Community       커뮤니티 삭제", id="delete"))
+        menu.add_option(Option(f"  {t('wizard.delete_server')}", id="delete"))
 
         self.query_one("#manage-result", Static).update("")
 
