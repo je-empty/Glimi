@@ -540,7 +540,37 @@ class DashboardScreen(Screen):
         seen_lines = 0
         phase = "discord"  # discord → onboarding → done
 
-        for _ in range(600):  # 최대 5분 (0.5초 간격)
+        # 봇이 아직 시작도 안 했으면 잠깐 대기
+        _time.sleep(1)
+
+        try:
+          for _ in range(600):  # 최대 5분 (0.5초 간격)
+            # 봇 즉사 체크 (sleep 전에)
+            if self._bot_proc and self._bot_proc.poll() is not None:
+                exit_code = self._bot_proc.poll()
+                if self._init_loading:
+                    try:
+                        self.app.call_from_thread(self.app.pop_screen)
+                    except Exception:
+                        pass
+                    self._init_loading = None
+                err_lines = log_writer.tail(log_path, 10) if os.path.exists(log_path) else []
+                log_text = "\n".join(err_lines[-5:])
+                if "login failed" in log_text.lower() or "improper token" in log_text.lower():
+                    err_msg = (
+                        f"Bot login failed (exit code: {exit_code})\n\n"
+                        "The bot token may be invalid or expired.\n"
+                        "Go to Wizard → Settings → Set Token to update.\n\n"
+                        + log_text
+                    )
+                else:
+                    err_msg = f"Bot process crashed (exit code: {exit_code})\n\n" + log_text
+                self.app.call_from_thread(
+                    self.app.push_screen,
+                    ErrorDialog(t("dashboard.error_bot_crash"), err_msg),
+                )
+                return
+
             _time.sleep(0.5)
 
             # 시스템 로그 실시간 표시 (온보딩 단계에서는 숨김)
@@ -554,13 +584,13 @@ class DashboardScreen(Screen):
                         self.app.call_from_thread(self._init_loading.update_detail, line)
                         # 로그 키워드로 모달 타이틀 자동 변경
                         low = line.lower()
-                        if "채널 초기화" in line:
+                        if "nitializing channel" in line or "채널 초기화" in line:
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_channels"))
-                        elif "아바타 동기화" in line:
+                        elif "yncing avatar" in line or "아바타 동기화" in line:
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_avatars"))
-                        elif "에이전트 Active화" in line:
+                        elif "ctivating agent" in line or "에이전트" in line:
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_agents"))
-                        elif "봇 준비 완료" in line:
+                        elif "ot ready" in line or "봇 준비" in line:
                             self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_almost"))
                     seen_lines = len(lines)
                 except Exception:
@@ -596,40 +626,11 @@ class DashboardScreen(Screen):
                 if log_writer.is_onboarding_done():
                     break
 
-            # 봇 크래시 또는 프로세스 없음 → 탈출
-            if self._bot_proc and self._bot_proc.poll() is not None:
-                exit_code = self._bot_proc.poll()
-                # 로딩 닫고 에러 표시
-                if self._init_loading:
-                    try:
-                        self.app.call_from_thread(self.app.pop_screen)
-                    except Exception:
-                        pass
-                    self._init_loading = None
-                # 시스템 로그에서 마지막 에러 줄 가져오기
-                err_lines = []
-                if os.path.exists(log_path):
-                    err_lines = log_writer.tail(log_path, 10)
-                log_text = "\n".join(err_lines[-5:])
-                if "login failed" in log_text.lower() or "improper token" in log_text.lower():
-                    err_msg = (
-                        f"Bot login failed (exit code: {exit_code})\n\n"
-                        "The bot token may be invalid or expired.\n"
-                        "Go to Wizard → Settings → Set Token to update.\n\n"
-                        + log_text
-                    )
-                else:
-                    err_msg = (
-                        f"Bot process crashed (exit code: {exit_code})\n\n"
-                        + log_text
-                    )
-                self.app.call_from_thread(
-                    self.app.push_screen,
-                    ErrorDialog(t("dashboard.error_bot_crash"), err_msg),
-                )
-                return
             if self._bot_proc is None:
                 break
+
+        except Exception as e:
+            log_writer.system(f"_wait_bot_ready error: {e}")
 
         # 타임아웃 체크 (5분 루프 다 돌았는데 아직 완료 안 됨)
         if self._init_loading and not log_writer.is_bot_ready():
@@ -2579,10 +2580,13 @@ def main():
 
     try:
         result = GlimiDashboard().run()
+    except KeyboardInterrupt:
+        print("\nDashboard interrupted.")
+        sys.exit(0)
     except Exception as e:
         import traceback
         try:
-            log_writer.error(f"[Dashboard] 크래시: {e}", e)
+            log_writer.error(f"[Dashboard] crash: {e}", e)
         except Exception:
             pass
         traceback.print_exc()
