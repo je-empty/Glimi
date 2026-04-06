@@ -280,54 +280,55 @@ def _build_action_system_prompt(agent_type: str) -> str:
     """에이전트 타입별 자율 행동 시스템 프롬프트 (공통)"""
 
     base = """
-=== 자율 행동 시스템 ===
-응답에 태그를 넣으면 시스템이 자동 실행해. 태그는 디스코드 대화에 안 보이고 시스템 로그로만 간다.
-이름은 반드시 정확한 본명을 사용해. 별칭/호칭 쓰면 안 돼.
+=== Autonomous Action System ===
+Include tags in your response and the system will auto-execute them.
+Tags are invisible in Discord chat — they only appear in system logs.
+Always use exact real names (not nicknames/pet names).
 """
 
     if agent_type in ("mgr", "creator"):
         base += """
---- CMD (실행) ---
-  [CMD:{"cmd":"톡방","names":["이름1","이름2"],"topic":"주제"}]
-  [CMD:{"cmd":"대화시작","names":["이름1","이름2"],"situation":"상황"}]
-  [CMD:{"cmd":"대화중단","target":"채널명"}]
-  [CMD:{"cmd":"감정","name":"이름","emotion":"감정","intensity":5}]
-  [CMD:{"cmd":"프로필수정","name":"이름","field":"필드경로","value":"값"}]
-  [CMD:{"cmd":"관계수정","name_a":"이름A","name_b":"이름B","field":"필드","value":"값"}]
-  [CMD:{"cmd":"채널삭제","target":"채널명"}]
-  [CMD:{"cmd":"개발요청","args":"상세 내용"}]
+--- CMD (Execute) ---
+  [CMD:{"cmd":"톡방","names":["name1","name2"],"topic":"topic"}]
+  [CMD:{"cmd":"대화시작","names":["name1","name2"],"situation":"context"}]
+  [CMD:{"cmd":"대화중단","target":"channel"}]
+  [CMD:{"cmd":"감정","name":"name","emotion":"emotion","intensity":5}]
+  [CMD:{"cmd":"프로필수정","name":"name","field":"path","value":"value"}]
+  [CMD:{"cmd":"관계수정","name_a":"A","name_b":"B","field":"field","value":"value"}]
+  [CMD:{"cmd":"채널삭제","target":"channel"}]
+  [CMD:{"cmd":"개발요청","args":"details"}]
 
---- QUERY (조회) ---
+--- QUERY (Read) ---
   [QUERY:{"type":"채널목록"}]
-  [QUERY:{"type":"로그","target":"채널명","count":20}]
-  [QUERY:{"type":"검색","args":"키워드"}]
-  [QUERY:{"type":"프로필","name":"이름"}]
-  [QUERY:{"type":"관계","name":"이름"}]
+  [QUERY:{"type":"로그","target":"channel","count":20}]
+  [QUERY:{"type":"검색","args":"keyword"}]
+  [QUERY:{"type":"프로필","name":"name"}]
+  [QUERY:{"type":"관계","name":"name"}]
 
---- ACTION (DM 보내기) ---
-  [ACTION:{"type":"DM","target":"이름","message":"메시지"}]
-  ※ 시스템 에이전트끼리만 DM 가능. 멤버에게 직접 DM 보내지 마.
+--- ACTION (Send DM) ---
+  [ACTION:{"type":"DM","target":"name","message":"message"}]
+  ※ System agents only. Don't DM persona members directly.
 """
     if agent_type == "creator":
         base += """
---- CMD (생성 전용) ---
-  [CMD:{"cmd":"프로필생성","profile":{...전체 JSON...}}]
-  [CMD:{"cmd":"프로필삭제","name":"이름"}]
+--- CMD (Creation only) ---
+  [CMD:{"cmd":"프로필생성","profile":{...full JSON...}}]
+  [CMD:{"cmd":"프로필삭제","name":"name"}]
 """
 
     if agent_type == "persona":
         base += """
---- ACTION (요청) ---
-다른 사람한테 연락하거나 DM 만들고 싶으면 ACTION 태그를 써. 남발하지 말고 진짜 필요할 때만.
-  [ACTION:{"type":"DM","target":"이름","message":"보낼 메시지"}]
-  [ACTION:{"type":"멀티DM","names":["이름1","이름2"],"topic":"주제"}]
+--- ACTION (Request) ---
+To contact someone or create a DM, use ACTION tags. Don't overuse — only when genuinely needed.
+  [ACTION:{"type":"DM","target":"name","message":"message"}]
+  [ACTION:{"type":"멀티DM","names":["name1","name2"],"topic":"topic"}]
 """
 
     base += """
-규칙:
-- 태그는 디스코드에 안 보여 (시스템 로그 채널에만 전송)
-- 이름은 반드시 본명 (별칭/호칭 X)
-- CMD/QUERY는 한 응답에 여러 개 가능
+Rules:
+- Tags are invisible in Discord (system log only)
+- Always use real names (not nicknames)
+- Multiple CMD/QUERY allowed per response
 """
     return base
 
@@ -404,22 +405,23 @@ def _build_persona_prompt(p: dict) -> str:
 
     pet_name_section = _build_pet_name_section(p["id"])
 
-    prompt = f"""너는 {name}.
+    oc = get_user_name()
+    prompt = f"""You are {name}.
 {_build_common_prompt()}
-{name}/{p.get('age','?')}살/{p.get('mbti','?')} | {', '.join(personality.get('traits', []))}
-좋아하는것: {', '.join(personality.get('likes', []))} | 싫어하는것: {', '.join(personality.get('dislikes', []))}
-일상: {daily.get('occupation', '?')} | {daily.get('routine', '')}
-배경: {p.get('background', '')}
+{name} / age {p.get('age','?')} / {p.get('mbti','?')} | {', '.join(personality.get('traits', []))}
+Likes: {', '.join(personality.get('likes', []))} | Dislikes: {', '.join(personality.get('dislikes', []))}
+Daily life: {daily.get('occupation', '?')} | {daily.get('routine', '')}
+Background: {p.get('background', '')}
 
-말투:
+Speech style:
 {_format_speech_section(p.get('speech', {}))}
 
 {pet_name_section}
 
-{get_user_name()}과의 관계: {rel_owner.get('type', '?')}({rel_owner.get('duration', '')}) | {rel_owner.get('dynamics', '')} | 호칭: {rel_owner.get('pet_name', '?')}
+Relationship with {oc}: {rel_owner.get('type', '?')}({rel_owner.get('duration', '')}) | {rel_owner.get('dynamics', '')} | Call them: {rel_owner.get('pet_name', '?')}
 {_load_user_summary()}
 {chr(10).join(agent_rels) if agent_rels else ''}
-관계점수: {' | '.join(rel_lines) if rel_lines else '없음'}
+Relationship scores: {' | '.join(rel_lines) if rel_lines else 'none'}
 {_build_action_system_prompt("persona")}"""
     return prompt
 
@@ -429,7 +431,7 @@ def _build_channel_summary() -> str:
     try:
         overview = db.get_channel_overview()
         if not overview:
-            return "활성 채널 없음"
+            return "No active channels"
         lines = []
         for ch in overview[:10]:  # 최대 10개
             last = ch["last_active"][:16] if ch["last_active"] else "?"
