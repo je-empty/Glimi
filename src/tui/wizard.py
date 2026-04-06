@@ -1748,7 +1748,7 @@ class DevModeScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with VerticalScroll(can_focus=False):
-            yield Static("[bold]Dev Mode[/bold]  [dim]개발/QA 도구[/dim]", id="screen-title", classes="screen-title", markup=True)
+            yield Static(f"[bold]{t('wizard.dev_title')}[/bold]", id="screen-title", classes="screen-title", markup=True)
             yield OptionList(id="dev-menu", classes="menu-list")
             yield Static("", id="dev-result", classes="result-text")
         yield Footer()
@@ -1757,16 +1757,16 @@ class DevModeScreen(Screen):
         menu = self.query_one("#dev-menu", OptionList)
         cids = _get_community_ids()
 
-        menu.add_option(Option("  [bold cyan]서버 선택[/bold cyan]"))
+        menu.add_option(Option(f"  [bold cyan]{t('wizard.dev_select_server')}[/bold cyan]"))
         if cids:
             for cid in cids:
                 menu.add_option(Option(f"    {cid}", id=f"srv:{cid}"))
         else:
-            menu.add_option(Option("    [dim]서버 없음[/dim]"))
+            menu.add_option(Option(f"    [dim]{t('wizard.dev_no_servers')}[/dim]"))
 
         menu.add_option(None)
-        menu.add_option(Option("  [bold yellow]전체 도구[/bold yellow]"))
-        menu.add_option(Option("  Quick Create            프리셋으로 빠른 서버 생성", id="quick_create"))
+        menu.add_option(Option(f"  [bold yellow]{t('wizard.dev_tools')}[/bold yellow]"))
+        menu.add_option(Option(f"  {t('wizard.dev_quick_create')}", id="quick_create"))
 
         menu.focus()
 
@@ -1865,12 +1865,12 @@ class DevServerScreen(Screen):
 
     def on_mount(self):
         menu = self.query_one("#dev-srv-menu", OptionList)
-        menu.add_option(Option("  Reset Onboarding       온보딩 초기화 (채널 유지)", id="reset_onboarding"))
-        menu.add_option(Option("  Reset All              DB 전체 초기화 (채널 유지)", id="reset_db"))
-        menu.add_option(Option("  Reset + Clean Discord   DB + 디코 채널 전부 삭제", id="reset_clean"))
+        menu.add_option(Option(f"  {t('wizard.dev_reset_onboarding')}", id="reset_onboarding"))
+        menu.add_option(Option(f"  {t('wizard.dev_reset_all')}", id="reset_db"))
+        menu.add_option(Option(f"  {t('wizard.dev_reset_clean')}", id="reset_clean"))
         menu.add_option(None)
-        menu.add_option(Option("  Quick Dashboard        바로 대시보드 진입", id="dashboard"))
-        menu.add_option(Option("  Delete Server          서버 삭제", id="delete"))
+        menu.add_option(Option(f"  {t('wizard.dev_quick_dashboard')}", id="dashboard"))
+        menu.add_option(Option(f"  {t('wizard.dev_delete')}", id="delete"))
         menu.focus()
 
     @on(OptionList.OptionSelected, "#dev-srv-menu")
