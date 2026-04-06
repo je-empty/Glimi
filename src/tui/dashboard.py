@@ -51,6 +51,7 @@ from src.core.profile import load_profile, get_user_name, get_user_id
 from src.core.sync import run_sync, run_restore
 from src import log_writer
 from src.tui.components import LoadingOverlay, ConfirmDialog, MessageActionDialog, ErrorDialog
+from src.i18n import t
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PID_FILE = os.path.join(PROJECT_ROOT, "dev", ".bot.pid")
@@ -435,7 +436,7 @@ class DashboardScreen(Screen):
 
         self._check_first_run_cleanup()
         self._start_bot()
-        self._init_loading = LoadingOverlay("Discord 연결 중...")
+        self._init_loading = LoadingOverlay(t("dashboard.loading_discord"))
         self.app.push_screen(self._init_loading)
         self._wait_bot_ready()
         _cache.refresh()
@@ -554,13 +555,13 @@ class DashboardScreen(Screen):
                         # 로그 키워드로 모달 타이틀 자동 변경
                         low = line.lower()
                         if "채널 초기화" in line:
-                            self.app.call_from_thread(self._init_loading.update_message, "채널 세팅 중...")
+                            self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_channels"))
                         elif "아바타 동기화" in line:
-                            self.app.call_from_thread(self._init_loading.update_message, "아바타 불러오는 중...")
+                            self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_avatars"))
                         elif "에이전트 활성화" in line:
-                            self.app.call_from_thread(self._init_loading.update_message, "에이전트 깨우는 중...")
+                            self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_agents"))
                         elif "봇 준비 완료" in line:
-                            self.app.call_from_thread(self._init_loading.update_message, "거의 다 됐어요!")
+                            self.app.call_from_thread(self._init_loading.update_message, t("dashboard.loading_almost"))
                     seen_lines = len(lines)
                 except Exception:
                     pass
@@ -571,7 +572,7 @@ class DashboardScreen(Screen):
                     phase = "onboarding"
                     self.app.call_from_thread(
                         self._init_loading.update_message,
-                        "온보딩 준비 중... (디스코드를 건드리지 마세요)"
+                        t("dashboard.onboarding_prep")
                     )
                 elif log_writer.is_onboarding_done():
                     break
@@ -586,7 +587,7 @@ class DashboardScreen(Screen):
                     phase = "onboarding"
                     self.app.call_from_thread(
                         self._init_loading.update_message,
-                        "온보딩 준비 중... (디스코드를 건드리지 마세요)"
+                        t("dashboard.onboarding_prep")
                     )
                 elif log_writer.is_onboarding_done() or _wait_count > 6:
                     break  # 3초(6 * 0.5) 대기 후 온보딩 없으면 진행

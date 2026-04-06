@@ -40,6 +40,7 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 
 from src import community
+from src.i18n import t
 from src.tui.components import LoadingOverlay, ConfirmDialog
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -624,11 +625,11 @@ class MainScreen(Screen):
             action_menu.focus()
 
         # 액션 메뉴
-        action_menu.add_option(Option("  New Server             새 서버 생성", id="create"))
-        action_menu.add_option(Option("  Export / Import        내보내기 · 가져오기", id="export_import"))
-        action_menu.add_option(Option("  Dev Mode               개발/QA 도구", id="devmode"))
+        action_menu.add_option(Option(f"  {t('wizard.new_server')}", id="create"))
+        action_menu.add_option(Option(f"  {t('wizard.export_import')}", id="export_import"))
+        action_menu.add_option(Option(f"  {t('wizard.dev_mode')}", id="devmode"))
         action_menu.add_option(None)
-        action_menu.add_option(Option("  Quit                   종료", id="quit"))
+        action_menu.add_option(Option(f"  {t('wizard.quit')}", id="quit"))
 
     @on(Button.Pressed)
     def on_settings_pressed(self, event: Button.Pressed):

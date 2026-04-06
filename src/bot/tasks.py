@@ -16,6 +16,7 @@ import discord
 from discord.ext import tasks
 
 from src import db
+from src.i18n import t
 from src import log_writer
 from src.core.profile import list_all_profiles, get_user_name, get_user_id
 from src.core.runtime import runtime
@@ -258,7 +259,7 @@ async def _check_owner_profile(guild):
         return
 
     info = f"이름:{name}, 나이:{age}, 성별:{gender}, 별칭:{nickname}"
-    log_writer.system("온보딩 준비")
+    log_writer.system(t("onboarding.prep"))
     log_writer.mark_onboarding()
 
     if first_time:
@@ -312,7 +313,7 @@ async def _check_owner_profile(guild):
             f"[Forbidden] No CMD/QUERY/ACTION tags except [CMD:프로필수집완료] in this first greeting."
         )
 
-    log_writer.system("유나 불러오는 중...")
+    log_writer.system(t("onboarding.yuna_loading"))
     await asyncio.sleep(3)
     loop = asyncio.get_event_loop()
     responses = await loop.run_in_executor(
@@ -321,7 +322,7 @@ async def _check_owner_profile(guild):
             MGR_ID, MGR_CHANNEL, prompt, log_user_message=False
         )
     )
-    log_writer.system("유나가 도착했어요!")
+    log_writer.system(t("onboarding.yuna_arrived"))
     import re as _re
     cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
     for resp in responses:
