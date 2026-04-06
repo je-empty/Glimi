@@ -629,6 +629,10 @@ class MainScreen(Screen):
         action_menu.add_option(Option(f"  {t('wizard.export_import')}", id="export_import"))
         action_menu.add_option(Option(f"  {t('wizard.dev_mode')}", id="devmode"))
         action_menu.add_option(None)
+        from src.i18n import get_language as _gl
+        _cur = _gl()
+        _lang_label = "🌐 한국어로 전환" if _cur == "en" else "🌐 Switch to English"
+        action_menu.add_option(Option(f"  {_lang_label}", id="toggle_lang"))
         action_menu.add_option(Option(f"  {t('wizard.quit')}", id="quit"))
 
     @on(Button.Pressed)
@@ -649,6 +653,11 @@ class MainScreen(Screen):
             self.app.push_screen(ExportImportScreen())
         elif oid == "devmode":
             self.app.push_screen(DevModeScreen())
+        elif oid == "toggle_lang":
+            from src.i18n import get_language as _gl, save_ui_language
+            new_lang = "ko" if _gl() == "en" else "en"
+            save_ui_language(new_lang)
+            self._refresh_view()
 
     def on_key(self, event):
         # 카드 ↔ 액션 메뉴 방향키 전환

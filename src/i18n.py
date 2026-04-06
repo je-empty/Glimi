@@ -16,7 +16,8 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).parent.parent
 _I18N_DIR = _PROJECT_ROOT / "i18n"
 _cache: dict[str, dict] = {}
-_current_lang: str = "en"
+_current_lang: str = "en"  # UI language (wizard + dashboard)
+_agent_lang: str = "en"    # Agent language (per-server, from registry.toml)
 
 
 def _load_lang(lang: str) -> dict:
@@ -35,14 +36,26 @@ def _load_lang(lang: str) -> dict:
 
 
 def set_language(lang: str):
-    """언어 설정"""
+    """UI 언어 설정 (위저드 + 대시보드)"""
     global _current_lang
     _current_lang = lang
     _load_lang(lang)
 
 
 def get_language() -> str:
+    """현재 UI 언어"""
     return _current_lang
+
+
+def set_agent_language(lang: str):
+    """에이전트 언어 설정 (서버별)"""
+    global _agent_lang
+    _agent_lang = lang
+
+
+def get_agent_language() -> str:
+    """현재 에이전트 언어"""
+    return _agent_lang
 
 
 def t(key: str, **kwargs) -> str:
@@ -82,7 +95,49 @@ def t(key: str, **kwargs) -> str:
     return val if isinstance(val, str) else key
 
 
-# 초기화: 환경변수 또는 기본값
+def _load_ui_lang_from_config():
+    """글로벌 UI 언어 설정 로드"""
+    config_path = _PROJECT_ROOT / ".glimi.toml"
+    if config_path.exists():
+        try:
+            if hasattr(__builtins__, '__import__'):
+                import tomllib
+            else:
+                try:
+                    import tomllib
+                except ImportError:
+                    import tomli as tomllib
+            with open(config_path, "rb") as f:
+                cfg = tomllib.load(f)
+            return cfg.get("ui_language", "en")
+        except Exception:
+            pass
+    return None
+
+
+def save_ui_language(lang: str):
+    """글로벌 UI 언어 설정 저장"""
+    config_path = _PROJECT_ROOT / ".glimi.toml"
+    # 기존 설정 읽기
+    content = ""
+    if config_path.exists():
+        content = config_path.read_text()
+
+    # ui_language 업데이트
+    import re
+    if re.search(r'^ui_language\s*=', content, re.MULTILINE):
+        content = re.sub(r'^ui_language\s*=.*$', f'ui_language = "{lang}"', content, flags=re.MULTILINE)
+    else:
+        content = f'ui_language = "{lang}"\n' + content
+
+    config_path.write_text(content)
+    set_language(lang)
+
+
+# 초기화: .glimi.toml → 환경변수 → 기본값
+_saved = _load_ui_lang_from_config()
+if _saved:
+    set_language(_saved)
 _env_lang = os.environ.get("GLIMI_LANGUAGE", "")
 if _env_lang:
     set_language(_env_lang)

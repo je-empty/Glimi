@@ -224,10 +224,10 @@ def _format_speech_section(speech: dict) -> str:
 # ── 공통 프롬프트 섹션 ──────────────────────────────────
 
 def _get_community_language() -> str:
-    """현재 커뮤니티 언어"""
+    """현재 에이전트 언어 (서버별)"""
     try:
-        from src.community import get_language
-        return get_language()
+        from src.i18n import get_agent_language
+        return get_agent_language()
     except Exception:
         return "en"
 
