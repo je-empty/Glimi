@@ -810,8 +810,8 @@ class CreateScreen(Screen):
         def _on_result(lang_code):
             if lang_code:
                 self._language = lang_code
-                flag = {"en": "🇺🇸", "ko": "🇰🇷", "ja": "🇯🇵", "zh": "🇨🇳", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪"}.get(lang_code, "🌐")
-                name = {"en": "English", "ko": "한국어", "ja": "日本語", "zh": "中文", "es": "Español", "fr": "Français", "de": "Deutsch"}.get(lang_code, lang_code)
+                flag = {"en": "🇺🇸", "ko": "🇰🇷"}.get(lang_code, "🌐")
+                name = {"en": "English", "ko": "한국어"}.get(lang_code, lang_code)
                 self.query_one("#btn-agent-lang", Button).label = f"{flag} {name}"
         self.app.push_screen(LanguageScreen("agent"), _on_result)
 
@@ -1746,11 +1746,6 @@ class LogScreen(Screen):
 LANGUAGES = [
     ("en", "🇺🇸", "English"),
     ("ko", "🇰🇷", "한국어"),
-    ("ja", "🇯🇵", "日本語"),
-    ("zh", "🇨🇳", "中文"),
-    ("es", "🇪🇸", "Español"),
-    ("fr", "🇫🇷", "Français"),
-    ("de", "🇩🇪", "Deutsch"),
 ]
 
 
