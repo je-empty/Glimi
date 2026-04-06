@@ -624,8 +624,9 @@ class MainScreen(Screen):
             action_menu.focus()
 
         # 액션 메뉴
-        action_menu.add_option(Option("  New Community          새 커뮤니티 생성", id="create"))
+        action_menu.add_option(Option("  New Server             새 서버 생성", id="create"))
         action_menu.add_option(Option("  Export / Import        내보내기 · 가져오기", id="export_import"))
+        action_menu.add_option(Option("  Dev Mode               개발/QA 도구", id="devmode"))
         action_menu.add_option(None)
         action_menu.add_option(Option("  Quit                   종료", id="quit"))
 
@@ -645,6 +646,8 @@ class MainScreen(Screen):
             self.app.push_screen(CreateScreen())
         elif oid == "export_import":
             self.app.push_screen(ExportImportScreen())
+        elif oid == "devmode":
+            self.app.push_screen(DevModeScreen())
 
     def on_key(self, event):
         # 카드 ↔ 액션 메뉴 방향키 전환
@@ -1712,6 +1715,246 @@ class LogScreen(Screen):
 # ══════════════════════════════════════════════════════════
 # 내보내기 / 가져오기
 # ══════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════
+# Dev Mode 화면
+# ══════════════════════════════════════════════════════════
+
+class DevModeScreen(Screen):
+    """개발/QA 도구"""
+    BINDINGS = [Binding("escape", "go_back", "Back")]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with VerticalScroll(can_focus=False):
+            yield Static("[bold]Dev Mode[/bold]  [dim]개발/QA 도구[/dim]", id="screen-title", classes="screen-title", markup=True)
+            yield OptionList(id="dev-menu", classes="menu-list")
+            yield Static("", id="dev-result", classes="result-text")
+        yield Footer()
+
+    def on_mount(self):
+        menu = self.query_one("#dev-menu", OptionList)
+        cids = _get_community_ids()
+
+        menu.add_option(Option("  [bold cyan]서버 선택[/bold cyan]"))
+        if cids:
+            for cid in cids:
+                menu.add_option(Option(f"    {cid}", id=f"srv:{cid}"))
+        else:
+            menu.add_option(Option("    [dim]서버 없음[/dim]"))
+
+        menu.add_option(None)
+        menu.add_option(Option("  [bold yellow]전체 도구[/bold yellow]"))
+        menu.add_option(Option("  Quick Create            프리셋으로 빠른 서버 생성", id="quick_create"))
+
+        menu.focus()
+
+    @on(OptionList.OptionSelected, "#dev-menu")
+    def on_select(self, event: OptionList.OptionSelected):
+        oid = event.option_id
+        if not oid:
+            return
+        if oid.startswith("srv:"):
+            cid = oid.split(":", 1)[1]
+            self.app.push_screen(DevServerScreen(cid))
+        elif oid == "quick_create":
+            self._quick_create()
+
+    def _quick_create(self):
+        """가장 최근 사용한 토큰 + 기본 프로필로 빠른 생성"""
+        cids = _get_community_ids()
+        # 기존 서버에서 토큰 가져오기
+        token = None
+        for cid in cids:
+            t = _get_token(cid)
+            if t:
+                token = t
+                break
+
+        if not token:
+            self.query_one("#dev-result", Static).update("[red]기존 서버에 토큰이 없습니다. 먼저 일반 생성을 하세요.[/red]")
+            return
+
+        # dev-test-{n} ID 생성
+        n = 1
+        while (community.COMMUNITIES_DIR / f"dev-test-{n}").exists():
+            n += 1
+        cid = f"dev-test-{n}"
+
+        community.init_community(cid)
+        env_path = community.COMMUNITIES_DIR / cid / ".env"
+        set_key(str(env_path), "DISCORD_BOT_TOKEN", token)
+
+        # 기본 프로필 (개발자 테스트용)
+        self._save_owner_profile(cid, "테스터", "", "", "")
+
+        self.query_one("#dev-result", Static).update(
+            f"[green]서버 '{cid}' 생성 완료![/green]\n"
+            f"토큰: 기존 서버에서 복사됨\n\n"
+            "[dim]ESC → 메인에서 대시보드 진입[/dim]"
+        )
+
+    def _save_owner_profile(self, cid, name, nickname, birth, gender):
+        import sqlite3
+        from src import db as _db
+        old = os.environ.get("GLIMI_COMMUNITY", "")
+        os.environ["GLIMI_COMMUNITY"] = cid
+        community.set_community(cid)
+        _db.init_db()
+        conn = _db.get_conn()
+        conn.execute("INSERT OR REPLACE INTO users (id, name) VALUES (?, ?)", ("tester", name))
+        _db.set_meta("active_user_id", "tester")
+        conn.commit()
+        conn.close()
+        if old:
+            os.environ["GLIMI_COMMUNITY"] = old
+            community.set_community(old)
+
+    def action_go_back(self):
+        self.app.pop_screen()
+
+
+class DevServerScreen(Screen):
+    """서버별 Dev 도구"""
+    BINDINGS = [Binding("escape", "go_back", "Back")]
+
+    def __init__(self, cid: str):
+        super().__init__()
+        self._cid = cid
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with VerticalScroll(can_focus=False):
+            yield Static(f"[bold]Dev: {self._cid}[/bold]", id="screen-title", classes="screen-title", markup=True)
+            yield OptionList(id="dev-srv-menu", classes="menu-list")
+            yield Static("", id="dev-srv-result", classes="result-text")
+        yield Footer()
+
+    def on_mount(self):
+        menu = self.query_one("#dev-srv-menu", OptionList)
+        menu.add_option(Option("  Reset Onboarding       온보딩 초기화 (채널 유지)", id="reset_onboarding"))
+        menu.add_option(Option("  Reset All              DB 전체 초기화 (채널 유지)", id="reset_db"))
+        menu.add_option(Option("  Reset + Clean Discord   DB + 디코 채널 전부 삭제", id="reset_clean"))
+        menu.add_option(None)
+        menu.add_option(Option("  Quick Dashboard        바로 대시보드 진입", id="dashboard"))
+        menu.add_option(Option("  Delete Server          서버 삭제", id="delete"))
+        menu.focus()
+
+    @on(OptionList.OptionSelected, "#dev-srv-menu")
+    def on_select(self, event: OptionList.OptionSelected):
+        oid = event.option_id
+        if oid == "reset_onboarding":
+            self._reset_onboarding()
+        elif oid == "reset_db":
+            self._reset_db()
+        elif oid == "reset_clean":
+            self._reset_clean()
+        elif oid == "dashboard":
+            self.app.exit(result=("dashboard", self._cid))
+        elif oid == "delete":
+            self._delete_server()
+
+    def _reset_onboarding(self):
+        """온보딩 플래그만 초기화 — 대화 기록/채널은 유지"""
+        old = os.environ.get("GLIMI_COMMUNITY", "")
+        os.environ["GLIMI_COMMUNITY"] = self._cid
+        community.set_community(self._cid)
+
+        from src import db as _db
+        _db.init_db()
+        # 온보딩 관련 메타 삭제
+        conn = _db.get_conn()
+        for key in ("yuna_greeted", "onboarding_phase"):
+            conn.execute("DELETE FROM meta WHERE key=?", (key,))
+        # channels 상태 리셋
+        conn.execute("UPDATE channels SET status='idle', current_turn=0")
+        conn.commit()
+        conn.close()
+
+        if old:
+            os.environ["GLIMI_COMMUNITY"] = old
+            community.set_community(old)
+
+        self.query_one("#dev-srv-result", Static).update(
+            "[green]온보딩 초기화 완료[/green]\n"
+            "yuna_greeted, onboarding_phase 삭제됨\n"
+            "대화 기록/채널은 유지됨\n"
+            "[dim]대시보드 진입하면 온보딩이 다시 시작됩니다[/dim]"
+        )
+
+    def _reset_db(self):
+        """DB 전체 초기화 — 대화/메모리/관계 삭제, 채널은 유지"""
+        old = os.environ.get("GLIMI_COMMUNITY", "")
+        os.environ["GLIMI_COMMUNITY"] = self._cid
+        community.set_community(self._cid)
+
+        from src import db as _db
+        _db.init_db()
+        conn = _db.get_conn()
+        for table in ("conversations", "memories", "events", "meta", "channels"):
+            conn.execute(f"DELETE FROM {table}")
+        conn.commit()
+        conn.close()
+
+        if old:
+            os.environ["GLIMI_COMMUNITY"] = old
+            community.set_community(old)
+
+        self.query_one("#dev-srv-result", Static).update(
+            "[green]DB 전체 초기화 완료[/green]\n"
+            "대화/메모리/이벤트/메타/채널 데이터 삭제됨\n"
+            "에이전트/유저 프로필은 유지됨\n"
+            "디스코드 채널은 유지됨"
+        )
+
+    @work(thread=True)
+    def _reset_clean(self):
+        """DB + 디코 채널 전부 삭제"""
+        old = os.environ.get("GLIMI_COMMUNITY", "")
+        os.environ["GLIMI_COMMUNITY"] = self._cid
+        community.set_community(self._cid)
+
+        from src import db as _db, log_writer
+        _db.init_db()
+
+        # DB 초기화
+        conn = _db.get_conn()
+        for table in ("conversations", "memories", "events", "meta", "channels"):
+            conn.execute(f"DELETE FROM {table}")
+        conn.commit()
+        conn.close()
+
+        # 디코 채널 삭제 플래그 설정
+        flag = os.path.join(log_writer.get_log_dir(), ".clean-channels")
+        try:
+            open(flag, "w").close()
+        except OSError:
+            pass
+
+        if old:
+            os.environ["GLIMI_COMMUNITY"] = old
+            community.set_community(old)
+
+        self.app.call_from_thread(
+            self.query_one("#dev-srv-result", Static).update,
+            "[green]DB 전체 초기화 + 디코 채널 삭제 예약 완료[/green]\n"
+            "다음 대시보드 진입 시 디코 채널이 삭제되고 온보딩이 처음부터 시작됩니다"
+        )
+
+    def _delete_server(self):
+        """서버 삭제"""
+        import shutil
+        cdir = community.COMMUNITIES_DIR / self._cid
+        if cdir.exists():
+            shutil.rmtree(cdir)
+        self.query_one("#dev-srv-result", Static).update(
+            f"[green]서버 '{self._cid}' 삭제 완료[/green]\n"
+            "[dim]ESC로 돌아가세요[/dim]"
+        )
+
+    def action_go_back(self):
+        self.app.pop_screen()
+
 
 class ExportImportScreen(Screen):
     BINDINGS = [Binding("escape", "go_back", "Back")]
