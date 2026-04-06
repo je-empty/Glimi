@@ -277,6 +277,23 @@ async def _ensure_category(guild: discord.Guild, name: str) -> discord.CategoryC
     return cat
 
 
+def _infer_channel_participants(ch_name: str, _db) -> list[str]:
+    """채널 이름에서 참가자 ID 추론"""
+    agents = {a["name"]: a["id"] for a in _db.list_agents()}
+    if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
+        return [MGR_ID]
+    if ch_name == CREATOR_CHANNEL:
+        return ["agent-creator-001"]
+    if ch_name.startswith("dm-"):
+        name = ch_name[3:]
+        return [agents[name]] if name in agents else []
+    for prefix in ("internal-dm-", "internal-group-", "group-"):
+        if ch_name.startswith(prefix):
+            rest = ch_name[len(prefix):]
+            return [agents[n] for n in rest.split("-") if n in agents]
+    return []
+
+
 async def ensure_channels(guild: discord.Guild):
     """채널 초기화. 첫 실행이면 mgr-dashboard만, 이후에는 전체 채널 보장."""
     from src import db as _db
@@ -290,13 +307,34 @@ async def ensure_channels(guild: discord.Guild):
 
     first_run = not greeted and not has_messages and not onboarding_done
 
+    # 기존 glimi 채널 존재 여부 체크
+    existing_glimi = []
+    for cat in guild.categories:
+        if cat.name.startswith("glimi"):
+            existing_glimi.extend(cat.text_channels)
+
     if first_run:
-        # 초기 세팅: 채널 정리 플래그가 있을 때만 기존 채널 삭제
         from src import community as _comm
         clean_flag = os.path.join(_comm.get_log_dir(), ".clean-channels")
+        keep_flag = os.path.join(_comm.get_log_dir(), ".keep-channels")
         should_clean = os.path.exists(clean_flag)
+        should_keep = os.path.exists(keep_flag)
 
-        if should_clean:
+        if existing_glimi and not should_clean and not should_keep:
+            # DB 비어있는데 디코 채널이 있음 → 이전 서버 흔적
+            log_writer.system(f"[초기화] 기존 glimi 채널 {len(existing_glimi)}개 발견 — 유지하고 온보딩 스킵")
+            # 기존 채널 유지 + 온보딩 완료로 보정
+            _db.set_meta("yuna_greeted", "1")
+            _db.set_meta("onboarding_phase", "complete")
+            # 채널 참가자 등록 (DB에 없으면)
+            for ch in existing_glimi:
+                if not _db.get_channel_participants(ch.name):
+                    parts = _infer_channel_participants(ch.name, _db)
+                    if parts:
+                        _db.set_channel_participants(ch.name, parts)
+            first_run = False  # 일반 실행으로 전환
+        elif should_clean:
+            # 명시적 정리 요청
             glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
             for cat in glimi_categories:
                 for ch in cat.text_channels:

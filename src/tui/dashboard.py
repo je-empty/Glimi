@@ -444,24 +444,10 @@ class DashboardScreen(Screen):
         self.query_one("#nav-overview", Button).focus()
 
     def _check_first_run_cleanup(self):
-        """첫 실행 판단 + 채널 정리 플래그 설정"""
-        greeted = db.get_meta("yuna_greeted")
-        phase = db.get_meta("onboarding_phase")
-        conn = db.get_conn()
-        has_msgs = conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone() is not None
-        conn.close()
-
-        first_run = not greeted and not phase and not has_msgs
-        flag_path = os.path.join(log_writer.get_log_dir(), ".clean-channels")
-
-        if first_run:
-            # 기본: 채널 정리함
-            try:
-                open(flag_path, "w").close()
-            except OSError:
-                pass
-        else:
-            # 첫 실행 아님 — 정리 플래그 제거
+        """첫 실행 판단 — 봇이 기존 디코 채널 유무를 보고 판단"""
+        # 플래그 정리 (이전 세션 잔여)
+        for flag_name in (".clean-channels", ".keep-channels"):
+            flag_path = os.path.join(log_writer.get_log_dir(), flag_name)
             try:
                 os.remove(flag_path)
             except FileNotFoundError:
