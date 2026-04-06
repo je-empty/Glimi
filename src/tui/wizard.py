@@ -1761,18 +1761,30 @@ class DevModeScreen(Screen):
             self._quick_create()
 
     def _quick_create(self):
-        """가장 최근 사용한 토큰 + 기본 프로필로 빠른 생성"""
-        cids = _get_community_ids()
-        # 기존 서버에서 토큰 가져오기
+        """Dev 봇 토큰 + 기본 프로필로 빠른 생성"""
+        # 1. .env.dev에서 토큰
         token = None
-        for cid in cids:
-            t = _get_token(cid)
-            if t:
-                token = t
-                break
+        env_dev = PROJECT_ROOT / ".env.dev"
+        if env_dev.exists():
+            for line in env_dev.read_text().splitlines():
+                line = line.strip()
+                if line.startswith("DEV_BOT_TOKEN=") and not line.startswith("#"):
+                    token = line.split("=", 1)[1].strip()
+                    break
+
+        # 2. 폴백: 기존 서버에서 토큰
+        if not token:
+            for cid in _get_community_ids():
+                t = _get_token(cid)
+                if t:
+                    token = t
+                    break
 
         if not token:
-            self.query_one("#dev-result", Static).update("[red]기존 서버에 토큰이 없습니다. 먼저 일반 생성을 하세요.[/red]")
+            self.query_one("#dev-result", Static).update(
+                "[red]봇 토큰 없음[/red]\n"
+                "[dim].env.dev에 DEV_BOT_TOKEN을 설정하거나, 기존 서버를 먼저 만드세요.[/dim]"
+            )
             return
 
         # dev-test-{n} ID 생성
