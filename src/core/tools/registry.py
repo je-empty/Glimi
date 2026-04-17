@@ -137,7 +137,7 @@ MGMT: list[ToolSpec] = [
     ),
     ToolSpec(
         name="update_profile",
-        description="멤버 프로필 필드 수정. field는 점 표기 (personality.hobby, speech.style 등)",
+        description="멤버 프로필 필드 수정. field는 top-level (gender, age, mbti, background) 또는 점 표기 (personality.hobby, speech.style 등)",
         params={
             "name": _str,
             "field": _str,
@@ -145,7 +145,10 @@ MGMT: list[ToolSpec] = [
         },
         category="management",
         applies_to=frozenset({"mgr"}),
-        examples=['{"name": "은하윤", "field": "personality.hobby", "value": "게임, 음악"}'],
+        examples=[
+            '{"name": "은하윤", "field": "gender", "value": "여자"}',
+            '{"name": "은하윤", "field": "personality.hobby", "value": "게임, 음악"}',
+        ],
     ),
     ToolSpec(
         name="update_relationship",

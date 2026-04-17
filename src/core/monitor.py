@@ -38,10 +38,36 @@ def _ps_has(pattern: str) -> bool:
     return False
 
 
+def _bot_alive_for_current_community() -> bool:
+    """현재 active 커뮤니티의 봇이 살아있는지 판정.
+
+    `ps ax` 로 discord_bot 프로세스 전체 검사는 다른 커뮤니티 봇까지 잡아
+    다른 커뮤니티 조회 시 오탐이 발생 → 현재 커뮤니티의 system.log mtime
+    기준으로 판정 (log_writer가 주기적으로 씀 → 활성 봇은 mtime이 120s 이내).
+    """
+    import time as _t
+    from pathlib import Path as _Path
+    try:
+        cid = community.get_community_id()
+        if not cid:
+            return False
+        # COMMUNITIES_DIR / cid / logs / system.log
+        log_path = community.COMMUNITIES_DIR / cid / "logs" / "system.log"
+        if log_path.exists():
+            return (_t.time() - log_path.stat().st_mtime) < 120
+    except Exception:
+        pass
+    # fallback: process 기반 (log 파일이 아직 없거나 예외 시)
+    return _ps_has("src.discord_bot")
+
+
 def get_bot_status() -> dict:
-    """Glimi 봇 / QA 러너 / 테스트 유저 봇 프로세스 상태."""
+    """Glimi 봇 / QA 러너 / 테스트 유저 봇 프로세스 상태.
+
+    bot_alive 는 현재 active 커뮤니티 기준 — 다른 커뮤니티 봇에 오탐하지 않도록.
+    """
     return {
-        "bot_alive": _ps_has("src.discord_bot"),
+        "bot_alive": _bot_alive_for_current_community(),
         "runner_alive": _ps_has("tests.e2e.runner"),
         "test_user_alive": _ps_has("tests.e2e.test_user_bot"),
     }
@@ -407,6 +433,39 @@ def human_ago(iso_ts: str) -> str:
 
 # ── 상세 뷰 ────────────────────────────────────────────
 
+def _get_agent_gender(agent, profile) -> str:
+    """성별 추출 — agents 테이블에 컬럼이 있으면 거기서, 없으면 profile.gender,
+    그것도 없으면 relationship_to_owner.type 키워드로 휴리스틱 추론.
+
+    DB 마이그레이션 전까지는 휴리스틱이 fallback. 정확도는 낮음.
+    """
+    # 1. agents 테이블 gender 컬럼 (마이그레이션 후)
+    try:
+        keys = agent.keys() if hasattr(agent, "keys") else []
+        if "gender" in keys:
+            g = agent["gender"]
+            if g:
+                return str(g)
+    except Exception:
+        pass
+    # 2. profile.gender (JSON)
+    if profile and profile.get("gender"):
+        return str(profile["gender"])
+    # 3. relationship_to_owner.type 키워드 휴리스틱
+    rel = (profile or {}).get("relationship_to_owner") or {}
+    rtype = (rel.get("type") or "").strip()
+    if rtype:
+        female_kw = ["여자친구", "여친", "누나", "언니", "여동생", "엄마", "이모", "딸", "와이프", "아내", "여자", "girlfriend", "sister", "mom", "wife", "daughter"]
+        male_kw = ["남자친구", "남친", "형", "오빠", "남동생", "아빠", "삼촌", "아들", "남편", "남자", "boyfriend", "brother", "dad", "husband", "son"]
+        for k in female_kw:
+            if k in rtype:
+                return "여성"
+        for k in male_kw:
+            if k in rtype:
+                return "남성"
+    return ""
+
+
 def get_agent_detail(agent_id: str) -> dict:
     """에이전트 전체 상세: 프로필 + 관계 + 메모리 + 추론 로그 + 주 채널 채팅."""
     from src.core.profile import load_profile
@@ -495,6 +554,8 @@ def get_agent_detail(agent_id: str) -> dict:
         "intensity": agent.get("emotion_intensity", 0) or 0,
         "mbti": agent.get("mbti", "") or (profile.get("mbti", "") if profile else ""),
         "age": agent.get("age", 0) or 0,
+        "birth_year": agent.get("birth_year", 0) or 0,
+        "gender": _get_agent_gender(agent, profile),
         "enneagram": profile.get("enneagram", "") if profile else "",
         "traits": (profile.get("personality", {}) or {}).get("traits", []) if profile else [],
         "background": profile.get("background", "") if profile else "",
@@ -542,9 +603,16 @@ def _get_supervisor_detail(sup_name: str) -> dict:
     status_emoji = "🔥" if sup["intervening"] else ("💭" if sup["active"] else "💤")
     emotion = "개입 중" if sup["intervening"] else ("감시 중" if sup["active"] else "대기")
 
+    # 친화 표시명 매핑 (class_name 대신) — UI에 깔끔하게 보이도록
+    display_name_map = {
+        "onboarding": "Onboarding",
+        "channel-conv": "Channel Conversation",
+    }
+    friendly_name = display_name_map.get(sup_name, sup_name)
+
     return {
         "id": f"sup:{sup_name}",
-        "name": f"{sup['icon']} {sup['class_name']}",
+        "name": f"{sup['icon']} {friendly_name}",
         "type": "supervisor",
         "status": "active" if sup["active"] else "inactive",
         "emotion": emotion,
@@ -575,8 +643,9 @@ def _get_supervisor_detail(sup_name: str) -> dict:
         "thinking_logs": thinking_logs,
         "primary_channel": "(다수 채널 감시)",
         "primary_chat": primary_chat,
-        "model": "rule-based",
-        "provider": "local",
+        # supervisor는 내부적으로 Haiku 기반 judge + SONNET 기반 inject 혼용
+        "model": "claude-haiku-4-5 · claude-sonnet-4-6",
+        "provider": "claude",
         "model_override": False,
         "synthetic": True,
         "is_supervisor": True,

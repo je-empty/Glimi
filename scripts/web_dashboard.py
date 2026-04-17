@@ -182,6 +182,27 @@ HTML = r"""<!doctype html>
   .community-menu .ci .ci-meta { font-size: 10.5px; color: var(--text-dim); font-weight: 400; }
   .community-menu .ci .ci-check { color: var(--accent); font-weight: 700; }
   .community-menu .ci.active .ci-check::before { content: '✓'; }
+
+  /* Language switcher — 국기 버튼 + 드롭다운 */
+  .lang-menu {
+    display: none; position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
+    min-width: 180px; box-shadow: var(--shadow-lg); z-index: 1000;
+    padding: 6px; overflow: hidden;
+  }
+  .lang-menu.open { display: block; }
+  .lang-menu .li {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: 8px; cursor: pointer; transition: background 0.12s;
+    font-size: 13px; font-weight: 500; color: var(--text);
+  }
+  .lang-menu .li:hover { background: var(--panel-2); }
+  .lang-menu .li.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .lang-menu .li .li-flag { font-size: 18px; line-height: 1; }
+  .lang-menu .li .li-name { flex: 1; }
+  .lang-menu .li .li-check { color: var(--accent); font-weight: 700; opacity: 0; }
+  .lang-menu .li.active .li-check { opacity: 1; }
+  .lang-menu .li.active .li-check::before { content: '✓'; }
   .pill {
     font-size: 11px; font-weight: 500; padding: 4px 11px; border-radius: 999px;
     background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border-soft);
@@ -394,11 +415,14 @@ HTML = r"""<!doctype html>
   .graph-panel .graph-head .note { color: var(--text-faint); font-size: 11px; margin-left: auto; }
   .graph-stage {
     position: relative; width: 100%; height: 440px;
-    overflow: visible;
+    /* overflow: hidden — 그래프가 블록 밖으로 새는 치명적 문제 원천 차단 */
+    overflow: hidden;
+    border-radius: 8px;
   }
   .graph-stage svg.graph-edges {
     position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
-    overflow: visible;
+    /* SVG 도 clip — viewBox 밖 요소 있으면 잘림 (안전망) */
+    overflow: hidden;
   }
   .graph-edges .edge {
     fill: none; stroke-linecap: round;
@@ -502,7 +526,8 @@ HTML = r"""<!doctype html>
   .graph-legend .swatch { width: 12px; height: 3px; border-radius: 2px; }
 
   /* Supervisor edge (overlay) */
-  .graph-edges .sup-edge { stroke-dasharray: 3 3; opacity: 0.7; }
+  .graph-edges .sup-edge { stroke-dasharray: 5 4; opacity: 0.9; }
+  .graph-edges .sup-edge.idle { opacity: 0.7; stroke-width: 1.6; }
   .graph-edges .sup-edge.active { opacity: 1; stroke-width: 2; }
   .graph-edges .sup-edge.intervening { opacity: 1; stroke-width: 2.5; stroke-dasharray: 4 3; animation: edge-flow 0.8s linear infinite; }
 
@@ -583,15 +608,26 @@ HTML = r"""<!doctype html>
   .model-tag {
     font-size: 9.5px; padding: 1.5px 6px; border-radius: 5px;
     font-family: "JetBrains Mono", monospace; font-weight: 500;
-    background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border-soft);
+    background: var(--panel-2); color: var(--text-dim);
+    border: 1px solid var(--border-soft) !important;
     display: inline-flex; align-items: center; gap: 3px;
   }
-  .model-tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .model-tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+  /* Provider tint (최상위 fallback) */
   .model-tag.claude { color: #d97706; }
   .model-tag.openai { color: #10a37f; }
   .model-tag.local { color: #3b82f6; }
   .model-tag.other { color: var(--text-dim); }
-  .model-tag.override { border-color: var(--accent); color: var(--accent); }
+  /* Model family tint (provider 보다 구체적) — multi-chip 일관성 */
+  .model-tag.m-haiku { color: #0891b2; border-color: color-mix(in srgb, #0891b2 35%, var(--border-soft)) !important; }
+  .model-tag.m-sonnet { color: #7c3aed; border-color: color-mix(in srgb, #7c3aed 35%, var(--border-soft)) !important; }
+  .model-tag.m-opus { color: #c2410c; border-color: color-mix(in srgb, #c2410c 35%, var(--border-soft)) !important; }
+  .model-tag.m-gpt { color: #10a37f; border-color: color-mix(in srgb, #10a37f 35%, var(--border-soft)) !important; }
+  .model-tag.m-gemini { color: #3b82f6; border-color: color-mix(in srgb, #3b82f6 35%, var(--border-soft)) !important; }
+  .model-tag.override { border-color: var(--accent) !important; color: var(--accent); }
+  .model-chip-row {
+    display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; vertical-align: middle;
+  }
   .agent-head .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
   .agent-head .status-dot.active { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
 
@@ -619,7 +655,8 @@ HTML = r"""<!doctype html>
     margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft);
     font-size: 10.5px; color: var(--text-faint); gap: 8px;
   }
-  .agent-footer .model-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-footer .model-tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .agent-footer .model-chip-row { min-width: 0; flex-wrap: wrap; gap: 3px; }
 
   .agent-expanded { display: none; margin-top: 12px; }
   .agent-card.thinking .agent-expanded, .agent-card.speaking .agent-expanded { display: block; }
@@ -926,7 +963,10 @@ HTML = r"""<!doctype html>
 
     <div style="flex:1"></div>
 
-    <button class="btn-icon" id="lang-toggle" title="언어 전환">🌐</button>
+    <div style="position:relative" id="lang-switcher-wrap">
+      <button class="btn-icon" id="lang-toggle" title="언어">🌐</button>
+      <div class="lang-menu" id="lang-menu"></div>
+    </div>
     <button class="btn-icon" id="supervisor-toggle" title="Supervisor view — 내면 조종 보기">💭</button>
     <button class="btn-icon" id="theme-toggle" title="Theme">☀</button>
   </header>
@@ -1019,6 +1059,7 @@ HTML = r"""<!doctype html>
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <script>
 // ==== State ====
 const params = new URLSearchParams(location.search);
@@ -1213,6 +1254,38 @@ const I18N_UNUSED_OLD = {
 
 // ==== Utils ====
 function esc(s) { return String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+// Model 표시: " · " 구분자로 여러 모델 → 각 모델별 chip 블록
+//   모델 이름에서 family 추출 (haiku / sonnet / opus / gpt / gemini) → 일관된 색
+//   "+" 구분자 제거 — chip 자체로 구분
+function _modelFamilyClass(p) {
+  const s = String(p).toLowerCase();
+  if (s.includes('haiku')) return 'm-haiku';
+  if (s.includes('sonnet')) return 'm-sonnet';
+  if (s.includes('opus')) return 'm-opus';
+  if (s.includes('gpt') || s.includes('o1') || s.includes('o3')) return 'm-gpt';
+  if (s.includes('gemini')) return 'm-gemini';
+  return '';
+}
+function renderModelChips(d, compact) {
+  if (!d || !d.model) return '';
+  const raw = String(d.model);
+  const parts = raw.split(/\s*·\s*/).map(s => s.trim()).filter(Boolean);
+  const provider = d.provider || '';
+  const override = d.model_override ? ' override' : '';
+  const title = d.model_override ? 'per-agent override' : 'default';
+  const chips = parts.map(p => {
+    const fam = _modelFamilyClass(p);
+    const classes = ['model-tag', provider, fam, override.trim()].filter(Boolean).join(' ');
+    return `<span class="${classes}" title="${esc(title)}">${esc(p)}</span>`;
+  }).join('');
+  const suffix = compact
+    ? ''
+    : (d.model_override
+        ? ' <small style="color:var(--accent)">override</small>'
+        : '<small style="color:var(--text-faint)"> · default</small>');
+  return `<span class="model-chip-row">${chips}</span>${suffix}`;
+}
 async function j(u) { try { const r = await fetch(u); return await r.json(); } catch { return null; } }
 function q(u) { return COMMUNITY ? `${u}${u.includes('?') ? '&' : '?'}community=${encodeURIComponent(COMMUNITY)}` : u; }
 function atBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 80; }
@@ -1314,18 +1387,50 @@ document.getElementById('supervisor-toggle').addEventListener('click', () => {
   tick();
 });
 
-// ==== Language toggle (가 <-> A <-> Auto) ====
+// ==== Language toggle (flag button + dropdown menu) ====
+const LANG_OPTIONS = [
+  { id: null,  flag: '🌐', label: 'Auto' },
+  { id: 'ko',  flag: '🇰🇷', label: '한국어' },
+  { id: 'en',  flag: '🇺🇸', label: 'English' },
+];
 function applyLangLabel() {
   const btn = document.getElementById('lang-toggle');
+  if (!btn) return;
   const l = currentLang();
-  // 현재 언어 국기 + override 상태 구분
-  //   auto: 🌐 (server-following), ko override: 🇰🇷, en override: 🇺🇸
-  const flag = !LANG_OVERRIDE ? '🌐' : (l === 'ko' ? '🇰🇷' : '🇺🇸');
+  // 버튼에는 항상 현재 활성 언어의 국기만 (Auto면 서버언어 국기)
+  const flag = LANG_OVERRIDE
+    ? (LANG_OVERRIDE === 'ko' ? '🇰🇷' : '🇺🇸')
+    : (l === 'ko' ? '🇰🇷' : '🇺🇸');
   btn.textContent = flag;
   btn.title = LANG_OVERRIDE
-    ? (l === 'ko' ? '🇰🇷 Korean (fixed) — click for English' : '🇺🇸 English (fixed) — click for Auto')
-    : `🌐 Auto (server: ${SERVER_LANG.toUpperCase()}) — click to fix Korean`;
+    ? (LANG_OVERRIDE === 'ko' ? '한국어 (고정) — 클릭하여 변경' : 'English (fixed) — click to change')
+    : `Auto — server: ${SERVER_LANG.toUpperCase()}`;
+  renderLangMenu();
   applyStaticI18n();
+}
+function renderLangMenu() {
+  const menu = document.getElementById('lang-menu');
+  if (!menu) return;
+  menu.innerHTML = LANG_OPTIONS.map(opt => {
+    const active = (opt.id === LANG_OVERRIDE) || (opt.id === null && !LANG_OVERRIDE);
+    const sub = opt.id === null ? ` <span style="color:var(--text-faint);font-size:11px">(${SERVER_LANG.toUpperCase()})</span>` : '';
+    return `<div class="li ${active ? 'active' : ''}" data-lang="${opt.id === null ? '' : opt.id}">
+      <span class="li-flag">${opt.flag}</span>
+      <span class="li-name">${opt.label}${sub}</span>
+      <span class="li-check"></span>
+    </div>`;
+  }).join('');
+  menu.querySelectorAll('.li').forEach(el => {
+    el.addEventListener('click', () => {
+      const v = el.dataset.lang;
+      LANG_OVERRIDE = v ? v : null;
+      if (LANG_OVERRIDE) localStorage.setItem('glimi-lang', LANG_OVERRIDE);
+      else localStorage.removeItem('glimi-lang');
+      menu.classList.remove('open');
+      applyLangLabel();
+      tick();
+    });
+  });
 }
 function applyStaticI18n() {
   // 탭 라벨
@@ -1354,15 +1459,19 @@ function applyStaticI18n() {
   const closeBtn = document.getElementById('d-close');
   if (closeBtn) closeBtn.textContent = t('btn_close');
 }
-document.getElementById('lang-toggle').addEventListener('click', () => {
-  // cycle: auto → ko → en → auto
-  if (!LANG_OVERRIDE) LANG_OVERRIDE = 'ko';
-  else if (LANG_OVERRIDE === 'ko') LANG_OVERRIDE = 'en';
-  else LANG_OVERRIDE = null;
-  if (LANG_OVERRIDE) localStorage.setItem('glimi-lang', LANG_OVERRIDE);
-  else localStorage.removeItem('glimi-lang');
-  applyLangLabel();
-  tick();
+document.getElementById('lang-toggle').addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  const menu = document.getElementById('lang-menu');
+  if (!menu) return;
+  renderLangMenu();
+  menu.classList.toggle('open');
+});
+document.addEventListener('click', (ev) => {
+  const wrap = document.getElementById('lang-switcher-wrap');
+  if (!wrap) return;
+  if (!wrap.contains(ev.target)) {
+    document.getElementById('lang-menu')?.classList.remove('open');
+  }
 });
 
 // ==== Tabs ====
@@ -1462,7 +1571,7 @@ function renderAgent(a, clickable=true) {
       <span class="state-badge speaking">speaking</span>
     </div>
     <div class="agent-footer">
-      ${a.model ? `<span class="model-tag ${a.provider}${a.model_override ? ' override' : ''}" title="${a.model_override ? 'per-agent override' : 'default'}">${esc(a.model)}</span>` : '<span></span>'}
+      ${a.model ? renderModelChips(a, true) : '<span></span>'}
       ${agoText ? `<span title="last active">${agoText} ago</span>` : ''}
     </div>
     ${expanded}
@@ -1613,20 +1722,43 @@ async function openAgent(id) {
   if (!d || d.error) { openModal('⚠', 'Error', `<div class="empty">${esc(d?.error || 'failed to load')}</div>`); return; }
 
   const profileLines = [];
-  if (d.age) profileLines.push(['Age', `${d.age}y/o`]);
+  // Age: 가독성 — 한국어면 "만 N세 (한국나이 N+1)" 식 / 영어면 "N years old"
+  //   한국나이 = 현재연도 - 출생연도 + 1 (전통 세는나이; birth_year 있을 때만)
+  if (d.age) {
+    const lang = currentLang();
+    if (lang === 'ko') {
+      let ageStr = `만 ${d.age}세`;
+      if (d.birth_year) {
+        const koreanAge = (new Date()).getFullYear() - d.birth_year + 1;
+        if (koreanAge !== d.age) ageStr += ` (한국나이 ${koreanAge}세)`;
+      }
+      profileLines.push(['Age', ageStr]);
+    } else {
+      profileLines.push(['Age', `${d.age} years old`]);
+    }
+  }
+  if (d.gender) profileLines.push(['Gender', d.gender]);
   if (d.mbti) profileLines.push(['MBTI', d.mbti]);
   if (d.enneagram) profileLines.push(['Enneagram', d.enneagram]);
   if (d.traits && d.traits.length) profileLines.push(['Traits', d.traits.slice(0,5).join(' · ')]);
   profileLines.push(['Emotion', `${d.emoji} ${d.emotion} (${d.intensity}/10)`]);
-  const statusHtml = d.thinking
-    ? '<span style="color:var(--thinking)">🧠 Thinking</span>'
-    : d.speaking
-      ? '<span style="color:var(--speaking)">💬 Speaking</span>'
-      : (d.status === 'active'
-        ? '<span style="color:var(--ok)">● Active</span>'
-        : `<span style="color:var(--text-dim)">○ ${esc(d.status)}</span>`);
+  // 서버 오프라인이면 thinking/speaking/active 상태는 의미 없음 → Inactive 로 강제
+  //   (DB status 는 archived 같은 영속 상태만 의미; runtime 상태는 봇이 실행 중일 때만 유효)
+  const isOffline = document.body.classList.contains('offline');
+  let statusHtml;
+  if (isOffline) {
+    statusHtml = '<span style="color:var(--text-dim)">○ Inactive (서버 오프라인)</span>';
+  } else if (d.thinking) {
+    statusHtml = '<span style="color:var(--thinking)">🧠 Thinking</span>';
+  } else if (d.speaking) {
+    statusHtml = '<span style="color:var(--speaking)">💬 Speaking</span>';
+  } else if (d.status === 'active') {
+    statusHtml = '<span style="color:var(--ok)">● Active</span>';
+  } else {
+    statusHtml = `<span style="color:var(--text-dim)">○ ${esc(d.status)}</span>`;
+  }
   profileLines.push(['Status', statusHtml, true]);
-  if (d.model) profileLines.push(['Model', `<span class="model-tag ${d.provider}${d.model_override ? ' override' : ''}">${esc(d.model)}</span>${d.model_override ? ' <small style="color:var(--accent)">override</small>' : '<small style="color:var(--text-faint)"> · default</small>'}`, true]);
+  if (d.model) profileLines.push(['Model', renderModelChips(d), true]);
   if (d.relationship_to_owner?.type) {
     const r = d.relationship_to_owner;
     profileLines.push(['Owner', `${r.type}${r.pet_name ? ' (' + r.pet_name + ')' : ''}${r.duration ? ' · ' + r.duration : ''}`]);
@@ -1897,13 +2029,21 @@ async function runServerControl(action) {
 
 // ==== Main tick ====
 // ==== Supervisors (agent card 포맷으로 재사용) ====
+// name 기반 친화 표시명 매핑
+const SUP_DISPLAY_NAME = {
+  'onboarding': 'Onboarding',
+  'channel-conv': 'Channel Conversation',
+};
+function supDisplayName(name) {
+  return SUP_DISPLAY_NAME[name] || name;
+}
 function supervisorAsAgent(s) {
   const statusEmoji = s.intervening ? '🔥' : (s.active ? '💭' : '💤');
   const emotion = s.intervening ? '개입 중' : (s.active ? '감시 중' : '대기');
   return {
     id: `sup:${s.name}`,
     type: 'supervisor',
-    name: s.name,
+    name: supDisplayName(s.name),
     status: s.active ? 'active' : 'inactive',
     emotion,
     emoji: s.icon || statusEmoji,
@@ -1915,8 +2055,9 @@ function supervisorAsAgent(s) {
     speaking: false,
     thinking_seconds: s.seconds_since_action || 0,
     speaking_seconds: 0,
-    model: 'rule-based',
-    provider: 'local',
+    // supervisor는 Haiku judge + Sonnet inject 혼용
+    model: 'claude-haiku-4-5 · claude-sonnet-4-6',
+    provider: 'claude',
     model_override: false,
     _sup: s,  // 원본 supervisor 데이터
   };
@@ -1960,331 +2101,569 @@ function graphSignature(snap) {
   return `${agents}||${chans}||${sups}||${SHOW_SUP ? 1 : 0}||${document.body.classList.contains('graph-fullscreen') ? 'fs' : 'n'}`;
 }
 
-// 구조 동일 → 노드/엣지 live 상태(thinking/speaking, live edge)만 in-place 업데이트
+// ==== Connection Graph (Cytoscape.js) ====
+// 자체 제작 SVG 그래프(휴리스틱 충돌회피, 라벨 push 등) 폐기 → cytoscape.js
+//   - 데이터 빌드: snap → cy elements (nodes / edges) 만 책임
+//   - 레이아웃 / 충돌회피 / 라벨배치 / 다중엣지 spread = 라이브러리에 위임
+//   - signature 변할 때 destroy + recreate, live 상태만 변하면 cy.batch()로 클래스 토글
+let cyInstance = null;
+
+let cyLiveAnimTimer = null;
+function destroyCyGraph() {
+  if (cyLiveAnimTimer) { clearInterval(cyLiveAnimTimer); cyLiveAnimTimer = null; }
+  if (cyInstance) {
+    try { cyInstance.destroy(); } catch (e) {}
+    cyInstance = null;
+  }
+}
+
+// 라이브(활성) 엣지: 굵기 + 글로우 padding 펄스 — solid line 위로 pulsing halo 효과
+function startLiveEdgeAnimation() {
+  if (!cyInstance) return;
+  if (cyLiveAnimTimer) { clearInterval(cyLiveAnimTimer); cyLiveAnimTimer = null; }
+  const liveEdges = cyInstance.edges('.live');
+  if (liveEdges.length === 0) return;
+  let pulse = 0;
+  cyLiveAnimTimer = setInterval(() => {
+    pulse = (pulse + 0.1) % (Math.PI * 2);
+    const sin = Math.sin(pulse);
+    const width = 3 + sin * 0.8;          // 2.2 ~ 3.8
+    const overlayOp = 0.18 + sin * 0.12;   // 0.06 ~ 0.30
+    const overlayPad = 5 + sin * 3;        // 2 ~ 8
+    cyInstance.batch(() => {
+      liveEdges.forEach(e => {
+        e.style({
+          'width': width,
+          'overlay-opacity': overlayOp,
+          'overlay-padding': overlayPad,
+        });
+      });
+    });
+  }, 50);
+}
+
+// 구조 동일 → 노드 live 상태(thinking/speaking, sup active/intervening) cy 클래스 토글
 function updateGraphLiveState(snap) {
-  // 에이전트 노드 클래스 갱신
-  for (const a of snap.agents) {
-    const el = document.querySelector(`.graph-node[data-agent-id="${CSS.escape(a.id)}"] .gn-ring`);
-    if (!el) continue;
-    el.classList.toggle('thinking', !!a.thinking);
-    el.classList.toggle('speaking', !!a.speaking);
-  }
-  // supervisor 노드 클래스
-  if (SHOW_SUP) {
-    for (const s of (snap.supervisors || [])) {
-      const el = document.querySelector(`.graph-node.sup[data-sup-name="${CSS.escape(s.name)}"]`);
-      if (!el) continue;
-      el.classList.toggle('active', !!s.active);
-      el.classList.toggle('intervening', !!s.intervening);
+  if (!cyInstance) return;
+  cyInstance.batch(() => {
+    for (const a of snap.agents) {
+      const n = cyInstance.getElementById(a.id);
+      if (n.empty()) continue;
+      n.toggleClass('thinking', !!a.thinking);
+      n.toggleClass('speaking', !!a.speaking);
     }
-  }
+    if (SHOW_SUP) {
+      for (const s of (snap.supervisors || [])) {
+        const n = cyInstance.getElementById('sup:' + s.name);
+        if (n.empty()) continue;
+        n.toggleClass('active', !!s.active);
+        n.toggleClass('intervening', !!s.intervening);
+      }
+    }
+  });
 }
 
-// 이웃 노드(같은 채널 공유)끼리 원에서 인접하도록 재정렬 — 엣지 crossing 감소
-function reorderNodesForMinCrossings(others, edges) {
-  if (others.length <= 2) return others;
-  // 각 노드의 연결 이웃 집합
-  const neighbors = {};
-  others.forEach(n => neighbors[n] = new Set());
-  for (const e of edges) {
-    if (neighbors[e.a]) neighbors[e.a].add(e.b);
-    if (neighbors[e.b]) neighbors[e.b].add(e.a);
-  }
-  // greedy: 가장 degree 높은 노드 먼저, 그 이웃 → 이웃의 이웃 순으로 배치
-  const degree = n => (neighbors[n] || new Set()).size;
-  const remaining = new Set(others);
-  const order = [];
-  // 시작: 최다 연결 노드
-  const start = others.slice().sort((a, b) => degree(b) - degree(a))[0];
-  order.push(start); remaining.delete(start);
-  while (remaining.size) {
-    const last = order[order.length - 1];
-    // last의 이웃 중 남아있는 것 우선
-    const lastN = Array.from(neighbors[last] || []).filter(n => remaining.has(n));
-    if (lastN.length) {
-      // 남은 이웃 중 가장 degree 높은 것 선택
-      lastN.sort((a, b) => degree(b) - degree(a));
-      order.push(lastN[0]);
-      remaining.delete(lastN[0]);
-    } else {
-      // 고립 — 남은 것 중 degree 높은 아무나
-      const next = Array.from(remaining).sort((a, b) => degree(b) - degree(a))[0];
-      order.push(next);
-      remaining.delete(next);
-    }
-  }
-  return order;
-}
-
-// ==== Connection Graph (HTML nodes + SVG edges) ====
-function renderConnectionGraph(snap) {
-  const fullscreen = document.body.classList.contains('graph-fullscreen');
-  const W = fullscreen ? 1400 : 780;
-  const H = fullscreen ? 760 : 420;
-  const cx = W / 2, cy = H / 2;
-
-  // 에이전트 이름 → 에이전트 오브젝트 맵 (아바타 src 포함)
-  const nameToAgent = {};
-  for (const a of snap.agents) {
-    nameToAgent[a.name] = a;
-  }
+// snap → { nodes, edges } cytoscape elements
+function buildGraphElements(snap) {
   const ownerName = snap.meta?.user_name || 'Owner';
+  const idToAgent = {};
+  for (const a of snap.agents) idToAgent[a.id] = a;
 
-  // 모든 채널 수집 — msg_count > 0 이거나 running이면 포함
+  // 활성 채널만 (msg_count > 0 또는 running)
   const channels = (snap.channels || []).filter(c => {
     if (c.participant_count < 1) return false;
     return c.msg_count > 0 || c.status === 'running';
   });
 
-  // 엣지 수집 — 채널마다 참여자 쌍 조합. 같은 쌍 여러 채널은 모두 그대로 유지
-  // (bundling 안 함 — 사용자 요구: 각 채널 라인 개별 표시, curve offset으로 겹침 방지)
-  const edges = [];
+  // raw edges — 채널 단위 + 참여자 모든 쌍 조합 (그룹 채널이면 N choose 2 개 엣지)
+  const rawEdges = [];
+  const involvedAgentIds = new Set();
+  let ownerInvolved = false;
   for (const c of channels) {
     const parts = [];
-    if (c.kind === 'dm' || c.kind === 'group' || c.kind === 'mgr') {
-      parts.push('__owner__');
-    }
+    const includeOwner = (c.kind === 'dm' || c.kind === 'group' || c.kind === 'mgr');
+    if (includeOwner) { parts.push('__owner__'); ownerInvolved = true; }
     for (const pid of (c.participants || [])) {
-      const a = snap.agents.find(a => a.id === pid);
-      if (a) parts.push(a.name);
+      if (idToAgent[pid]) {
+        parts.push(pid);
+        involvedAgentIds.add(pid);
+      }
     }
     if (parts.length < 2) continue;
     const live = c.last_ago && (c.last_ago.includes('초') || (c.last_ago.includes('분') && parseInt(c.last_ago) < 5));
     for (let i = 0; i < parts.length; i++) {
       for (let j = i + 1; j < parts.length; j++) {
-        edges.push({
-          a: parts[i], b: parts[j],
-          channel: c.name, kind: c.kind, live,
-          msg_count: c.msg_count, last_ts: c.last_ts,
-          bundle_count: 1, bundle_live: live,
+        rawEdges.push({
+          source: parts[i],
+          target: parts[j],
+          channel: c.name,
+          kind: c.kind,
+          live,
+          msg_count: c.msg_count,
         });
       }
     }
   }
 
-  // 노드 수집: 엣지에 참여한 에이전트 + owner
-  const nodeSet = new Set();
-  for (const e of edges) { nodeSet.add(e.a); nodeSet.add(e.b); }
-  // 엣지 없어도 주요 에이전트(mgr, creator)는 표시
+  // 엣지 없어도 mgr/creator 는 항상 표시
   for (const a of snap.agents) {
-    if (a.type === 'mgr' || a.type === 'creator') nodeSet.add(a.name);
-  }
-  const nodes = Array.from(nodeSet);
-
-  if (nodes.length === 0) {
-    return `<div class="graph-head">
-        <h3>Connection Graph</h3>
-        <button class="graph-fs-btn" style="margin-left:auto" onclick="toggleGraphFullscreen()">${fullscreen ? '✕ 닫기' : '⛶ 전체보기'}</button>
-      </div>
-      <div class="graph-empty">활성 채널 없음 — 에이전트들이 조용히 대기 중</div>`;
+    if (a.type === 'mgr' || a.type === 'creator') involvedAgentIds.add(a.id);
   }
 
-  // Layout: owner는 중앙, 나머지는 원형 배치
-  //   → 엣지 crossing 최소화 위해 이웃끼리 인접 배치
-  const ownerIdx = nodes.indexOf('__owner__');
-  const othersRaw = nodes.filter(n => n !== '__owner__');
-  const others = reorderNodesForMinCrossings(othersRaw, edges);
-  // 동적 반경 — 에이전트 많아지면 원 크게 (노드 겹침 완화)
-  //   3명 → 0.28, 6명 → 0.34, 10명 → 0.40, 최대 0.45
-  const radiusFactor = Math.max(0.26, Math.min(0.45, 0.22 + others.length * 0.022));
-  const radius = Math.min(W, H) * radiusFactor;
-  const positions = {};
-  if (ownerIdx !== -1) positions['__owner__'] = { x: cx, y: cy };
-  others.forEach((n, i) => {
-    const angle = (i / others.length) * 2 * Math.PI - Math.PI / 2;
-    positions[n] = {
-      x: cx + Math.cos(angle) * radius,
-      y: cy + Math.sin(angle) * radius,
-    };
+  // 노드 정렬: mgr 먼저 → creator → persona (concentric 배치 순서 결정)
+  //   N=3 + startAngle=π 면: mgr 이 왼쪽, creator 가 오른쪽 으로 자연 배치됨
+  const typeRank = { mgr: 0, creator: 1, persona: 2 };
+  const sortedAgentIds = Array.from(involvedAgentIds).sort((a, b) => {
+    const ra = typeRank[idToAgent[a]?.type] ?? 9;
+    const rb = typeRank[idToAgent[b]?.type] ?? 9;
+    return ra - rb;
   });
 
-  // SVG 색상 (채널 타입별)
-  const kindColor = {
-    dm: 'var(--accent)',
-    group: 'var(--ok)',
-    'internal-dm': 'var(--cmd)',
-    'internal-group': 'var(--creator)',
-    mgr: 'var(--mgr)',
-    other: 'var(--text-faint)',
-  };
-
-  // 같은 쌍은 이미 bundle로 1개 대표만 남김 — edgeGroups는 쌍당 1개
-  const edgeGroups = {};
-  for (const e of edges) {
-    const k = [e.a, e.b].sort().join('||');
-    (edgeGroups[k] = edgeGroups[k] || []).push(e);
+  const nodes = [];
+  if (ownerInvolved) {
+    nodes.push({
+      data: { id: '__owner__', label: ownerName, kind: 'owner' },
+      classes: 'owner',
+    });
+  }
+  for (const aid of sortedAgentIds) {
+    const a = idToAgent[aid];
+    if (!a) continue;
+    const liveCls = a.thinking ? 'thinking' : a.speaking ? 'speaking' : '';
+    const avatar = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+    nodes.push({
+      data: { id: a.id, label: a.name, kind: 'agent', agentType: a.type, avatar },
+      classes: ('agent ' + a.type + ' ' + liveCls).trim(),
+    });
   }
 
-  // SVG 엣지 렌더
-  // 슈퍼바이저 뷰 활성 시: supervisor 노드 + 에이전트로의 엣지 추가
-  const supEdges = [];  // {sup, agent, active, intervening}
-  const supNodes = [];  // supervisor nodes
+  // Supervisor 노드 + 엣지
+  const supEdges = [];
   if (SHOW_SUP && snap.supervisors) {
-    const nameToId = {};
-    for (const a of snap.agents) nameToId[a.id] = a.name;
-    // 슈퍼바이저 뷰 켜짐 → 모두 표시 (idle도 dimmed 상태로)
-    const allSups = snap.supervisors;
-    allSups.forEach((s, i) => {
-      const targetNames = (s.target_agents || []).map(aid => nameToId[aid]).filter(Boolean);
-      // idle + no targets여도 supervisor 노드는 표시 (viewer에게 존재 알림)
-
-      // supervisor 노드 위치: 살짝 바깥쪽 원 (radius * 1.12)
-      const total = allSups.length;
-      const angle = (i / total) * 2 * Math.PI - Math.PI / 2 + Math.PI / total;
-      const supRadius = radius * 1.12;
-      const spos = {
-        x: cx + Math.cos(angle) * supRadius,
-        y: cy + Math.sin(angle) * supRadius,
-      };
-      // 화면 밖이면 clamp
-      spos.x = Math.max(60, Math.min(W - 60, spos.x));
-      spos.y = Math.max(40, Math.min(H - 40, spos.y));
-      supNodes.push({ sup: s, pos: spos });
-
-      for (const tn of targetNames) {
-        const tp = positions[tn];
-        if (!tp) continue;
-        supEdges.push({ sup: s, name: tn, from: spos, to: tp });
+    const visibleSups = snap.supervisors.filter(s => {
+      const tn = (s.target_agents || []).filter(aid => involvedAgentIds.has(aid));
+      return tn.length > 0 || s.active || s.intervening;
+    });
+    for (const s of visibleSups) {
+      const supId = 'sup:' + s.name;
+      const cls = ['sup'];
+      if (s.active) cls.push('active');
+      if (s.intervening) cls.push('intervening');
+      // 아이콘 이모지 → SVG text. viewBox 200x200 + 작은 font-size → diamond shape 안에 안전하게 fit
+      const iconChar = s.icon || '◆';
+      const iconSvg = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><text x="100" y="125" font-size="80" text-anchor="middle" font-family="-apple-system,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,sans-serif">' + iconChar + '</text></svg>'
+      );
+      nodes.push({
+        data: { id: supId, label: supDisplayName(s.name), kind: 'sup', icon: iconChar, iconSvg },
+        classes: cls.join(' '),
+      });
+      for (const aid of (s.target_agents || [])) {
+        if (!involvedAgentIds.has(aid)) continue;
+        let ec = 'sup-edge ';
+        if (s.intervening) ec += 'intervening';
+        else if (s.active) ec += 'active';
+        else ec += 'idle';
+        supEdges.push({
+          data: { id: 'supedge:' + s.name + ':' + aid, source: supId, target: aid, kind: 'sup', label: '' },
+          classes: ec,
+        });
       }
+    }
+  }
+
+  // cy edges (unique IDs, 라벨 = 채널명, 너무 길면 잘라냄)
+  //   owner spoke 면 source=__owner__ target=agent 순서 보장됨 (위 parts 빌드 순서)
+  //   → target-label 로 렌더하면 라벨이 agent 쪽 끝에 붙어 owner 중심에서 분산됨
+  const truncLabel = (s) => (s.length > 16 ? s.slice(0, 14) + '…' : s);
+  const edges = rawEdges.map((e, i) => ({
+    data: {
+      id: 'e' + i,
+      source: e.source,
+      target: e.target,
+      label: truncLabel(e.channel),
+      channel: e.channel,
+      kind: e.kind,
+      cpd: 0,
+      cpw: 0.5,
+    },
+    classes: 'ch-' + e.kind + (e.live ? ' live' : ''),
+  }));
+
+  // 같은 source-target 페어가 여러 개면 perpendicular 방향으로 spread
+  //   → unbundled-bezier 의 control-point-distances 에 페어별 인덱스 기반 offset 부여
+  //   → 단일 엣지면 cpd=0 (직선)
+  const pairBuckets = {};
+  for (const e of edges) {
+    const k = [e.data.source, e.data.target].sort().join('||');
+    (pairBuckets[k] = pairBuckets[k] || []).push(e);
+  }
+  const PAIR_SPREAD = 38;  // 인접 엣지 간 px 거리
+  for (const k in pairBuckets) {
+    const grp = pairBuckets[k];
+    const n = grp.length;
+    if (n <= 1) continue;
+    grp.forEach((e, i) => {
+      e.data.cpd = (i - (n - 1) / 2) * PAIR_SPREAD;
     });
   }
 
-  const edgeSvg = [];
-  const labelSvg = [];
-  Object.entries(edgeGroups).forEach(([k, group]) => {
-    const [na, nb] = k.split('||');
-    const pa = positions[na], pb = positions[nb];
-    if (!pa || !pb) return;
-    group.forEach((e, idx) => {
-      const mx = (pa.x + pb.x) / 2;
-      const my = (pa.y + pb.y) / 2;
-      const dx = pb.x - pa.x, dy = pb.y - pa.y;
-      const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      // 수직 방향 unit
-      const nx = -dy / len, ny = dx / len;
+  return { nodes, edges: edges.concat(supEdges) };
+}
 
-      // 곡선 방향: midpoint가 center에서 떨어진 방향으로 bulge
-      //   (모든 엣지가 원 바깥쪽으로 휘어 서로 덜 겹침)
-      const outDx = mx - cx, outDy = my - cy;
-      const outLen = Math.sqrt(outDx * outDx + outDy * outDy) || 1;
-      // outward 방향이 수직 방향(nx,ny)과 같은 쪽인지 체크해서 부호 결정
-      const sign = (outDx * nx + outDy * ny) >= 0 ? 1 : -1;
+function pickGraphLayout(nodeCount, fullscreen) {
+  // concentric — owner 중앙, agents 외곽 ring, supervisors 더 외곽
+  //   fullscreen: spacingFactor 키워서 ring 반경 ↑ → 노드끼리 + 오너-에이전트 거리 넓어짐
+  //   fit: true 가 알아서 캔버스 안으로 스케일 — spacingFactor 는 단순히 ratio 로 작용
+  const minSpace = nodeCount <= 4 ? 120 : (nodeCount <= 8 ? 75 : 50);
+  const spacingF = nodeCount <= 4 ? 1.4 : 1.25;
+  return {
+    name: 'concentric',
+    concentric: function(node) {
+      const k = node.data('kind');
+      if (k === 'owner') return 3;
+      if (k === 'agent') return 2;
+      return 1;
+    },
+    levelWidth: function() { return 1; },
+    // overview 는 padding 작게 → 노드들이 캔버스 가득 채워 크게 보임
+    minNodeSpacing: fullscreen ? minSpace * 1.4 : minSpace,
+    spacingFactor: fullscreen ? spacingF * 1.25 : spacingF,
+    avoidOverlap: true,
+    fit: true,
+    padding: fullscreen ? 140 : 25,
+    // N=3: startAngle=π → mgr(첫번째)는 왼쪽, creator(두번째)는 오른쪽
+    // 그 외: top 부터 시작 (-π/2)
+    startAngle: nodeCount === 3 ? Math.PI : -Math.PI / 2,
+    animate: false,
+  };
+}
 
-      // 베이스 곡률: 엣지 길이 비례. 같은 쌍 여러 개면 idx별로 layer.
-      const baseBulge = len * 0.18;
-      const layerSpread = 22;
-      const midIdx = (group.length - 1) / 2;
-      const bulge = baseBulge + Math.abs(idx - midIdx) * layerSpread;
-      const layerSign = idx < midIdx ? -1 : (idx > midIdx ? 1 : 0);
+function renderConnectionGraph(snap) {
+  // 활성 채널 + mgr/creator 존재 여부만 빠르게 체크 → 빈 상태면 placeholder
+  const fullscreen = document.body.classList.contains('graph-fullscreen');
+  const channels = (snap.channels || []).filter(c =>
+    c.participant_count >= 1 && (c.msg_count > 0 || c.status === 'running')
+  );
+  const hasMgrCreator = snap.agents.some(a => a.type === 'mgr' || a.type === 'creator');
+  const hasContent = channels.length > 0 || hasMgrCreator;
 
-      // 최종 offset: outward bulge + layer alternation
-      // - 같은 쌍 1개면 그냥 outward bulge
-      // - 여러 개면 한 쪽은 더 바깥, 한 쪽은 반대
-      const offsetMagnitude = bulge * sign;
-      const altOffset = layerSign * layerSpread * 1.4;
-      const ctrlX = mx + nx * (offsetMagnitude + altOffset);
-      const ctrlY = my + ny * (offsetMagnitude + altOffset);
-      const color = kindColor[e.kind] || kindColor.other;
-      const strokeWidth = e.live ? 2.2 : 1.5;
-      const cls = `edge ${e.live ? 'live' : 'dim'}`;
-      edgeSvg.push(
-        `<path class="${cls}" d="M ${pa.x} ${pa.y} Q ${ctrlX} ${ctrlY} ${pb.x} ${pb.y}" stroke="${color}" stroke-width="${strokeWidth}" />`
-      );
-      // 라벨 위치: 곡선 중간
-      const labelX = (pa.x + 2 * ctrlX + pb.x) / 4;
-      const labelY = (pa.y + 2 * ctrlY + pb.y) / 4;
-      const displayName = e.channel.length > 24 ? e.channel.slice(0, 22) + '…' : e.channel;
-      const bundleSuffix = (e.bundle_count && e.bundle_count > 1) ? ` +${e.bundle_count - 1}` : '';
-      const textLen = displayName.length + bundleSuffix.length;
-      // 문자 너비 가변 계산 (한글은 폭 넓게)
-      const hasKo = /[\u3131-\uD79D]/.test(displayName);
-      const charW = hasKo ? 7.2 : 5.8;
-      const textW = Math.max(44, textLen * charW + 14);
-      const bgCls = e.bundle_live ? 'edge-label-bg live' : 'edge-label-bg';
-      labelSvg.push(
-        `<g class="edge-label-group" style="cursor:pointer" onclick="openChannel('${esc(e.channel)}')">
-          <rect class="${bgCls}" x="${labelX - textW / 2}" y="${labelY - 10}" width="${textW}" height="20" rx="10" />
-          <text class="edge-label" x="${labelX}" y="${labelY + 3.5}" text-anchor="middle">${esc(displayName)}${bundleSuffix ? `<tspan style="fill:var(--accent);font-weight:700">${esc(bundleSuffix)}</tspan>` : ''}</text>
-        </g>`
-      );
-    });
-  });
-
-  // 노드는 HTML div로 (SVG pattern보다 이미지 렌더링 안정적)
-  const nodeHtml = nodes.map(n => {
-    const p = positions[n];
-    if (!p) return '';
-    // SVG 좌표 → HTML % 좌표 변환
-    const pctX = (p.x / W) * 100;
-    const pctY = (p.y / H) * 100;
-    if (n === '__owner__') {
-      return `<div class="graph-node center" style="left:${pctX}%;top:${pctY}%">
-        <div class="gn-ring owner">👤</div>
-        <div class="gn-name">${esc(ownerName)}</div>
-      </div>`;
-    }
-    const a = nameToAgent[n];
-    if (!a) return '';
-    const ringCls = ['gn-ring', a.type];
-    if (a.thinking) ringCls.push('thinking');
-    else if (a.speaking) ringCls.push('speaking');
-    const avatarSrc = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
-    return `<div class="graph-node" data-agent-id="${esc(a.id)}" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('${esc(a.id)}')">
-      <div class="${ringCls.join(' ')}">
-        <img src="${avatarSrc}" alt="${esc(a.name)}" onerror="this.style.display='none';this.parentElement.textContent='${a.emoji}'">
-      </div>
-      <div class="gn-name">${esc(a.name)}</div>
+  const headHtml = `<div class="graph-head">
+      <h3>Connection Graph</h3>
+      <span class="note" id="graph-note"></span>
+      <button class="graph-fs-btn" onclick="toggleGraphFullscreen()">${fullscreen ? '✕ 닫기' : '⛶ 전체보기'}</button>
     </div>`;
-  }).join('');
 
-  // Supervisor edges (SVG) + nodes (HTML)
-  const supEdgeSvg = supEdges.map(e => {
-    const color = e.sup.intervening ? 'var(--warn)' : (e.sup.active ? 'var(--accent-2)' : 'var(--text-faint)');
-    const cls = e.sup.intervening ? 'sup-edge intervening' : (e.sup.active ? 'sup-edge active' : 'sup-edge');
-    return `<line class="edge ${cls}" x1="${e.from.x}" y1="${e.from.y}" x2="${e.to.x}" y2="${e.to.y}" stroke="${color}" />`;
-  }).join('');
-
-  const supNodeHtml = supNodes.map(({ sup, pos }) => {
-    const pctX = (pos.x / W) * 100;
-    const pctY = (pos.y / H) * 100;
-    const cls = ['graph-node', 'sup'];
-    if (sup.active) cls.push('active');
-    if (sup.intervening) cls.push('intervening');
-    // 다른 에이전트처럼 상세 모달 띄움 (sup: prefix로 라우팅)
-    return `<div class="${cls.join(' ')}" data-sup-name="${esc(sup.name)}" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('sup:${esc(sup.name)}')">
-      <div class="gn-ring">${sup.icon}</div>
-      <div class="gn-name">${esc(sup.name)}</div>
-    </div>`;
-  }).join('');
+  if (!hasContent) {
+    return headHtml + `<div class="graph-empty">활성 채널 없음 — 에이전트들이 조용히 대기 중</div>`;
+  }
 
   const legend = `<div class="graph-legend">
-    <div class="item"><span class="swatch" style="background:${kindColor.dm}"></span>DM</div>
-    <div class="item"><span class="swatch" style="background:${kindColor.group}"></span>Group</div>
-    <div class="item"><span class="swatch" style="background:${kindColor['internal-dm']}"></span>Internal DM</div>
-    <div class="item"><span class="swatch" style="background:${kindColor['internal-group']}"></span>Internal Group</div>
-    <div class="item"><span class="swatch" style="background:${kindColor.mgr}"></span>Manager</div>
+    <div class="item"><span class="swatch" style="background:var(--accent)"></span>DM</div>
+    <div class="item"><span class="swatch" style="background:var(--ok)"></span>Group</div>
+    <div class="item"><span class="swatch" style="background:var(--cmd)"></span>Internal DM</div>
+    <div class="item"><span class="swatch" style="background:var(--creator)"></span>Internal Group</div>
+    <div class="item"><span class="swatch" style="background:var(--mgr)"></span>Manager</div>
     ${SHOW_SUP ? `<div class="item"><span class="swatch" style="background:var(--warn)"></span>Supervisor</div>` : ''}
     <div class="item" style="margin-left:auto"><span style="color:var(--text)">━━</span> 활성  <span style="color:var(--text-dim);margin-left:4px">┄┄</span> 대기</div>
   </div>`;
 
-  const supCount = supNodes.length;
-  const note = `${edges.length} connection${edges.length === 1 ? '' : 's'} · ${nodes.length} node${nodes.length === 1 ? '' : 's'}${supCount ? ` · ${supCount} supervisor${supCount === 1 ? '' : 's'}` : ''}`;
+  return headHtml +
+    `<div class="graph-stage"><div id="cy-graph" style="width:100%;height:100%"></div></div>` +
+    legend;
+}
 
-  return `<div class="graph-head">
-      <h3>Connection Graph</h3>
-      <span class="note">${note}</span>
-      <button class="graph-fs-btn" onclick="toggleGraphFullscreen()">${fullscreen ? '✕ 닫기' : '⛶ 전체보기'}</button>
-    </div>
-    <div class="graph-stage">
-      <svg class="graph-edges" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
-        ${supEdgeSvg}
-        ${edgeSvg.join('')}
-        ${labelSvg.join('')}
-      </svg>
-      ${nodeHtml}
-      ${supNodeHtml}
-    </div>
-    ${legend}`;
+// renderConnectionGraph 후 호출 — innerHTML 으로 들어간 #cy-graph 에 cytoscape 인스턴스 마운트
+function mountCytoscapeGraph(snap) {
+  destroyCyGraph();
+  const container = document.getElementById('cy-graph');
+  if (!container || typeof cytoscape === 'undefined') return;
+
+  const { nodes, edges } = buildGraphElements(snap);
+  if (nodes.length === 0) return;
+
+  const fullscreen = document.body.classList.contains('graph-fullscreen');
+
+  // CSS variable → 실제 색상값 (cytoscape style 은 var() 못 읽음)
+  const cs = getComputedStyle(document.body);
+  const tok = (n) => (cs.getPropertyValue(n) || '').trim();
+  const C = {
+    text: tok('--text') || '#222',
+    textDim: tok('--text-dim') || '#888',
+    panel: tok('--panel') || '#fff',
+    border: tok('--border') || '#ddd',
+    accent: tok('--accent') || '#4b8',
+    ok: tok('--ok') || '#5c5',
+    warn: tok('--warn') || '#c93',
+    err: tok('--err') || '#c33',
+    mgr: tok('--mgr') || '#a6f',
+    creator: tok('--creator') || '#fa3',
+    persona: tok('--persona') || '#48f',
+    user: tok('--user') || '#fb6',
+    cmd: tok('--cmd') || '#d6f',
+    thinking: tok('--thinking') || '#fc6',
+    speaking: tok('--speaking') || '#6cf',
+  };
+
+  // 노드 크기 — overview 에서도 충분히 크게 (사용자: "원이 멀리있다 = 작다")
+  const nodeSize = fullscreen ? 70 : 64;
+  const ownerSize = fullscreen ? 66 : 60;
+  const supSize = fullscreen ? 54 : 48;
+  const fontSize = fullscreen ? 12 : 11.5;
+
+  cyInstance = cytoscape({
+    container,
+    elements: { nodes, edges },
+    minZoom: 0.5,
+    maxZoom: 2.5,
+    boxSelectionEnabled: false,
+    autounselectify: true,
+    // overview 모드 (default): 그래프 내부 휠/드래그 비활성
+    //   → 페이지 전체 스크롤이 그래프 위에서도 자연스럽게 동작
+    // fullscreen 모드: 줌/팬 가능
+    userZoomingEnabled: fullscreen,
+    userPanningEnabled: fullscreen,
+    style: [
+      // ===== Agent nodes (avatar 원) =====
+      {
+        selector: 'node.agent',
+        style: {
+          'shape': 'ellipse',
+          'width': nodeSize,
+          'height': nodeSize,
+          'background-image': 'data(avatar)',
+          'background-fit': 'cover cover',
+          'background-color': C.panel,
+          'border-width': 3,
+          'border-color': C.border,
+          'label': 'data(label)',
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'text-margin-y': 6,
+          'color': C.text,
+          'font-size': fontSize,
+          'font-weight': 600,
+          'text-background-color': C.panel,
+          'text-background-opacity': 0.85,
+          'text-background-padding': 3,
+          'text-background-shape': 'roundrectangle',
+          'text-border-color': C.border,
+          'text-border-width': 0,
+        },
+      },
+      { selector: 'node.agent.mgr', style: { 'border-color': C.mgr } },
+      { selector: 'node.agent.creator', style: { 'border-color': C.creator } },
+      { selector: 'node.agent.persona', style: { 'border-color': C.persona } },
+      {
+        selector: 'node.agent.thinking',
+        style: { 'border-color': C.thinking, 'border-width': 5, 'overlay-color': C.thinking, 'overlay-opacity': 0.15, 'overlay-padding': 4 },
+      },
+      {
+        selector: 'node.agent.speaking',
+        style: { 'border-color': C.speaking, 'border-width': 5, 'overlay-color': C.speaking, 'overlay-opacity': 0.15, 'overlay-padding': 4 },
+      },
+      // ===== Owner node — Material person SVG, viewBox 큼 + figure 가운데에 작게 =====
+      //   shape:ellipse + bg-clip 으로 잘리는 문제 방지를 위해 figure 를 inscribed circle 안에 배치
+      //   viewBox 200x200, figure 는 가운데 ~80x100 영역 (충분한 padding)
+      {
+        selector: 'node.owner',
+        style: {
+          'shape': 'ellipse',
+          'width': ownerSize,
+          'height': ownerSize,
+          'background-color': '#fff5e6',
+          'background-image': 'data:image/svg+xml;utf8,' + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">' +
+              '<circle cx="100" cy="80" r="26" fill="' + C.user + '"/>' +
+              '<path d="M50 160 Q 50 116 100 116 Q 150 116 150 160 Z" fill="' + C.user + '"/>' +
+            '</svg>'
+          ),
+          'background-fit': 'contain',
+          'background-image-opacity': 1,
+          'background-image-containment': 'inside',
+          'border-width': 3,
+          'border-color': C.user,
+          'label': (snap.meta?.user_name || 'Owner'),
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'text-margin-y': 6,
+          'color': C.text,
+          'font-size': fontSize,
+          'font-weight': 700,
+          'text-background-color': C.panel,
+          'text-background-opacity': 0.85,
+          'text-background-padding': 3,
+          'text-background-shape': 'roundrectangle',
+        },
+      },
+      // ===== Supervisor nodes (다이아몬드, dashed border, 아이콘 이미지) =====
+      {
+        selector: 'node.sup',
+        style: {
+          'shape': 'diamond',
+          'width': supSize,
+          'height': supSize,
+          'background-color': C.panel,
+          'background-image': 'data(iconSvg)',
+          'background-fit': 'contain',
+          'background-image-opacity': 1,
+          'background-image-containment': 'inside',
+          'border-width': 2,
+          'border-style': 'dashed',
+          'border-color': C.warn,
+          'label': 'data(label)',
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'text-margin-y': 6,
+          'color': C.textDim,
+          'font-size': 10,
+          'font-weight': 600,
+          'text-background-color': C.panel,
+          'text-background-opacity': 0.85,
+          'text-background-padding': 2,
+          'text-background-shape': 'roundrectangle',
+        },
+      },
+      { selector: 'node.sup.active', style: { 'border-style': 'solid' } },
+      {
+        selector: 'node.sup.intervening',
+        style: {
+          'border-style': 'solid',
+          'border-color': C.warn,
+          'border-width': 3,
+          'overlay-color': C.warn,
+          'overlay-opacity': 0.15,
+          'overlay-padding': 4,
+        },
+      },
+      // ===== Edges =====
+      //   기본 (대기): dashed + 흐릿 → 범례의 "┄┄ 대기" 와 매칭
+      //   live (활성): solid + 굵게 + 펄스 글로우 → "━━ 활성"
+      {
+        selector: 'edge',
+        style: {
+          'curve-style': 'unbundled-bezier',
+          'control-point-distances': 'data(cpd)',
+          'control-point-weights': 'data(cpw)',
+          'width': 1.8,
+          'line-color': C.textDim,
+          'line-style': 'dashed',
+          'line-dash-pattern': [6, 5],
+          'target-arrow-shape': 'none',
+          'opacity': 0.7,
+          // 기본 라벨 숨김 — hover 시에만 보임 (라벨 떡짐 회피)
+          //   midpoint label (target-label 대신 label) → 엣지 가운데에 깔끔히 배치
+          'label': 'data(label)',
+          'text-opacity': 0,
+          'font-size': 11,
+          'color': C.text,
+          'text-background-color': C.panel,
+          'text-background-opacity': 0.95,
+          'text-background-padding': 2,
+          'text-background-shape': 'roundrectangle',
+          'text-border-color': C.border,
+          'text-border-width': 1,
+          'text-border-opacity': 0.6,
+          'text-events': 'yes',
+        },
+      },
+      { selector: 'edge.ch-dm', style: { 'line-color': C.accent } },
+      { selector: 'edge.ch-group', style: { 'line-color': C.ok } },
+      { selector: 'edge.ch-internal-dm', style: { 'line-color': C.cmd } },
+      { selector: 'edge.ch-internal-group', style: { 'line-color': C.creator } },
+      { selector: 'edge.ch-mgr', style: { 'line-color': C.mgr } },
+      {
+        selector: 'edge.live',
+        style: {
+          'line-style': 'solid',
+          'opacity': 1,
+          'width': 3,
+          'overlay-color': C.accent,
+          'overlay-opacity': 0.2,
+          'overlay-padding': 5,
+        },
+      },
+      {
+        selector: 'edge.sup-edge',
+        style: {
+          'line-style': 'dashed',
+          'line-dash-pattern': [5, 4],
+          'line-color': C.warn,
+          'opacity': 0.65,
+          'width': 1.6,
+          'label': '',
+        },
+      },
+      { selector: 'edge.sup-edge.active', style: { 'opacity': 0.95, 'width': 2 } },
+      {
+        selector: 'edge.sup-edge.intervening',
+        style: { 'opacity': 1, 'width': 2.5, 'line-dash-pattern': [4, 3] },
+      },
+      // Hover — 엣지 직접 hover 또는 연결된 노드 hover 시 라벨/엣지 강조
+      { selector: 'edge.hl', style: {
+        'text-opacity': 1,
+        'opacity': 1,
+        'width': 3,
+        'z-index': 999,
+      }},
+      { selector: 'node.hl', style: {
+        'border-width': 5,
+        'z-index': 999,
+      }},
+      {
+        selector: 'node:active, edge:active',
+        style: { 'overlay-opacity': 0.1 },
+      },
+    ],
+    layout: pickGraphLayout(nodes.length, fullscreen),
+  });
+
+  // ===== Interactivity =====
+  cyInstance.on('tap', 'node.agent', (evt) => openAgent(evt.target.id()));
+  cyInstance.on('tap', 'node.sup', (evt) => openAgent(evt.target.id()));
+  cyInstance.on('tap', 'edge', (evt) => {
+    const ch = evt.target.data('channel');
+    if (ch) openChannel(ch);
+  });
+  // Hover 강조 — 노드 hover → 연결된 엣지 라벨 표시 / 엣지 hover → 본인 라벨 표시
+  cyInstance.on('mouseover', 'node', (evt) => {
+    container.style.cursor = 'pointer';
+    const n = evt.target;
+    n.addClass('hl');
+    n.connectedEdges().addClass('hl');
+  });
+  cyInstance.on('mouseout', 'node', (evt) => {
+    container.style.cursor = 'default';
+    cyInstance.elements('.hl').removeClass('hl');
+  });
+  cyInstance.on('mouseover', 'edge', (evt) => {
+    container.style.cursor = 'pointer';
+    evt.target.addClass('hl');
+  });
+  cyInstance.on('mouseout', 'edge', (evt) => {
+    container.style.cursor = 'default';
+    evt.target.removeClass('hl');
+  });
+
+  // 레이아웃 끝나고 명시적으로 fit (concentric 의 fit:true 가 spacingFactor 큰 경우 overflow)
+  cyInstance.ready(() => {
+    cyInstance.fit(undefined, fullscreen ? 140 : 25);
+  });
+
+  // ===== 라이브 엣지 dash flow + 펄스 애니메이션 시작 =====
+  startLiveEdgeAnimation();
+
+  // ===== Note (n connections · m nodes · k supervisors) =====
+  const noteEl = document.getElementById('graph-note');
+  if (noteEl) {
+    const supNodeCount = nodes.filter(n => n.classes && n.classes.indexOf('sup') === 0).length;
+    const agentNodeCount = nodes.length - supNodeCount;
+    const supEdgeCount = edges.filter(e => e.classes && e.classes.indexOf('sup-edge') === 0).length;
+    const channelEdgeCount = edges.length - supEdgeCount;
+    let txt = `${channelEdgeCount} connection${channelEdgeCount === 1 ? '' : 's'} · ${agentNodeCount} node${agentNodeCount === 1 ? '' : 's'}`;
+    if (supNodeCount) txt += ` · ${supNodeCount} supervisor${supNodeCount === 1 ? '' : 's'}`;
+    noteEl.textContent = txt;
+  }
 }
 
 function toggleGraphFullscreen() {
@@ -2299,6 +2678,43 @@ document.addEventListener('keydown', (e) => {
     tick();
   }
 });
+
+// 창 크기 / 패널 크기 변할 때 그래프 재렌더
+//   - window resize: 창 크기 바뀜 (기본)
+//   - ResizeObserver: 사이드바 토글 등 창 크기 안 변해도 패널 width 변할 때 감지
+//   - debounce 로 과도 호출 방지, 같은 크기면 skip
+(function() {
+  let _resizeTimer = null;
+  let _lastStageSize = null;
+  function _measureAndMaybeRerender() {
+    const panel = document.getElementById('graph-panel');
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    const fs = document.body.classList.contains('graph-fullscreen');
+    const key = `${Math.round(rect.width)}x${fs ? 'fs' : 'n'}x${window.innerHeight}`;
+    if (key === _lastStageSize) return;
+    _lastStageSize = key;
+    lastGraphSig = null;
+    if (typeof tick === 'function') tick();
+  }
+  function _schedule() {
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(_measureAndMaybeRerender, 180);
+  }
+  window.addEventListener('resize', _schedule);
+  // ResizeObserver — 패널 자체 크기 변경 감지 (브라우저 zoom, sidebar 등)
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(_schedule);
+    // panel 은 초기 렌더 후 DOM 에 있음
+    document.addEventListener('DOMContentLoaded', () => {
+      const p = document.getElementById('graph-panel');
+      if (p) ro.observe(p);
+    });
+    // 이미 로드됐을 수 있으므로
+    const p0 = document.getElementById('graph-panel');
+    if (p0) ro.observe(p0);
+  }
+})();
 
 function activeScenes(snap) {
   return (snap.scenes || []).filter(s => s.status === 'active');
@@ -2513,6 +2929,7 @@ async function tick() {
     const sig = graphSignature(snap);
     if (sig !== lastGraphSig) {
       graphEl.innerHTML = renderConnectionGraph(snap);
+      mountCytoscapeGraph(snap);
       lastGraphSig = sig;
     } else {
       // 구조 동일 → 노드 thinking/speaking 클래스만 갱신
@@ -2883,6 +3300,15 @@ setInterval(loadCommunities, 5000);  // 커뮤니티 running 상태 5초마다 �
 """
 
 
+import threading
+
+# 커뮤니티 전환은 전역 상태 (GLIMI_COMMUNITY env, _comm._current_id, db.DB_PATH)
+# 를 건드림 → 동시 요청이 서로 다른 커뮤니티를 지정하면 race로 섞임
+# (예: private 요청 중 qa 요청이 env를 덮어쓰면 private이 qa DB를 읽게 됨).
+# 모든 커뮤니티-의존 핸들러를 이 lock으로 직렬화.
+_COMMUNITY_LOCK = threading.Lock()
+
+
 def _read_community(path: str) -> Optional[str]:
     q = parse_qs(urlparse(path).query)
     return q.get("community", [None])[0]
@@ -2902,6 +3328,16 @@ def _set_active_community(cid: Optional[str]):
         pass
 
 
+def _with_community(path: str, fn):
+    """URL ?community= 파라미터로 커뮤니티 전환 후 fn 호출.
+    전역 상태 변경을 lock으로 직렬화 → race condition 방지."""
+    cid = _read_community(path)
+    with _COMMUNITY_LOCK:
+        if cid:
+            _set_active_community(cid)
+        return fn()
+
+
 def _read_query(path: str, key: str, default: Optional[str] = None) -> Optional[str]:
     q = parse_qs(urlparse(path).query)
     v = q.get(key, [default])[0]
@@ -2909,75 +3345,75 @@ def _read_query(path: str, key: str, default: Optional[str] = None) -> Optional[
 
 
 def api_snapshot(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    snap = monitor.snapshot()
-    for c in snap["channels"]:
-        c["last_ago"] = monitor.human_ago(c["last_ts"])
-    return snap
+    def _run():
+        from src.core import monitor
+        snap = monitor.snapshot()
+        for c in snap["channels"]:
+            c["last_ago"] = monitor.human_ago(c["last_ts"])
+        return snap
+    return _with_community(path, _run)
 
 
 def api_logs(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    tail = int(_read_query(path, "tail", "150") or 150)
-    return {"lines": monitor.get_recent_system_logs(tail_lines=tail)}
+    def _run():
+        from src.core import monitor
+        tail = int(_read_query(path, "tail", "150") or 150)
+        return {"lines": monitor.get_recent_system_logs(tail_lines=tail)}
+    return _with_community(path, _run)
 
 
 def api_agent_activity(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    aid = _read_query(path, "id", "")
-    if not aid:
-        return {"logs": [], "chat": []}
-    return {
-        "logs": monitor.get_agent_thinking_logs(aid, n=5),
-        "chat": monitor.get_agent_recent_chat(aid, limit=3),
-    }
+    def _run():
+        from src.core import monitor
+        aid = _read_query(path, "id", "")
+        if not aid:
+            return {"logs": [], "chat": []}
+        return {
+            "logs": monitor.get_agent_thinking_logs(aid, n=5),
+            "chat": monitor.get_agent_recent_chat(aid, limit=3),
+        }
+    return _with_community(path, _run)
 
 
 def api_agent_detail(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    aid = _read_query(path, "id", "")
-    if not aid:
-        return {"error": "missing id"}
-    return monitor.get_agent_detail(aid)
+    def _run():
+        from src.core import monitor
+        aid = _read_query(path, "id", "")
+        if not aid:
+            return {"error": "missing id"}
+        return monitor.get_agent_detail(aid)
+    return _with_community(path, _run)
 
 
 def api_channel_detail(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    name = _read_query(path, "name", "")
-    if not name:
-        return {"error": "missing name"}
-    return monitor.get_channel_detail(name)
+    def _run():
+        from src.core import monitor
+        name = _read_query(path, "name", "")
+        if not name:
+            return {"error": "missing name"}
+        return monitor.get_channel_detail(name)
+    return _with_community(path, _run)
 
 
 def api_health(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    return monitor.get_health()
+    def _run():
+        from src.core import monitor
+        return monitor.get_health()
+    return _with_community(path, _run)
 
 
 def api_dev(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    return monitor.get_dev_state()
+    def _run():
+        from src.core import monitor
+        return monitor.get_dev_state()
+    return _with_community(path, _run)
 
 
 def api_usage(path):
-    if _read_community(path):
-        _set_active_community(_read_community(path))
-    from src.core import monitor
-    return monitor.get_usage_stats()
+    def _run():
+        from src.core import monitor
+        return monitor.get_usage_stats()
+    return _with_community(path, _run)
 
 
 def _serve_logo(handler):
@@ -3342,35 +3778,36 @@ def api_action_restart_server(body: dict, community_id: str) -> dict:
 def _serve_avatar(handler, path):
     """에이전트 아바타 이미지 서빙."""
     cid = _read_community(path)
-    if cid:
-        _set_active_community(cid)
     agent_id = _read_query(path, "id", "")
     variant = _read_query(path, "variant", "") or ""  # "" or "full"
     if not agent_id:
         handler._send(404, b"missing id", "text/plain")
         return
 
-    from src import community as _comm
-    from src.core.profile import load_profile
-
-    # 1. DB profile의 avatar_filename 우선
-    profile = load_profile(agent_id) or {}
-    fname = profile.get("avatar_filename") or ""
-    target_path = None
-    if fname:
-        base, ext = os.path.splitext(fname)
-        if variant == "full":
-            # full variant 탐색: agent-mgr-001.png → agent-mgr-001-full.png
-            full_fname = f"{base}-full{ext}"
-            target_path = _comm.get_avatar_path(full_fname)
-            if not target_path:
+    # lock 안에서 community 전환 + profile 조회 + avatar path 해석
+    # — 다른 커뮤니티 아바타 섞임 방지
+    with _COMMUNITY_LOCK:
+        if cid:
+            _set_active_community(cid)
+        from src import community as _comm
+        from src.core.profile import load_profile
+        profile = load_profile(agent_id) or {}
+        fname = profile.get("avatar_filename") or ""
+        target_path = None
+        if fname:
+            base, ext = os.path.splitext(fname)
+            if variant == "full":
+                # full variant 탐색: agent-mgr-001.png → agent-mgr-001-full.png
+                full_fname = f"{base}-full{ext}"
+                target_path = _comm.get_avatar_path(full_fname)
+                if not target_path:
+                    target_path = _comm.get_avatar_path(fname)
+            else:
                 target_path = _comm.get_avatar_path(fname)
-        else:
-            target_path = _comm.get_avatar_path(fname)
 
-    # 2. agent_id로 직접 스캔
-    if not target_path:
-        target_path = _comm.find_avatar(agent_id)
+        # 2. agent_id로 직접 스캔
+        if not target_path:
+            target_path = _comm.find_avatar(agent_id)
 
     if not target_path or not os.path.exists(target_path):
         # placeholder: 빈 PNG 작은 것
@@ -3467,12 +3904,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         p = urlparse(self.path).path
         cid = _read_community(self.path)
-        if cid:
-            _set_active_community(cid)
-        from src import community as _comm
-        community_id = cid or _comm.get_community_id()
 
-        # body 파싱
+        # body 파싱 (lock 밖에서 먼저 — 읽기는 race 영향 없음)
         body = {}
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -3500,8 +3933,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if handler is None:
             self._send(404, b"not found", "text/plain")
             return
+        # 커뮤니티 전환 + 핸들러 호출을 lock으로 직렬화
         try:
-            result = handler(body, community_id)
+            with _COMMUNITY_LOCK:
+                if cid:
+                    _set_active_community(cid)
+                from src import community as _comm
+                community_id = cid or _comm.get_community_id()
+                result = handler(body, community_id)
             self._json(result)
         except Exception as e:
             import traceback
