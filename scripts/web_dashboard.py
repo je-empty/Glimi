@@ -397,14 +397,20 @@ HTML = r"""<!doctype html>
   .agent-card.speaking .state-badge.speaking::before { content: '💬 '; }
 
   .agent-meta {
-    display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
-    margin-top: 7px; font-size: 11px; color: var(--text-dim);
+    display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center;
+    margin-top: 6px; font-size: 11px; color: var(--text-dim);
     min-width: 0;
   }
   .agent-meta > * { flex-shrink: 0; }
   .agent-meta .bar { width: 48px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .agent-meta .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
-  .agent-meta .model-tag { margin-left: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-meta .sep { color: var(--text-faint); }
+  .agent-footer {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft);
+    font-size: 10.5px; color: var(--text-faint); gap: 8px;
+  }
+  .agent-footer .model-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .agent-expanded { display: none; margin-top: 12px; }
   .agent-card.thinking .agent-expanded, .agent-card.speaking .agent-expanded { display: block; }
@@ -588,6 +594,42 @@ HTML = r"""<!doctype html>
 
   .empty { padding: 32px 12px; text-align: center; color: var(--text-faint); font-size: 12px; font-style: italic; }
 
+  /* ==== Action Buttons ==== */
+  .act-btn {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 9px; padding: 7px 14px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .act-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--panel-3); }
+  .act-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .act-btn.primary { background: color-mix(in srgb, var(--accent) 12%, var(--panel-2)); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+  .act-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 20%, var(--panel-2)); }
+  .act-btn.success { background: color-mix(in srgb, var(--ok) 12%, var(--panel-2)); border-color: color-mix(in srgb, var(--ok) 40%, transparent); color: var(--ok); }
+  .act-btn.success:hover:not(:disabled) { background: color-mix(in srgb, var(--ok) 20%, var(--panel-2)); }
+  .act-btn.danger { background: color-mix(in srgb, var(--err) 10%, var(--panel-2)); border-color: color-mix(in srgb, var(--err) 40%, transparent); color: var(--err); }
+  .act-btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 20%, var(--panel-2)); }
+  .act-btn.small { padding: 4px 10px; font-size: 11.5px; }
+
+  .trash-item {
+    display: flex; gap: 8px; align-items: center; padding: 6px 10px;
+    background: var(--panel-2); border-radius: 6px; margin-bottom: 4px; font-size: 11.5px;
+  }
+  .trash-item .ch { color: var(--cmd); font-family: "JetBrains Mono", monospace; font-size: 10.5px; }
+  .trash-item .who { color: var(--text); font-weight: 600; }
+  .trash-item .msg { color: var(--text-dim); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 20px; box-shadow: var(--shadow-lg); font-size: 13px; z-index: 200;
+    display: none; max-width: 500px;
+  }
+  .toast.show { display: block; animation: toast-in 0.2s ease-out; }
+  .toast.err { border-color: var(--err); color: var(--err); }
+  .toast.ok { border-color: var(--ok); color: var(--ok); }
+  @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
   /* Responsive */
   @media (max-width: 900px) {
     .overview-grid { grid-template-columns: repeat(2, 1fr); }
@@ -684,6 +726,9 @@ HTML = r"""<!doctype html>
   <img id="lightbox-img" src="" alt="">
   <div class="lb-caption" id="lightbox-caption"></div>
 </div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
 
 <script>
 // ==== State ====
@@ -806,6 +851,18 @@ function renderAgent(a, clickable=true) {
   }
 
   const onclick = clickable ? `onclick="openAgent('${esc(a.id)}')"` : '';
+  // last_active를 상대 시간으로 표시
+  let agoText = '';
+  if (a.last_active) {
+    try {
+      const dt = new Date(a.last_active);
+      const secs = (Date.now() - dt.getTime()) / 1000;
+      if (secs < 60) agoText = `${Math.floor(secs)}s`;
+      else if (secs < 3600) agoText = `${Math.floor(secs/60)}m`;
+      else if (secs < 86400) agoText = `${Math.floor(secs/3600)}h`;
+      else agoText = `${Math.floor(secs/86400)}d`;
+    } catch {}
+  }
   return `<div class="${cls}" ${onclick}>
     <div class="agent-head">
       ${avatarHtml(a)}
@@ -819,13 +876,16 @@ function renderAgent(a, clickable=true) {
           <span>${esc(a.emotion)}</span>
           <div class="bar"><span style="width:${pct}%"></span></div>
           <span>${a.intensity}/10</span>
-          ${a.mbti ? `<span>· ${esc(a.mbti)}</span>` : ''}
-          ${a.age ? `<span>· ${a.age}y</span>` : ''}
-          ${a.model ? `<span class="model-tag ${a.provider}${a.model_override ? ' override' : ''}" title="${a.model_override ? 'per-agent override' : 'default by type'}">${esc(a.model)}</span>` : ''}
+          ${a.mbti ? `<span class="sep">·</span><span>${esc(a.mbti)}</span>` : ''}
+          ${a.age ? `<span class="sep">·</span><span>${a.age}y</span>` : ''}
         </div>
       </div>
       <span class="state-badge thinking">thinking</span>
       <span class="state-badge speaking">speaking</span>
+    </div>
+    <div class="agent-footer">
+      ${a.model ? `<span class="model-tag ${a.provider}${a.model_override ? ' override' : ''}" title="${a.model_override ? 'per-agent override' : 'default'}">${esc(a.model)}</span>` : '<span></span>'}
+      ${agoText ? `<span title="last active">${agoText} ago</span>` : ''}
     </div>
     ${expanded}
   </div>`;
@@ -970,7 +1030,14 @@ async function openAgent(id) {
   if (d.enneagram) profileLines.push(['Enneagram', d.enneagram]);
   if (d.traits && d.traits.length) profileLines.push(['Traits', d.traits.slice(0,5).join(' · ')]);
   profileLines.push(['Emotion', `${d.emoji} ${d.emotion} (${d.intensity}/10)`]);
-  profileLines.push(['Status', d.thinking ? '🧠 Thinking' : d.speaking ? '💬 Speaking' : (d.status === 'active' ? '● Active' : d.status)]);
+  const statusHtml = d.thinking
+    ? '<span style="color:var(--thinking)">🧠 Thinking</span>'
+    : d.speaking
+      ? '<span style="color:var(--speaking)">💬 Speaking</span>'
+      : (d.status === 'active'
+        ? '<span style="color:var(--ok)">● Active</span>'
+        : `<span style="color:var(--text-dim)">○ ${esc(d.status)}</span>`);
+  profileLines.push(['Status', statusHtml, true]);
   if (d.model) profileLines.push(['Model', `<span class="model-tag ${d.provider}${d.model_override ? ' override' : ''}">${esc(d.model)}</span>${d.model_override ? ' <small style="color:var(--accent)">override</small>' : '<small style="color:var(--text-faint)"> · default</small>'}`, true]);
   if (d.relationship_to_owner?.type) {
     const r = d.relationship_to_owner;
@@ -1022,16 +1089,124 @@ async function openChannel(name) {
   if (!d) { openModal('⚠', 'Error', '<div class="empty">failed to load</div>'); return; }
   const parts = (d.participants || []).map(p => `<span class="pill neutral">${esc(p.name)}${p.type ? ' · ' + esc(p.type) : ''}</span>`).join(' ');
   const msgs = (d.messages || []).map(m => renderMessage(m)).join('');
+  const protected_ch = name.startsWith('mgr-') || name.startsWith('dm-');
+  const actions = `
+    <div class="detail-section">
+      <h4>Actions</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="act-btn danger small" onclick="doChannelClear('${esc(name)}')">🧹 메시지 전체 삭제 (DB만)</button>
+        ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : '<span style="color:var(--text-faint);font-size:11px;padding:6px 0">※ mgr-/dm- 채널은 보호됨</span>'}
+      </div>
+    </div>`;
   const body = `
     <div class="detail-section">
       <h4>Participants · ${d.participants.length}</h4>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${parts || '<span style="color:var(--text-faint)">none</span>'}</div>
     </div>
+    ${actions}
     <div class="detail-section">
       <h4>All Messages · ${d.message_count}</h4>
       <div class="msg-list">${msgs || '<div class="empty">no messages</div>'}</div>
     </div>`;
   openModal(chIcon(name), '#' + name, body);
+}
+
+// ==== Mutation actions ====
+function toast(msg, variant='ok', ms=3000) {
+  const el = document.getElementById('toast');
+  el.className = `toast show ${variant}`;
+  el.textContent = msg;
+  setTimeout(() => { el.classList.remove('show'); }, ms);
+}
+
+async function postJson(url, body) {
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body || {}),
+    });
+    return await r.json();
+  } catch (e) {
+    return {error: 'fetch_failed', message: String(e)};
+  }
+}
+
+async function runSyncAction(action) {
+  const endpoints = {
+    scan: '/api/action/scan_discord',
+    sync: '/api/action/run_sync',
+    restore: '/api/action/restore',
+  };
+  const labels = { scan: 'Scan Discord', sync: 'Full Sync', restore: 'Restore Messages' };
+  const out = document.getElementById('sync-output');
+  out.textContent = `▶ ${labels[action]} 실행 중...\n`;
+  const r = await postJson(q(endpoints[action]), {});
+  if (r.error) {
+    toast(r.message || r.error, 'err');
+    out.textContent += `❌ ${r.message || r.error}\n`;
+    return;
+  }
+  toast(`${labels[action]} 완료`, 'ok');
+  out.textContent += '✓ 완료\n';
+  if (r.logs) out.textContent += r.logs.join('\n') + '\n';
+  if (r.result) out.textContent += JSON.stringify(r.result, null, 2);
+  tick();
+}
+
+async function doChannelClear(channel) {
+  if (!confirm(`#${channel}의 DB 메시지 전체 삭제. Discord 채널은 유지. 진행?`)) return;
+  const r = await postJson(q('/api/action/channel_clear'), {channel});
+  if (r.error) return toast(r.message || r.error, 'err');
+  toast(`#${channel} 메시지 ${r.deleted?.deleted_count || '?'}개 삭제됨`, 'ok');
+  closeModal();
+  tick();
+}
+
+async function doChannelDelete(channel) {
+  if (!confirm(`채널 #${channel} 완전 삭제. ${channel.startsWith('mgr-') ? 'mgr 채널은 보호돼야 함!' : '복구 어려움.'} 진행?`)) return;
+  const r = await postJson(q('/api/action/channel_delete'), {channel});
+  if (r.error) return toast(r.message || r.error, 'err');
+  toast(`#${channel} 삭제됨. ${r.note || ''}`, 'ok');
+  closeModal();
+  tick();
+}
+
+async function loadTrash() {
+  const r = await postJson(q('/api/action/trash_list'), {});
+  const countEl = document.getElementById('trash-count');
+  const listEl = document.getElementById('trash-list');
+  if (!r.ok) {
+    if (countEl) countEl.textContent = 'error';
+    return;
+  }
+  const items = r.items || [];
+  if (countEl) countEl.textContent = `${items.length}건`;
+  if (!listEl) return;
+  listEl.innerHTML = items.length ? items.slice(0, 30).map(t =>
+    `<div class="trash-item">
+      <span class="ch">#${esc(t.channel || '')}</span>
+      <span class="who">${esc(t.speaker || '')}</span>
+      <span class="msg">${esc((t.message || '').slice(0, 80))}</span>
+      <button class="act-btn small" onclick="restoreTrash(${t.id})">복구</button>
+    </div>`
+  ).join('') : '<div class="empty">trash empty</div>';
+}
+
+async function restoreTrash(tid) {
+  const r = await postJson(q('/api/action/trash_restore'), {trash_id: tid});
+  if (r.error) return toast(r.message || r.error, 'err');
+  toast('복구됨', 'ok');
+  loadTrash();
+  tick();
+}
+
+async function emptyTrash() {
+  if (!confirm('Trash 전체 비우기. 되돌릴 수 없음. 진행?')) return;
+  const r = await postJson(q('/api/action/trash_empty'), {});
+  if (r.error) return toast(r.message || r.error, 'err');
+  toast('Trash 비워짐', 'ok');
+  loadTrash();
 }
 
 // ==== Main tick ====
@@ -1201,21 +1376,37 @@ async function tick() {
     `;
   }
 
-  // Sync (read-only view of channels needing sync etc.)
+  // Sync tab
+  const serverRunning = b.bot_alive;
+  const guardNote = serverRunning
+    ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--warn) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--warn)">⚠ 커뮤니티 서버가 실행 중 — Discord와 상호작용하는 작업(Scan/Sync/Restore)은 비활성화됨. 먼저 서버 중단 후 사용.</div>`
+    : `<div style="padding:10px 14px;background:color-mix(in srgb,var(--ok) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--ok) 25%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--ok)">○ 서버 오프라인 — 모든 sync 작업 가능.</div>`;
+
   document.getElementById('sync-full').innerHTML = `
+    ${guardNote}
     <div class="detail-section" style="margin-top:0">
-      <h4>Sync Status</h4>
-      <div style="color:var(--text-dim);font-size:12.5px;line-height:1.6">
-        현재 DB에 등록된 채널과 Discord 쪽 채널 비교는 bot 프로세스만 할 수 있음.<br>
-        이 대시보드는 read-only 관찰 뷰 — Scan/Sync 실행은 <b>wizard</b>에서 진행:<br>
-        <code style="background:var(--panel-2);padding:2px 6px;border-radius:4px">python -m src.tui.wizard</code>
+      <h4>Sync Actions</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="act-btn primary" onclick="runSyncAction('scan')" ${serverRunning ? 'disabled' : ''}>🔍 Scan Discord</button>
+        <button class="act-btn success" onclick="runSyncAction('sync')" ${serverRunning ? 'disabled' : ''}>▶ Full Sync</button>
+        <button class="act-btn" onclick="runSyncAction('restore')" ${serverRunning ? 'disabled' : ''}>↻ Restore Messages</button>
       </div>
+      <div id="sync-output" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;min-height:60px;max-height:240px;overflow-y:auto;white-space:pre-wrap"></div>
+    </div>
+    <div class="detail-section">
+      <h4>Trash · <span id="trash-count" style="color:var(--text-faint)">...</span></h4>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="act-btn small" onclick="loadTrash()">새로고침</button>
+        <button class="act-btn small danger" onclick="emptyTrash()">Empty Trash</button>
+      </div>
+      <div id="trash-list"></div>
     </div>
     <div class="detail-section">
       <h4>DB-registered Channels · ${snap.channels.length}</h4>
       ${renderChannelsGrouped(snap.channels)}
     </div>
   `;
+  loadTrash();
 
   // Dev
   if (dev) {
@@ -1453,6 +1644,172 @@ def api_communities():
     return {"items": items, "active": active_id}
 
 
+# ── Mutation endpoints (POST) ──────────────────────────
+
+def _bot_running_for(community_id: str) -> bool:
+    """해당 커뮤니티의 봇이 돌고 있는지 (running 커뮤니티 확인과 동일 로직)."""
+    import time as _t
+    try:
+        log_path = ROOT / "communities" / community_id / "logs" / "system.log"
+        if log_path.exists():
+            return (_t.time() - log_path.stat().st_mtime) < 120
+    except Exception:
+        pass
+    return False
+
+
+def _require_server_stopped(community_id: str) -> Optional[dict]:
+    """Discord 상호작용 ops 전 실행 중인 봇 가드. 문제 있으면 error dict 반환."""
+    if _bot_running_for(community_id):
+        return {
+            "error": "server_running",
+            "message": "커뮤니티 서버가 실행 중이라 이 작업은 할 수 없음. 먼저 서버 중단 후 재시도.",
+        }
+    return None
+
+
+def api_action_scan_discord(body: dict, community_id: str) -> dict:
+    """Discord에서 채널/메시지 스캔만 하고 DB 변경 없이 diff 보고."""
+    guard = _require_server_stopped(community_id)
+    if guard:
+        return guard
+    from src.core.sync import run_sync
+    try:
+        result = run_sync(dry_run=True)
+        return {"ok": True, "result": result}
+    except TypeError:
+        # run_sync가 dry_run 인자 없으면 진행 불가
+        return {"error": "not_supported", "message": "run_sync()에 dry_run 지원 없음 — full sync만 가능"}
+    except Exception as e:
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_run_sync(body: dict, community_id: str) -> dict:
+    """full sync 실행 (DB ↔ Discord 양방향)."""
+    guard = _require_server_stopped(community_id)
+    if guard:
+        return guard
+    from src.core.sync import run_sync
+    try:
+        logs: list[str] = []
+        def _cb(msg: str):
+            logs.append(msg)
+        try:
+            result = run_sync(on_progress=_cb)
+        except TypeError:
+            result = run_sync()
+        return {"ok": True, "result": result, "logs": logs[-20:]}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_restore(body: dict, community_id: str) -> dict:
+    """DB 메시지를 Discord에 재전송."""
+    guard = _require_server_stopped(community_id)
+    if guard:
+        return guard
+    from src.core.sync import run_restore
+    try:
+        logs: list[str] = []
+        try:
+            result = run_restore(on_progress=lambda m: logs.append(m))
+        except TypeError:
+            result = run_restore()
+        return {"ok": True, "result": result, "logs": logs[-20:]}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_channel_clear(body: dict, community_id: str) -> dict:
+    """채널의 DB 메시지만 삭제 (Discord 유지). 봇 실행 중에도 안전."""
+    from src import db
+    channel = (body.get("channel") or "").strip()
+    if not channel:
+        return {"error": "missing_channel"}
+    try:
+        result = db.delete_channel_data(channel)
+        return {"ok": True, "deleted": result}
+    except Exception as e:
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_channel_delete(body: dict, community_id: str) -> dict:
+    """채널 DB + Discord 양쪽 삭제. Discord 쪽은 봇 없으면 스킵."""
+    from src import db
+    channel = (body.get("channel") or "").strip()
+    if not channel:
+        return {"error": "missing_channel"}
+
+    # DB 먼저 삭제
+    try:
+        db_result = db.delete_channel_data(channel)
+    except Exception as e:
+        return {"error": "db_delete_failed", "message": str(e)}
+
+    # channels 테이블에서도 제거
+    try:
+        conn = db.get_conn()
+        conn.execute("DELETE FROM channels WHERE channel = ?", (channel,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # Discord 쪽은 봇이 안 돌고 있으면 sync로 대신 정리 (또는 skip)
+    # 여기선 간단히 DB만 — Discord 채널 삭제는 봇 or 수동
+    discord_msg = "Discord 채널은 남아있음 — 봇 실행 중이면 다음 sync 때 자동 정리됨"
+    return {"ok": True, "db": db_result, "note": discord_msg}
+
+
+def api_action_trash_message(body: dict, community_id: str) -> dict:
+    """메시지를 trash로 이동."""
+    from src import db
+    channel = (body.get("channel") or "").strip()
+    message_id = body.get("message_id")
+    if not channel:
+        return {"error": "missing_channel"}
+    try:
+        ids = [int(message_id)] if message_id else None
+        db.trash_messages(channel, message_ids=ids)
+        return {"ok": True}
+    except Exception as e:
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_trash_list(body: dict, community_id: str) -> dict:
+    from src import db
+    try:
+        items = db.trash_list()
+        return {"ok": True, "items": items}
+    except Exception as e:
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_trash_restore(body: dict, community_id: str) -> dict:
+    from src import db
+    trash_id = body.get("trash_id")
+    if trash_id is None:
+        return {"error": "missing_trash_id"}
+    try:
+        result = db.trash_restore(int(trash_id))
+        return {"ok": True, "result": result}
+    except Exception as e:
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_trash_empty(body: dict, community_id: str) -> dict:
+    from src import db
+    try:
+        db.trash_empty()
+        return {"ok": True}
+    except Exception as e:
+        return {"error": "exception", "message": str(e)}
+
+
 def _serve_avatar(handler, path):
     """에이전트 아바타 이미지 서빙."""
     cid = _read_community(path)
@@ -1565,6 +1922,47 @@ class Handler(http.server.BaseHTTPRequestHandler):
             import traceback
             traceback.print_exc()
             self._json({"error": str(e)})
+
+    def do_POST(self):
+        p = urlparse(self.path).path
+        cid = _read_community(self.path)
+        if cid:
+            _set_active_community(cid)
+        from src import community as _comm
+        community_id = cid or _comm.get_community_id()
+
+        # body 파싱
+        body = {}
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                raw = self.rfile.read(length)
+                body = json.loads(raw.decode("utf-8"))
+        except Exception:
+            body = {}
+
+        mutations = {
+            "/api/action/scan_discord": api_action_scan_discord,
+            "/api/action/run_sync": api_action_run_sync,
+            "/api/action/restore": api_action_restore,
+            "/api/action/channel_clear": api_action_channel_clear,
+            "/api/action/channel_delete": api_action_channel_delete,
+            "/api/action/trash_message": api_action_trash_message,
+            "/api/action/trash_list": api_action_trash_list,
+            "/api/action/trash_restore": api_action_trash_restore,
+            "/api/action/trash_empty": api_action_trash_empty,
+        }
+        handler = mutations.get(p)
+        if handler is None:
+            self._send(404, b"not found", "text/plain")
+            return
+        try:
+            result = handler(body, community_id)
+            self._json(result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._json({"error": "exception", "message": str(e)})
 
 
 class ReusableServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
