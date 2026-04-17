@@ -2109,10 +2109,10 @@ function renderConnectionGraph(snap) {
       const hasKo = /[\u3131-\uD79D]/.test(displayName);
       const charW = hasKo ? 7.2 : 5.8;
       const textW = Math.max(44, textLen * charW + 14);
-      const cls = e.bundle_live ? 'edge-label-bg live' : 'edge-label-bg';
+      const bgCls = e.bundle_live ? 'edge-label-bg live' : 'edge-label-bg';
       labelSvg.push(
         `<g class="edge-label-group" style="cursor:pointer" onclick="openChannel('${esc(e.channel)}')">
-          <rect class="${cls}" x="${labelX - textW / 2}" y="${labelY - 10}" width="${textW}" height="20" rx="10" />
+          <rect class="${bgCls}" x="${labelX - textW / 2}" y="${labelY - 10}" width="${textW}" height="20" rx="10" />
           <text class="edge-label" x="${labelX}" y="${labelY + 3.5}" text-anchor="middle">${esc(displayName)}${bundleSuffix ? `<tspan style="fill:var(--accent);font-weight:700">${esc(bundleSuffix)}</tspan>` : ''}</text>
         </g>`
       );
