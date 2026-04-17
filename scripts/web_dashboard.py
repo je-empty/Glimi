@@ -126,6 +126,47 @@ HTML = r"""<!doctype html>
   }
   .brand .dot { color: var(--accent-2); }
   .brand small { font-size: 10px; font-weight: 500; color: var(--text-faint); margin-left: 10px; letter-spacing: 1.3px; text-transform: uppercase; }
+
+  /* ==== Community switcher ==== */
+  .community-btn {
+    position: relative; display: flex; align-items: center; gap: 8px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 6px 12px 6px 10px; font-size: 12.5px;
+    font-weight: 600; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  .community-btn:hover { border-color: var(--accent); }
+  .community-btn .sv-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 6px var(--ok); animation: live-pulse 1.8s infinite;
+  }
+  .community-btn.idle .sv-dot { background: var(--text-faint); box-shadow: none; animation: none; }
+  .community-btn .chev { font-size: 9px; color: var(--text-faint); margin-left: 4px; }
+  @keyframes live-pulse {
+    0%, 100% { box-shadow: 0 0 6px var(--ok); }
+    50% { box-shadow: 0 0 12px var(--ok); }
+  }
+
+  .community-menu {
+    display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
+    min-width: 260px; box-shadow: var(--shadow-lg); z-index: 50;
+    padding: 6px; overflow: hidden;
+  }
+  .community-menu.open { display: block; }
+  .community-menu .ci {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: 8px; cursor: pointer; transition: background 0.12s;
+    font-size: 13px;
+  }
+  .community-menu .ci:hover { background: var(--panel-2); }
+  .community-menu .ci.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .community-menu .ci.idle { opacity: 0.5; }
+  .community-menu .ci .ci-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); flex-shrink: 0; }
+  .community-menu .ci.idle .ci-dot { background: var(--text-faint); box-shadow: none; }
+  .community-menu .ci .ci-name { flex: 1; font-weight: 600; font-family: "JetBrains Mono", monospace; font-size: 12.5px; }
+  .community-menu .ci .ci-meta { font-size: 10.5px; color: var(--text-dim); font-weight: 400; }
+  .community-menu .ci .ci-check { color: var(--accent); font-weight: 700; }
+  .community-menu .ci.active .ci-check::before { content: '✓'; }
   .pill {
     font-size: 11px; font-weight: 500; padding: 4px 11px; border-radius: 999px;
     background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border-soft);
@@ -197,6 +238,97 @@ HTML = r"""<!doctype html>
   }
   .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border-soft); }
 
+  /* ==== Avatar ==== */
+  .avatar {
+    position: relative; flex-shrink: 0; display: inline-block;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--panel-2); overflow: hidden;
+    border: 2px solid var(--border-soft);
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .avatar .emoji-badge {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--bg-elev); display: flex; align-items: center; justify-content: center;
+    font-size: 13px; border: 2px solid var(--bg-elev); box-shadow: var(--shadow);
+  }
+  .avatar.xl { width: 72px; height: 72px; border-width: 3px; }
+  .avatar.xl .emoji-badge { width: 26px; height: 26px; font-size: 16px; bottom: -4px; right: -4px; }
+  .avatar.xxl { width: 104px; height: 104px; border-width: 3px; }
+  .avatar.xxl .emoji-badge { width: 34px; height: 34px; font-size: 20px; bottom: -4px; right: -4px; border-width: 3px; }
+
+  /* Emotion ring around avatar (colored based on intensity) */
+  .avatar.ring { border-color: var(--accent); }
+  .avatar.ring-5 { border-color: color-mix(in srgb, var(--warn) 50%, var(--border)); }
+  .avatar.ring-7 { border-color: var(--warn); }
+  .avatar.ring-9 { border-color: var(--err); box-shadow: 0 0 12px color-mix(in srgb, var(--err) 40%, transparent); }
+  .avatar.thinking-ring { border-color: var(--thinking); animation: ring-pulse 1.6s infinite; }
+  .avatar.speaking-ring { border-color: var(--speaking); animation: ring-pulse 1.2s infinite; }
+  @keyframes ring-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 40%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 10%, transparent); }
+  }
+
+  /* ==== Offline Mode ==== */
+  body.offline .agent-card {
+    opacity: 0.55; filter: saturate(0.5) grayscale(0.3);
+  }
+  body.offline .agent-card .status-dot.active { background: var(--text-faint); box-shadow: none; }
+  body.offline .agent-card.thinking, body.offline .agent-card.speaking {
+    /* 오프라인인데 DB에 thinking 플래그가 남아있으면 stale → 애니메이션 중지 */
+    grid-column: auto;
+    animation: none; box-shadow: var(--shadow);
+  }
+  body.offline .agent-card.thinking .agent-expanded,
+  body.offline .agent-card.speaking .agent-expanded { display: none; }
+  body.offline .progress-bar > span { animation: none; }
+  body.offline .avatar.thinking-ring, body.offline .avatar.speaking-ring { animation: none; }
+
+  .offline-banner {
+    display: none;
+    padding: 10px 16px; margin-bottom: 18px; border-radius: 10px;
+    background: color-mix(in srgb, var(--err) 8%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
+    color: var(--err); font-size: 12.5px; font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+  }
+  body.offline .offline-banner { display: flex; }
+  .offline-banner::before { content: '⏸'; font-size: 16px; }
+  .offline-banner b { color: var(--err); }
+  .offline-banner span.muted { color: var(--text-dim); font-weight: 400; margin-left: auto; }
+
+  /* ==== Hero Overview ==== */
+  .hero {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 18px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    position: relative; overflow: hidden;
+  }
+  body.offline .hero { opacity: 0.85; }
+  body.offline .hero::before { display: none; }
+  .hero::before {
+    content: ''; position: absolute; top: 0; right: 0; width: 60%; height: 100%;
+    background: radial-gradient(ellipse at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%);
+    pointer-events: none;
+  }
+  .hero-row { display: flex; align-items: center; gap: 20px; position: relative; }
+  .hero-avatars { display: flex; }
+  .hero-avatars .avatar { margin-left: -12px; transition: transform 0.2s, z-index 0s 0.2s; }
+  .hero-avatars .avatar:first-child { margin-left: 0; }
+  .hero-avatars .avatar:hover { transform: translateY(-3px) scale(1.05); z-index: 2; transition: transform 0.2s, z-index 0s; }
+  .hero-text h1 {
+    font-size: 20px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 2px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .hero-text h1 .sv-name { color: var(--accent); }
+  .hero-text p {
+    color: var(--text-dim); font-size: 13px; line-height: 1.6;
+  }
+  .hero-pill-row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
   /* ==== Agent Card ==== */
   .agent-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -223,8 +355,7 @@ HTML = r"""<!doctype html>
     box-shadow: var(--glow-speaking), var(--shadow-lg);
   }
 
-  .agent-head { display: flex; align-items: center; gap: 11px; }
-  .agent-head .emoji { font-size: 28px; line-height: 1; flex-shrink: 0; }
+  .agent-head { display: flex; align-items: center; gap: 12px; }
   .agent-head .info { flex: 1; min-width: 0; }
   .agent-head .name-row { display: flex; align-items: center; gap: 6px; }
   .agent-head .name { font-size: 14px; font-weight: 600; letter-spacing: -0.1px; }
@@ -417,10 +548,17 @@ HTML = r"""<!doctype html>
 <div class="app">
   <header class="status">
     <span class="brand">◈ Glimi<span class="dot">.</span><small>dashboard</small></span>
+    <div style="position:relative" id="community-switcher-wrap">
+      <button class="community-btn" id="community-btn" title="커뮤니티 전환">
+        <span class="sv-dot"></span>
+        <span id="community-btn-name">—</span>
+        <span class="chev">▾</span>
+      </button>
+      <div class="community-menu" id="community-menu"></div>
+    </div>
     <span id="pills-left"></span>
     <div class="stats-right">
       <span id="pills-right"></span>
-      <select class="community-sel" id="community-select" title="커뮤니티 전환"></select>
       <button class="btn-icon" id="theme-toggle" title="테마 전환">☀</button>
     </div>
   </header>
@@ -441,13 +579,18 @@ HTML = r"""<!doctype html>
   <main>
     <!-- Overview -->
     <div class="view active" id="view-overview">
+      <div class="offline-banner" id="offline-banner">
+        <b>오프라인</b> — 봇이 실행 중이 아님. 마지막 스냅샷 표시 중 (실시간 아님)
+        <span class="muted" id="offline-last"></span>
+      </div>
+      <div class="hero" id="hero"></div>
       <div class="overview-grid">
         <div class="kpi"><div class="label">Bot Status</div><div class="value" id="kpi-bot">—</div></div>
         <div class="kpi"><div class="label">User</div><div class="value" id="kpi-user">—</div></div>
         <div class="kpi"><div class="label">Onboarding</div><div class="value" id="kpi-phase">—</div></div>
         <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
       </div>
-      <div class="section-title">Active Members</div>
+      <div class="section-title">Members</div>
       <div class="agent-grid" id="overview-agents"></div>
       <div class="section-title">Recent Conversations</div>
       <div class="msg-list" id="overview-msgs"></div>
@@ -553,6 +696,20 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
 });
 
 // ==== Renderers ====
+function avatarHtml(a, size='') {
+  const cls = ['avatar', size];
+  if (a.thinking) cls.push('thinking-ring');
+  else if (a.speaking) cls.push('speaking-ring');
+  else if (a.intensity >= 9) cls.push('ring-9');
+  else if (a.intensity >= 7) cls.push('ring-7');
+  else if (a.intensity >= 5) cls.push('ring-5');
+  const src = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+  return `<div class="${cls.filter(Boolean).join(' ')}" title="${esc(a.name)}">
+    <img src="${src}" alt="${esc(a.name)}" loading="lazy" onerror="this.style.display='none'">
+    <span class="emoji-badge">${a.emoji}</span>
+  </div>`;
+}
+
 function renderAgent(a, clickable=true) {
   const cls = ['agent-card', a.type, a.thinking ? 'thinking' : '', a.speaking ? 'speaking' : ''].filter(Boolean).join(' ');
   const pct = Math.min(100, (a.intensity || 0) * 10);
@@ -579,7 +736,7 @@ function renderAgent(a, clickable=true) {
   const onclick = clickable ? `onclick="openAgent('${esc(a.id)}')"` : '';
   return `<div class="${cls}" ${onclick}>
     <div class="agent-head">
-      <span class="emoji">${a.emoji}</span>
+      ${avatarHtml(a)}
       <div class="info">
         <div class="name-row">
           <span class="status-dot ${dot}"></span>
@@ -598,6 +755,38 @@ function renderAgent(a, clickable=true) {
       <span class="state-badge speaking">speaking</span>
     </div>
     ${expanded}
+  </div>`;
+}
+
+function renderHero(snap) {
+  const m = snap.meta;
+  const persona = snap.agents.filter(a => a.type === 'persona');
+  const mgrs = snap.agents.filter(a => a.type !== 'persona');
+  const all = [...mgrs, ...persona];
+  const avatarsHtml = all.slice(0, 8).map(a => avatarHtml(a, 'xl')).join('');
+  const active = snap.agents.filter(a => a.thinking || a.speaking);
+  const activeText = active.length
+    ? active.map(a => `<b style="color:${a.thinking ? 'var(--thinking)' : 'var(--speaking)'}">${esc(a.name)}</b>`).join(', ') + ` ${active.length > 1 ? '이' : '가'} ${active.some(x=>x.thinking)?'생각 중':''}${active.some(x=>x.thinking)&&active.some(x=>x.speaking)?' · ':''}${active.some(x=>x.speaking)?'응답 중':''}`
+    : `<span style="color:var(--text-dim)">평온 · 모두 대기 중</span>`;
+
+  const userName = m.user_name || '—';
+  const phase = m.onboarding_phase || '—';
+  const msgCount = snap.total_messages || 0;
+
+  return `<div class="hero-row">
+    <div class="hero-avatars">
+      ${avatarsHtml || '<div style="color:var(--text-faint)">no members yet</div>'}
+    </div>
+    <div class="hero-text" style="flex:1">
+      <h1><span class="sv-name">${esc(snap.community_id)}</span> · ${esc(userName)}의 커뮤니티</h1>
+      <p>${activeText}</p>
+      <div class="hero-pill-row">
+        <span class="pill neutral">members · <b>${snap.agents.length}</b></span>
+        <span class="pill neutral">channels · <b>${snap.channels.length}</b></span>
+        <span class="pill neutral">messages · <b>${msgCount}</b></span>
+        <span class="pill neutral">phase · <b>${esc(phase)}</b></span>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -653,8 +842,14 @@ function renderEvent(e) {
 }
 
 // ==== Detail Modal ====
-function openModal(emoji, title, body) {
-  document.getElementById('d-emoji').textContent = emoji;
+function openModal(emoji, title, body, agent=null) {
+  const emojiEl = document.getElementById('d-emoji');
+  if (agent && agent.id) {
+    // 아바타 이미지로 교체
+    emojiEl.innerHTML = `<div style="width:54px;height:54px">${avatarHtml(agent, 'xl')}</div>`;
+  } else {
+    emojiEl.innerHTML = `<span>${esc(emoji)}</span>`;
+  }
   document.getElementById('d-title').textContent = title;
   document.getElementById('d-body').innerHTML = body;
   document.getElementById('detail-backdrop').classList.add('open');
@@ -724,7 +919,7 @@ async function openAgent(id) {
     ${thinkingLogs ? `<div class="detail-section"><h4>Thinking Logs ${d.thinking ? '<span style="color:var(--thinking)">● LIVE</span>' : ''}</h4>${thinkingLogs}</div>` : ''}
     ${chatHtml ? `<div class="detail-section"><h4>Recent Chat · ${d.primary_channel}</h4>${chatHtml}</div>` : ''}
   `;
-  openModal(d.emoji, d.name + ' · ' + d.type, body);
+  openModal(d.emoji, d.name + ' · ' + d.type, body, d);
 }
 
 async function openChannel(name) {
@@ -756,6 +951,19 @@ async function tick() {
   COMMUNITY = snap.community_id;
   const b = snap.bot, m = snap.meta;
 
+  // Offline 모드 토글 — 봇이 실제로 안 돌면 전체 UI dim + 안내
+  if (b.bot_alive) document.body.classList.remove('offline');
+  else document.body.classList.add('offline');
+
+  // 마지막 활동 시각 계산 (에이전트 last_active 중 최대값)
+  const lastActives = snap.agents.map(a => a.last_active).filter(Boolean).sort();
+  if (!b.bot_alive && lastActives.length) {
+    const last = lastActives[lastActives.length - 1];
+    document.getElementById('offline-last').textContent = `마지막 활동: ${last.slice(0, 19).replace('T', ' ')}`;
+  } else {
+    document.getElementById('offline-last').textContent = '';
+  }
+
   document.getElementById('pills-left').innerHTML = [
     `<span class="pill ${b.bot_alive ? 'on' : 'off'}">bot</span>`,
     `<span class="pill ${b.runner_alive ? 'on' : 'neutral'}">runner</span>`,
@@ -780,6 +988,9 @@ async function tick() {
       if (extra) { a._logs = extra.logs || []; a._chat = extra.chat || []; }
     }));
   }
+
+  // Hero section
+  document.getElementById('hero').innerHTML = renderHero(snap);
 
   // Overview KPIs
   document.getElementById('kpi-bot').innerHTML = b.bot_alive
@@ -906,18 +1117,58 @@ async function tick() {
 async function loadCommunities() {
   const d = await j('/api/communities');
   if (!d) return;
-  const sel = document.getElementById('community-select');
-  sel.innerHTML = (d.items || []).map(c =>
-    `<option value="${esc(c.id)}" ${c.id === d.active ? 'selected' : ''}>${esc(c.id)}</option>`
-  ).join('');
-  sel.onchange = () => {
-    COMMUNITY = sel.value;
-    const url = new URL(location.href);
-    url.searchParams.set('community', COMMUNITY);
-    history.replaceState(null, '', url);
-    tick();
-  };
+  const btn = document.getElementById('community-btn');
+  const menu = document.getElementById('community-menu');
+  const activeItem = (d.items || []).find(c => c.id === d.active);
+
+  // 버튼 업데이트 (현재 선택된 커뮤니티)
+  document.getElementById('community-btn-name').textContent = d.active;
+  if (activeItem && activeItem.running) btn.classList.remove('idle');
+  else btn.classList.add('idle');
+
+  // 메뉴 생성
+  menu.innerHTML = (d.items || []).map(c => {
+    const cls = ['ci'];
+    if (c.id === d.active) cls.push('active');
+    if (!c.running) cls.push('idle');
+    const meta = c.running
+      ? `<span class="ci-meta" style="color:var(--ok)">● running${c.last_log_age_sec != null ? ` · ${c.last_log_age_sec}s ago` : ''}</span>`
+      : `<span class="ci-meta">○ idle${c.last_log_age_sec != null ? ` · ${c.last_log_age_sec}s ago` : ''}</span>`;
+    return `<div class="${cls.join(' ')}" data-cid="${esc(c.id)}">
+      <span class="ci-dot"></span>
+      <div style="flex:1">
+        <div class="ci-name">${esc(c.id)}</div>
+        ${meta}
+      </div>
+      <span class="ci-check"></span>
+    </div>`;
+  }).join('') || '<div class="empty">no communities</div>';
+
+  // 아이템 클릭 → 전환
+  menu.querySelectorAll('.ci').forEach(el => {
+    el.addEventListener('click', () => {
+      COMMUNITY = el.dataset.cid;
+      menu.classList.remove('open');
+      const url = new URL(location.href);
+      url.searchParams.set('community', COMMUNITY);
+      history.replaceState(null, '', url);
+      tick();
+      loadCommunities();
+    });
+  });
 }
+
+// 버튼 클릭으로 메뉴 토글
+document.getElementById('community-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('community-menu').classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('community-switcher-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('community-menu').classList.remove('open');
+  }
+});
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
@@ -926,6 +1177,7 @@ document.addEventListener('keydown', e => {
 loadCommunities();
 tick();
 setInterval(tick, 1500);
+setInterval(loadCommunities, 5000);  // 커뮤니티 running 상태 5초마다 갱신
 </script>
 </body></html>
 """
@@ -1023,8 +1275,96 @@ def api_usage(path):
 
 
 def api_communities():
+    """각 커뮤니티의 running 상태까지 포함해서 반환.
+
+    running 판별: communities/{id}/logs/system.log가 최근 120초 내 수정됨.
+    (로그 라이터가 주기적으로 쓰므로 활성 봇은 파일 mtime이 계속 갱신됨)
+    """
     from src import community as _comm
-    return {"items": _comm.list_communities(), "active": _comm.get_community_id()}
+    import time as _t
+
+    items = _comm.list_communities()
+    active_id = _comm.get_community_id()
+    now = _t.time()
+
+    for it in items:
+        try:
+            log_path = ROOT / "communities" / it["id"] / "logs" / "system.log"
+            if log_path.exists():
+                mtime = log_path.stat().st_mtime
+                age = now - mtime
+                it["running"] = age < 120
+                it["last_log_age_sec"] = int(age)
+            else:
+                it["running"] = False
+                it["last_log_age_sec"] = None
+        except Exception:
+            it["running"] = False
+            it["last_log_age_sec"] = None
+
+    return {"items": items, "active": active_id}
+
+
+def _serve_avatar(handler, path):
+    """에이전트 아바타 이미지 서빙."""
+    cid = _read_community(path)
+    if cid:
+        _set_active_community(cid)
+    agent_id = _read_query(path, "id", "")
+    variant = _read_query(path, "variant", "") or ""  # "" or "full"
+    if not agent_id:
+        handler._send(404, b"missing id", "text/plain")
+        return
+
+    from src import community as _comm
+    from src.core.profile import load_profile
+
+    # 1. DB profile의 avatar_filename 우선
+    profile = load_profile(agent_id) or {}
+    fname = profile.get("avatar_filename") or ""
+    target_path = None
+    if fname:
+        base, ext = os.path.splitext(fname)
+        if variant == "full":
+            # full variant 탐색: agent-mgr-001.png → agent-mgr-001-full.png
+            full_fname = f"{base}-full{ext}"
+            target_path = _comm.get_avatar_path(full_fname)
+            if not target_path:
+                target_path = _comm.get_avatar_path(fname)
+        else:
+            target_path = _comm.get_avatar_path(fname)
+
+    # 2. agent_id로 직접 스캔
+    if not target_path:
+        target_path = _comm.find_avatar(agent_id)
+
+    if not target_path or not os.path.exists(target_path):
+        # placeholder: 빈 PNG 작은 것
+        placeholder = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xcf\xc0\x00\x00\x00\x03\x00\x01\x08\x00\x01\x10t\x08\xd7\x00\x00\x00\x00IEND\xaeB`\x82"
+        handler.send_response(200)
+        handler.send_header("Content-Type", "image/png")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.send_header("Content-Length", str(len(placeholder)))
+        handler.end_headers()
+        handler.wfile.write(placeholder)
+        return
+
+    try:
+        with open(target_path, "rb") as f:
+            data = f.read()
+    except Exception as e:
+        handler._send(500, str(e).encode(), "text/plain")
+        return
+
+    # content-type
+    ext = os.path.splitext(target_path)[1].lower().lstrip(".")
+    ctype = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}.get(ext, "application/octet-stream")
+    handler.send_response(200)
+    handler.send_header("Content-Type", ctype)
+    handler.send_header("Cache-Control", "public, max-age=300")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -1069,6 +1409,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json(api_usage(self.path))
             elif p == "/api/communities":
                 self._json(api_communities())
+            elif p == "/api/avatar":
+                _serve_avatar(self, self.path)
             else:
                 self._send(404, b"not found", "text/plain")
         except Exception as e:
