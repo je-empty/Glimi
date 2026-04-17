@@ -3,16 +3,20 @@
 Glimi Web Dashboard — 서버 상태 실시간 관찰 (read-only).
 
 CLI dashboard(src/tui/dashboard.py)와 동일한 데이터 소스(src.core.monitor)를 공유.
-서버 제어(start/stop/restart) 기능은 여기 없음 — 그건 wizard 소관.
+서버 제어는 wizard 소관 — 이 대시보드는 오직 관찰만.
+
+CLI dashboard의 핵심 UX를 웹으로 옮김:
+  - 상단 탭: Overview / Agents / Channels / Events / Logs
+  - 에이전트 블록: 평상시 컴팩트, thinking/speaking 시 자동 확장
+    (경과 시간 프로그레스 바, 최근 추론 로그, 최근 대화)
+  - thinking = 노랑 테두리, speaking = 시안 테두리
 
 실행:
   GLIMI_COMMUNITY=qa python3 scripts/web_dashboard.py
-  python3 scripts/web_dashboard.py qa           # CLI 인자로 커뮤니티 지정
+  python3 scripts/web_dashboard.py qa
   python3 scripts/web_dashboard.py dev --port 8765
 
-접속:
-  http://127.0.0.1:8765
-  http://127.0.0.1:8765/?community=qa   (쿼리스트링으로도 가능 — live 전환)
+접속: http://127.0.0.1:8765  (쿼리 ?community=qa 로 live 전환)
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ import os
 import socketserver
 import sys
 from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,21 +43,24 @@ HTML = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
-    --bg: #0a0a0f;
-    --bg-2: #10101a;
-    --panel: #141420;
-    --panel-2: #1a1a28;
-    --border: #242438;
-    --border-soft: #1e1e2e;
-    --text: #e4e4ec;
-    --text-dim: #9696a8;
-    --text-faint: #5a5a6a;
+    --bg: #07070c;
+    --bg-grad: radial-gradient(ellipse at top left, #1a1a2e 0%, #0a0a14 55%, #07070c 100%);
+    --panel: #13131f;
+    --panel-2: #191927;
+    --panel-3: #1f1f30;
+    --border: #2a2a3e;
+    --border-soft: #1f1f2e;
+    --text: #e8e8f0;
+    --text-dim: #9393a6;
+    --text-faint: #5a5a6d;
     --accent: #7cb7ff;
     --accent-2: #a78bfa;
     --ok: #6ee7a8;
     --warn: #fbbf24;
     --err: #f87171;
     --cmd: #c084fc;
+    --thinking: #fde047;
+    --speaking: #67e8f9;
     --mgr: #60a5fa;
     --creator: #fbbf24;
     --persona: #a78bfa;
@@ -61,137 +69,232 @@ HTML = r"""<!doctype html>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
   body {
-    background: radial-gradient(ellipse at top, #14142a 0%, #0a0a0f 60%);
+    background: var(--bg-grad); background-color: var(--bg);
     color: var(--text);
     font: 13px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Pretendard", "Noto Sans KR", sans-serif;
     font-feature-settings: "ss01", "cv01";
   }
-  .mono { font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; }
+  .mono { font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace; }
 
-  /* ── 레이아웃 ── */
-  .app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+  /* ── App Shell ── */
+  .app { display: grid; grid-template-rows: auto auto 1fr; height: 100vh; }
 
-  header {
-    padding: 12px 20px;
-    background: linear-gradient(180deg, rgba(22,22,36,0.95), rgba(18,18,30,0.85));
-    backdrop-filter: blur(12px);
+  /* ── Status Bar ── */
+  header.status {
+    padding: 10px 22px;
+    background: linear-gradient(180deg, rgba(22,22,42,0.95), rgba(14,14,26,0.85));
+    backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 18px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   }
-  header .brand { font-size: 16px; font-weight: 600; letter-spacing: 0.3px; color: var(--accent); }
-  header .brand .dot { color: var(--accent-2); }
-  header .community { font-size: 12px; color: var(--text-dim); padding: 3px 10px; background: var(--panel); border-radius: 12px; border: 1px solid var(--border-soft); }
-  header .pills { display: flex; gap: 8px; flex: 1; }
-  header select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 4px 8px; font-size: 12px; }
-  .pill { font-size: 11px; padding: 4px 12px; border-radius: 999px; background: var(--panel); color: var(--text-dim); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; gap: 6px; }
+  .brand { font-size: 15px; font-weight: 700; letter-spacing: 0.3px; color: var(--accent); display: flex; align-items: center; gap: 4px; }
+  .brand .dot { color: var(--accent-2); }
+  .brand small { font-size: 10px; font-weight: 500; color: var(--text-faint); margin-left: 8px; letter-spacing: 1px; text-transform: uppercase; }
+  .pill {
+    font-size: 11px; padding: 4px 11px; border-radius: 999px; background: var(--panel);
+    color: var(--text-dim); border: 1px solid var(--border-soft);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
   .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
   .pill.on::before { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
   .pill.on { color: var(--ok); border-color: rgba(110,231,168,0.3); background: rgba(110,231,168,0.08); }
   .pill.off::before { background: var(--err); }
   .pill.off { color: var(--err); border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.08); }
-  .pill.neutral { color: var(--text-dim); }
+  .pill.neutral { color: var(--text); }
+  .pill.neutral b { color: var(--text); }
+  .stats-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  select.community-sel {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px;
+    padding: 5px 10px; font-size: 12px; cursor: pointer;
+  }
 
-  .grid {
+  /* ── Tab Bar ── */
+  nav.tabs {
+    padding: 0 22px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 2px;
+    overflow-x: auto;
+  }
+  nav.tabs button {
+    background: transparent; color: var(--text-dim); border: none;
+    padding: 11px 16px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    border-bottom: 2px solid transparent; transition: all 0.15s;
+    font-family: inherit;
+  }
+  nav.tabs button:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  nav.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  nav.tabs button .count { font-size: 10px; margin-left: 4px; padding: 1px 6px; background: var(--panel-2); border-radius: 6px; color: var(--text-dim); }
+  nav.tabs button.active .count { background: rgba(124,183,255,0.15); color: var(--accent); }
+
+  /* ── Main Content ── */
+  main {
+    min-height: 0; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .view { display: none; flex: 1; overflow-y: auto; padding: 18px 22px; }
+  .view.active { display: block; }
+  .view::-webkit-scrollbar { width: 8px; }
+  .view::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ── Overview Grid ── */
+  .overview-grid {
     display: grid;
-    grid-template-columns: 320px 1fr 380px;
-    grid-template-rows: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 14px;
-    padding: 14px;
-    min-height: 0;
-    overflow: hidden;
+    margin-bottom: 18px;
   }
-  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 12px;
+    padding: 14px 18px;
+  }
+  .kpi .label { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .kpi .value { font-size: 22px; font-weight: 600; color: var(--text); }
+  .kpi .value small { font-size: 13px; color: var(--text-dim); font-weight: 400; margin-left: 6px; }
 
-  /* ── Card ── */
-  .card {
+  .section-title {
+    font-size: 12px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin: 20px 2px 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border-soft);
+  }
+
+  /* ── Agent Grid ── */
+  .agent-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  .agent-card {
     background: var(--panel);
-    border: 1px solid var(--border-soft);
-    border-radius: 14px;
+    border: 1.5px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 12px 14px;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.3s;
+    position: relative;
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
   }
-  .card h3 {
-    padding: 10px 14px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: var(--text-dim);
-    background: linear-gradient(180deg, rgba(30,30,46,0.6), transparent);
-    border-bottom: 1px solid var(--border-soft);
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .card h3 .badge { font-size: 10px; padding: 2px 8px; background: var(--panel-2); border-radius: 8px; color: var(--text); font-weight: 500; letter-spacing: 0.5px; text-transform: none; border: 1px solid var(--border-soft); }
-  .card .body { flex: 1; overflow-y: auto; padding: 8px 10px; min-height: 0; }
-  .card .body::-webkit-scrollbar { width: 6px; }
-  .card .body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  .card .body::-webkit-scrollbar-track { background: transparent; }
+  .agent-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .agent-card.mgr { border-left: 3px solid var(--mgr); }
+  .agent-card.creator { border-left: 3px solid var(--creator); }
+  .agent-card.persona { border-left: 3px solid var(--persona); }
 
-  /* ── Agent Card ── */
-  .agent {
-    padding: 10px 12px;
-    margin-bottom: 6px;
-    background: var(--panel-2);
-    border-radius: 10px;
-    border: 1px solid var(--border-soft);
-    transition: border-color 0.2s, transform 0.15s;
-    display: flex; align-items: center; gap: 12px;
+  /* Thinking/speaking: card EXPANDS to full-width + glow animation */
+  .agent-card.thinking {
+    grid-column: 1 / -1;
+    border-color: var(--thinking);
+    box-shadow: 0 0 0 1px var(--thinking), 0 0 24px rgba(253,224,71,0.15);
+    background: linear-gradient(135deg, var(--panel) 0%, rgba(253,224,71,0.04) 100%);
   }
-  .agent:hover { border-color: var(--accent); }
-  .agent.thinking { border-color: var(--warn); animation: pulse 1.6s infinite; }
-  .agent.speaking { border-color: var(--accent); animation: pulse 1.2s infinite; }
-  @keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
-    50% { box-shadow: 0 0 0 4px rgba(251,191,36,0.15); }
+  .agent-card.speaking {
+    grid-column: 1 / -1;
+    border-color: var(--speaking);
+    box-shadow: 0 0 0 1px var(--speaking), 0 0 24px rgba(103,232,249,0.15);
+    background: linear-gradient(135deg, var(--panel) 0%, rgba(103,232,249,0.04) 100%);
   }
-  .agent .emoji { font-size: 26px; line-height: 1; width: 32px; text-align: center; }
-  .agent .meta { flex: 1; min-width: 0; }
-  .agent .row1 { display: flex; align-items: baseline; gap: 6px; }
-  .agent .name { font-weight: 600; font-size: 13px; }
-  .agent .type { font-size: 10px; padding: 1px 6px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text); font-weight: 500; }
-  .agent .type.mgr { background: rgba(96,165,250,0.15); color: var(--mgr); }
-  .agent .type.creator { background: rgba(251,191,36,0.15); color: var(--creator); }
-  .agent .type.persona { background: rgba(167,139,250,0.15); color: var(--persona); }
-  .agent .row2 { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); margin-top: 3px; }
-  .agent .emo { color: var(--text); }
-  .agent .bar { flex: 1; max-width: 80px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-  .agent .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #4a90e2, #e25c4a); transition: width 0.3s; }
-  .agent .state-tag { font-size: 9.5px; padding: 2px 6px; border-radius: 5px; letter-spacing: 0.5px; text-transform: uppercase; margin-left: 4px; }
-  .agent.thinking .state-tag { background: rgba(251,191,36,0.15); color: var(--warn); }
-  .agent.speaking .state-tag { background: rgba(124,183,255,0.15); color: var(--accent); }
 
-  /* ── Channel ── */
-  .channel {
-    padding: 8px 12px;
-    margin-bottom: 4px;
-    background: var(--panel-2);
-    border-radius: 8px;
-    border: 1px solid var(--border-soft);
-    display: flex; flex-direction: column; gap: 2px;
+  .agent-head { display: flex; align-items: center; gap: 10px; }
+  .agent-head .emoji { font-size: 28px; line-height: 1; flex-shrink: 0; }
+  .agent-head .info { flex: 1; min-width: 0; }
+  .agent-head .name-row { display: flex; align-items: baseline; gap: 6px; }
+  .agent-head .name { font-size: 14px; font-weight: 600; }
+  .agent-head .type-tag {
+    font-size: 9.5px; padding: 1px 6px; border-radius: 5px;
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500;
   }
-  .channel .name {
-    display: flex; align-items: center; gap: 6px;
-    font-family: "SF Mono", ui-monospace, monospace; font-size: 12.5px;
-  }
-  .channel .name::before { content: '#'; color: var(--text-faint); font-weight: 400; }
-  .channel.kind-mgr .name { color: var(--mgr); }
-  .channel.kind-dm .name { color: var(--accent); }
-  .channel.kind-group .name { color: var(--ok); }
-  .channel.kind-internal-dm .name { color: var(--cmd); }
-  .channel.kind-internal-group .name { color: var(--creator); }
-  .channel .meta { font-size: 10.5px; color: var(--text-dim); display: flex; gap: 8px; }
-  .channel .meta .sep { color: var(--text-faint); }
-  .channel.hot { border-color: rgba(110,231,168,0.3); }
+  .agent-head .type-tag.mgr { background: rgba(96,165,250,0.15); color: var(--mgr); }
+  .agent-head .type-tag.creator { background: rgba(251,191,36,0.15); color: var(--creator); }
+  .agent-head .type-tag.persona { background: rgba(167,139,250,0.15); color: var(--persona); }
+  .agent-head .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
+  .agent-head .status-dot.active { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
 
-  /* ── Conversation ── */
+  .agent-head .state-badge {
+    font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
+    letter-spacing: 0.8px; text-transform: uppercase; margin-left: auto;
+    display: none;
+  }
+  .agent-card.thinking .state-badge.thinking { display: inline-block; background: var(--thinking); color: #000; }
+  .agent-card.speaking .state-badge.speaking { display: inline-block; background: var(--speaking); color: #000; }
+  .agent-card.thinking .state-badge.thinking::before { content: '🧠 '; }
+  .agent-card.speaking .state-badge.speaking::before { content: '💬 '; }
+
+  .agent-meta { display: flex; gap: 10px; align-items: center; margin-top: 6px; font-size: 11px; color: var(--text-dim); }
+  .agent-meta .emo-bar { display: flex; align-items: center; gap: 4px; }
+  .agent-meta .bar { width: 60px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .agent-meta .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #4a90e2, #e25c4a); transition: width 0.3s; }
+
+  /* Expanded panel when thinking/speaking */
+  .agent-expanded { display: none; margin-top: 12px; }
+  .agent-card.thinking .agent-expanded,
+  .agent-card.speaking .agent-expanded { display: block; }
+
+  .progress-wrap { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-dim); margin-bottom: 10px; }
+  .progress-wrap .elapsed { font-family: "SF Mono", monospace; color: var(--text); font-weight: 600; }
+  .progress-bar {
+    flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+    position: relative;
+  }
+  .progress-bar > span {
+    display: block; height: 100%; width: 100%;
+    background: linear-gradient(90deg, transparent, var(--thinking), transparent);
+    background-size: 40% 100%; background-repeat: no-repeat;
+    animation: slide 2s linear infinite;
+  }
+  .agent-card.speaking .progress-bar > span { background: linear-gradient(90deg, transparent, var(--speaking), transparent); background-size: 40% 100%; background-repeat: no-repeat; }
+  @keyframes slide {
+    0% { background-position: -40% 0; }
+    100% { background-position: 140% 0; }
+  }
+
+  .agent-logs {
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 10.5px; color: var(--text-dim);
+    background: var(--panel-3); border-radius: 8px; padding: 8px 10px;
+    max-height: 100px; overflow-y: auto; margin-bottom: 8px;
+  }
+  .agent-logs .logline { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+
+  .agent-chat {
+    background: var(--panel-3); border-radius: 8px; padding: 8px 10px;
+    font-size: 11.5px;
+  }
+  .agent-chat .cline { padding: 2px 0; }
+  .agent-chat .cline b { color: var(--accent-2); margin-right: 6px; }
+  .agent-chat .cline.user b { color: var(--user); }
+
+  /* ── Channel Grid ── */
+  .channel-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+  }
+  .channel-card {
+    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 10px;
+    padding: 10px 14px; display: flex; flex-direction: column; gap: 4px;
+    border-left: 3px solid var(--text-faint);
+  }
+  .channel-card.kind-mgr { border-left-color: var(--mgr); }
+  .channel-card.kind-dm { border-left-color: var(--accent); }
+  .channel-card.kind-group { border-left-color: var(--ok); }
+  .channel-card.kind-internal-dm { border-left-color: var(--cmd); }
+  .channel-card.kind-internal-group { border-left-color: var(--creator); }
+  .channel-card .name { font-family: "SF Mono", monospace; font-size: 12.5px; font-weight: 500; }
+  .channel-card .name::before { content: '#'; color: var(--text-faint); }
+  .channel-card .meta { font-size: 10.5px; color: var(--text-dim); display: flex; gap: 8px; }
+  .channel-card .meta .sep { color: var(--text-faint); }
+  .channel-card.hot { border-color: rgba(110,231,168,0.3); }
+
+  /* ── Messages ── */
+  .msg-list { display: flex; flex-direction: column; gap: 6px; }
   .msg {
-    padding: 8px 10px;
-    margin-bottom: 6px;
-    background: var(--panel-2);
-    border-radius: 8px;
-    border-left: 3px solid var(--accent-2);
+    padding: 8px 12px; border-radius: 8px;
+    background: var(--panel);
+    border-left: 3px solid var(--persona);
+    border-top: 1px solid var(--border-soft);
+    border-right: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
     font-size: 12.5px;
   }
   .msg.user { border-left-color: var(--user); }
@@ -204,18 +307,23 @@ HTML = r"""<!doctype html>
   .msg .ts { color: var(--text-faint); font-size: 10.5px; margin-left: auto; }
   .msg .text { color: var(--text); word-break: break-word; white-space: pre-wrap; }
 
-  /* ── Event ── */
-  .event {
-    padding: 6px 10px; margin-bottom: 4px; font-size: 11.5px;
-    border-left: 2px solid var(--cmd); background: var(--panel-2);
-    border-radius: 0 6px 6px 0;
-  }
-  .event .type { color: var(--cmd); font-weight: 600; margin-right: 6px; }
+  /* ── Events ── */
+  .event-list { display: flex; flex-direction: column; gap: 4px; }
+  .event { padding: 8px 12px; font-size: 11.5px; background: var(--panel); border-left: 2px solid var(--cmd); border-radius: 0 8px 8px 0; }
+  .event .type { color: var(--cmd); font-weight: 600; margin-right: 8px; }
   .event .desc { color: var(--text-dim); }
   .event .ts { color: var(--text-faint); font-size: 10px; margin-left: 6px; }
 
-  /* ── Log ── */
-  .log-box { font-family: "SF Mono", ui-monospace, monospace; font-size: 11.5px; white-space: pre-wrap; word-break: break-all; }
+  /* ── Log View ── */
+  .log-view {
+    font-family: "SF Mono", ui-monospace, monospace; font-size: 11.5px;
+    white-space: pre-wrap; word-break: break-all;
+    background: var(--panel); padding: 12px 16px; border-radius: 10px;
+    border: 1px solid var(--border-soft);
+    max-height: calc(100vh - 200px); overflow-y: auto;
+  }
+  .log-view::-webkit-scrollbar { width: 6px; }
+  .log-view::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   .log-line { padding: 1px 0; }
   .log-line.err { color: var(--err); }
   .log-line.warn { color: var(--warn); }
@@ -224,185 +332,272 @@ HTML = r"""<!doctype html>
   .log-line.tool { color: var(--cmd); font-weight: 500; }
   .log-line.dim { color: var(--text-faint); }
 
-  .empty { padding: 24px 12px; text-align: center; color: var(--text-faint); font-size: 12px; }
-
-  /* footer */
-  footer { padding: 8px 20px; background: var(--bg-2); border-top: 1px solid var(--border-soft); font-size: 10.5px; color: var(--text-faint); display: flex; justify-content: space-between; }
-
-  /* responsive */
-  @media (max-width: 1100px) {
-    .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; height: auto; }
-    html, body { overflow-y: auto; }
-    .app { height: auto; min-height: 100vh; }
-  }
+  .empty { padding: 32px 12px; text-align: center; color: var(--text-faint); font-size: 12px; font-style: italic; }
 </style>
 </head><body>
 <div class="app">
-  <header>
-    <span class="brand">◈ Glimi<span class="dot">.</span>Dashboard</span>
-    <span class="community" id="community-label">—</span>
-    <div class="pills" id="pills"></div>
-    <select id="community-select" title="커뮤니티 전환"></select>
+  <!-- Status Bar -->
+  <header class="status">
+    <span class="brand">◈ Glimi<span class="dot">.</span><small>dashboard</small></span>
+    <span id="pills-left"></span>
+    <div class="stats-right">
+      <span id="pills-right"></span>
+      <select class="community-sel" id="community-select" title="커뮤니티 전환"></select>
+    </div>
   </header>
 
-  <div class="grid">
-    <!-- Left: Agents + Events -->
-    <div class="col">
-      <div class="card" style="flex: 1 1 auto; min-height: 200px;">
-        <h3>Members <span class="badge" id="agent-count">0</span></h3>
-        <div class="body" id="agents"></div>
+  <!-- Tab Nav -->
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="agents">Agents <span class="count" id="tc-agents">0</span></button>
+    <button data-tab="channels">Channels <span class="count" id="tc-channels">0</span></button>
+    <button data-tab="messages">Messages <span class="count" id="tc-messages">0</span></button>
+    <button data-tab="events">Events <span class="count" id="tc-events">0</span></button>
+    <button data-tab="logs">Logs</button>
+  </nav>
+
+  <!-- Views -->
+  <main>
+    <div class="view active" id="view-overview">
+      <div class="overview-grid">
+        <div class="kpi"><div class="label">Bot Status</div><div class="value" id="kpi-bot">—</div></div>
+        <div class="kpi"><div class="label">Community · User</div><div class="value" id="kpi-user">—</div></div>
+        <div class="kpi"><div class="label">Onboarding Phase</div><div class="value" id="kpi-phase">—</div></div>
+        <div class="kpi"><div class="label">Total Messages</div><div class="value" id="kpi-msgs">0</div></div>
       </div>
-      <div class="card" style="flex: 0 0 40%; min-height: 140px;">
-        <h3>Events <span class="badge" id="event-count">0</span></h3>
-        <div class="body" id="events"></div>
-      </div>
+      <div class="section-title">Active Members</div>
+      <div class="agent-grid" id="overview-agents"></div>
+      <div class="section-title">Recent Conversations</div>
+      <div class="msg-list" id="overview-msgs"></div>
     </div>
 
-    <!-- Middle: Conversations + Channels -->
-    <div class="col">
-      <div class="card" style="flex: 2 1 0; min-height: 200px;">
-        <h3>Recent Conversations <span class="badge" id="msg-count">0</span></h3>
-        <div class="body" id="messages"></div>
-      </div>
-      <div class="card" style="flex: 1 1 0; min-height: 180px;">
-        <h3>Channels <span class="badge" id="channel-count">0</span></h3>
-        <div class="body" id="channels"></div>
-      </div>
+    <div class="view" id="view-agents">
+      <div class="agent-grid" id="agents-full"></div>
     </div>
 
-    <!-- Right: System Log -->
-    <div class="col">
-      <div class="card" style="flex: 1 1 auto; min-height: 200px;">
-        <h3>System Log <span class="badge" id="log-count">—</span></h3>
-        <div class="body log-box" id="logs"></div>
-      </div>
+    <div class="view" id="view-channels">
+      <div class="channel-grid" id="channels-full"></div>
     </div>
-  </div>
+
+    <div class="view" id="view-messages">
+      <div class="msg-list" id="messages-full"></div>
+    </div>
+
+    <div class="view" id="view-events">
+      <div class="event-list" id="events-full"></div>
+    </div>
+
+    <div class="view" id="view-logs">
+      <div class="log-view" id="logs-full"></div>
+    </div>
+  </main>
 </div>
 
 <script>
 const params = new URLSearchParams(location.search);
 let COMMUNITY = params.get('community') || null;
+let ACTIVE_TAB = 'overview';
 
-function esc(s) { return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
-async function j(u) {
-  try { const r = await fetch(u); return await r.json(); }
-  catch { return null; }
-}
-function q(u) {
-  return COMMUNITY ? `${u}?community=${encodeURIComponent(COMMUNITY)}` : u;
-}
-function keepBottom(el) {
-  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-  return () => { if (atBottom) el.scrollTop = el.scrollHeight; };
-}
-
+function esc(s) { return String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+async function j(u) { try { const r = await fetch(u); return await r.json(); } catch { return null; } }
+function q(u) { return COMMUNITY ? `${u}${u.includes('?') ? '&' : '?'}community=${encodeURIComponent(COMMUNITY)}` : u; }
+function atBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 80; }
 function classifyLog(line) {
-  const low = line.toLowerCase();
-  if (/❌|fatal|exception|failed/.test(line) || /\berror\b/i.test(line)) return 'err';
-  if (/⚠|warn|오류|경고/i.test(line)) return 'warn';
-  if (/✓|완료|ready|success|[Tool] ✓/.test(line)) return 'ok';
-  if (/\[Tool\]|<tools>|<\/tools>|<call |<\/call>|<tool_result/.test(line)) return 'tool';
+  if (/❌|FATAL|Exception|failed|오류/.test(line) || /\berror\b/i.test(line)) return 'err';
+  if (/⚠|warn|경고/i.test(line)) return 'warn';
+  if (/✓|완료|ready|success|Tool registered/i.test(line)) return 'ok';
+  if (/\[Tool\]|<tools>|<\/tools>|<call |<\/call>|<tool_result/i.test(line)) return 'tool';
   return '';
+}
+
+function fmtElapsed(secs) {
+  if (!secs) return '0s';
+  if (secs < 60) return `${Math.floor(secs)}s`;
+  return `${Math.floor(secs/60)}:${String(Math.floor(secs%60)).padStart(2,'0')}`;
+}
+
+function roleClass(m) {
+  if (m.is_user) return 'user';
+  if (m.speaker_id && m.speaker_id.includes('mgr')) return 'mgr';
+  if (m.speaker_id && m.speaker_id.includes('creator')) return 'creator';
+  return 'persona';
+}
+
+function renderAgent(a, compact=false) {
+  const expanded = a.thinking || a.speaking;
+  const cls = [
+    'agent-card', a.type,
+    a.thinking ? 'thinking' : '',
+    a.speaking ? 'speaking' : '',
+  ].filter(Boolean).join(' ');
+  const pct = Math.min(100, (a.intensity || 0) * 10);
+  const elapsedSec = a.thinking ? a.thinking_seconds : a.speaking ? a.speaking_seconds : 0;
+  const dot = a.status === 'active' ? 'active' : '';
+
+  let expandedHtml = '';
+  if (expanded) {
+    const logLines = (a._logs || []).map(l => `<div class="logline">${esc(l)}</div>`).join('');
+    const chatLines = (a._chat || []).map(c =>
+      `<div class="cline ${c.is_user ? 'user' : ''}"><b>${esc(c.speaker)}:</b>${esc(c.message.slice(0, 90))}</div>`
+    ).join('');
+    expandedHtml = `
+      <div class="agent-expanded">
+        <div class="progress-wrap">
+          <span>${a.thinking ? '추론 중' : '전송 중'}</span>
+          <div class="progress-bar"><span></span></div>
+          <span class="elapsed">${fmtElapsed(elapsedSec)}</span>
+        </div>
+        ${logLines ? `<div class="agent-logs">${logLines}</div>` : ''}
+        ${chatLines ? `<div class="agent-chat">${chatLines}</div>` : ''}
+      </div>
+    `;
+  }
+
+  return `<div class="${cls}">
+    <div class="agent-head">
+      <span class="emoji">${a.emoji}</span>
+      <div class="info">
+        <div class="name-row">
+          <span class="status-dot ${dot}"></span>
+          <span class="name">${esc(a.name)}</span>
+          <span class="type-tag ${a.type}">${esc(a.type)}</span>
+        </div>
+        <div class="agent-meta">
+          <span>${esc(a.emotion)}</span>
+          <div class="emo-bar">
+            <div class="bar"><span style="width:${pct}%"></span></div>
+            <span>${a.intensity}/10</span>
+          </div>
+          ${a.mbti ? `<span>· ${esc(a.mbti)}</span>` : ''}
+        </div>
+      </div>
+      <span class="state-badge thinking">thinking</span>
+      <span class="state-badge speaking">speaking</span>
+    </div>
+    ${expandedHtml}
+  </div>`;
+}
+
+function renderMessage(m) {
+  return `<div class="msg ${roleClass(m)}">
+    <div class="head">
+      <span class="who">${esc(m.speaker)}</span>
+      <span class="ch">#${esc(m.channel)}</span>
+      <span class="ts">${esc((m.timestamp||'').slice(11, 19))}</span>
+    </div>
+    <div class="text">${esc(m.message)}</div>
+  </div>`;
+}
+
+function renderChannel(c) {
+  const hot = c.msg_count > 0 && c.last_ago && !c.last_ago.includes('시간') && !c.last_ago.includes('일');
+  return `<div class="channel-card kind-${c.kind} ${hot ? 'hot' : ''}">
+    <div class="name">${esc(c.name)}</div>
+    <div class="meta">
+      <span>${c.msg_count} msgs</span>
+      <span class="sep">·</span>
+      <span>${c.participant_count}명</span>
+      <span class="sep">·</span>
+      <span>${esc(c.last_ago || '—')}</span>
+    </div>
+  </div>`;
+}
+
+function renderEvent(e) {
+  return `<div class="event">
+    <span class="type">${esc(e.type)}</span>
+    <span class="desc">${esc(e.description)}</span>
+    <span class="ts">${esc((e.timestamp||'').slice(11, 19))}</span>
+  </div>`;
 }
 
 async function tick() {
   const snap = await j(q('/api/snapshot'));
-  const logs = await j(q('/api/logs?tail=100'));
+  const logs = await j(q('/api/logs?tail=200'));
   if (!snap) return;
 
   COMMUNITY = snap.community_id;
-  document.getElementById('community-label').textContent = `community · ${snap.community_id}`;
-
-  // pills
   const b = snap.bot, m = snap.meta;
-  document.getElementById('pills').innerHTML = `
-    <span class="pill ${b.bot_alive ? 'on' : 'off'}">bot</span>
-    <span class="pill ${b.runner_alive ? 'on' : 'neutral'}">runner</span>
-    <span class="pill ${b.test_user_alive ? 'on' : 'neutral'}">test-user</span>
-    <span class="pill neutral">phase · <b style="color:var(--text)">${esc(m.onboarding_phase || '—')}</b></span>
-    <span class="pill neutral">user · <b style="color:var(--text)">${esc(m.user_name || '—')}</b></span>
-    <span class="pill neutral">msgs · <b style="color:var(--text)">${snap.total_messages || 0}</b></span>
-  `;
 
-  // Agents
-  document.getElementById('agent-count').textContent = snap.agents.length;
-  document.getElementById('agents').innerHTML = snap.agents.map(a => {
-    const pct = Math.min(100, (a.intensity || 0) * 10);
-    const stateCls = a.speaking ? 'speaking' : (a.thinking ? 'thinking' : '');
-    const stateTag = a.speaking ? '<span class="state-tag">speaking</span>' : a.thinking ? '<span class="state-tag">thinking</span>' : '';
-    return `<div class="agent ${stateCls}">
-      <span class="emoji">${a.emoji}</span>
-      <div class="meta">
-        <div class="row1">
-          <span class="name">${esc(a.name)}</span>
-          <span class="type ${a.type}">${esc(a.type)}</span>
-          ${stateTag}
-        </div>
-        <div class="row2">
-          <span class="emo">${esc(a.emotion)}</span>
-          <span>${a.intensity}/10</span>
-          <div class="bar"><span style="width:${pct}%"></span></div>
-          ${a.mbti ? `<span>· ${esc(a.mbti)}</span>` : ''}
-        </div>
-      </div>
-    </div>`;
-  }).join('') || '<div class="empty">no members</div>';
+  // ── Status bar pills ──
+  const leftPills = [
+    `<span class="pill ${b.bot_alive ? 'on' : 'off'}">bot</span>`,
+    `<span class="pill ${b.runner_alive ? 'on' : 'neutral'}">runner</span>`,
+    `<span class="pill ${b.test_user_alive ? 'on' : 'neutral'}">test-user</span>`,
+  ].join('');
+  document.getElementById('pills-left').innerHTML = leftPills;
 
-  // Channels
-  document.getElementById('channel-count').textContent = snap.channels.length;
-  document.getElementById('channels').innerHTML = snap.channels.map(c => {
-    const ago = c.last_ago ? c.last_ago : '—';
-    const hot = c.msg_count > 0 && c.last_ago && !c.last_ago.includes('시간') && !c.last_ago.includes('일') ? 'hot' : '';
-    return `<div class="channel kind-${c.kind} ${hot}">
-      <div class="name">${esc(c.name)}</div>
-      <div class="meta">
-        <span>${c.msg_count} msgs</span>
-        <span class="sep">·</span>
-        <span>${c.participant_count}명</span>
-        <span class="sep">·</span>
-        <span>${esc(ago)}</span>
-      </div>
-    </div>`;
-  }).join('') || '<div class="empty">no channels</div>';
+  const rightPills = [
+    `<span class="pill neutral">phase · <b>${esc(m.onboarding_phase || '—')}</b></span>`,
+    `<span class="pill neutral">user · <b>${esc(m.user_name || '—')}</b></span>`,
+    `<span class="pill neutral">msgs · <b>${snap.total_messages || 0}</b></span>`,
+    `<span class="pill neutral">· ${esc(snap.community_id)}</span>`,
+  ].join('');
+  document.getElementById('pills-right').innerHTML = rightPills;
 
-  // Events
-  document.getElementById('event-count').textContent = snap.events.length;
-  document.getElementById('events').innerHTML = snap.events.map(e =>
-    `<div class="event">
-      <span class="type">${esc(e.type)}</span>
-      <span class="desc">${esc(e.description)}</span>
-      <span class="ts">${esc(e.timestamp.slice(11, 19))}</span>
-    </div>`
-  ).join('') || '<div class="empty">no events</div>';
+  // ── Tab counts ──
+  document.getElementById('tc-agents').textContent = snap.agents.length;
+  document.getElementById('tc-channels').textContent = snap.channels.length;
+  document.getElementById('tc-messages').textContent = snap.recent_messages.length;
+  document.getElementById('tc-events').textContent = snap.events.length;
 
-  // Conversations
-  const msgsEl = document.getElementById('messages');
-  const keepMsgs = keepBottom(msgsEl);
-  document.getElementById('msg-count').textContent = snap.recent_messages.length;
-  msgsEl.innerHTML = snap.recent_messages.map(m => {
-    const roleClass = m.is_user ? 'user' : (m.speaker_id.includes('mgr') ? 'mgr' : m.speaker_id.includes('creator') ? 'creator' : 'persona');
-    return `<div class="msg ${roleClass}">
-      <div class="head">
-        <span class="who">${esc(m.speaker)}</span>
-        <span class="ch">#${esc(m.channel)}</span>
-        <span class="ts">${esc((m.timestamp||'').slice(11, 19))}</span>
-      </div>
-      <div class="text">${esc(m.message)}</div>
-    </div>`;
-  }).join('') || '<div class="empty">no conversations yet</div>';
-  keepMsgs();
-
-  // Logs
-  if (logs && logs.lines) {
-    const logEl = document.getElementById('logs');
-    const keepLog = keepBottom(logEl);
-    document.getElementById('log-count').textContent = `${logs.lines.length} lines`;
-    logEl.innerHTML = logs.lines.map(l =>
-      `<div class="log-line ${classifyLog(l)}">${esc(l)}</div>`
-    ).join('') || '<div class="empty">(log empty)</div>';
-    keepLog();
+  // ── Enrich thinking/speaking agents with logs + chat (extra fetch) ──
+  const active = snap.agents.filter(a => a.thinking || a.speaking);
+  if (active.length) {
+    await Promise.all(active.map(async (a) => {
+      const extra = await j(q(`/api/agent_activity?id=${encodeURIComponent(a.id)}`));
+      if (extra) { a._logs = extra.logs || []; a._chat = extra.chat || []; }
+    }));
   }
+
+  // ── Overview ──
+  document.getElementById('kpi-bot').innerHTML = b.bot_alive
+    ? `<span style="color:var(--ok)">● Running</span>`
+    : `<span style="color:var(--err)">○ Stopped</span>`;
+  document.getElementById('kpi-user').innerHTML = `${esc(m.user_name || '—')}<small>@${esc(snap.community_id)}</small>`;
+  document.getElementById('kpi-phase').innerHTML = `${esc(m.onboarding_phase || '—')}`;
+  document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>total</small>`;
+
+  document.getElementById('overview-agents').innerHTML =
+    snap.agents.map(a => renderAgent(a, true)).join('') || '<div class="empty">no members</div>';
+
+  const msgsEl = document.getElementById('overview-msgs');
+  const keepMsgs = atBottom(msgsEl);
+  msgsEl.innerHTML = snap.recent_messages.slice(-10).map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
+  if (keepMsgs) msgsEl.scrollTop = msgsEl.scrollHeight;
+
+  // ── Full tabs ──
+  document.getElementById('agents-full').innerHTML =
+    snap.agents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
+  document.getElementById('channels-full').innerHTML =
+    snap.channels.map(renderChannel).join('') || '<div class="empty">no channels</div>';
+  const fullMsgsEl = document.getElementById('messages-full');
+  const keepFull = atBottom(fullMsgsEl);
+  fullMsgsEl.innerHTML = snap.recent_messages.map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
+  if (keepFull) fullMsgsEl.scrollTop = fullMsgsEl.scrollHeight;
+  document.getElementById('events-full').innerHTML =
+    snap.events.map(renderEvent).join('') || '<div class="empty">no events</div>';
+
+  // Logs tab
+  if (logs && logs.lines) {
+    const logEl = document.getElementById('logs-full');
+    const keepLog = atBottom(logEl);
+    logEl.innerHTML = logs.lines.map(l => `<div class="log-line ${classifyLog(l)}">${esc(l)}</div>`).join('') || '<div class="empty">(log empty)</div>';
+    if (keepLog) logEl.scrollTop = logEl.scrollHeight;
+  }
+}
+
+function initTabs() {
+  document.querySelectorAll('nav.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      document.getElementById('view-' + tab).classList.add('active');
+      ACTIVE_TAB = tab;
+    });
+  });
 }
 
 async function loadCommunities() {
@@ -421,6 +616,7 @@ async function loadCommunities() {
   };
 }
 
+initTabs();
 loadCommunities();
 tick();
 setInterval(tick, 1500);
@@ -430,17 +626,13 @@ setInterval(tick, 1500);
 
 
 def _read_community(path: str) -> Optional[str]:
-    """URL 쿼리에서 community 인자 추출."""
-    from urllib.parse import urlparse, parse_qs
     q = parse_qs(urlparse(path).query)
-    v = q.get("community", [None])[0]
-    return v
+    return q.get("community", [None])[0]
 
 
 def _set_active_community(cid: Optional[str]):
     if cid:
         os.environ["GLIMI_COMMUNITY"] = cid
-    # community 모듈 캐시 갱신
     from src import community as _comm
     if cid:
         _comm.set_community(cid)
@@ -450,10 +642,8 @@ def api_snapshot(path: str) -> dict:
     cid = _read_community(path)
     if cid:
         _set_active_community(cid)
-    # 모듈 지연 임포트 — community 설정 후 DB 경로 해석됨
     from src.core import monitor
     snap = monitor.snapshot()
-    # 채널 human ago 보강
     for c in snap["channels"]:
         c["last_ago"] = monitor.human_ago(c["last_ts"])
     return snap
@@ -464,11 +654,25 @@ def api_logs(path: str) -> dict:
     if cid:
         _set_active_community(cid)
     from src.core import monitor
-    from urllib.parse import urlparse, parse_qs
     q = parse_qs(urlparse(path).query)
-    tail = int(q.get("tail", ["100"])[0])
+    tail = int(q.get("tail", ["150"])[0])
     lines = monitor.get_recent_system_logs(tail_lines=tail)
     return {"lines": lines, "count": len(lines)}
+
+
+def api_agent_activity(path: str) -> dict:
+    cid = _read_community(path)
+    if cid:
+        _set_active_community(cid)
+    from src.core import monitor
+    q = parse_qs(urlparse(path).query)
+    agent_id = q.get("id", [""])[0]
+    if not agent_id:
+        return {"logs": [], "chat": []}
+    return {
+        "logs": monitor.get_agent_thinking_logs(agent_id, n=5),
+        "chat": monitor.get_agent_recent_chat(agent_id, limit=3),
+    }
 
 
 def api_communities() -> dict:
@@ -478,7 +682,7 @@ def api_communities() -> dict:
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    def log_message(self, *a, **kw):  # silence
+    def log_message(self, *a, **kw):
         return
 
     def _send(self, status: int, body: bytes, content_type: str):
@@ -506,6 +710,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json(api_snapshot(self.path))
             elif path == "/api/logs":
                 self._json(api_logs(self.path))
+            elif path == "/api/agent_activity":
+                self._json(api_agent_activity(self.path))
             elif path == "/api/communities":
                 self._json(api_communities())
             else:
@@ -538,10 +744,6 @@ def main():
     print(f"[web-dashboard] http://{args.host}:{args.port}  (community={cid})")
     with ReusableServer((args.host, args.port), Handler) as srv:
         srv.serve_forever()
-
-
-# Optional 타입 (Python 3.9 호환)
-from typing import Optional  # noqa: E402
 
 
 if __name__ == "__main__":

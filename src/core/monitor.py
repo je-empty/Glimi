@@ -98,10 +98,13 @@ def get_agents() -> list[dict]:
     out = []
     for a in agents:
         emo = a.get("current_emotion") or "평온"
+        aid = a["id"]
+        is_t = log_writer.is_thinking(aid)
+        is_s = log_writer.is_speaking(aid)
         out.append({
-            "id": a["id"],
+            "id": aid,
             "type": a.get("type", ""),
-            "name": a.get("name", a["id"]),
+            "name": a.get("name", aid),
             "status": a.get("status", ""),
             "emotion": emo,
             "emoji": EMOTION_EMOJI.get(emo, "・"),
@@ -109,10 +112,56 @@ def get_agents() -> list[dict]:
             "mbti": a.get("mbti", ""),
             "age": a.get("age", 0) or 0,
             "last_active": a.get("last_active", ""),
-            "thinking": log_writer.is_thinking(a["id"]),
-            "speaking": log_writer.is_speaking(a["id"]),
+            "thinking": is_t,
+            "speaking": is_s,
+            "thinking_seconds": log_writer.thinking_seconds(aid) if is_t else 0,
+            "speaking_seconds": log_writer.speaking_seconds(aid) if is_s else 0,
         })
     return out
+
+
+def get_agent_thinking_logs(agent_id: str, n: int = 5) -> list[str]:
+    """system.log에서 특정 에이전트 관련 최근 로그 라인 (확장 카드용)."""
+    lines = get_recent_system_logs(tail_lines=80)
+    filtered = [l for l in lines if f"[{agent_id}]" in l]
+    return filtered[-n:]
+
+
+def get_agent_recent_chat(agent_id: str, channel_hint: str = "", limit: int = 3) -> list[dict]:
+    """특정 에이전트가 주로 말하는 채널의 최근 메시지."""
+    if not channel_hint:
+        # 에이전트 타입으로 기본 채널 추정
+        try:
+            a = db.get_agent(agent_id)
+            if a and a.get("type") == "mgr":
+                channel_hint = "mgr-dashboard"
+            elif a:
+                channel_hint = f"dm-{a['name']}"
+        except Exception:
+            return []
+    try:
+        conn = db.get_conn()
+        rows = conn.execute(
+            "SELECT c.speaker, c.message, c.timestamp, a.name as agent_name, u.name as user_name "
+            "FROM conversations c "
+            "LEFT JOIN agents a ON a.id = c.speaker "
+            "LEFT JOIN users u ON u.id = c.speaker "
+            "WHERE c.channel = ? "
+            "ORDER BY c.timestamp DESC LIMIT ?",
+            (channel_hint, limit),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return []
+    return [
+        {
+            "speaker": r["agent_name"] or r["user_name"] or r["speaker"],
+            "is_user": bool(r["user_name"]),
+            "message": r["message"] or "",
+            "timestamp": r["timestamp"] or "",
+        }
+        for r in reversed(rows)
+    ]
 
 
 # ── 채널 ───────────────────────────────────────────────
