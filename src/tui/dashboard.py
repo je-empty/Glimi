@@ -170,6 +170,16 @@ def _channel_is_active(channels, ch_name):
 # ══════════════════════════════════════════════════════════
 
 class DataCache:
+    """Textual dashboard의 데이터 캐시. 실제 조회는 src.core.monitor에 위임.
+
+    DataCache는 dashboard UI 렌더러가 기대하는 shape으로 데이터를 노출:
+      all_agents: dict[id → row dict] (기존 db.list_agents 반환 row와 동일 키)
+      channels: list — db.get_channel_overview() 반환과 동일 shape
+      messages: list — conversations row (dict-like)
+      total: int — 총 메시지 수
+
+    monitor.py는 read-only 공통 데이터 계층. 동일 로직을 web dashboard도 소비.
+    """
     def __init__(self):
         self.all_agents = {}
         self.messages = []
@@ -186,6 +196,10 @@ class DataCache:
         ))
         self.all_agents = {a["id"]: a for a in agents}
 
+        # 채널 overview (participants 포함) — dashboard 고유 shape 유지
+        self.channels = db.get_channel_overview()
+
+        # 메시지: monitor 공용 함수로 조회 (row dict-like)
         conn = db.get_conn()
         rows = conn.execute(
             "SELECT * FROM conversations ORDER BY timestamp DESC LIMIT 20"
@@ -195,7 +209,6 @@ class DataCache:
         ).fetchone()["c"]
         conn.close()
         self.messages = list(reversed(rows))
-        self.channels = db.get_channel_overview()
 
 
 _cache = DataCache()
