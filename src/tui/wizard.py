@@ -2,8 +2,8 @@
 """
 Project Glimi — Community Wizard (Textual TUI)
 
-커뮤니티 생성/관리/삭제, 봇 토큰 설정, 프로세스 관리,
-디스코드 채널 정리, 커뮤니티 내보내기/가져오기를 통합 관리.
+Server 생성/관리/삭제, 봇 토큰 설정, 프로세스 관리,
+디스코드 채널 정리, Server 내보내기/가져오기를 통합 관리.
 
 실행: python -m src.tui.wizard
 """
@@ -40,7 +40,7 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 
 from src import community
-from src.i18n import t
+from src.i18n import t, get_language
 from src.tui.components import LoadingOverlay, ConfirmDialog
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -108,7 +108,7 @@ def _get_db_stats(community_id: str) -> Optional[dict]:
 
 
 def _is_bot_running(community_id: str) -> bool:
-    """커뮤니티별 PID 파일로만 판단 (정확한 체크)"""
+    """Server별 PID 파일로만 판단 (정확한 체크)"""
     pid_file = PROJECT_ROOT / "dev" / f".bot-{community_id}.pid"
     if not pid_file.exists():
         return False
@@ -307,6 +307,11 @@ Screen {
     margin: 1 0 1 1;
 }
 
+.lang-select-btn {
+    width: auto;
+    min-width: 20;
+}
+
 .menu-list {
     height: auto;
     max-height: 18;
@@ -441,7 +446,7 @@ class InputDialog(ModalScreen[str]):
         with Vertical():
             yield Label(self._label)
             yield Input(placeholder=self._placeholder, password=self._password, id="dialog-input")
-            yield Static("[dim]Enter 확인 / Escape 취소[/dim]", markup=True)
+            yield Static("[dim]Enter to confirm / Backspace to cancel[/dim]", markup=True)
 
     def on_mount(self):
         self.query_one("#dialog-input", Input).focus()
@@ -454,14 +459,77 @@ class InputDialog(ModalScreen[str]):
         self.dismiss("")
 
 
+class ExistingChannelsDialog(ModalScreen[bool]):
+    """기존 Glimi 채널 발견 시 삭제 여부 확인 모달"""
+
+    DEFAULT_CSS = """
+    ExistingChannelsDialog {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    ExistingChannelsDialog > Vertical {
+        width: 64;
+        height: auto;
+        max-height: 22;
+        background: $panel;
+        border: round $warning;
+        padding: 1 2;
+    }
+    ExistingChannelsDialog .action-bar {
+        height: 3;
+        margin: 1 0 0 0;
+    }
+    ExistingChannelsDialog .action-bar Button {
+        margin: 0 1;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "keep", "Keep")]
+
+    def __init__(self, channel_names: list[str]):
+        super().__init__()
+        self._channel_names = channel_names
+
+    def compose(self) -> ComposeResult:
+        count = len(self._channel_names)
+        names = ", ".join(self._channel_names[:8])
+        if count > 8:
+            names += f" +{count - 8}"
+        with Vertical():
+            yield Static(
+                f"[yellow bold]⚠ {t('wizard.existing_channels_found', count=count)}[/yellow bold]\n\n"
+                f"[dim]{names}[/dim]\n",
+                markup=True,
+            )
+            yield Static(f"[dim]{t('wizard.existing_channels_clean_help')}[/dim]", markup=True)
+            yield Static("")
+            with Horizontal(classes="action-bar"):
+                yield Button(t("wizard.existing_channels_clean"), variant="error", id="clean")
+                yield Button(t("wizard.existing_channels_keep"), variant="primary", id="keep")
+
+    def on_mount(self):
+        self.query_one("#keep", Button).focus()
+
+    @on(Button.Pressed, "#clean")
+    def on_clean(self):
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#keep")
+    def on_keep(self):
+        self.dismiss(False)
+
+    def action_keep(self):
+        self.dismiss(False)
+
+
 DISCORD_SETUP_GUIDE = """\
 [bold cyan]Discord Bot 설정 가이드[/bold cyan]
 
-[bold]1.[/bold] discord.com/developers/applications 접속
-[bold]2.[/bold] [bold]New Application[/bold] → 이름 입력 → Create
-[bold]3.[/bold] [bold]Bot[/bold] 메뉴 → [bold]Reset Token[/bold] → 토큰 복사
+[bold]1.[/bold] Go to discord.com/developers/applications
+[bold]2.[/bold] [bold]New Application[/bold] → Enter name → Create
+[bold]3.[/bold] [bold]Bot[/bold] 메뉴 → [bold]Reset Token[/bold] → Copy token
 
-[bold]4.[/bold] [yellow]Privileged Gateway Intents[/yellow] 전부 켜기:
+[bold]4.[/bold] [yellow]Privileged Gateway Intents[/yellow] Enable all:
    [green]✓[/green] MESSAGE CONTENT INTENT
    [green]✓[/green] SERVER MEMBERS INTENT
    [green]✓[/green] PRESENCE INTENT
@@ -470,9 +538,9 @@ DISCORD_SETUP_GUIDE = """\
    Scopes: [cyan]bot[/cyan]
    Permissions: [cyan]Administrator[/cyan] (개인 서버용)
 
-[bold]6.[/bold] 생성된 URL로 봇을 서버에 초대
+[bold]6.[/bold] Invite bot to server with the generated URL
 
-[dim]아래에 복사한 Bot Token을 붙여넣으세요.[/dim]\
+[dim]Paste your Bot Token below.[/dim]\
 """
 
 
@@ -486,7 +554,7 @@ class TokenSetupDialog(ModalScreen[str]):
             yield Static("")
             yield Label("Bot Token")
             yield Input(placeholder="MTIzNDU2...", password=True, id="dialog-input")
-            yield Static("[dim]Enter 확인 / Escape 취소[/dim]", markup=True)
+            yield Static("[dim]Enter to confirm / Backspace to cancel[/dim]", markup=True)
 
     def on_mount(self):
         self.query_one("#dialog-input", Input).focus()
@@ -618,7 +686,7 @@ class MainScreen(Screen):
         else:
             no_community.display = True
             no_community.update(RichPanel(
-                "[dim]커뮤니티가 없습니다. 아래에서 새로 만들어보세요.[/dim]",
+                "[dim]No servers yet. Create one below.[/dim]",
                 border_style="yellow", padding=(1, 2), title="[bold]Communities[/bold]",
             ))
             wrapper.display = False
@@ -629,6 +697,7 @@ class MainScreen(Screen):
         action_menu.add_option(Option(f"  {t('wizard.export_import')}", id="export_import"))
         action_menu.add_option(Option(f"  {t('wizard.dev_mode')}", id="devmode"))
         action_menu.add_option(None)
+        action_menu.add_option(Option("  🌐 Language", id="ui_language"))
         action_menu.add_option(Option(f"  {t('wizard.quit')}", id="quit"))
 
     @on(Button.Pressed)
@@ -649,6 +718,8 @@ class MainScreen(Screen):
             self.app.push_screen(ExportImportScreen())
         elif oid == "devmode":
             self.app.push_screen(DevModeScreen())
+        elif oid == "ui_language":
+            self.app.push_screen(LanguageScreen("ui"))
 
     def on_key(self, event):
         # 카드 ↔ 액션 메뉴 방향키 전환
@@ -690,7 +761,7 @@ class MainScreen(Screen):
 
 
 # ══════════════════════════════════════════════════════════
-# 커뮤니티 생성 화면
+# Server 생성 화면
 # ══════════════════════════════════════════════════════════
 
 class CreateScreen(Screen):
@@ -701,6 +772,7 @@ class CreateScreen(Screen):
         self._community_id = ""
         self._page = 1
         self._gender = ""
+        self._language = get_language()  # UI 언어를 기본 에이전트 언어로
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -711,16 +783,17 @@ class CreateScreen(Screen):
             # Page 1: Server info
             with Container(id="page-1", classes="input-group"):
                 yield Label(f"{t('wizard.server_id')} [dim]({t('wizard.server_id_hint')})[/dim]")
-                yield Input(placeholder="my-server", id="cid-input")
+                yield Input(placeholder=t("wizard.placeholder_server_id"), id="cid-input")
                 yield Static("")
                 yield Label(f"{t('wizard.description')} [dim]({t('wizard.description_hint')})[/dim]")
-                yield Input(placeholder="My Discord server", id="desc-input")
+                yield Input(placeholder=t("wizard.placeholder_description"), id="desc-input")
                 yield Static("")
                 yield Label(t("wizard.language"))
-                with Horizontal(classes="action-bar"):
-                    yield Button("English", variant="primary", id="lang-en")
-                    yield Button("한국어", id="lang-ko")
-                yield Static("[cyan]English[/cyan] selected", id="lang-display")
+                _ui_lang = get_language()
+                _default_flag = {"en": "🇺🇸", "ko": "🇰🇷"}.get(_ui_lang, "🌐")
+                _default_lang_name = {"en": "English", "ko": "한국어"}.get(_ui_lang, "English")
+                yield Button(f"{_default_flag} {_default_lang_name}", id="btn-agent-lang", classes="lang-select-btn")
+                yield Static("", id="lang-display")
                 yield Static("")
                 yield Button(t("wizard.next"), variant="primary", id="btn-next")
 
@@ -730,7 +803,7 @@ class CreateScreen(Screen):
                 yield Label(f"[dim]{t('wizard.owner_info_hint')}[/dim]")
                 yield Static("")
                 yield Label(f"{t('wizard.name')} [dim]({t('wizard.name_required')})[/dim]")
-                yield Input(placeholder="John Doe", id="owner-name-input")
+                yield Input(placeholder=t("wizard.placeholder_name"), id="owner-name-input")
                 yield Static("")
                 yield Label(f"{t('wizard.nickname')} [dim]({t('wizard.nickname_hint')})[/dim]")
                 yield Input(placeholder="", id="owner-nickname-input")
@@ -773,6 +846,7 @@ class CreateScreen(Screen):
 
     def on_mount(self):
         self._show_page(1)
+        self._clean_existing_channels = False
         self.query_one("#cid-input", Input).focus()
 
     def _show_page(self, page: int):
@@ -785,10 +859,10 @@ class CreateScreen(Screen):
         cid = self.query_one("#cid-input", Input).value.strip()
         result = self.query_one("#create-result", Static)
         if not cid or not cid.replace("-", "").replace("_", "").isalnum():
-            result.update("[red]유효하지 않은 Community ID입니다.[/red]")
+            result.update("[red]Invalid Server ID.[/red]")
             return
         if (community.COMMUNITIES_DIR / cid).exists():
-            result.update(f"[red]이미 존재: {cid}[/red]")
+            result.update(f"[red]Already exists: {cid}[/red]")
             return
         result.update("")
         self._show_page(2)
@@ -799,19 +873,15 @@ class CreateScreen(Screen):
         self._show_page(1)
         self.query_one("#cid-input", Input).focus()
 
-    @on(Button.Pressed, "#lang-en")
-    def on_lang_en(self):
-        self._language = "en"
-        self.query_one("#lang-display", Static).update("[cyan]English[/cyan] selected")
-        self.query_one("#lang-en", Button).variant = "primary"
-        self.query_one("#lang-ko", Button).variant = "default"
-
-    @on(Button.Pressed, "#lang-ko")
-    def on_lang_ko(self):
-        self._language = "ko"
-        self.query_one("#lang-display", Static).update("[cyan]한국어[/cyan] 선택됨")
-        self.query_one("#lang-ko", Button).variant = "primary"
-        self.query_one("#lang-en", Button).variant = "default"
+    @on(Button.Pressed, "#btn-agent-lang")
+    def on_agent_lang(self):
+        def _on_result(lang_code):
+            if lang_code:
+                self._language = lang_code
+                flag = {"en": "🇺🇸", "ko": "🇰🇷"}.get(lang_code, "🌐")
+                name = {"en": "English", "ko": "한국어"}.get(lang_code, lang_code)
+                self.query_one("#btn-agent-lang", Button).label = f"{flag} {name}"
+        self.app.push_screen(LanguageScreen("agent"), _on_result)
 
     @on(Button.Pressed, "#gender-m")
     def on_gender_m(self):
@@ -832,7 +902,7 @@ class CreateScreen(Screen):
         owner_name = self.query_one("#owner-name-input", Input).value.strip()
         result = self.query_one("#create-result", Static)
         if not owner_name:
-            result.update("[red]이름은 필수입니다.[/red]")
+            result.update("[red]Name is required.[/red]")
             return
         result.update("")
         self._show_page(3)
@@ -872,7 +942,7 @@ class CreateScreen(Screen):
         token = self.query_one("#token-input", Input).value.strip()
         err = self.query_one("#token-error", Static)
         if not token:
-            err.update("[red]봇 토큰은 필수입니다.[/red]")
+            err.update("[red]Bot token is required.[/red]")
             return
         err.update("")
         self._loading = LoadingOverlay("봇 토큰 검증 중...")
@@ -882,9 +952,20 @@ class CreateScreen(Screen):
     @work(thread=True)
     def _run_verify(self, token: str):
         """토큰 검증 → 결과 페이지로"""
-        loop = asyncio.new_event_loop()
-        info = loop.run_until_complete(_discord_connect(token, timeout=15))
-        loop.close()
+        try:
+            loop = asyncio.new_event_loop()
+            info = loop.run_until_complete(_discord_connect(token, timeout=15))
+            loop.close()
+        except Exception as e:
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
+            self.app.call_from_thread(
+                self.query_one("#token-error", Static).update,
+                f"[red]Connection error: {e}[/red]"
+            )
+            return
 
         # 로딩 닫기
         try:
@@ -896,7 +977,7 @@ class CreateScreen(Screen):
 
         if not info.get("ok"):
             err = info.get("error", "알 수 없는 오류")
-            self.app.call_from_thread(err_widget.update, f"[red]검증 실패: {err}. 토큰을 다시 확인하세요.[/red]")
+            self.app.call_from_thread(err_widget.update, f"[red]Verification failed: {err}. Please check your token.[/red]")
             return
 
         missing = info.get("missing_perms", [])
@@ -904,15 +985,15 @@ class CreateScreen(Screen):
             perm_list = ", ".join(missing)
             self.app.call_from_thread(
                 err_widget.update,
-                f"[red]봇 권한 부족: {perm_list}[/red]\n"
-                "[dim]디스코드 서버 설정 → 역할에서 권한 부여 후 다시 시도하세요.[/dim]"
+                f"[red]Missing permissions: {perm_list}[/red]\n"
+                "[dim]Grant permissions in Discord server settings → Roles, then try again.[/dim]"
             )
             return
 
         if not info.get("guilds"):
             self.app.call_from_thread(
                 err_widget.update,
-                "[red]봇이 참여한 서버가 없습니다. 봇을 서버에 초대 후 다시 시도하세요.[/red]"
+                "[red]Bot is not in any server. Invite it first, then try again.[/red]"
             )
             return
 
@@ -925,19 +1006,32 @@ class CreateScreen(Screen):
         verify_text = (
             f"[green bold]검증 완료[/green bold]\n\n"
             f"  봇: [cyan]{bot_name}[/cyan]\n"
-            f"  서버: [cyan]{guild_name}[/cyan] ({member_count}명)\n"
+            f"  서버: [cyan]{guild_name}[/cyan] ({member_count}members)\n"
             f"  토큰: {_mask_token(self.query_one('#token-input', Input).value.strip())}\n"
         )
         self.app.call_from_thread(self.query_one("#verify-result", Static).update, verify_text)
+
         self.app.call_from_thread(self._show_page, 4)
+
+        # 기존 glimi 채널 존재 시 모달
+        glimi_channels = guild.get("glimi_channels", [])
+        if glimi_channels:
+            ch_names = [ch["name"] for ch in glimi_channels]
+            def on_channel_decision(clean: bool):
+                self._clean_existing_channels = clean
+            self.app.call_from_thread(
+                self.app.push_screen,
+                ExistingChannelsDialog(ch_names),
+                on_channel_decision,
+            )
 
     def _do_create(self):
         cid = self.query_one("#cid-input", Input).value.strip()
         token = self.query_one("#token-input", Input).value.strip()
-        desc = self.query_one("#desc-input", Input).value.strip()
+        desc = self.query_one("#desc-input", Input).value.strip() or t("wizard.placeholder_description")
         owner_name = self.query_one("#owner-name-input", Input).value.strip()
         owner_nickname = self.query_one("#owner-nickname-input", Input).value.strip()
-        owner_birth = self.query_one("#owner-birth-input", Input).value.strip()
+        owner_birth = self._normalize_birth(self.query_one("#owner-birth-input", Input).value.strip())
         owner_gender = getattr(self, '_gender', '')
         language = getattr(self, '_language', 'en')
         result = self.query_one("#create-result", Static)
@@ -948,6 +1042,12 @@ class CreateScreen(Screen):
 
         self._community_id = cid
         community.init_community(cid)
+
+        # 기존 채널 삭제 옵션 처리
+        if self._clean_existing_channels:
+            log_dir = community.COMMUNITIES_DIR / cid / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / ".clean-channels").touch()
 
         # registry에 description + language 업데이트
         reg = community.REGISTRY_PATH
@@ -967,17 +1067,27 @@ class CreateScreen(Screen):
         bot_name = info.get("bot_name", "?")
         guild_name = info["guilds"][0]["name"] if info.get("guilds") else "?"
         result.update(
-            f"[green]커뮤니티 '{cid}' 생성 완료![/green]\n\n"
+            f"[green]Server '{cid}' Created![/green]\n\n"
             f"봇: {bot_name} → 서버: {guild_name}\n"
             f"사용자: {owner_name}"
             f"{f' ({owner_nickname})' if owner_nickname else ''}\n\n"
-            "[dim]ESC로 돌아가세요.[/dim]"
+            "[dim]Press Backspace to go back.[/dim]"
         )
 
         self._ask_init_db(cid)
 
+    @staticmethod
+    def _normalize_birth(raw: str) -> str:
+        """생년월일 정규화: 20010101 → 2001-01-01"""
+        if not raw:
+            return ""
+        digits = raw.replace("-", "").replace("/", "").replace(".", "").strip()
+        if len(digits) == 8 and digits.isdigit():
+            return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+        return raw
+
     def _save_owner_profile(self, cid, name, nickname, birth, gender):
-        """오너 프로필을 커뮤니티 DB에 저장"""
+        """오너 프로필을 Server DB에 저장"""
         import json as _json
         import sqlite3
 
@@ -1055,7 +1165,7 @@ class CreateScreen(Screen):
 
 
 # ══════════════════════════════════════════════════════════
-# 커뮤니티 관리 화면
+# Server 관리 화면
 # ══════════════════════════════════════════════════════════
 
 class ManageScreen(Screen):
@@ -1128,7 +1238,7 @@ class ManageScreen(Screen):
                 table.add_row(a["id"], a["name"], a["type"], emo_display)
             self.query_one("#manage-agents", Static).update(table)
         else:
-            self.query_one("#manage-agents", Static).update("[dim]에이전트 없음[/dim]")
+            self.query_one("#manage-agents", Static).update("[dim]No agents[/dim]")
 
         # 메뉴
         menu = self.query_one("#manage-menu", OptionList)
@@ -1205,9 +1315,17 @@ class ManageScreen(Screen):
 
     @work(thread=True)
     def _verify_and_save_token(self, token: str):
-        loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(_discord_connect(token, timeout=15))
-        loop.close()
+        try:
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(_discord_connect(token, timeout=15))
+            loop.close()
+        except Exception as e:
+            try:
+                self.app.call_from_thread(self.app.pop_screen)
+            except Exception:
+                pass
+            self.app.call_from_thread(self._result, f"[red]Connection error: {e}[/red]")
+            return
 
         # 로딩 닫기
         try:
@@ -1219,7 +1337,7 @@ class ManageScreen(Screen):
             err = result.get("error", "알 수 없는 오류")
             self.app.call_from_thread(
                 self.app.push_screen,
-                ConfirmDialog(f"[red]검증 실패: {err}[/red]\n\n토큰을 다시 확인하세요.", danger=True),
+                ConfirmDialog(f"[red]Verification failed: {err}[/red]\n\nPlease check your token.", danger=True),
             )
             return
 
@@ -1230,7 +1348,7 @@ class ManageScreen(Screen):
             self.app.call_from_thread(
                 self.app.push_screen,
                 ConfirmDialog(
-                    f"[red]봇 권한이 부족합니다:[/red]\n{perm_list}\n\n"
+                    f"[red]Missing bot permissions:[/red]\n{perm_list}\n\n"
                     "디스코드 서버 설정 → 역할에서 권한을 부여하세요.",
                     danger=True,
                 ),
@@ -1256,7 +1374,7 @@ class ManageScreen(Screen):
             guild_lines.append(f"  {g['name']} ({g['member_count']}명, glimi채널 {ch_count}개)")
 
         msg = (
-            f"[green bold]검증 완료 — 토큰 저장됨[/green bold]\n\n"
+            f"[green bold]Verified — Token saved[/green bold]\n\n"
             f"Bot: [cyan]{bot_name}[/cyan]\n"
             f"Token: {_mask_token(token)}\n\n"
             f"서버:\n" + "\n".join(guild_lines)
@@ -1280,17 +1398,20 @@ class ManageScreen(Screen):
         elif stats:
             lines.append(f"DB        [red]{stats['error']}[/red]")
         else:
-            lines.append("DB        [yellow]파일 없음[/yellow]")
+            lines.append("DB        [yellow]No file[/yellow]")
 
         token = _get_token(cid)
         if token:
-            lines.append("Discord   [dim]연결 중...[/dim]")
+            lines.append("Discord   [dim]Connecting...[/dim]")
             self.app.call_from_thread(self._result, "\n".join(lines))
 
-            loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(_discord_connect(token))
-            loop.close()
-            lines.pop()  # "연결 중..." 제거
+            try:
+                loop = asyncio.new_event_loop()
+                result = loop.run_until_complete(_discord_connect(token))
+                loop.close()
+            except Exception as e:
+                result = {"ok": False, "error": str(e)}
+            lines.pop()  # "Connecting..." 제거
             if result.get("ok"):
                 for g in result.get("guilds", []):
                     ch = len(g.get("glimi_channels", []))
@@ -1298,7 +1419,7 @@ class ManageScreen(Screen):
             else:
                 lines.append(f"Discord   [red]{result.get('error', '?')}[/red]")
         else:
-            lines.append("Discord   [yellow]토큰 미설정[/yellow]")
+            lines.append("Discord   [yellow]Token not set[/yellow]")
 
         self.app.call_from_thread(self._result, "\n".join(lines))
 
@@ -1307,9 +1428,9 @@ class ManageScreen(Screen):
     def _do_start_bot(self):
         token = _get_token(self._cid)
         if not token:
-            self._result("[red]토큰이 설정되지 않았습니다.[/red]")
+            self._result("[red]Token not set.[/red]")
             return
-        self._loading = LoadingOverlay("서버 시작 중..."); self.app.push_screen(self._loading)
+        self._loading = LoadingOverlay("Starting server..."); self.app.push_screen(self._loading)
         self._start_bot_process()
 
     @work(thread=True)
@@ -1340,7 +1461,7 @@ class ManageScreen(Screen):
         pid_file.write_text(str(proc.pid))
         time.sleep(3)
         running = _is_bot_running(cid)
-        msg = f"[green]서버 시작됨 (PID: {proc.pid})[/green]" if running else "[yellow]프로세스 시작됨 (연결 대기 중...)[/yellow]"
+        msg = f"[green]Server started (PID: {proc.pid})[/green]" if running else "[yellow]Process started (waiting for connection...)[/yellow]"
         self.app.call_from_thread(self.app.pop_screen)  # 로딩 닫기
         self.app.call_from_thread(self._result, msg)
         self.app.call_from_thread(self._refresh_view)
@@ -1349,7 +1470,7 @@ class ManageScreen(Screen):
     def _do_stop_bot(self):
         def on_confirm(yes: bool):
             if yes:
-                self._loading = LoadingOverlay("서버 중지 중..."); self.app.push_screen(self._loading)
+                self._loading = LoadingOverlay("Stopping server..."); self.app.push_screen(self._loading)
                 self._stop_bot_process()
         self.app.push_screen(ConfirmDialog(f"'{self._cid}' 서버를 중지할까요?"), on_confirm)
 
@@ -1368,11 +1489,11 @@ class ManageScreen(Screen):
         time.sleep(2)
         if not _is_bot_running(cid):
             self.app.call_from_thread(self.app.pop_screen)
-            self.app.call_from_thread(self._result, "[green]서버가 중지되었습니다.[/green]")
+            self.app.call_from_thread(self._result, "[green]Server stopped.[/green]")
         else:
             subprocess.run(["pkill", "-9", "-f", f"GLIMI_COMMUNITY={cid}"], capture_output=True)
             self.app.call_from_thread(self.app.pop_screen)
-            self.app.call_from_thread(self._result, "[yellow]강제 종료됨[/yellow]")
+            self.app.call_from_thread(self._result, "[yellow]Force killed[/yellow]")
         self.app.call_from_thread(self._refresh_view)
 
     def _do_restart_bot(self):
@@ -1385,7 +1506,7 @@ class ManageScreen(Screen):
     @work(thread=True)
     def _restart_bot_process(self):
         cid = self._cid
-        self.app.call_from_thread(self._result, "[yellow]서버 중지 중...[/yellow]")
+        self.app.call_from_thread(self._result, "[yellow]Stopping server...[/yellow]")
         subprocess.run(["pkill", "-f", f"GLIMI_COMMUNITY={cid}.*src.discord_bot"], capture_output=True)
         for pf in [PROJECT_ROOT / "dev" / f".bot-{cid}.pid", PROJECT_ROOT / "dev" / ".bot.pid"]:
             if pf.exists():
@@ -1396,7 +1517,7 @@ class ManageScreen(Screen):
                     pass
                 pf.unlink(missing_ok=True)
         time.sleep(3)
-        self.app.call_from_thread(self._loading.update_detail, "새 프로세스 시작 중...")
+        self.app.call_from_thread(self._loading.update_detail, "Starting new process...")
         env = os.environ.copy()
         env["GLIMI_COMMUNITY"] = cid
         proc = subprocess.Popen(
@@ -1410,7 +1531,7 @@ class ManageScreen(Screen):
         pid_file.write_text(str(proc.pid))
         time.sleep(3)
         self.app.call_from_thread(self.app.pop_screen)  # 로딩 닫기
-        self.app.call_from_thread(self._result, f"[green]서버 재시작 완료 (PID: {proc.pid})[/green]")
+        self.app.call_from_thread(self._result, f"[green]Server restarted (PID: {proc.pid})[/green]")
         self.app.call_from_thread(self._refresh_view)
 
     # ── DB 초기화 ──
@@ -1421,7 +1542,7 @@ class ManageScreen(Screen):
     @work(thread=True)
     def _run_init_db(self):
         cid = self._cid
-        self.app.call_from_thread(self._result, "[dim]DB 초기화 중...[/dim]")
+        self.app.call_from_thread(self._result, "[dim]Initializing DB...[/dim]")
         env = os.environ.copy()
         env["GLIMI_COMMUNITY"] = cid
         result = subprocess.run(
@@ -1437,7 +1558,7 @@ class ManageScreen(Screen):
         output = (result.stdout or "").strip()
         lines = [l for l in output.split("\n") if l.strip()][-8:]
         msg = "\n".join(lines) if lines else "완료"
-        status = "[green]완료![/green]" if result.returncode == 0 else "[red]오류 발생[/red]"
+        status = "[green]Done![/green]" if result.returncode == 0 else "[red]Error occurred[/red]"
         self.app.call_from_thread(self._result, f"{status}\n\n{msg}")
         self.app.call_from_thread(self._refresh_view)
 
@@ -1464,8 +1585,8 @@ class ManageScreen(Screen):
                                 self._finalize_delete()
                         self.app.push_screen(
                             ConfirmDialog(
-                                "[red bold]정말 디스코드 서버의 채널을 삭제하시겠습니까?[/red bold]\n"
-                                "삭제된 채널의 메시지는 복구할 수 없습니다.",
+                                f"[red bold]{t('wizard.delete_discord_really')}[/red bold]\n"
+                                f"{t('wizard.delete_discord_warn')}",
                                 danger=True,
                             ),
                             on_double_confirm,
@@ -1473,7 +1594,7 @@ class ManageScreen(Screen):
                     else:
                         self._finalize_delete()
                 self.app.push_screen(
-                    ConfirmDialog("디스코드 서버의 glimi 채널도 삭제할까요?", danger=True, default_no=True),
+                    ConfirmDialog(t("wizard.delete_discord_ask"), danger=True, default_no=True),
                     on_discord,
                 )
             else:
@@ -1482,17 +1603,16 @@ class ManageScreen(Screen):
                     if typed == self._cid:
                         self._finalize_delete()
                     else:
-                        self._result("[dim]취소됨[/dim]")
+                        self._result(f"[dim]{t('wizard.delete_cancelled')}[/dim]")
                 self.app.push_screen(
-                    InputDialog(f"삭제 확인: '{self._cid}'를 입력하세요"),
+                    InputDialog(t("wizard.delete_confirm_id", id=self._cid)),
                     on_id,
                 )
 
         self.app.push_screen(
             ConfirmDialog(
-                f"[red bold]커뮤니티 '{self._cid}' 삭제[/red bold]\n\n"
-                "DB, 아바타, 로그, .env 모두 삭제됩니다.\n"
-                "이 작업은 되돌릴 수 없습니다.",
+                f"[red bold]{t('wizard.delete_confirm', id=self._cid)}[/red bold]\n\n"
+                f"{t('wizard.delete_confirm_body')}",
                 danger=True,
             ),
             on_confirm,
@@ -1500,7 +1620,7 @@ class ManageScreen(Screen):
 
     @work(thread=True)
     def _delete_with_discord_cleanup(self, token: str):
-        self.app.call_from_thread(self._result, "[dim]디스코드 채널 삭제 중...[/dim]")
+        self.app.call_from_thread(self._result, f"[dim]{t('wizard.delete_discord_progress')}[/dim]")
         loop = asyncio.new_event_loop()
         info = loop.run_until_complete(_discord_connect(token))
         if info.get("ok"):
@@ -1511,7 +1631,7 @@ class ManageScreen(Screen):
                     deleted = loop.run_until_complete(_discord_delete_channels(token, g["id"], ids))
                     self.app.call_from_thread(
                         self._result,
-                        f"[green]디스코드 채널 {len(deleted)}개 삭제됨[/green]"
+                        f"[green]{t('wizard.delete_discord_done')}[/green]"
                     )
         loop.close()
 
@@ -1520,10 +1640,10 @@ class ManageScreen(Screen):
             if typed == self._cid:
                 self._finalize_delete()
             else:
-                self._result("[dim]취소됨[/dim]")
+                self._result(f"[dim]{t('wizard.delete_cancelled')}[/dim]")
         self.app.call_from_thread(
             self.app.push_screen,
-            InputDialog(f"삭제 확인: '{self._cid}'를 입력하세요"),
+            InputDialog(t("wizard.delete_confirm_id", id=self._cid)),
             on_id,
         )
 
@@ -1572,7 +1692,7 @@ class DiscordScreen(Screen):
         yield Header(show_clock=True)
         with VerticalScroll(can_focus=False):
             yield Static(f"[bold]Discord Channels — {self._cid}[/bold]", id="screen-title", classes="screen-title")
-            yield Static("[dim]서버 정보 조회 중...[/dim]", id="discord-info", classes="status-panel")
+            yield Static("[dim]Loading server info...[/dim]", id="discord-info", classes="status-panel")
             yield OptionList(id="discord-menu", classes="menu-list")
             yield Static("", id="discord-result", classes="result-text")
         yield Footer()
@@ -1586,7 +1706,7 @@ class DiscordScreen(Screen):
         if not token:
             self.app.call_from_thread(
                 self.query_one("#discord-info", Static).update,
-                "[red]토큰이 설정되지 않았습니다.[/red]"
+                "[red]Token not set.[/red]"
             )
             return
 
@@ -1597,7 +1717,7 @@ class DiscordScreen(Screen):
         if not result.get("ok"):
             self.app.call_from_thread(
                 self.query_one("#discord-info", Static).update,
-                f"[red]연결 실패: {result.get('error', '?')}[/red]"
+                f"[red]Connection failed: {result.get('error', '?')}[/red]"
             )
             return
 
@@ -1606,12 +1726,12 @@ class DiscordScreen(Screen):
         lines = [f"[green]Bot: {result['bot_name']}[/green]", ""]
         for g in self._guilds:
             channels = g.get("glimi_channels", [])
-            lines.append(f"[bold]{g['name']}[/bold] ({g['member_count']}명)")
+            lines.append(f"[bold]{g['name']}[/bold] ({g['member_count']}members)")
             if channels:
                 for ch in channels:
                     lines.append(f"  #{ch['name']}")
             else:
-                lines.append("  [dim]glimi 채널 없음[/dim]")
+                lines.append("  [dim]No glimi channels[/dim]")
             lines.append("")
 
         self.app.call_from_thread(
@@ -1652,7 +1772,7 @@ class DiscordScreen(Screen):
                         self._delete_channels(guild_id, [ch["id"] for ch in channels])
                 self.app.push_screen(
                     ConfirmDialog(
-                        f"[red]{guild['name']}의 glimi 채널 {len(channels)}개를 모두 삭제할까요?[/red]",
+                        f"[red]{guild['name']}Delete all glimi channels from?[/red]",
                         danger=True,
                     ),
                     on_confirm,
@@ -1672,13 +1792,13 @@ class DiscordScreen(Screen):
     def _delete_channels(self, guild_id: int, channel_ids: list[int]):
         self.app.call_from_thread(
             self.query_one("#discord-result", Static).update,
-            "[dim]삭제 중...[/dim]"
+            "[dim]Deleting...[/dim]"
         )
         token = _get_token(self._cid)
         loop = asyncio.new_event_loop()
         deleted = loop.run_until_complete(_discord_delete_channels(token, guild_id, channel_ids))
         loop.close()
-        msg = f"[green]{len(deleted)}개 삭제됨: {', '.join(deleted)}[/green]" if deleted else "[yellow]삭제된 채널 없음[/yellow]"
+        msg = f"[green]{len(deleted)}deleted: {', '.join(deleted)}[/green]" if deleted else "[yellow]No channels deleted[/yellow]"
         self.app.call_from_thread(
             self.query_one("#discord-result", Static).update, msg
         )
@@ -1719,7 +1839,7 @@ class LogScreen(Screen):
     def _refresh_logs(self):
         log_path = community.COMMUNITIES_DIR / self._cid / "logs" / "system.log"
         if not log_path.exists():
-            self.query_one("#log-content", Static).update("[dim]로그 파일 없음[/dim]")
+            self.query_one("#log-content", Static).update("[dim]로그 No file[/dim]")
             return
         try:
             with open(log_path, "r", encoding="utf-8") as f:
@@ -1736,6 +1856,71 @@ class LogScreen(Screen):
 # ══════════════════════════════════════════════════════════
 # 내보내기 / 가져오기
 # ══════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════
+# Language Selection
+# ══════════════════════════════════════════════════════════
+
+LANGUAGES = [
+    ("en", "🇺🇸", "English"),
+    ("ko", "🇰🇷", "한국어"),
+]
+
+
+class LanguageScreen(ModalScreen[str]):
+    """언어 선택 모달 — UI 또는 에이전트 언어용"""
+
+    DEFAULT_CSS = """
+    LanguageScreen {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.7);
+    }
+    LanguageScreen > Vertical {
+        width: 40;
+        height: auto;
+        max-height: 20;
+        background: $panel;
+        border: round $accent;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [Binding("backspace", "cancel", "Back")]
+
+    def __init__(self, mode: str = "ui"):
+        """mode: 'ui' (위저드/대시보드 언어) 또는 'agent' (에이전트 언어)"""
+        super().__init__()
+        self._mode = mode
+
+    def compose(self) -> ComposeResult:
+        title = "🌐 UI Language" if self._mode == "ui" else "🌐 Agent Language"
+        with Vertical():
+            yield Static(f"[bold]{title}[/bold]", markup=True)
+            yield Static("")
+            yield OptionList(id="lang-list")
+
+    def on_mount(self):
+        menu = self.query_one("#lang-list", OptionList)
+        from src.i18n import get_language, get_agent_language
+        current = get_language() if self._mode == "ui" else get_agent_language()
+        for code, flag, name in LANGUAGES:
+            check = " ✓" if code == current else ""
+            menu.add_option(Option(f"  {flag}  {name}{check}", id=code))
+        menu.focus()
+
+    @on(OptionList.OptionSelected, "#lang-list")
+    def on_select(self, event: OptionList.OptionSelected):
+        code = event.option_id
+        if not code:
+            return
+        if self._mode == "ui":
+            from src.i18n import save_ui_language
+            save_ui_language(code)
+        self.dismiss(code)
+
+    def action_cancel(self):
+        self.dismiss("")
+
 
 # ══════════════════════════════════════════════════════════
 # Dev Mode 화면
@@ -1803,7 +1988,7 @@ class DevModeScreen(Screen):
 
         if not token:
             self.query_one("#dev-result", Static).update(
-                "[red]봇 토큰 없음[/red]\n"
+                "[red]No bot token[/red]\n"
                 "[dim].env.dev에 DEV_BOT_TOKEN을 설정하거나, 기존 서버를 먼저 만드세요.[/dim]"
             )
             return
@@ -1819,11 +2004,11 @@ class DevModeScreen(Screen):
         set_key(str(env_path), "DISCORD_BOT_TOKEN", token)
 
         # 기본 프로필 (개발자 테스트용)
-        self._save_owner_profile(cid, "테스터", "", "", "")
+        self._save_owner_profile(cid, "Tester", "", "", "")
 
         self.query_one("#dev-result", Static).update(
-            f"[green]서버 '{cid}' 생성 완료![/green]\n"
-            f"토큰: 기존 서버에서 복사됨\n\n"
+            f"[green]서버 '{cid}' Created![/green]\n"
+            f"토큰: Copied from existing server\n\n"
             "[dim]ESC → 메인에서 대시보드 진입[/dim]"
         )
 
@@ -1909,10 +2094,10 @@ class DevServerScreen(Screen):
             community.set_community(old)
 
         self.query_one("#dev-srv-result", Static).update(
-            "[green]온보딩 초기화 완료[/green]\n"
+            "[green]Onboarding reset complete[/green]\n"
             "yuna_greeted, onboarding_phase 삭제됨\n"
-            "대화 기록/채널은 유지됨\n"
-            "[dim]대시보드 진입하면 온보딩이 다시 시작됩니다[/dim]"
+            "Conversation history/channels preserved\n"
+            "[dim]Onboarding will restart on dashboard entry[/dim]"
         )
 
     def _reset_db(self):
@@ -1934,10 +2119,10 @@ class DevServerScreen(Screen):
             community.set_community(old)
 
         self.query_one("#dev-srv-result", Static).update(
-            "[green]DB 전체 초기화 완료[/green]\n"
+            "[green]DB fully reset[/green]\n"
             "대화/메모리/이벤트/메타/채널 데이터 삭제됨\n"
-            "에이전트/유저 프로필은 유지됨\n"
-            "디스코드 채널은 유지됨"
+            "Agent/user profiles preserved\n"
+            "Discord channels preserved"
         )
 
     @work(thread=True)
@@ -1970,8 +2155,8 @@ class DevServerScreen(Screen):
 
         self.app.call_from_thread(
             self.query_one("#dev-srv-result", Static).update,
-            "[green]DB 전체 초기화 + 디코 채널 삭제 예약 완료[/green]\n"
-            "다음 대시보드 진입 시 디코 채널이 삭제되고 온보딩이 처음부터 시작됩니다"
+            f"[green]{t('wizard.delete_reset_done')}[/green]\n"
+            f"{t('wizard.delete_reset_next')}"
         )
 
     def _delete_server(self):
@@ -1981,8 +2166,8 @@ class DevServerScreen(Screen):
         if cdir.exists():
             shutil.rmtree(cdir)
         self.query_one("#dev-srv-result", Static).update(
-            f"[green]서버 '{self._cid}' 삭제 완료[/green]\n"
-            "[dim]ESC로 돌아가세요[/dim]"
+            f"[green]Server deleted[/green]\n"
+            "[dim]Press Backspace to go back[/dim]"
         )
 
     def action_go_back(self):
@@ -1998,7 +2183,7 @@ class ExportImportScreen(Screen):
             yield Static(BANNER_ART, id="banner")
             yield Static("[bold]Export / Import[/bold]", id="screen-title", classes="screen-title", markup=True)
             yield OptionList(
-                Option("  Export Community        커뮤니티를 .glimi.zip으로 내보내기", id="export"),
+                Option("  Export Community        Server를 .glimi.zip으로 내보내기", id="export"),
                 Option("  Import Community        .glimi.zip에서 가져오기", id="import"),
                 None,
                 Option("  Apply External DB      외부 DB 파일 적용", id="apply_db"),
@@ -2026,16 +2211,16 @@ class ExportImportScreen(Screen):
     def _do_export(self):
         cids = _get_community_ids()
         if not cids:
-            self._result("[yellow]내보낼 커뮤니티가 없습니다.[/yellow]")
+            self._result("[yellow]내보낼 Server가 없습니다.[/yellow]")
             return
 
-        # 커뮤니티 선택 메뉴를 만든다
+        # Server 선택 메뉴를 만든다
         class SelectCommunityScreen(ModalScreen[str]):
             BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
             def compose(self_inner) -> ComposeResult:
                 with Vertical():
-                    yield Label("내보낼 커뮤니티 선택")
+                    yield Label("내보낼 Server 선택")
                     opts = OptionList(id="select-list")
                     for c in cids:
                         opts.add_option(Option(f"  {c}", id=c))
@@ -2094,7 +2279,7 @@ class ExportImportScreen(Screen):
         names = ", ".join(manifest.get("agent_names", []))
         self.app.call_from_thread(
             self._result,
-            f"[green]Export 완료![/green]\n\n"
+            f"[green]Export Done![/green]\n\n"
             f"  파일: {out_path}\n"
             f"  크기: {size_mb:.1f} MB\n"
             f"  에이전트: {manifest['agents']}명 ({names})\n"
@@ -2106,7 +2291,7 @@ class ExportImportScreen(Screen):
     def _do_import(self):
         def on_path(zip_path: str):
             if not zip_path or not os.path.exists(zip_path):
-                self._result("[red]파일 없음[/red]" if zip_path else "")
+                self._result("[red]No file[/red]" if zip_path else "")
                 return
             self._preview_and_import(zip_path)
         self.app.push_screen(
@@ -2158,7 +2343,7 @@ class ExportImportScreen(Screen):
                 self._run_import(zip_path, cid)
 
         self.app.push_screen(
-            InputDialog("커뮤니티 ID", placeholder=default_id),
+            InputDialog("Server ID", placeholder=default_id),
             on_id,
         )
 
@@ -2178,8 +2363,8 @@ class ExportImportScreen(Screen):
         stats = _get_db_stats(cid) or {}
         self.app.call_from_thread(
             self._result,
-            f"[green]Import 완료![/green]\n\n"
-            f"  커뮤니티: {cid}\n"
+            f"[green]Import Done![/green]\n\n"
+            f"  Server: {cid}\n"
             f"  에이전트: {stats.get('agents', 0)}명\n"
             f"  메시지: {stats.get('messages', 0):,}건\n\n"
             f"  [dim]토큰 설정: 관리 메뉴에서 설정하세요.[/dim]"
@@ -2190,7 +2375,7 @@ class ExportImportScreen(Screen):
     def _do_apply_db(self):
         def on_path(db_path: str):
             if not db_path or not os.path.exists(db_path):
-                self._result("[red]파일 없음[/red]" if db_path else "")
+                self._result("[red]No file[/red]" if db_path else "")
                 return
             self._preview_and_apply_db(db_path)
         self.app.push_screen(
@@ -2234,7 +2419,7 @@ class ExportImportScreen(Screen):
             self._run_apply_db(db_path, cid, is_old)
 
         self.app.push_screen(
-            InputDialog("적용할 커뮤니티 ID", placeholder="my-server"),
+            InputDialog("적용할 Server ID", placeholder="my-server"),
             on_id,
         )
 
@@ -2269,8 +2454,8 @@ class ExportImportScreen(Screen):
         stats = _get_db_stats(cid) or {}
         self.app.call_from_thread(
             self._result,
-            f"[green]적용 완료![/green]\n\n"
-            f"  커뮤니티: {cid}\n"
+            f"[green]적용 Done![/green]\n\n"
+            f"  Server: {cid}\n"
             f"  에이전트: {stats.get('agents', 0)}명\n"
             f"  메시지: {stats.get('messages', 0):,}건\n\n"
             f"{msg}"

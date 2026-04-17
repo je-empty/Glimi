@@ -205,16 +205,31 @@ async def start_conversation(
             # 디스코드에 전송 (CMD/QUERY/ACTION 태그 처리)
             import re
             TAG_RE = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
+            CMD_RE = re.compile(r'\[CMD:((?:[^\[\]]|\[[^\]]*\])*)\]')
             ACTION_RE = re.compile(r'\[ACTION:((?:[^\[\]]|\[[^\]]*\])*)\]')
             for i, msg in enumerate(responses):
                 if i > 0:
                     await asyncio.sleep(random.uniform(0.5, 1.5))
 
+                cmds = CMD_RE.findall(msg)
                 actions = ACTION_RE.findall(msg)
                 # 모든 태그 제거 후 순수 텍스트만 전송
                 clean = TAG_RE.sub('', msg).strip()
                 if clean:
                     await send_fn(speaker_id, clean)
+
+                # CMD 실행 (mgr만)
+                if cmds and speaker_id == "agent-mgr-001":
+                    from src.bot.mgr_system import parse_and_execute_actions
+                    import discord as _disc
+                    import asyncio as _aio
+                    for guild in __import__('src.bot', fromlist=['bot']).bot.guilds:
+                        mgr_ch = _disc.utils.get(guild.text_channels, name="mgr-dashboard")
+                        if mgr_ch:
+                            for cmd_body in cmds:
+                                _aio.create_task(parse_and_execute_actions(
+                                    mgr_ch, [f"[CMD:{cmd_body}]"], guild
+                                ))
 
                 # ACTION 전달
                 if actions:

@@ -1,0 +1,20 @@
+[20:18:24] 봇 로그인: Glimi (QA)
+[20:18:24] Server connected: Glimi (QA)
+[20:18:24] Initializing channels...
+[20:18:24] [초기화] 기존 glimi 채널 1개 발견 — 유지하고 온보딩 스킵
+[20:18:24] Initial setup: mgr-dashboard ready
+[20:18:25] Categories sorted
+[20:18:25] Syncing avatars...
+[20:18:26]   Webhook 아바타 업데이트: agent-mgr-001 → #mgr-dashboard
+[20:18:26] Webhook 스캔: #mgr-dashboard (1/1)
+[20:18:26] Avatar sync done: 1개 Webhook updated
+[20:18:26] Activating agents... (2명)
+[20:18:26]   [1/2] 서유나 (mgr) 활성화
+[20:18:26]   [2/2] 윤하나 (creator) 활성화
+[20:18:26] Bot ready
+[20:18:26] [온보딩 검증] phase=complete이지만 채널 부족 — 채널 재생성 필요
+[20:18:26] [Onboarding] Checking owner profile
+[20:18:26] [Onboarding] yuna_greeted=1
+[20:18:26] [Onboarding] 오너: 피코닉 (#273792110887698433)
+[20:18:26] [Onboarding] mgr 채널 검색: 'mgr-dashboard' → 찾음
+[20:18:26] [supervisor] 활성화할 감시자 없음

@@ -37,12 +37,14 @@ def init_db():
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL CHECK(type IN ('persona', 'mgr', 'creator')),
             name TEXT NOT NULL,
+            name_i18n TEXT,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'archived')),
             current_emotion TEXT DEFAULT '평온',
             emotion_intensity INTEGER DEFAULT 5 CHECK(emotion_intensity BETWEEN 1 AND 10),
             last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
             birth_year INTEGER,
             age INTEGER,
+            gender TEXT,
             mbti TEXT,
             enneagram TEXT,
             background TEXT,
@@ -674,12 +676,14 @@ def _migrate_schema():
     new_cols = {
         "birth_year": "INTEGER",
         "age": "INTEGER",
+        "gender": "TEXT",
         "mbti": "TEXT",
         "enneagram": "TEXT",
         "background": "TEXT",
         "avatar_filename": "TEXT",
         "version": "INTEGER DEFAULT 1",
         "created_at": "DATETIME",
+        "name_i18n": "TEXT",
     }
     for col, col_type in new_cols.items():
         if col not in agent_cols:
@@ -687,7 +691,88 @@ def _migrate_schema():
             print(f"[DB] agents.{col} 추가")
 
     conn.commit()
+
+    # gender 백필 — agents.gender NULL 인 행에 한해 휴리스틱 추론 (1회성)
+    _backfill_agent_gender(conn)
+
     conn.close()
+
+
+def _backfill_agent_gender(conn):
+    """gender 비어있는 페르소나 에이전트에 보수적 휴리스틱으로 성별 추론.
+    오너와의 관계 (relationship_to_owner.rel_type) 만 신뢰 — 정확한 단어 매칭.
+    appearance/personality 텍스트는 fuzzy match 위험해서 사용 안 함.
+    """
+    rows = conn.execute(
+        "SELECT id FROM agents WHERE (gender IS NULL OR gender = '') AND type = 'persona'"
+    ).fetchall()
+    if not rows:
+        return
+
+    # 정확 일치 키워드 (오너 관점에서 본 페르소나의 역할)
+    #   "여자친구" 와 "남자친구" 둘 다 들어가면 매칭 모호 → female 먼저 체크 후 male
+    #   substring 검사이므로 "남자친구의 여동생" 같은 복합 표현은 처음 매칭되는 걸 따름
+    #   → relationship_to_owner.rel_type 은 보통 짧고 명확 (예: "여자친구") 이므로 안전
+    female_terms = ["여자친구", "여친", "여동생", "누나", "언니", "엄마", "이모", "딸", "와이프", "아내", "여사친"]
+    male_terms = ["남자친구", "남친", "남동생", "형", "오빠", "아빠", "삼촌", "아들", "남편", "남사친"]
+
+    def _infer_from(text: str):
+        # female 키워드 먼저 (예: "남자친구의 여동생" → 여자)
+        for t in female_terms:
+            if t in text:
+                return "여자"
+        for t in male_terms:
+            if t in text:
+                return "남자"
+        return None
+
+    updated = 0
+    for r in rows:
+        aid = r["id"]
+        guess = None
+        sources = []  # 디버깅용
+
+        # 1. 본인의 relationship_to_owner (있으면 가장 신뢰)
+        rel_own = conn.execute(
+            "SELECT rel_type FROM agent_relationship_templates "
+            "WHERE agent_id = ? AND is_owner_relationship = 1 LIMIT 1",
+            (aid,)
+        ).fetchone()
+        if rel_own and rel_own["rel_type"]:
+            g = _infer_from(rel_own["rel_type"])
+            if g:
+                guess = g
+                sources.append(f"own→owner='{rel_own['rel_type']}'")
+
+        # 2. 다른 에이전트들이 본인을 어떻게 부르는지 (target_id = aid 인 rows 다수)
+        #    예: agent-002 → agent-001 = "친구 여자친구" → agent-001 은 여자
+        if not guess:
+            others = conn.execute(
+                "SELECT rel_type FROM agent_relationship_templates "
+                "WHERE target_id = ?",
+                (aid,)
+            ).fetchall()
+            votes = {"여자": 0, "남자": 0}
+            for o in others:
+                rt = o["rel_type"] or ""
+                g = _infer_from(rt)
+                if g:
+                    votes[g] += 1
+            if votes["여자"] > votes["남자"]:
+                guess = "여자"
+                sources.append(f"others-vote=F:{votes['여자']}/M:{votes['남자']}")
+            elif votes["남자"] > votes["여자"]:
+                guess = "남자"
+                sources.append(f"others-vote=F:{votes['여자']}/M:{votes['남자']}")
+
+        if guess:
+            conn.execute("UPDATE agents SET gender = ? WHERE id = ?", (guess, aid))
+            updated += 1
+            print(f"[DB] gender backfill: {aid} → {guess} ({'; '.join(sources)})")
+
+    if updated:
+        conn.commit()
+    print(f"[DB] gender 백필: {updated}개 추론 / {len(rows) - updated}개 미정 (수동 입력 필요)")
 
 
 def _migrate_satellite_tables():
@@ -784,10 +869,13 @@ def get_agent_profile(agent_id: str) -> Optional[dict]:
         "emotion_intensity": agent.get("emotion_intensity", 5),
     }
     # 확장 컬럼
-    for col in ("birth_year", "age", "mbti", "enneagram", "background",
+    for col in ("birth_year", "age", "gender", "mbti", "enneagram", "background",
                 "avatar_filename", "version", "created_at"):
         if agent.get(col) is not None:
             profile[col] = agent[col]
+    # name_i18n — JSON 문자열을 dict 로 복원
+    if agent.get("name_i18n"):
+        profile["name_i18n"] = _from_json(agent["name_i18n"]) or agent["name_i18n"]
 
     # 위성 테이블 로드 (JSON blob)
     for table, key in [
@@ -840,20 +928,24 @@ def save_agent_profile(profile: dict):
     agent_id = profile["id"]
     conn = get_conn()
 
-    # agents 테이블
+    # agents 테이블 — name_i18n 은 dict면 JSON으로 직렬화
+    name_i18n = profile.get("name_i18n")
+    if name_i18n and not isinstance(name_i18n, str):
+        name_i18n = json.dumps(name_i18n, ensure_ascii=False)
+
     conn.execute("""
-        INSERT INTO agents (id, type, name, birth_year, age, mbti, enneagram,
+        INSERT INTO agents (id, type, name, name_i18n, birth_year, age, gender, mbti, enneagram,
                             background, avatar_filename, version, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-            type=excluded.type, name=excluded.name,
-            birth_year=excluded.birth_year, age=excluded.age,
+            type=excluded.type, name=excluded.name, name_i18n=excluded.name_i18n,
+            birth_year=excluded.birth_year, age=excluded.age, gender=excluded.gender,
             mbti=excluded.mbti, enneagram=excluded.enneagram,
             background=excluded.background, avatar_filename=excluded.avatar_filename,
             version=excluded.version
     """, (
-        agent_id, profile.get("type", "persona"), profile["name"],
-        profile.get("birth_year"), profile.get("age"),
+        agent_id, profile.get("type", "persona"), profile["name"], name_i18n,
+        profile.get("birth_year"), profile.get("age"), profile.get("gender"),
         profile.get("mbti"), profile.get("enneagram"),
         profile.get("background"), profile.get("avatar_filename"),
         profile.get("version", 1), profile.get("created_at", datetime.now().isoformat()),

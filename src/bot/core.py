@@ -85,7 +85,7 @@ def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
     if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
         return agent_id == MGR_ID
     if ch_name == CREATOR_CHANNEL:
-        return agent_id == "agent-creator-001"
+        return agent_id == "agent-creator-001" or agent_id == MGR_ID
     if ch_name.startswith("dm-"):
         dm_name = ch_name[3:]
         return dm_name == agent_name or agent_id == MGR_ID
@@ -105,16 +105,8 @@ def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
     return True  # 알 수 없는 채널은 허용
 
 
-async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: str):
-    """에이전트 전용 Webhook으로 메시지 전송 (채널 참가자 검증)"""
-    profile = load_profile(agent_id)
-    name = profile["name"] if profile else "에이전트"
-
-    # 채널 참가자 검증 — 에이전트가 이 채널에 속하는지 확인
-    ch_name = getattr(channel, 'name', '')
-    if ch_name and not _is_agent_in_channel(ch_name, agent_id, name):
-        log_writer.system(f"[필터] {name}({agent_id})의 #{ch_name} 메시지 차단 (참가자 아님): {message[:50]}")
-        return
+async def _raw_send_as_agent(channel: discord.TextChannel, agent_id: str, name: str, message: str):
+    """실제 webhook 전송 + 에러 fallback. PacedSender worker가 호출."""
     try:
         webhook = await get_agent_webhook(channel, agent_id)
         await webhook.send(content=message, username=name)
@@ -143,6 +135,30 @@ async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: st
     except Exception as e:
         log.warning(f"Webhook 실패, fallback: {e}")
         await channel.send(f"**{name}**: {message}")
+
+
+async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: str, paced: bool = True):
+    """에이전트 메시지 전송. 기본은 PacedSender 경유 (자연스러운 페이스).
+
+    paced=False면 즉시 전송 (시스템 에러 메시지, 복구 등에만 사용).
+    채널 참가자 검증 후 enqueue.
+    """
+    profile = load_profile(agent_id)
+    name = profile["name"] if profile else "에이전트"
+
+    # 채널 참가자 검증
+    ch_name = getattr(channel, 'name', '')
+    if ch_name and not _is_agent_in_channel(ch_name, agent_id, name):
+        log_writer.system(f"[필터] {name}({agent_id})의 #{ch_name} 메시지 차단 (참가자 아님): {message[:50]}")
+        return
+
+    if paced:
+        from src.bot.paced_sender import paced as _paced_sender
+        async def _send_fn():
+            await _raw_send_as_agent(channel, agent_id, name, message)
+        await _paced_sender.enqueue(channel, agent_id, message, _send_fn)
+    else:
+        await _raw_send_as_agent(channel, agent_id, name, message)
 
 
 async def send_image_as_agent(channel: discord.TextChannel, agent_id: str, image_path: str, caption: str = ""):
@@ -320,36 +336,49 @@ async def ensure_channels(guild: discord.Guild):
         should_clean = os.path.exists(clean_flag)
         should_keep = os.path.exists(keep_flag)
 
-        if existing_glimi and not should_clean and not should_keep:
-            # DB 비어있는데 디코 채널이 있음 → 이전 서버 흔적
-            log_writer.system(f"[초기화] 기존 glimi 채널 {len(existing_glimi)}개 발견 — 유지하고 온보딩 스킵")
-            # 기존 채널 유지 + 온보딩 완료로 보정
+        log_writer.system(
+            f"[초기화] first_run=True, existing_glimi={len(existing_glimi)}개, "
+            f"clean={should_clean}, keep={should_keep}"
+        )
+
+        # 기존 glimi 채널 처리 정책:
+        #   .keep-channels 있음 → 유지 (레거시/운영 재시작 대비, 명시적 opt-in)
+        #   그 외 (clean 플래그 있든 없든) → 전부 삭제 (default-to-clean)
+        # 이전 auto-skip 분기는 제거 — DB 리셋 후 봇 재시작할 때 불필요하게
+        # yuna_greeted=1 / phase=complete 자동 세팅해서 온보딩을 영구 스킵시키는
+        # 치명적 버그였음.
+        if existing_glimi and should_keep:
+            log_writer.system(f"[초기화] .keep-channels 있음 → 기존 {len(existing_glimi)}개 채널 유지 + 온보딩 스킵")
             _db.set_meta("yuna_greeted", "1")
             _db.set_meta("onboarding_phase", "complete")
-            # 채널 참가자 등록 (DB에 없으면)
             for ch in existing_glimi:
                 if not _db.get_channel_participants(ch.name):
                     parts = _infer_channel_participants(ch.name, _db)
                     if parts:
                         _db.set_channel_participants(ch.name, parts)
-            first_run = False  # 일반 실행으로 전환
-        elif should_clean:
-            # 명시적 정리 요청
-            glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
-            for cat in glimi_categories:
-                for ch in cat.text_channels:
+            first_run = False
+            # keep 플래그 제거 (1회성)
+            try:
+                os.remove(keep_flag)
+            except FileNotFoundError:
+                pass
+        elif existing_glimi:
+            # default: clean (명시적 clean flag 있든 없든)
+            glimi_patterns = ("mgr-", "dm-", "group-", "internal-")
+            for ch in list(guild.text_channels):
+                if any(ch.name.startswith(p) for p in glimi_patterns):
                     try:
                         await ch.delete(reason="Glimi 초기화: 채널 정리")
-                        log_writer.system(f"채널 삭제: {ch.name}")
+                        log_writer.system(f"Channel deleted: {ch.name}")
                     except Exception:
                         pass
+            for cat in [c for c in guild.categories if c.name.startswith("glimi")]:
                 if len(cat.channels) == 0:
                     try:
                         await cat.delete()
-                        log_writer.system(f"카테고리 삭제: {cat.name}")
+                        log_writer.system(f"Category deleted: {cat.name}")
                     except Exception:
                         pass
-            # 플래그 제거
             try:
                 os.remove(clean_flag)
             except FileNotFoundError:
@@ -360,9 +389,9 @@ async def ensure_channels(guild: discord.Guild):
         if MGR_CHANNEL not in existing:
             cat = await _ensure_category(guild, "glimi-mgr")
             await guild.create_text_channel(MGR_CHANNEL, category=cat)
-            log_writer.system(f"채널 생성: {MGR_CHANNEL}")
+            log_writer.system(f"Channel created: {MGR_CHANNEL}")
         db.set_channel_participants(MGR_CHANNEL, [MGR_ID])
-        log_writer.system("초기 세팅: mgr-dashboard 준비 완료")
+        log_writer.system("Initial setup: mgr-dashboard ready")
     else:
         # 일반 실행: 전체 채널 보장
         needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
@@ -375,7 +404,7 @@ async def ensure_channels(guild: discord.Guild):
                 if ch.name not in needed:
                     try:
                         await ch.delete(reason="Glimi: 불필요 채널 정리")
-                        log_writer.system(f"채널 삭제: {ch.name}")
+                        log_writer.system(f"Channel deleted: {ch.name}")
                     except Exception:
                         pass
 
@@ -389,7 +418,7 @@ async def ensure_channels(guild: discord.Guild):
                 category = await _ensure_category(guild, cat_name)
                 await guild.create_text_channel(ch_name, category=category)
                 created.append(ch_name)
-                log_writer.system(f"채널 생성: {ch_name}")
+                log_writer.system(f"Channel created: {ch_name}")
 
             # DB에 참가자 등록 (없으면)
             if not db.get_channel_participants(ch_name):
@@ -403,7 +432,7 @@ async def ensure_channels(guild: discord.Guild):
         if created:
             log_writer.system(f"채널 {len(created)}개 생성 완료")
         else:
-            log_writer.system("모든 채널 이미 존재")
+            log_writer.system("All channels exist")
 
     # 카테고리 순서 정렬
     from src.core.sync import CATEGORY_ORDER
@@ -414,7 +443,7 @@ async def ensure_channels(guild: discord.Guild):
                 await cat.edit(position=i)
             except Exception:
                 pass
-    log_writer.system("카테고리 정렬 완료")
+    log_writer.system("Categories sorted")
 
 
 async def create_onboarding_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
@@ -429,7 +458,7 @@ async def create_onboarding_channel(guild: discord.Guild, ch_name: str, particip
     ch = await guild.create_text_channel(ch_name, category=category)
     if participants:
         db.set_channel_participants(ch_name, participants)
-    log_writer.system(f"온보딩 채널 생성: {ch_name}")
+    log_writer.system(f"온보딩 Channel created: {ch_name}")
     return ch
 
 
@@ -437,7 +466,7 @@ async def sync_avatars(guild: discord.Guild):
     """glimi 카테고리들 내 모든 Webhook 아바타를 로컬 이미지와 동기화"""
     glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
     if not glimi_categories:
-        log_writer.system("아바타 동기화: glimi 카테고리 없음 — 스킵")
+        log_writer.system("Avatar sync: no glimi categories — skip")
         return
     updated = 0
     total_channels = sum(len(cat.text_channels) for cat in glimi_categories)
@@ -460,7 +489,7 @@ async def sync_avatars(guild: discord.Guild):
                 except Exception:
                     pass
             log_writer.system(f"Webhook 스캔: #{channel.name} ({scanned}/{total_channels})")
-    log_writer.system(f"아바타 동기화 완료: {updated}개 Webhook 업데이트")
+    log_writer.system(f"Avatar sync done: {updated}개 Webhook updated")
 
 
 # ── 유틸리티 ────────────────────────────────────────────

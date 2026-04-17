@@ -57,6 +57,7 @@ def _kill_existing_bot():
 
 def main():
     cid = community.get_community_id()
+    community.set_community(cid)  # 언어 등 커뮤니티 컨텍스트 초기화
     log.info(f"커뮤니티: {cid} ({community.get_community_dir()})")
 
     _kill_existing_bot()
@@ -65,12 +66,12 @@ def main():
         env_path = community.get_env_path()
         print()
         print("=" * 55)
-        print("  DISCORD_BOT_TOKEN이 설정되지 않았습니다.")
+        print("  DISCORD_BOT_TOKEN is not set.")
         print()
-        print(f"  커뮤니티 '{cid}'의 .env 파일을 확인하세요:")
+        print(f"  Check the .env file for server '{cid}':")
         print(f"    {env_path}")
         print()
-        print("  또는 새 커뮤니티 초기화:")
+        print("  Or initialize a new server:")
         print(f"    python -m src.community init {cid}")
         print("=" * 55)
         sys.exit(1)
@@ -94,7 +95,14 @@ def main():
     _build_channel_maps()
     log.info(f"채널 매핑: {CHANNEL_AGENT_MAP}")
 
-    bot.run(TOKEN)
+    try:
+        bot.run(TOKEN)
+    except Exception as e:
+        from src import log_writer
+        log_writer.system(f"Bot login failed: {type(e).__name__}: {e}")
+        print(f"\n  Bot login failed: {e}")
+        print(f"  Check your token in: {community.get_env_path()}")
+        sys.exit(1)
 
     # 봇 종료 후 — 개발 요청이면 exit(42)
     if _bot_state._shutdown_pending:

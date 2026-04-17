@@ -280,7 +280,8 @@ async def sync_community(
             # 아바타 로드 함수
             from src.bot.core import _get_avatar_bytes
 
-            for ch_name, ch in surviving.items():
+            for ch_name in list(surviving.keys()):
+                ch = surviving[ch_name]
                 # 채널 필터 적용
                 if channels_filter and ch_name not in channels_filter:
                     continue
@@ -305,7 +306,7 @@ async def sync_community(
                 discord_count = len(discord_msgs)
                 _progress(f"  {ch_name}: Discord {discord_count} / DB {db_count}")
 
-                # DB가 기준 — Discord에 DB보다 많은 메시지가 있으면 삭제
+                # DB가 기준 — Discord에 DB보다 많은 메시지가 있으면 정리
                 if discord_count > db_count and discord_msgs:
                     # DB에 있는 메시지 내용 set
                     conn = db.get_conn()
@@ -316,22 +317,46 @@ async def sync_community(
                         db_messages.add(row[0])
                     conn.close()
 
-                    # Discord에만 있는 메시지 삭제
-                    deleted = 0
-                    for msg in discord_msgs:
-                        if msg.content and msg.content not in db_messages:
+                    # 삭제 대상 수 계산
+                    to_delete = [msg for msg in discord_msgs if msg.content and msg.content not in db_messages]
+
+                    if to_delete:
+                        # DB가 비어있거나 삭제할 메시지가 많으면 채널 재생성이 효율적
+                        if db_count == 0 or len(to_delete) > 20:
+                            _progress(f"  {ch_name}: 메시지 {len(to_delete)}건 정리 — 채널 재생성")
+                            cat = ch.category
+                            position = ch.position
                             try:
-                                await msg.delete()
-                                deleted += 1
-                                await asyncio.sleep(0.5)
-                            except Exception:
-                                pass
-                    if deleted:
-                        total_discord_to_db += deleted  # 카운트 재활용 (삭제 건수)
-                        _progress(f"  {ch_name}: Discord 메시지 {deleted}건 삭제 (DB 기준)")
+                                await ch.delete(reason="Glimi Sync: 채널 재생성 (효율적 정리)")
+                                new_ch = await guild.create_text_channel(ch_name, category=cat)
+                                try:
+                                    await new_ch.move(beginning=True, offset=position)
+                                except Exception:
+                                    pass
+                                surviving[ch_name] = new_ch
+                                ch = new_ch
+                                discord_msgs = []
+                                discord_count = 0
+                                total_discord_to_db += len(to_delete)
+                                _progress(f"  {ch_name}: 채널 재생성 완료")
+                            except Exception as e:
+                                result["errors"].append(f"채널 재생성 실패 ({ch_name}): {e}")
+                        else:
+                            # 소량이면 개별 삭제
+                            deleted = 0
+                            for msg in to_delete:
+                                try:
+                                    await msg.delete()
+                                    deleted += 1
+                                    await asyncio.sleep(0.5)
+                                except Exception:
+                                    pass
+                            if deleted:
+                                total_discord_to_db += deleted
+                                _progress(f"  {ch_name}: Discord 메시지 {deleted}건 삭제 (DB 기준)")
 
                 # ── DB → Discord (DB에 있는데 Discord에 없는 메시지 복원) ──
-                if db_count > discord_count:
+                if db_count > 0 and db_count > discord_count:
                     need = db_count - discord_count
                     _progress(f"  {ch_name}: DB→Discord 복원 ({need}건 누락)...")
 
