@@ -351,6 +351,249 @@ def human_ago(iso_ts: str) -> str:
     return f"{int(secs/86400)}일 전"
 
 
+# ── 상세 뷰 ────────────────────────────────────────────
+
+def get_agent_detail(agent_id: str) -> dict:
+    """에이전트 전체 상세: 프로필 + 관계 + 메모리 + 추론 로그 + 주 채널 채팅."""
+    from src.core.profile import load_profile
+
+    try:
+        agent = db.get_agent(agent_id)
+    except Exception:
+        agent = None
+    if not agent:
+        return {"error": "agent not found"}
+
+    profile = load_profile(agent_id) or {}
+    emo = agent.get("current_emotion") or "평온"
+    is_t = log_writer.is_thinking(agent_id)
+    is_s = log_writer.is_speaking(agent_id)
+
+    # 관계 (relationships 테이블)
+    rels = []
+    try:
+        for r in db.get_all_relationships(agent_id):
+            other_id = r["agent_b"] if r["agent_a"] == agent_id else r["agent_a"]
+            other = db.get_agent(other_id)
+            rels.append({
+                "other_id": other_id,
+                "other_name": (other or {}).get("name") or other_id,
+                "type": r.get("type", ""),
+                "intimacy": r.get("intimacy_score", 0),
+                "dynamics": r.get("dynamics", "") or "",
+            })
+    except Exception:
+        pass
+
+    # 메모리 — 채널별로 묶음
+    memories_by_channel: dict[str, list[dict]] = {}
+    try:
+        conn = db.get_conn()
+        rows = conn.execute(
+            "SELECT * FROM memories WHERE agent_id = ? "
+            "ORDER BY channel, level DESC, id DESC",
+            (agent_id,),
+        ).fetchall()
+        conn.close()
+        for m in rows:
+            ch = m["channel"] or "general"
+            memories_by_channel.setdefault(ch, []).append({
+                "level": m["level"],
+                "content": m["content"],
+                "created_at": m["created_at"] or "",
+                "mem_type": m["mem_type"] if "mem_type" in m.keys() else None,
+            })
+    except Exception:
+        pass
+
+    # 주 채널 이름
+    atype = agent.get("type", "persona")
+    if atype == "mgr":
+        primary = "mgr-dashboard"
+    elif atype == "creator":
+        primary = "mgr-creator"
+    else:
+        primary = f"dm-{agent.get('name', '')}"
+
+    # 추론 로그 (agent_id 태그 필터)
+    sys_lines = get_recent_system_logs(tail_lines=300)
+    thinking_logs = [l for l in sys_lines if f"[{agent_id}]" in l][-30:]
+
+    # 주 채널 채팅
+    primary_chat = get_recent_messages(limit=30, channel=primary)
+
+    return {
+        "id": agent_id,
+        "name": agent.get("name", agent_id),
+        "type": atype,
+        "status": agent.get("status", ""),
+        "emotion": emo,
+        "emoji": EMOTION_EMOJI.get(emo, "・"),
+        "intensity": agent.get("emotion_intensity", 0) or 0,
+        "mbti": agent.get("mbti", "") or (profile.get("mbti", "") if profile else ""),
+        "age": agent.get("age", 0) or 0,
+        "enneagram": profile.get("enneagram", "") if profile else "",
+        "traits": (profile.get("personality", {}) or {}).get("traits", []) if profile else [],
+        "background": profile.get("background", "") if profile else "",
+        "relationship_to_owner": profile.get("relationship_to_owner", {}) if profile else {},
+        "thinking": is_t,
+        "speaking": is_s,
+        "thinking_seconds": log_writer.thinking_seconds(agent_id) if is_t else 0,
+        "speaking_seconds": log_writer.speaking_seconds(agent_id) if is_s else 0,
+        "last_active": agent.get("last_active", ""),
+        "relationships": rels,
+        "memories_by_channel": memories_by_channel,
+        "thinking_logs": thinking_logs,
+        "primary_channel": primary,
+        "primary_chat": primary_chat,
+    }
+
+
+def get_channel_detail(channel_name: str) -> dict:
+    """채널 상세: 참여자 + 전체 메시지."""
+    try:
+        participants = db.get_channel_participants(channel_name) or []
+    except Exception:
+        participants = []
+    # 참여자 이름 resolve
+    part_info = []
+    for pid in participants:
+        try:
+            a = db.get_agent(pid)
+            if a:
+                part_info.append({"id": pid, "name": a.get("name", pid), "type": a.get("type", "")})
+            else:
+                part_info.append({"id": pid, "name": pid, "type": ""})
+        except Exception:
+            part_info.append({"id": pid, "name": pid, "type": ""})
+
+    messages = get_recent_messages(limit=500, channel=channel_name)
+    return {
+        "name": channel_name,
+        "participants": part_info,
+        "messages": messages,
+        "message_count": len(messages),
+    }
+
+
+# ── Health / Usage ──────────────────────────────────────
+
+def get_health() -> dict:
+    """프로세스/PID/디스크/로그 크기 등 시스템 헬스."""
+    from pathlib import Path as _P
+    import shutil
+
+    status = get_bot_status()
+
+    # PID 파일
+    pid_file = str(ROOT_DIR() / "dev" / ".bot.pid")
+    pid: Optional[str] = None
+    try:
+        if os.path.exists(pid_file):
+            with open(pid_file) as f:
+                pid = f.read().strip()
+    except Exception:
+        pass
+
+    # 로그 크기
+    log_size = 0
+    try:
+        log_dir = _P(community.get_log_dir())
+        sys_log = log_dir / "system.log"
+        if sys_log.exists():
+            log_size = sys_log.stat().st_size
+    except Exception:
+        pass
+
+    # DB 크기
+    db_size = 0
+    try:
+        db_path = _P(community.get_community_dir()) / "community.db"
+        if db_path.exists():
+            db_size = db_path.stat().st_size
+    except Exception:
+        pass
+
+    # 디스크 여유
+    disk_total, disk_used, disk_free = 0, 0, 0
+    try:
+        t, u, f = shutil.disk_usage(str(_P(community.get_community_dir())))
+        disk_total, disk_used, disk_free = t, u, f
+    except Exception:
+        pass
+
+    return {
+        "bot_alive": status["bot_alive"],
+        "runner_alive": status["runner_alive"],
+        "test_user_alive": status["test_user_alive"],
+        "pid": pid,
+        "dev_active": log_writer.is_dev_active() if hasattr(log_writer, "is_dev_active") else False,
+        "log_size_bytes": log_size,
+        "db_size_bytes": db_size,
+        "disk_total_bytes": disk_total,
+        "disk_used_bytes": disk_used,
+        "disk_free_bytes": disk_free,
+    }
+
+
+def ROOT_DIR():
+    from pathlib import Path as _P
+    return _P(__file__).resolve().parent.parent.parent
+
+
+def get_dev_state() -> dict:
+    """dev/pending.json + dev/result.json 상태."""
+    import json as _json
+    root = ROOT_DIR()
+    out = {"pending": None, "result": None, "active": False}
+    try:
+        out["active"] = log_writer.is_dev_active()
+    except Exception:
+        pass
+    p = root / "dev" / "pending.json"
+    r = root / "dev" / "result.json"
+    try:
+        if p.exists():
+            out["pending"] = _json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    try:
+        if r.exists():
+            out["result"] = _json.loads(r.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return out
+
+
+def get_usage_stats() -> dict:
+    """~/.claude/ 혹은 프로젝트 내부 usage 파일 읽기. 없으면 빈값."""
+    import json as _json
+    from pathlib import Path as _P
+    # 후보 파일들
+    candidates = [
+        _P.home() / ".claude" / "usage.json",
+        ROOT_DIR() / "dev" / "usage.json",
+    ]
+    for p in candidates:
+        try:
+            if p.exists():
+                return _json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+    # CLI 호출 건수를 system.log에서 카운트 (폴백)
+    lines = get_recent_system_logs(tail_lines=5000)
+    sonnet = sum(1 for l in lines if "claude-sonnet" in l.lower())
+    haiku = sum(1 for l in lines if "claude-haiku" in l.lower())
+    opus = sum(1 for l in lines if "claude-opus" in l.lower())
+    return {
+        "source": "log-derived",
+        "sonnet_calls": sonnet,
+        "haiku_calls": haiku,
+        "opus_calls": opus,
+        "total": sonnet + haiku + opus,
+    }
+
+
 # ── 통합 스냅샷 ────────────────────────────────────────
 
 def snapshot() -> dict:
