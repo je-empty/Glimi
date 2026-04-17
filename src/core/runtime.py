@@ -44,6 +44,49 @@ def _normalize(s):
     return re.sub(r'[.?!,~\s…·ㅋㅎㅠ]', '', s).lower()
 
 
+# Claude CLI가 stdout으로 토해내는 에러/상태 메시지 패턴.
+# 이게 agent 응답인 척 DB/Discord에 찍히면 몰입 깨지므로 필터.
+_CLAUDE_ERROR_PREFIXES = (
+    "you've hit your limit",
+    "you have hit your limit",
+    "your usage limit",
+    "usage limit",
+    "rate limit exceeded",
+    "anthropic api error",
+    "anthropic error",
+    "api error:",
+    "request was too large",
+    "insufficient credits",
+    "service unavailable",
+    "too many requests",
+    "context length exceeded",
+    "overloaded_error",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+    "claude api",
+    "model not found",
+    "authentication",
+)
+
+
+def _looks_like_claude_error(text: str) -> bool:
+    """Claude CLI 에러 메시지가 agent 응답으로 새어나오는 케이스 감지."""
+    if not text:
+        return False
+    t = text.strip().lower()
+    if not t:
+        return False
+    for p in _CLAUDE_ERROR_PREFIXES:
+        if t.startswith(p) or p in t[:80]:  # 첫 80자 내 포함도 체크
+            return True
+    # "resets <time>" 패턴 (사용량 한도 도달 메시지 후반부)
+    if "resets" in t and ("am" in t or "pm" in t or ":" in t):
+        if "limit" in t or "reset" in t:
+            return True
+    return False
+
+
 class AgentRuntime:
 
     def __init__(self):
@@ -593,6 +636,11 @@ class AgentRuntime:
                 if not raw:
                     return ["..."]
 
+                # Claude CLI 에러 메시지 감지 — 응답 전체가 에러면 placeholder
+                if _looks_like_claude_error(raw):
+                    log_writer.system(f"⚠ Claude CLI 에러 응답 (배치): {raw[:120]}")
+                    return self._placeholder_response(profile, user_message)
+
                 # <tools> 블록 먼저 파싱 → calls는 stash, chat만 메시지 분리
                 parsed = parse_tools_in_output(raw)
                 self._last_tool_calls[agent_id] = parsed.tool_calls
@@ -715,6 +763,16 @@ class AgentRuntime:
                 if not cleaned:
                     continue
 
+                # Claude CLI 에러 메시지 누출 차단 (사용량 한도, API 에러 등)
+                if _looks_like_claude_error(cleaned):
+                    log_writer.system(f"⚠ Claude CLI 에러 텍스트 필터 (스트림): {cleaned[:100]}")
+                    # 에러 감지 시 즉시 스트리밍 종료 — 추가 에러 텍스트 방출 방지
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                    break
+
                 # 자기 이름 prefix 제거 ("윤하나: 메시지" → "메시지")
                 if cleaned.startswith(f"{name}:"):
                     cleaned = cleaned[len(name)+1:].strip()
@@ -809,6 +867,10 @@ class AgentRuntime:
             elif agent_name and cleaned.startswith(f"{agent_name} :"):
                 cleaned = cleaned[len(agent_name)+2:].strip()
             if not cleaned:
+                continue
+            # Claude CLI 에러 메시지 누출 차단
+            if _looks_like_claude_error(cleaned):
+                log_writer.system(f"⚠ Claude CLI 에러 텍스트 필터 (파싱): {cleaned[:100]}")
                 continue
             # JSON/구조화 데이터 유출 필터
             if (cleaned.startswith("{") or cleaned.startswith('"') or

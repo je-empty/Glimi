@@ -276,7 +276,20 @@ class TestUserBot(discord.Client):
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
             if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
+                out = result.stdout.strip()
+                # Claude CLI 에러 메시지(사용량 한도 등) 감지 — 이건 응답 아님
+                out_low = out.lower()
+                error_markers = (
+                    "you've hit your limit", "you have hit your limit",
+                    "usage limit", "rate limit exceeded",
+                    "anthropic api error", "api error:",
+                    "request was too large", "overloaded",
+                    "too many requests",
+                )
+                if any(m in out_low[:200] for m in error_markers):
+                    print(f"[TestUser] Claude CLI 에러 텍스트 감지 — 응답 버림: {out[:120]}")
+                    return ""
+                return out
             else:
                 print(f"[TestUser] Claude 오류: {result.stderr[:100]}")
                 return ""
