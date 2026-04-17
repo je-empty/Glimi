@@ -164,7 +164,8 @@ flowchart TB
     Manager -->|"전체 감시"| A & B & C
     Creator -.->|"생성"| Personas
 
-    Supervisor -.->|"nudge\n(내면 생각)"| Manager & Creator
+    Supervisor -.->|"온보딩 nudge"| Manager & Creator
+    Supervisor -.->|"채널대화 nudge"| A & B & C
     DevRunner -.->|"소스 패치"| Manager
 
     A -->|"<tools>"| Manager

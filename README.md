@@ -164,7 +164,8 @@ flowchart TB
     Manager -->|"monitor all"| A & B & C
     Creator -.->|"create"| Personas
 
-    Supervisor -.->|"nudge\n(inner thought)"| Manager & Creator
+    Supervisor -.->|"onboarding nudge"| Manager & Creator
+    Supervisor -.->|"channel-conv nudge"| A & B & C
     DevRunner -.->|"patch source"| Manager
 
     A -->|"<tools>"| Manager
