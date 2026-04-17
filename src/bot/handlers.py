@@ -34,6 +34,12 @@ async def on_message(message: discord.Message):
     if message.author == bot.user or message.webhook_id:
         return
 
+    # DISCORD_GUILD_ID가 설정된 경우, 해당 서버의 메시지만 처리
+    import os
+    target_guild = os.environ.get("DISCORD_GUILD_ID")
+    if target_guild and message.guild and str(message.guild.id) != target_guild:
+        return
+
     if message.id in _processed_messages:
         return
     _processed_messages.add(message.id)

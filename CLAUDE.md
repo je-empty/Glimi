@@ -149,6 +149,22 @@ Glimi/
 - 프로필 수정 시 invalidate_cache + runtime.refresh_agent 필수
 - dm-/mgr- 채널은 삭제 보호됨
 
+## 다국어 에이전트 이름
+- DB `agents.name_i18n` TEXT (JSON blob: `{"ko": "서유나", "en": "Yuna"}`)
+- `name`: 기본 이름 (항상 존재)
+- `get_agent_display_name(agent_id)`: 현재 커뮤니티 언어에 맞는 이름 반환
+- 언어 추가 시 JSON 키만 추가 (컬럼 변경 불필요)
+
+## 용어 규칙
+- 사용자에게 보이는 텍스트에서 "에이전트", "멤버", "봇", "AI" 등 메타 용어 금지
+- 시스템 프롬프트에 명시: 다른 사람은 이름/친구들/사람들 등 자연스러운 표현 사용
+- CMD/ACTION/QUERY 태그는 시스템 로그 채널에만 노출 (대화 채널에 절대 노출 금지)
+
+## 멀티 서버 지원
+- `.env`에 `DISCORD_GUILD_ID=서버ID` 설정 → 특정 서버만 사용
+- `on_message`에서 guild 필터링 → 다른 서버 메시지 무시
+- 미설정 시 `guilds[0]` 사용 (기존 동작)
+
 ## 실행
 ```bash
 ./scripts/run.sh                    # default 커뮤니티로 봇 실행
@@ -158,3 +174,29 @@ Glimi/
 python -m src.community list  # 커뮤니티 목록
 python -m src.community init my-server  # 새 커뮤니티 초기화
 ```
+
+## QA 자동 테스트
+```bash
+python -m tests.e2e.runner              # 1회 실행
+python -m tests.e2e.runner --runs 3     # 3회 반복
+```
+
+### 구조
+```
+tests/e2e/
+├── runner.py           ← 테스트 오케스트레이터
+├── test_user_bot.py    ← Claude Haiku 기반 테스트 유저 봇
+└── results/            ← 실행 결과 (JSON + 로그)
+```
+
+### 동작
+1. `qa` 커뮤니티 자동 생성/초기화 (DB + 유저 프로필 + `.clean-channels` 플래그)
+2. Glimi 봇 시작 → 기존 디스코드 채널 삭제 → 온보딩 시작
+3. 테스트 유저 봇 시작 → 신규 유저처럼 자연스럽게 대화
+4. 온보딩 완료 or 타임아웃
+5. 로그 수집 → 자동 판정 (프로필 중복, race condition, 태그 노출 등)
+
+### 필요 설정
+- `communities/qa/.env`에 `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `TEST_BOT_TOKEN` 설정
+- 별도 디스코드 서버에 Glimi 봇 + 테스트 유저 봇 초대
+- 테스트 유저 프로필 커스텀: 환경변수 `QA_USER_NAME`, `QA_USER_NICKNAME`, `QA_USER_AGE` 등

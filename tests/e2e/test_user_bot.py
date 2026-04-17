@@ -28,8 +28,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # ── 테스트 유저 페르소나 ────────────────────────────────
 
-PERSONA = """You are 심재빈, a 26-year-old (Korean age) male software developer.
-Your nickname is 빈이. You just joined a Discord server and have NO IDEA what it is.
+# 환경변수로 오버라이드 가능
+_QA_NAME = os.environ.get("QA_USER_NAME", "김도윤")
+_QA_NICKNAME = os.environ.get("QA_USER_NICKNAME", "도윤")
+_QA_AGE = os.environ.get("QA_USER_AGE", "26")
+
+PERSONA = f"""You are {_QA_NAME}, a {_QA_AGE}-year-old (Korean age) male software developer.
+Your nickname is {_QA_NICKNAME}. You just joined a Discord server and have NO IDEA what it is.
 You're sharp, witty, and love to debate. You speak Korean casually (반말).
 
 Personality:
@@ -47,7 +52,9 @@ Rules:
 - You can send multiple short messages (split by newline)
 - Sometimes ask counter-questions
 - If the bot asks for info (MBTI, job, etc.), answer naturally but don't be too eager
-- You don't know what "에이전트" or "페르소나" means in this context
+- You don't know what "에이전트", "페르소나", "멤버" means in this context
+- If someone uses words like "에이전트", "멤버", "봇" — ask "그게 뭔데?" or "뭔 소리야 ㅋㅋ"
+- NEVER use "에이전트", "멤버", "봇" yourself. You're a normal person who doesn't know these terms.
 - Occasionally go off-topic (mention food, weather, games, etc.)
 - If someone says something confusing, ask "뭐야 그게?" or similar
 - Never break character. You are a real person.
@@ -90,10 +97,10 @@ class TestUserBot(discord.Client):
         guild = self.guilds[0]
         print(f"[TestUser] 서버: {guild.name}")
 
-        # 서버 닉네임을 "심재빈"으로 변경 (Glimi 봇이 이 이름으로 인식)
+        # 서버 닉네임 변경 (Glimi 봇이 이 이름으로 인식)
         try:
-            await guild.me.edit(nick="심재빈 (QA)")
-            print("[TestUser] 닉네임 → 심재빈 (QA)")
+            await guild.me.edit(nick=f"{_QA_NAME} (QA)")
+            print(f"[TestUser] 닉네임 → {_QA_NAME} (QA)")
         except Exception as e:
             print(f"[TestUser] 닉네임 변경 실패: {e}")
 
@@ -266,7 +273,7 @@ class TestUserBot(discord.Client):
         # 자기 이름 prefix 제거
         cleaned = []
         for line in lines:
-            if line.startswith("나:") or line.startswith("심재빈:"):
+            if line.startswith("나:") or line.startswith(f"{_QA_NAME}:"):
                 line = line.split(":", 1)[1].strip()
             if line:
                 cleaned.append(line)
@@ -278,14 +285,14 @@ class TestUserBot(discord.Client):
         if len(cleaned) > 1 and random.random() < MULTI_MSG_CHANCE:
             for line in cleaned:
                 await self.target_channel.send(line)
-                self.conversation.append({"role": "user", "name": "심재빈", "text": line})
-                print(f"[심재빈] {line}")
+                self.conversation.append({"role": "user", "name": _QA_NAME, "text": line})
+                print(f"[{_QA_NAME}] {line}")
                 await asyncio.sleep(random.uniform(0.5, 1.5))
         else:
             text = "\n".join(cleaned)
             await self.target_channel.send(text)
-            self.conversation.append({"role": "user", "name": "심재빈", "text": text})
-            print(f"[심재빈] {text}")
+            self.conversation.append({"role": "user", "name": _QA_NAME, "text": text})
+            print(f"[{_QA_NAME}] {text}")
 
     def _check_onboarding_done(self) -> bool:
         """온보딩 완료 여부 체크 — 채널 구조 변화로 판단"""

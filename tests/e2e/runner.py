@@ -29,13 +29,13 @@ RESULTS_DIR = PROJECT_ROOT / "tests" / "e2e" / "results"
 QA_COMMUNITY_ID = "qa"
 TEST_TIMEOUT = 600  # 10분 — 온보딩 전체 타임아웃
 
-# 테스트 유저 프로필
+# 테스트 유저 프로필 (환경변수 또는 기본값)
 TEST_USER = {
-    "name": "심재빈",
-    "nickname": "빈이",
-    "age": 26,  # 한국 나이
-    "birth_year": 2001,
-    "gender": "남",
+    "name": os.environ.get("QA_USER_NAME", "김도윤"),
+    "nickname": os.environ.get("QA_USER_NICKNAME", "도윤"),
+    "age": int(os.environ.get("QA_USER_AGE", "26")),
+    "birth_year": int(os.environ.get("QA_USER_BIRTH_YEAR", "2001")),
+    "gender": os.environ.get("QA_USER_GENDER", "남"),
     "mbti": "",  # 온보딩에서 수집되도록 비움
     "background": "",  # 온보딩에서 수집되도록 비움
 }
