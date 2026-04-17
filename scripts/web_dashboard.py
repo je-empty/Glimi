@@ -1830,30 +1830,30 @@ async function runServerControl(action) {
 }
 
 // ==== Main tick ====
-// ==== Supervisors ====
-function renderSupervisorCard(s) {
-  const statusClass = s.intervening ? 'intervening' : (s.active ? 'active' : 'inactive');
-  const badgeText = s.intervening ? '● INTERVENING' : (s.active ? '● ACTIVE' : '○ IDLE');
-  const logs = (s.recent_logs || []).slice(-8).map(l => `<div>${esc(l)}</div>`).join('') || '<span style="color:var(--text-faint);font-style:italic">로그 없음</span>';
-  return `<div class="sup-card ${statusClass}" style="cursor:pointer" onclick="openAgent('sup:${esc(s.name)}')">
-    <div class="sup-head">
-      <span class="sup-icon">${s.icon}</span>
-      <span class="sup-name">${esc(s.name)}</span>
-      <span class="sup-badge ${statusClass}">${badgeText}</span>
-    </div>
-    <div class="sup-desc">${esc(s.description)}</div>
-    ${s.target_agents && s.target_agents.length ? `
-      <div class="sup-targets">
-        <span style="font-size:10.5px;color:var(--text-faint);align-self:center;margin-right:4px">감시 대상:</span>
-        ${s.target_agents.map(a => `<span class="sup-target-pill">${esc(a)}</span>`).join('')}
-      </div>` : ''}
-    <div class="sup-logs">${logs}</div>
-    <div class="sup-meta" style="margin-top:8px">
-      <span>interval: <b style="color:var(--text-dim);font-weight:500">${s.interval_sec}s</b></span>
-      ${s.last_action ? `<span>마지막 액션: <b style="color:var(--text-dim);font-weight:500">${esc(s.last_action)}</b></span>` : ''}
-      ${s.seconds_since_action != null ? `<span>${Math.floor(s.seconds_since_action)}s ago</span>` : ''}
-    </div>
-  </div>`;
+// ==== Supervisors (agent card 포맷으로 재사용) ====
+function supervisorAsAgent(s) {
+  const statusEmoji = s.intervening ? '🔥' : (s.active ? '💭' : '💤');
+  const emotion = s.intervening ? '개입 중' : (s.active ? '감시 중' : '대기');
+  return {
+    id: `sup:${s.name}`,
+    type: 'supervisor',
+    name: s.name,
+    status: s.active ? 'active' : 'inactive',
+    emotion,
+    emoji: s.icon || statusEmoji,
+    intensity: s.intervening ? 10 : (s.active ? 5 : 0),
+    mbti: '',
+    age: 0,
+    last_active: s.last_action || '',
+    thinking: s.intervening,
+    speaking: false,
+    thinking_seconds: s.seconds_since_action || 0,
+    speaking_seconds: 0,
+    model: 'rule-based',
+    provider: 'local',
+    model_override: false,
+    _sup: s,  // 원본 supervisor 데이터
+  };
 }
 
 function renderSupervisorsTab(supervisors) {
@@ -1862,16 +1862,21 @@ function renderSupervisorsTab(supervisors) {
   }
   const active = supervisors.filter(s => s.active);
   const inactive = supervisors.filter(s => !s.active);
-  const sec = (title, arr, hint) => arr.length
-    ? `<div class="detail-section"${title === 'Active' ? ' style="margin-top:0"' : ''}>
-         <h4>${esc(title)} · ${arr.length}</h4>
-         ${hint ? `<div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">${esc(hint)}</div>` : ''}
-         ${arr.map(renderSupervisorCard).join('')}
-       </div>`
-    : '';
+
+  const renderGroup = (title, arr, hint) => {
+    if (!arr.length) return '';
+    // renderAgent 재사용 — 같은 양식으로 렌더. agent-grid로 감싸서 hover/layout 동일.
+    const cards = arr.map(s => renderAgent(supervisorAsAgent(s))).join('');
+    return `<div class="detail-section"${title === 'Active' ? ' style="margin-top:0"' : ''}>
+      <h4>${esc(title)} · ${arr.length}</h4>
+      ${hint ? `<div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">${esc(hint)}</div>` : ''}
+      <div class="agent-grid">${cards}</div>
+    </div>`;
+  };
+
   return [
-    sec('Active', active, '현재 조건 충족 — 백그라운드로 감시 중'),
-    sec('Idle', inactive, '현재 조건 미충족 — 트리거 대기'),
+    renderGroup('Active', active, '현재 조건 충족 — 백그라운드 감시 중'),
+    renderGroup('Idle', inactive, '현재 조건 미충족 — 트리거 대기'),
   ].join('');
 }
 
@@ -2025,10 +2030,10 @@ function renderConnectionGraph(snap) {
       const targetNames = (s.target_agents || []).map(aid => nameToId[aid]).filter(Boolean);
       if (!targetNames.length && !s.active) return;  // idle + no targets → 그래프에 표시 안 함
 
-      // supervisor 노드 위치: 바깥쪽 원 (radius * 1.4)
+      // supervisor 노드 위치: 살짝 바깥쪽 원 (radius * 1.15) — 대상 에이전트와 시각적 근접
       const total = snap.supervisors.length;
       const angle = (i / total) * 2 * Math.PI - Math.PI / 2 + Math.PI / total;
-      const supRadius = radius * 1.35;
+      const supRadius = radius * 1.12;
       const spos = {
         x: cx + Math.cos(angle) * supRadius,
         y: cy + Math.sin(angle) * supRadius,
