@@ -252,6 +252,7 @@ HTML = r"""<!doctype html>
     background: var(--bg-elev); display: flex; align-items: center; justify-content: center;
     font-size: 13px; border: 2px solid var(--bg-elev); box-shadow: var(--shadow);
   }
+  .avatar .emoji-badge.hidden { display: none; }
   .avatar.xl { width: 72px; height: 72px; border-width: 3px; }
   .avatar.xl .emoji-badge { width: 26px; height: 26px; font-size: 16px; bottom: -4px; right: -4px; }
   .avatar.xxl { width: 104px; height: 104px; border-width: 3px; }
@@ -285,12 +286,12 @@ HTML = r"""<!doctype html>
   body.offline .avatar.thinking-ring, body.offline .avatar.speaking-ring { animation: none; }
 
   .offline-banner {
-    display: none;
     padding: 10px 16px; margin-bottom: 18px; border-radius: 10px;
     background: color-mix(in srgb, var(--err) 8%, var(--panel));
     border: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
     color: var(--err); font-size: 12.5px; font-weight: 500;
-    display: flex; align-items: center; gap: 10px;
+    align-items: center; gap: 10px;
+    display: none;
   }
   body.offline .offline-banner { display: flex; }
   .offline-banner::before { content: '⏸'; font-size: 16px; }
@@ -366,6 +367,19 @@ HTML = r"""<!doctype html>
   .agent-head .type-tag.mgr { background: color-mix(in srgb, var(--mgr) 15%, transparent); color: var(--mgr); }
   .agent-head .type-tag.creator { background: color-mix(in srgb, var(--creator) 15%, transparent); color: var(--creator); }
   .agent-head .type-tag.persona { background: color-mix(in srgb, var(--persona) 15%, transparent); color: var(--persona); }
+
+  .model-tag {
+    font-size: 9.5px; padding: 1.5px 6px; border-radius: 5px;
+    font-family: "JetBrains Mono", monospace; font-weight: 500;
+    background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border-soft);
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .model-tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .model-tag.claude { color: #d97706; }
+  .model-tag.openai { color: #10a37f; }
+  .model-tag.local { color: #3b82f6; }
+  .model-tag.other { color: var(--text-dim); }
+  .model-tag.override { border-color: var(--accent); color: var(--accent); }
   .agent-head .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
   .agent-head .status-dot.active { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
 
@@ -434,7 +448,21 @@ HTML = r"""<!doctype html>
     background: var(--panel); border: 1px solid var(--border-soft);
     border-left: 3px solid var(--persona);
     font-size: 12.5px; box-shadow: var(--shadow);
+    display: flex; gap: 10px; align-items: flex-start;
   }
+  .msg .msg-avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--panel-2);
+    overflow: hidden; flex-shrink: 0; border: 1.5px solid var(--border-soft); cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .msg .msg-avatar:hover { border-color: var(--accent); }
+  .msg .msg-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .msg .msg-avatar.user {
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--user) 15%, var(--panel-2));
+    color: var(--user); font-weight: 700; font-size: 11px;
+  }
+  .msg .msg-body { flex: 1; min-width: 0; }
   .msg.user { border-left-color: var(--user); }
   .msg.mgr { border-left-color: var(--mgr); }
   .msg.creator { border-left-color: var(--creator); }
@@ -445,6 +473,16 @@ HTML = r"""<!doctype html>
   .msg .ch:hover { color: var(--accent); }
   .msg .ts { color: var(--text-faint); font-size: 10.5px; margin-left: auto; }
   .msg .text { color: var(--text); word-break: break-word; white-space: pre-wrap; }
+
+  /* ==== Lightbox (full avatar) ==== */
+  .lightbox {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(10px); z-index: 100;
+    align-items: center; justify-content: center; padding: 40px; cursor: zoom-out;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+  .lightbox .lb-caption { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 0.3px; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
 
   /* ==== Events ==== */
   .event-list { display: flex; flex-direction: column; gap: 5px; }
@@ -488,14 +526,17 @@ HTML = r"""<!doctype html>
     box-shadow: var(--shadow-lg);
   }
   .detail-head {
-    padding: 16px 22px; display: flex; align-items: center; gap: 14px;
-    border-bottom: 1px solid var(--border);
+    padding: 14px 20px; display: flex; align-items: center; gap: 14px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
-  .detail-head .d-emoji { font-size: 34px; }
-  .detail-head .d-title { font-size: 18px; font-weight: 700; }
+  .detail-head .d-emoji { font-size: 28px; line-height: 1; flex-shrink: 0; display: flex; }
+  .detail-head .d-emoji .avatar { margin: 0; cursor: pointer; }
+  .detail-head .d-emoji .avatar:hover { transform: scale(1.05); transition: transform 0.15s; }
+  .detail-head .d-title { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; flex: 1; min-width: 0; }
+  .detail-head .d-title small { color: var(--text-dim); font-size: 12px; font-weight: 500; margin-left: 8px; }
   .detail-head .d-close {
-    margin-left: auto; background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px;
+    flex-shrink: 0; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px;
     font-size: 12px; cursor: pointer;
   }
   .detail-head .d-close:hover { background: var(--panel-3); }
@@ -580,17 +621,17 @@ HTML = r"""<!doctype html>
     <!-- Overview -->
     <div class="view active" id="view-overview">
       <div class="offline-banner" id="offline-banner">
-        <b>오프라인</b> — 봇이 실행 중이 아님. 마지막 스냅샷 표시 중 (실시간 아님)
+        <b>오프라인</b> — 커뮤니티 서버가 실행 중이 아님. 마지막 스냅샷 표시 중 (실시간 아님)
         <span class="muted" id="offline-last"></span>
       </div>
       <div class="hero" id="hero"></div>
       <div class="overview-grid">
-        <div class="kpi"><div class="label">Bot Status</div><div class="value" id="kpi-bot">—</div></div>
-        <div class="kpi"><div class="label">User</div><div class="value" id="kpi-user">—</div></div>
+        <div class="kpi"><div class="label">Discord Bot</div><div class="value" id="kpi-bot">—</div></div>
+        <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
         <div class="kpi"><div class="label">Onboarding</div><div class="value" id="kpi-phase">—</div></div>
         <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
       </div>
-      <div class="section-title">Members</div>
+      <div class="section-title">Agents</div>
       <div class="agent-grid" id="overview-agents"></div>
       <div class="section-title">Recent Conversations</div>
       <div class="msg-list" id="overview-msgs"></div>
@@ -626,6 +667,12 @@ HTML = r"""<!doctype html>
     </div>
     <div class="detail-body" id="d-body"></div>
   </div>
+</div>
+
+<!-- Lightbox (full avatar) -->
+<div class="lightbox" id="lightbox" onclick="this.classList.remove('open')">
+  <img id="lightbox-img" src="" alt="">
+  <div class="lb-caption" id="lightbox-caption"></div>
 </div>
 
 <script>
@@ -696,7 +743,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
 });
 
 // ==== Renderers ====
-function avatarHtml(a, size='') {
+function avatarHtml(a, size='', opts={}) {
   const cls = ['avatar', size];
   if (a.thinking) cls.push('thinking-ring');
   else if (a.speaking) cls.push('speaking-ring');
@@ -704,9 +751,24 @@ function avatarHtml(a, size='') {
   else if (a.intensity >= 7) cls.push('ring-7');
   else if (a.intensity >= 5) cls.push('ring-5');
   const src = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
-  return `<div class="${cls.filter(Boolean).join(' ')}" title="${esc(a.name)}">
+  // 평온 + 낮은 강도면 emoji badge 숨김
+  const hideBadge = a.emotion === '평온' || opts.hideBadge;
+  const clickOpen = opts.clickOpen !== false;
+  const onclick = clickOpen ? `onclick="event.stopPropagation(); openFullAvatar('${esc(a.id)}', '${esc(a.name)}')"` : '';
+  return `<div class="${cls.filter(Boolean).join(' ')}" title="${esc(a.name)}" ${onclick}>
     <img src="${src}" alt="${esc(a.name)}" loading="lazy" onerror="this.style.display='none'">
-    <span class="emoji-badge">${a.emoji}</span>
+    <span class="emoji-badge ${hideBadge ? 'hidden' : ''}">${a.emoji}</span>
+  </div>`;
+}
+
+function miniAvatarHtml(speakerId, isUser, speakerName) {
+  if (isUser) {
+    const initial = (speakerName || '?').slice(0, 1);
+    return `<div class="msg-avatar user" title="${esc(speakerName)}">${esc(initial)}</div>`;
+  }
+  const src = `/api/avatar?id=${encodeURIComponent(speakerId)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+  return `<div class="msg-avatar" title="${esc(speakerName)}" onclick="openFullAvatar('${esc(speakerId)}', '${esc(speakerName)}')">
+    <img src="${src}" alt="${esc(speakerName)}" loading="lazy" onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:11px;color:var(--text-faint)&quot;>?</div>'">
   </div>`;
 }
 
@@ -749,6 +811,7 @@ function renderAgent(a, clickable=true) {
           <span>${a.intensity}/10</span>
           ${a.mbti ? `<span>· ${esc(a.mbti)}</span>` : ''}
           ${a.age ? `<span>· ${a.age}y</span>` : ''}
+          ${a.model ? `<span class="model-tag ${a.provider}${a.model_override ? ' override' : ''}" title="${a.model_override ? 'per-agent override' : 'default by type'}">${esc(a.model)}</span>` : ''}
         </div>
       </div>
       <span class="state-badge thinking">thinking</span>
@@ -765,23 +828,36 @@ function renderHero(snap) {
   const all = [...mgrs, ...persona];
   const avatarsHtml = all.slice(0, 8).map(a => avatarHtml(a, 'xl')).join('');
   const active = snap.agents.filter(a => a.thinking || a.speaking);
-  const activeText = active.length
-    ? active.map(a => `<b style="color:${a.thinking ? 'var(--thinking)' : 'var(--speaking)'}">${esc(a.name)}</b>`).join(', ') + ` ${active.length > 1 ? '이' : '가'} ${active.some(x=>x.thinking)?'생각 중':''}${active.some(x=>x.thinking)&&active.some(x=>x.speaking)?' · ':''}${active.some(x=>x.speaking)?'응답 중':''}`
-    : `<span style="color:var(--text-dim)">평온 · 모두 대기 중</span>`;
+  const offline = !snap.bot.bot_alive;
+  let activeText;
+  if (offline) {
+    activeText = `<span style="color:var(--text-dim)">서버 오프라인 · 마지막 스냅샷</span>`;
+  } else if (active.length) {
+    const names = active.map(a => `<b style="color:${a.thinking ? 'var(--thinking)' : 'var(--speaking)'}">${esc(a.name)}</b>`).join(', ');
+    const tAct = active.some(x => x.thinking);
+    const sAct = active.some(x => x.speaking);
+    const verb = tAct && sAct ? '생각 · 응답 중' : tAct ? '생각 중' : '응답 중';
+    activeText = `${names} ${verb}`;
+  } else {
+    activeText = `<span style="color:var(--text-dim)">평온 · 모두 대기 중</span>`;
+  }
 
   const userName = m.user_name || '—';
   const phase = m.onboarding_phase || '—';
   const msgCount = snap.total_messages || 0;
+  const cm = snap.community_meta || {};
+  const descText = cm.description || cm.name || `${userName}의 커뮤니티`;
 
   return `<div class="hero-row">
     <div class="hero-avatars">
-      ${avatarsHtml || '<div style="color:var(--text-faint)">no members yet</div>'}
+      ${avatarsHtml || '<div style="color:var(--text-faint)">no agents yet</div>'}
     </div>
     <div class="hero-text" style="flex:1">
-      <h1><span class="sv-name">${esc(snap.community_id)}</span> · ${esc(userName)}의 커뮤니티</h1>
+      <h1><span class="sv-name">${esc(snap.community_id)}</span> · <span style="color:var(--text)">${esc(descText)}</span></h1>
       <p>${activeText}</p>
       <div class="hero-pill-row">
-        <span class="pill neutral">members · <b>${snap.agents.length}</b></span>
+        <span class="pill neutral">owner · <b>${esc(userName)}</b></span>
+        <span class="pill neutral">agents · <b>${snap.agents.length}</b></span>
         <span class="pill neutral">channels · <b>${snap.channels.length}</b></span>
         <span class="pill neutral">messages · <b>${msgCount}</b></span>
         <span class="pill neutral">phase · <b>${esc(phase)}</b></span>
@@ -790,14 +866,27 @@ function renderHero(snap) {
   </div>`;
 }
 
+function openFullAvatar(agentId, name) {
+  const box = document.getElementById('lightbox');
+  const img = document.getElementById('lightbox-img');
+  const cap = document.getElementById('lightbox-caption');
+  const src = `/api/avatar?id=${encodeURIComponent(agentId)}&variant=full${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+  img.src = src;
+  cap.textContent = name || agentId;
+  box.classList.add('open');
+}
+
 function renderMessage(m) {
   return `<div class="msg ${roleClass(m)}">
-    <div class="head">
-      <span class="who">${esc(m.speaker)}</span>
-      <span class="ch" onclick="openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
-      <span class="ts">${esc((m.timestamp||'').slice(11, 19))}</span>
+    ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
+    <div class="msg-body">
+      <div class="head">
+        <span class="who">${esc(m.speaker)}</span>
+        <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
+        <span class="ts">${esc((m.timestamp||'').slice(11, 19))}</span>
+      </div>
+      <div class="text">${esc(m.message)}</div>
     </div>
-    <div class="text">${esc(m.message)}</div>
   </div>`;
 }
 
@@ -845,12 +934,13 @@ function renderEvent(e) {
 function openModal(emoji, title, body, agent=null) {
   const emojiEl = document.getElementById('d-emoji');
   if (agent && agent.id) {
-    // 아바타 이미지로 교체
-    emojiEl.innerHTML = `<div style="width:54px;height:54px">${avatarHtml(agent, 'xl')}</div>`;
+    // xxl 아바타로 — 56×56 정도. 클릭하면 -full 버전 lightbox
+    emojiEl.innerHTML = avatarHtml({...agent, emotion: agent.emotion}, 'xl', { clickOpen: true });
   } else {
-    emojiEl.innerHTML = `<span>${esc(emoji)}</span>`;
+    emojiEl.innerHTML = `<span style="font-size:30px">${esc(emoji)}</span>`;
   }
-  document.getElementById('d-title').textContent = title;
+  const titleEl = document.getElementById('d-title');
+  titleEl.innerHTML = esc(title.split(' · ')[0]) + (title.includes(' · ') ? `<small>${esc(title.split(' · ').slice(1).join(' · '))}</small>` : '');
   document.getElementById('d-body').innerHTML = body;
   document.getElementById('detail-backdrop').classList.add('open');
 }
@@ -871,6 +961,7 @@ async function openAgent(id) {
   if (d.traits && d.traits.length) profileLines.push(['Traits', d.traits.slice(0,5).join(' · ')]);
   profileLines.push(['Emotion', `${d.emoji} ${d.emotion} (${d.intensity}/10)`]);
   profileLines.push(['Status', d.thinking ? '🧠 Thinking' : d.speaking ? '💬 Speaking' : (d.status === 'active' ? '● Active' : d.status)]);
+  if (d.model) profileLines.push(['Model', `<span class="model-tag ${d.provider}${d.model_override ? ' override' : ''}">${esc(d.model)}</span>${d.model_override ? ' <small style="color:var(--accent)">override</small>' : '<small style="color:var(--text-faint)"> · default</small>'}`, true]);
   if (d.relationship_to_owner?.type) {
     const r = d.relationship_to_owner;
     profileLines.push(['Owner', `${r.type}${r.pet_name ? ' (' + r.pet_name + ')' : ''}${r.duration ? ' · ' + r.duration : ''}`]);
@@ -912,7 +1003,7 @@ async function openAgent(id) {
   const body = `
     <div class="detail-section">
       <h4>Profile</h4>
-      <dl class="kv">${profileLines.map(([k,v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+      <dl class="kv">${profileLines.map(([k,v,raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
     </div>
     ${rels ? `<div class="detail-section"><h4>Relationships · ${d.relationships.length}</h4>${rels}</div>` : ''}
     ${memHtml ? `<div class="detail-section"><h4>Memory</h4>${memHtml}</div>` : ''}
@@ -1020,35 +1111,84 @@ async function tick() {
 
   // Health
   if (health) {
-    const usedPct = health.disk_total_bytes ? (health.disk_used_bytes / health.disk_total_bytes * 100).toFixed(1) : 0;
+    const diskPct = health.disk_total_bytes ? (health.disk_used_bytes / health.disk_total_bytes * 100).toFixed(1) : 0;
+    const memPct = health.sys_mem_pct || 0;
+    const glimiMemPct = health.sys_mem_total_bytes ? (health.glimi_mem_bytes / health.sys_mem_total_bytes * 100).toFixed(1) : 0;
     document.getElementById('health-full').innerHTML = `
-      <div class="health-card">
-        <h4>Bot Process</h4>
-        <div class="big">${health.bot_alive ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}</div>
-        ${health.pid ? `<div class="sub">PID: ${esc(health.pid)}</div>` : ''}
+      <div style="margin-bottom:18px">
+        <div class="section-title" style="margin-top:0">Processes</div>
+        <div class="health-grid">
+          <div class="health-card">
+            <h4>Discord Bot</h4>
+            <div class="big">${health.bot_alive ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}</div>
+            ${health.pid ? `<div class="sub">PID: ${esc(health.pid)}</div>` : ''}
+          </div>
+          <div class="health-card">
+            <h4>QA Runner</h4>
+            <div class="big">${health.runner_alive ? '<span style="color:var(--ok)">● Active</span>' : '<span style="color:var(--text-faint)">○ Idle</span>'}</div>
+            <div class="sub">${health.test_user_alive ? 'test-user bot alive' : ''}</div>
+          </div>
+          <div class="health-card">
+            <h4>Dev Mode</h4>
+            <div class="big">${health.dev_active ? '<span style="color:var(--warn)">● Active</span>' : '<span style="color:var(--text-faint)">○ Off</span>'}</div>
+          </div>
+        </div>
       </div>
-      <div class="health-card">
-        <h4>QA Runner</h4>
-        <div class="big">${health.runner_alive ? '<span style="color:var(--ok)">● Active</span>' : '<span style="color:var(--text-faint)">○ Idle</span>'}</div>
-        <div class="sub">${health.test_user_alive ? 'test-user bot alive' : ''}</div>
+
+      <div style="margin-bottom:18px">
+        <div class="section-title" style="margin-top:0">Glimi Resource Usage</div>
+        <div class="health-grid">
+          <div class="health-card">
+            <h4>CPU (Glimi procs)</h4>
+            <div class="big">${health.glimi_cpu_pct.toFixed(1)}<small style="font-size:13px;color:var(--text-dim)">%</small></div>
+            <div class="sub">${health.glimi_proc_count} process${health.glimi_proc_count === 1 ? '' : 'es'}</div>
+          </div>
+          <div class="health-card">
+            <h4>RAM (Glimi procs)</h4>
+            <div class="big">${fmtBytes(health.glimi_mem_bytes)}</div>
+            <div class="sub">${glimiMemPct}% of system RAM</div>
+            <div class="disk-bar"><span style="width:${Math.min(100, parseFloat(glimiMemPct))}%"></span></div>
+          </div>
+          <div class="health-card">
+            <h4>DB Size</h4>
+            <div class="big">${fmtBytes(health.db_size_bytes)}</div>
+            <div class="sub">community SQLite</div>
+          </div>
+          <div class="health-card">
+            <h4>Log Size</h4>
+            <div class="big">${fmtBytes(health.log_size_bytes)}</div>
+            <div class="sub">system.log</div>
+          </div>
+        </div>
       </div>
-      <div class="health-card">
-        <h4>Dev Mode</h4>
-        <div class="big">${health.dev_active ? '<span style="color:var(--warn)">● Active</span>' : '<span style="color:var(--text-faint)">○ Off</span>'}</div>
-      </div>
-      <div class="health-card">
-        <h4>DB Size</h4>
-        <div class="big">${fmtBytes(health.db_size_bytes)}</div>
-      </div>
-      <div class="health-card">
-        <h4>Log Size</h4>
-        <div class="big">${fmtBytes(health.log_size_bytes)}</div>
-      </div>
-      <div class="health-card">
-        <h4>Disk Usage</h4>
-        <div class="big">${fmtBytes(health.disk_used_bytes)} / ${fmtBytes(health.disk_total_bytes)}</div>
-        <div class="sub">free: ${fmtBytes(health.disk_free_bytes)}</div>
-        <div class="disk-bar"><span style="width:${usedPct}%"></span></div>
+
+      <div style="margin-bottom:18px">
+        <div class="section-title" style="margin-top:0">System Resources</div>
+        <div class="health-grid">
+          <div class="health-card">
+            <h4>System CPU</h4>
+            <div class="big">${health.sys_cpu_pct.toFixed(1)}<small style="font-size:13px;color:var(--text-dim)">%</small></div>
+            <div class="sub">load: ${health.sys_load_1m} / ${health.sys_load_5m} / ${health.sys_load_15m}</div>
+            <div class="disk-bar"><span style="width:${Math.min(100, health.sys_cpu_pct)}%"></span></div>
+          </div>
+          <div class="health-card">
+            <h4>System RAM</h4>
+            <div class="big">${fmtBytes(health.sys_mem_used_bytes)} <small style="font-size:12px;color:var(--text-dim)">/ ${fmtBytes(health.sys_mem_total_bytes)}</small></div>
+            <div class="sub">${memPct}% used</div>
+            <div class="disk-bar"><span style="width:${memPct}%"></span></div>
+          </div>
+          <div class="health-card">
+            <h4>Disk</h4>
+            <div class="big">${fmtBytes(health.disk_used_bytes)} <small style="font-size:12px;color:var(--text-dim)">/ ${fmtBytes(health.disk_total_bytes)}</small></div>
+            <div class="sub">free: ${fmtBytes(health.disk_free_bytes)} · ${diskPct}% used</div>
+            <div class="disk-bar"><span style="width:${diskPct}%"></span></div>
+          </div>
+          <div class="health-card" style="opacity:0.5">
+            <h4>GPU</h4>
+            <div class="big" style="font-size:13px;color:var(--text-faint)">N/A on macOS</div>
+            <div class="sub">powermetrics requires sudo</div>
+          </div>
+        </div>
       </div>
     `;
   }

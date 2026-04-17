@@ -85,6 +85,54 @@ EMOTION_EMOJI = {
 }
 
 
+def _get_agent_model(agent_id: str, agent_type: str) -> dict:
+    """에이전트 사용 모델 정보 조회.
+
+    우선순위:
+    1. agent_config 테이블에 model override 있으면 그것 (로컬 모델 스왑 대비)
+    2. runtime.AGENT_MODELS에 타입 기본값
+    3. 기본 "claude-sonnet-4-6"
+    """
+    # per-agent override 체크
+    override_model = None
+    try:
+        conn = db.get_conn()
+        row = conn.execute(
+            "SELECT config_json FROM agent_config WHERE agent_id = ?",
+            (agent_id,),
+        ).fetchone()
+        conn.close()
+        if row:
+            import json as _json
+            cfg = _json.loads(row["config_json"] or "{}")
+            override_model = cfg.get("model")
+    except Exception:
+        pass
+
+    # 기본값 (runtime.py와 동기화)
+    type_defaults = {
+        "persona": "claude-sonnet-4-6",
+        "mgr": "claude-sonnet-4-6",
+        "creator": "claude-sonnet-4-6",
+    }
+    default = type_defaults.get(agent_type, "claude-sonnet-4-6")
+    model = override_model or default
+
+    # provider 분류 (UI에서 색상 구분용)
+    if model.startswith("claude-"):
+        provider = "claude"
+    elif model.startswith("gpt-") or model.startswith("openai"):
+        provider = "openai"
+    elif "llama" in model.lower() or "ollama" in model.lower():
+        provider = "local"
+    elif "/" in model or "local" in model.lower():
+        provider = "local"
+    else:
+        provider = "other"
+
+    return {"model": model, "provider": provider, "override": bool(override_model)}
+
+
 def get_agents() -> list[dict]:
     """모든 에이전트 (mgr → creator → persona 순) + thinking/speaking 플래그."""
     try:
@@ -99,11 +147,13 @@ def get_agents() -> list[dict]:
     for a in agents:
         emo = a.get("current_emotion") or "평온"
         aid = a["id"]
+        atype = a.get("type", "")
         is_t = log_writer.is_thinking(aid)
         is_s = log_writer.is_speaking(aid)
+        model_info = _get_agent_model(aid, atype)
         out.append({
             "id": aid,
-            "type": a.get("type", ""),
+            "type": atype,
             "name": a.get("name", aid),
             "status": a.get("status", ""),
             "emotion": emo,
@@ -116,6 +166,9 @@ def get_agents() -> list[dict]:
             "speaking": is_s,
             "thinking_seconds": log_writer.thinking_seconds(aid) if is_t else 0,
             "speaking_seconds": log_writer.speaking_seconds(aid) if is_s else 0,
+            "model": model_info["model"],
+            "provider": model_info["provider"],
+            "model_override": model_info["override"],
         })
     return out
 
@@ -368,6 +421,7 @@ def get_agent_detail(agent_id: str) -> dict:
     emo = agent.get("current_emotion") or "평온"
     is_t = log_writer.is_thinking(agent_id)
     is_s = log_writer.is_speaking(agent_id)
+    model_info = _get_agent_model(agent_id, agent.get("type", "persona"))
 
     # 관계 (relationships 테이블)
     rels = []
@@ -446,6 +500,9 @@ def get_agent_detail(agent_id: str) -> dict:
         "thinking_logs": thinking_logs,
         "primary_channel": primary,
         "primary_chat": primary_chat,
+        "model": model_info["model"],
+        "provider": model_info["provider"],
+        "model_override": model_info["override"],
     }
 
 
@@ -479,7 +536,7 @@ def get_channel_detail(channel_name: str) -> dict:
 # ── Health / Usage ──────────────────────────────────────
 
 def get_health() -> dict:
-    """프로세스/PID/디스크/로그 크기 등 시스템 헬스."""
+    """프로세스/PID/디스크/로그 크기 + Glimi 프로세스 리소스 + 시스템 리소스."""
     from pathlib import Path as _P
     import shutil
 
@@ -522,6 +579,47 @@ def get_health() -> dict:
     except Exception:
         pass
 
+    # 시스템 CPU/메모리 (psutil 있으면 세부)
+    sys_cpu_pct = 0.0
+    sys_mem_total, sys_mem_used, sys_mem_pct = 0, 0, 0.0
+    sys_load = [0, 0, 0]
+    glimi_cpu_pct = 0.0
+    glimi_mem_bytes = 0
+    glimi_proc_count = 0
+    try:
+        import psutil  # type: ignore
+        sys_cpu_pct = psutil.cpu_percent(interval=0.1)
+        vm = psutil.virtual_memory()
+        sys_mem_total = vm.total
+        sys_mem_used = vm.used
+        sys_mem_pct = vm.percent
+        try:
+            sys_load = list(os.getloadavg())
+        except Exception:
+            pass
+
+        # Glimi 관련 프로세스 합산 (src.discord_bot, tests.e2e.runner, test_user_bot)
+        patterns = ("src.discord_bot", "tests.e2e.runner", "tests.e2e.test_user_bot", "src.tools.dev_runner")
+        for proc in psutil.process_iter(["pid", "cmdline", "cpu_percent", "memory_info"]):
+            try:
+                cmd = " ".join(proc.info.get("cmdline") or [])
+                if any(p in cmd for p in patterns):
+                    glimi_proc_count += 1
+                    try:
+                        glimi_cpu_pct += proc.cpu_percent(interval=0) or 0.0
+                    except Exception:
+                        pass
+                    try:
+                        glimi_mem_bytes += proc.info.get("memory_info").rss if proc.info.get("memory_info") else 0
+                    except Exception:
+                        pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
     return {
         "bot_alive": status["bot_alive"],
         "runner_alive": status["runner_alive"],
@@ -533,6 +631,19 @@ def get_health() -> dict:
         "disk_total_bytes": disk_total,
         "disk_used_bytes": disk_used,
         "disk_free_bytes": disk_free,
+        # 시스템 리소스
+        "sys_cpu_pct": round(sys_cpu_pct, 1),
+        "sys_mem_total_bytes": sys_mem_total,
+        "sys_mem_used_bytes": sys_mem_used,
+        "sys_mem_pct": round(sys_mem_pct, 1),
+        "sys_load_1m": round(sys_load[0], 2) if sys_load else 0,
+        "sys_load_5m": round(sys_load[1], 2) if len(sys_load) > 1 else 0,
+        "sys_load_15m": round(sys_load[2], 2) if len(sys_load) > 2 else 0,
+        # Glimi 프로세스 합산
+        "glimi_cpu_pct": round(glimi_cpu_pct, 1),
+        "glimi_mem_bytes": glimi_mem_bytes,
+        "glimi_proc_count": glimi_proc_count,
+        # GPU는 macOS에서 간단한 API 없음 — 생략
     }
 
 
@@ -594,6 +705,27 @@ def get_usage_stats() -> dict:
     }
 
 
+def get_community_meta() -> dict:
+    """registry.toml의 이 커뮤니티 정보 (name, description, language)."""
+    try:
+        from src.community import COMMUNITIES_DIR, REGISTRY_PATH
+        import tomllib
+        cid = community.get_community_id()
+        if REGISTRY_PATH.exists():
+            with open(REGISTRY_PATH, "rb") as f:
+                reg = tomllib.load(f)
+            info = reg.get("community", {}).get(cid, {}) or reg.get("communities", {}).get(cid, {})
+            return {
+                "id": cid,
+                "name": info.get("name", cid),
+                "description": info.get("description", ""),
+                "language": info.get("language", "ko"),
+            }
+    except Exception:
+        pass
+    return {"id": community.get_community_id(), "name": "", "description": "", "language": ""}
+
+
 # ── 통합 스냅샷 ────────────────────────────────────────
 
 def snapshot() -> dict:
@@ -607,4 +739,5 @@ def snapshot() -> dict:
         "recent_messages": get_recent_messages(limit=30),
         "total_messages": get_total_message_count(),
         "community_id": community.get_community_id(),
+        "community_meta": get_community_meta(),
     }
