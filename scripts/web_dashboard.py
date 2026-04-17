@@ -894,7 +894,7 @@ HTML = r"""<!doctype html>
 
     <div style="flex:1"></div>
 
-    <button class="btn-icon" id="lang-toggle" title="언어 전환">가</button>
+    <button class="btn-icon" id="lang-toggle" title="언어 전환">🌐</button>
     <button class="btn-icon" id="supervisor-toggle" title="Supervisor view — 내면 조종 보기">💭</button>
     <button class="btn-icon" id="theme-toggle" title="Theme">☀</button>
   </header>
@@ -1282,10 +1282,13 @@ document.getElementById('supervisor-toggle').addEventListener('click', () => {
 function applyLangLabel() {
   const btn = document.getElementById('lang-toggle');
   const l = currentLang();
-  btn.textContent = LANG_OVERRIDE ? (l === 'ko' ? '가' : 'A') : '⇆';
+  // 현재 언어 국기 + override 상태 구분
+  //   auto: 🌐 (server-following), ko override: 🇰🇷, en override: 🇺🇸
+  const flag = !LANG_OVERRIDE ? '🌐' : (l === 'ko' ? '🇰🇷' : '🇺🇸');
+  btn.textContent = flag;
   btn.title = LANG_OVERRIDE
-    ? (l === 'ko' ? 'Korean — click to English' : 'English — click to Auto')
-    : `Auto (server: ${SERVER_LANG}) — click to fix Korean`;
+    ? (l === 'ko' ? '🇰🇷 Korean (fixed) — click for English' : '🇺🇸 English (fixed) — click for Auto')
+    : `🌐 Auto (server: ${SERVER_LANG.toUpperCase()}) — click to fix Korean`;
   applyStaticI18n();
 }
 function applyStaticI18n() {
@@ -2049,14 +2052,14 @@ function renderConnectionGraph(snap) {
   if (SHOW_SUP && snap.supervisors) {
     const nameToId = {};
     for (const a of snap.agents) nameToId[a.id] = a.name;
-    // 활성 supervisor만 그래프에 표시 (idle은 Supervisors 탭으로 확인)
-    const activeSups = snap.supervisors.filter(s => s.active);
-    activeSups.forEach((s, i) => {
+    // 슈퍼바이저 뷰 켜짐 → 모두 표시 (idle도 dimmed 상태로)
+    const allSups = snap.supervisors;
+    allSups.forEach((s, i) => {
       const targetNames = (s.target_agents || []).map(aid => nameToId[aid]).filter(Boolean);
-      if (!targetNames.length) return;
+      // idle + no targets여도 supervisor 노드는 표시 (viewer에게 존재 알림)
 
       // supervisor 노드 위치: 살짝 바깥쪽 원 (radius * 1.12)
-      const total = activeSups.length;
+      const total = allSups.length;
       const angle = (i / total) * 2 * Math.PI - Math.PI / 2 + Math.PI / total;
       const supRadius = radius * 1.12;
       const spos = {
@@ -2083,16 +2086,34 @@ function renderConnectionGraph(snap) {
     const pa = positions[na], pb = positions[nb];
     if (!pa || !pb) return;
     group.forEach((e, idx) => {
-      // 여러 edge 있으면 curved offset
-      const offset = (idx - (group.length - 1) / 2) * 18;
       const mx = (pa.x + pb.x) / 2;
       const my = (pa.y + pb.y) / 2;
-      // 수직 방향 offset
       const dx = pb.x - pa.x, dy = pb.y - pa.y;
       const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      // 수직 방향 unit
       const nx = -dy / len, ny = dx / len;
-      const ctrlX = mx + nx * offset;
-      const ctrlY = my + ny * offset;
+
+      // 곡선 방향: midpoint가 center에서 떨어진 방향으로 bulge
+      //   (모든 엣지가 원 바깥쪽으로 휘어 서로 덜 겹침)
+      const outDx = mx - cx, outDy = my - cy;
+      const outLen = Math.sqrt(outDx * outDx + outDy * outDy) || 1;
+      // outward 방향이 수직 방향(nx,ny)과 같은 쪽인지 체크해서 부호 결정
+      const sign = (outDx * nx + outDy * ny) >= 0 ? 1 : -1;
+
+      // 베이스 곡률: 엣지 길이 비례. 같은 쌍 여러 개면 idx별로 layer.
+      const baseBulge = len * 0.18;
+      const layerSpread = 22;
+      const midIdx = (group.length - 1) / 2;
+      const bulge = baseBulge + Math.abs(idx - midIdx) * layerSpread;
+      const layerSign = idx < midIdx ? -1 : (idx > midIdx ? 1 : 0);
+
+      // 최종 offset: outward bulge + layer alternation
+      // - 같은 쌍 1개면 그냥 outward bulge
+      // - 여러 개면 한 쪽은 더 바깥, 한 쪽은 반대
+      const offsetMagnitude = bulge * sign;
+      const altOffset = layerSign * layerSpread * 1.4;
+      const ctrlX = mx + nx * (offsetMagnitude + altOffset);
+      const ctrlY = my + ny * (offsetMagnitude + altOffset);
       const color = kindColor[e.kind] || kindColor.other;
       const strokeWidth = e.live ? 2.2 : 1.5;
       const cls = `edge ${e.live ? 'live' : 'dim'}`;
