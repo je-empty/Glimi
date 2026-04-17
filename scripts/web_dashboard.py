@@ -833,6 +833,23 @@ HTML = r"""<!doctype html>
 
   .empty { padding: 32px 12px; text-align: center; color: var(--text-faint); font-size: 12px; font-style: italic; }
 
+  /* Loading state (서버 전환 등) */
+  .loading-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 2147483000;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
+    background-size: 200% 100%;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  body.switching .loading-bar {
+    opacity: 1; animation: loading-slide 1.2s linear infinite;
+  }
+  @keyframes loading-slide {
+    0% { background-position: -100% 0; }
+    100% { background-position: 100% 0; }
+  }
+  body.switching main { opacity: 0.4; pointer-events: none; transition: opacity 0.2s; }
+
   /* Empty community state */
   .empty-banner {
     display: none; padding: 40px 32px; background: var(--panel);
@@ -995,6 +1012,9 @@ HTML = r"""<!doctype html>
   <img id="lightbox-img" src="" alt="">
   <div class="lb-caption" id="lightbox-caption"></div>
 </div>
+
+<!-- Loading bar -->
+<div class="loading-bar"></div>
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
@@ -2396,11 +2416,14 @@ function syntheticTestUserAgent(snap) {
 }
 
 async function tick() {
-  const snap = await j(q('/api/snapshot'));
-  const logs = await j(q('/api/logs?tail=200'));
-  const health = await j(q('/api/health'));
-  const dev = await j(q('/api/dev'));
-  const usage = await j(q('/api/usage'));
+  // 5개 엔드포인트 병렬 fetch — 순차 await 대신 Promise.all로 5배 빠름
+  const [snap, logs, health, dev, usage] = await Promise.all([
+    j(q('/api/snapshot')),
+    j(q('/api/logs?tail=200')),
+    j(q('/api/health')),
+    j(q('/api/dev')),
+    j(q('/api/usage')),
+  ]);
   if (!snap) return;
 
   COMMUNITY = snap.community_id;
@@ -2800,16 +2823,31 @@ async function loadCommunities() {
     </div>`;
   }).join('') || '<div class="empty">no communities</div>';
 
-  // 아이템 클릭 → 전환
+  // 아이템 클릭 → 전환 (즉시 UI 반영 + 로딩 표시)
   menu.querySelectorAll('.ci').forEach(el => {
-    el.addEventListener('click', () => {
-      COMMUNITY = el.dataset.cid;
+    el.addEventListener('click', async () => {
+      const newCid = el.dataset.cid;
+      if (newCid === COMMUNITY) { menu.classList.remove('open'); return; }
+      COMMUNITY = newCid;
       menu.classList.remove('open');
+
+      // 즉시 UI 리셋 + 로딩 상태
+      document.body.classList.add('switching');
+      lastGraphSig = null;  // 그래프 강제 재렌더
+      // 커뮤니티 버튼 이름 즉시 교체 (응답 전에도 피드백)
+      const btnName = document.getElementById('community-btn-name');
+      if (btnName) btnName.textContent = COMMUNITY;
+
       const url = new URL(location.href);
       url.searchParams.set('community', COMMUNITY);
       history.replaceState(null, '', url);
-      tick();
-      loadCommunities();
+
+      try {
+        await tick();
+        await loadCommunities();
+      } finally {
+        document.body.classList.remove('switching');
+      }
     });
   });
 }
