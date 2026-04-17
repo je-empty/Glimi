@@ -993,13 +993,7 @@ async function openAgent(id) {
   }
 
   const thinkingLogs = (d.thinking_logs || []).map(l => `<div class="logline" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);padding:2px 0">${esc(l)}</div>`).join('');
-  const chatHtml = (d.primary_chat || []).map(m => {
-    const cls = m.is_user ? 'user' : 'persona';
-    return `<div class="msg ${cls}" style="margin-bottom:4px">
-      <div class="head"><span class="who">${esc(m.speaker)}</span><span class="ts">${esc((m.timestamp||'').slice(11,19))}</span></div>
-      <div class="text">${esc(m.message)}</div>
-    </div>`;
-  }).join('');
+  const chatHtml = (d.primary_chat || []).map(m => renderMessage({...m, channel: d.primary_channel})).join('');
 
   const body = `
     <div class="detail-section">
