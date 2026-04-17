@@ -393,7 +393,7 @@ HTML = r"""<!doctype html>
   }
   .graph-panel .graph-head .note { color: var(--text-faint); font-size: 11px; margin-left: auto; }
   .graph-stage {
-    position: relative; width: 100%; height: 420px;
+    position: relative; width: 100%; height: 440px;
     overflow: visible;
   }
   .graph-stage svg.graph-edges {
@@ -553,6 +553,7 @@ HTML = r"""<!doctype html>
   .agent-head .type-tag.mgr { background: color-mix(in srgb, var(--mgr) 15%, transparent); color: var(--mgr); }
   .agent-head .type-tag.creator { background: color-mix(in srgb, var(--creator) 15%, transparent); color: var(--creator); }
   .agent-head .type-tag.persona { background: color-mix(in srgb, var(--persona) 15%, transparent); color: var(--persona); }
+  .agent-head .type-tag.supervisor { background: color-mix(in srgb, var(--accent-2) 15%, transparent); color: var(--accent-2); }
 
   .model-tag {
     font-size: 9.5px; padding: 1.5px 6px; border-radius: 5px;
@@ -867,7 +868,7 @@ HTML = r"""<!doctype html>
     <div style="flex:1"></div>
 
     <button class="btn-icon" id="lang-toggle" title="언어 전환">가</button>
-    <button class="btn-icon" id="supervisor-toggle" title="Supervisor view">👁</button>
+    <button class="btn-icon" id="supervisor-toggle" title="Supervisor view — 내면 조종 보기">💭</button>
     <button class="btn-icon" id="theme-toggle" title="Theme">☀</button>
   </header>
 
@@ -1834,7 +1835,7 @@ function renderSupervisorCard(s) {
   const statusClass = s.intervening ? 'intervening' : (s.active ? 'active' : 'inactive');
   const badgeText = s.intervening ? '● INTERVENING' : (s.active ? '● ACTIVE' : '○ IDLE');
   const logs = (s.recent_logs || []).slice(-8).map(l => `<div>${esc(l)}</div>`).join('') || '<span style="color:var(--text-faint);font-style:italic">로그 없음</span>';
-  return `<div class="sup-card ${statusClass}">
+  return `<div class="sup-card ${statusClass}" style="cursor:pointer" onclick="openAgent('sup:${esc(s.name)}')">
     <div class="sup-head">
       <span class="sup-icon">${s.icon}</span>
       <span class="sup-name">${esc(s.name)}</span>
@@ -1972,7 +1973,10 @@ function renderConnectionGraph(snap) {
   const nodes = Array.from(nodeSet);
 
   if (nodes.length === 0) {
-    return `<div class="graph-head"><h3>Connection Graph</h3></div>
+    return `<div class="graph-head">
+        <h3>Connection Graph</h3>
+        <button class="graph-fs-btn" style="margin-left:auto" onclick="toggleGraphFullscreen()">${fullscreen ? '✕ 닫기' : '⛶ 전체보기'}</button>
+      </div>
       <div class="graph-empty">활성 채널 없음 — 에이전트들이 조용히 대기 중</div>`;
   }
 
@@ -1981,7 +1985,7 @@ function renderConnectionGraph(snap) {
   const ownerIdx = nodes.indexOf('__owner__');
   const othersRaw = nodes.filter(n => n !== '__owner__');
   const others = reorderNodesForMinCrossings(othersRaw, edges);
-  const radius = Math.min(W, H) * 0.38;
+  const radius = Math.min(W, H) * 0.34;
   const positions = {};
   if (ownerIdx !== -1) positions['__owner__'] = { x: cx, y: cy };
   others.forEach((n, i) => {
@@ -2119,7 +2123,8 @@ function renderConnectionGraph(snap) {
     const cls = ['graph-node', 'sup'];
     if (sup.active) cls.push('active');
     if (sup.intervening) cls.push('intervening');
-    return `<div class="${cls.join(' ')}" style="left:${pctX}%;top:${pctY}%" onclick="document.querySelector('nav.tabs button[data-tab=&quot;supervisors&quot;]').click()">
+    // 다른 에이전트처럼 상세 모달 띄움 (sup: prefix로 라우팅)
+    return `<div class="${cls.join(' ')}" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('sup:${esc(sup.name)}')">
       <div class="gn-ring">${sup.icon}</div>
       <div class="gn-name">${esc(sup.name)}</div>
     </div>`;

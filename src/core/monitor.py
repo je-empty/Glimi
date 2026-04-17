@@ -415,6 +415,10 @@ def get_agent_detail(agent_id: str) -> dict:
     if agent_id == "test-user-bot":
         return _get_test_user_detail()
 
+    # sup:NAME 형식 — supervisor 가상 에이전트 상세뷰
+    if agent_id.startswith("sup:"):
+        return _get_supervisor_detail(agent_id[4:])
+
     try:
         agent = db.get_agent(agent_id)
     except Exception:
@@ -508,6 +512,74 @@ def get_agent_detail(agent_id: str) -> dict:
         "model": model_info["model"],
         "provider": model_info["provider"],
         "model_override": model_info["override"],
+    }
+
+
+def _get_supervisor_detail(sup_name: str) -> dict:
+    """Supervisor를 에이전트 상세 모달 포맷으로 반환."""
+    sups = get_supervisors()
+    sup = next((s for s in sups if s["name"] == sup_name), None)
+    if not sup:
+        return {"error": f"supervisor not found: {sup_name}"}
+
+    # 추론 로그 = supervisor의 recent_logs
+    thinking_logs = sup["recent_logs"]
+    # primary_chat — 감시 대상 에이전트들의 최근 메시지 (있으면)
+    primary_chat = []
+    for aid in (sup["target_agents"] or [])[:3]:
+        try:
+            a = db.get_agent(aid)
+            if not a:
+                continue
+            atype = a.get("type", "persona")
+            ch = "mgr-dashboard" if atype == "mgr" else ("mgr-creator" if atype == "creator" else f"dm-{a['name']}")
+            msgs = get_recent_messages(limit=5, channel=ch)
+            primary_chat.extend(msgs)
+        except Exception:
+            continue
+    primary_chat = primary_chat[-10:]
+
+    status_emoji = "🔥" if sup["intervening"] else ("💭" if sup["active"] else "💤")
+    emotion = "개입 중" if sup["intervening"] else ("감시 중" if sup["active"] else "대기")
+
+    return {
+        "id": f"sup:{sup_name}",
+        "name": f"{sup['icon']} {sup['class_name']}",
+        "type": "supervisor",
+        "status": "active" if sup["active"] else "inactive",
+        "emotion": emotion,
+        "emoji": status_emoji,
+        "intensity": 10 if sup["intervening"] else (5 if sup["active"] else 0),
+        "mbti": "",
+        "age": 0,
+        "enneagram": "",
+        "traits": ["백그라운드 감시", "비동기 실행", f"{sup['interval_sec']}초 주기"],
+        "background": sup["description"],
+        "relationship_to_owner": {},
+        "thinking": sup["intervening"],
+        "speaking": False,
+        "thinking_seconds": sup["seconds_since_action"] or 0,
+        "speaking_seconds": 0,
+        "last_active": sup["last_action"] or "",
+        "relationships": [
+            {
+                "other_id": aid,
+                "other_name": (db.get_agent(aid) or {}).get("name", aid),
+                "type": "감시 대상",
+                "intimacy": 100 if sup["intervening"] else (60 if sup["active"] else 20),
+                "dynamics": "intervention" if sup["intervening"] else "observing",
+            }
+            for aid in (sup["target_agents"] or [])
+        ],
+        "memories_by_channel": {},
+        "thinking_logs": thinking_logs,
+        "primary_channel": "(다수 채널 감시)",
+        "primary_chat": primary_chat,
+        "model": "rule-based",
+        "provider": "local",
+        "model_override": False,
+        "synthetic": True,
+        "is_supervisor": True,
     }
 
 
