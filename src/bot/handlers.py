@@ -303,7 +303,7 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
                 break
 
             await _handle_msg(msg)
-            await asyncio.sleep(0.1)  # rate limit 방지
+            # PacedSender가 실제 Discord 전송 페이스 조절 — intra-queue sleep 불필요
 
         # 스트리밍 종료 → runtime에 stash된 tool_calls 실행
         from src.bot.mgr_system import parse_and_execute_actions

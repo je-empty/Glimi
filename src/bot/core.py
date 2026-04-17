@@ -105,16 +105,8 @@ def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
     return True  # 알 수 없는 채널은 허용
 
 
-async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: str):
-    """에이전트 전용 Webhook으로 메시지 전송 (채널 참가자 검증)"""
-    profile = load_profile(agent_id)
-    name = profile["name"] if profile else "에이전트"
-
-    # 채널 참가자 검증 — 에이전트가 이 채널에 속하는지 확인
-    ch_name = getattr(channel, 'name', '')
-    if ch_name and not _is_agent_in_channel(ch_name, agent_id, name):
-        log_writer.system(f"[필터] {name}({agent_id})의 #{ch_name} 메시지 차단 (참가자 아님): {message[:50]}")
-        return
+async def _raw_send_as_agent(channel: discord.TextChannel, agent_id: str, name: str, message: str):
+    """실제 webhook 전송 + 에러 fallback. PacedSender worker가 호출."""
     try:
         webhook = await get_agent_webhook(channel, agent_id)
         await webhook.send(content=message, username=name)
@@ -143,6 +135,30 @@ async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: st
     except Exception as e:
         log.warning(f"Webhook 실패, fallback: {e}")
         await channel.send(f"**{name}**: {message}")
+
+
+async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: str, paced: bool = True):
+    """에이전트 메시지 전송. 기본은 PacedSender 경유 (자연스러운 페이스).
+
+    paced=False면 즉시 전송 (시스템 에러 메시지, 복구 등에만 사용).
+    채널 참가자 검증 후 enqueue.
+    """
+    profile = load_profile(agent_id)
+    name = profile["name"] if profile else "에이전트"
+
+    # 채널 참가자 검증
+    ch_name = getattr(channel, 'name', '')
+    if ch_name and not _is_agent_in_channel(ch_name, agent_id, name):
+        log_writer.system(f"[필터] {name}({agent_id})의 #{ch_name} 메시지 차단 (참가자 아님): {message[:50]}")
+        return
+
+    if paced:
+        from src.bot.paced_sender import paced as _paced_sender
+        async def _send_fn():
+            await _raw_send_as_agent(channel, agent_id, name, message)
+        await _paced_sender.enqueue(channel, agent_id, message, _send_fn)
+    else:
+        await _raw_send_as_agent(channel, agent_id, name, message)
 
 
 async def send_image_as_agent(channel: discord.TextChannel, agent_id: str, image_path: str, caption: str = ""):
