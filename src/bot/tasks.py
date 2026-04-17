@@ -291,11 +291,19 @@ async def _check_owner_profile(guild):
         lang = get_language()
         if lang == "ko":
             name_hint = f"Don't use full name ({name}). For Korean names, drop the surname (e.g. 홍길동→길동). Be friendly."
+            # 말투·호칭 질문은 반드시 명확한 의문형으로 — 평서문/덧붙임("~고요") 금지
+            closer_question = (
+                "\n- IMPORTANT phrasing: ask these as clear questions, NOT as soft trailing statements.\n"
+                "  나쁜 예(어색): \"오빠라고 불러도 되고요 ㅎㅎ\" (평서형 덧붙임)\n"
+                "  좋은 예(자연): \"오빠라고 불러도 돼요?\" / \"혹시 오빠라고 불러도 괜찮아요?\"\n"
+                "  말 놓기도 마찬가지: \"말 놓아도 될까요?\" / \"편하게 해도 돼요?\""
+            )
             honorific_hint = (
                 f"- {name} is {age} years old. {'Older than you — start with formal speech (존댓말).' if older else 'Similar age or unknown — start formal.'}\n"
                 f"- You want to get closer. {'Ask if casual speech is okay. ' if older else ''}"
                 f"{'Ask if you can call them 오빠 (older brother).' if older and gender == '남' else ''}\n"
                 f"- Ask their preferred speech style (formal/casual). This is required."
+                f"{closer_question}"
             )
         else:
             name_hint = f"Use first name only from ({name}). Be friendly and casual."
@@ -324,10 +332,10 @@ async def _check_owner_profile(guild):
             f"- Ask about preferred name/speech style\n"
             f"[Info to collect] MBTI, job, hobby — ask at least 2. Skip if they don't know.\n"
             f"{'Currently missing: ' + missing_str if missing else ''}\n"
-            f"[Profile done] Once name/speech decided + 2+ questions asked → immediately send "
-            f"[CMD:프로필수집완료]. If not sent, onboarding never ends.\n"
+            f"[Profile done] Once name/speech decided + 2+ questions asked → immediately call "
+            f"`finish_profile_collection` tool (use new <tools> block). If not called, onboarding never ends.\n"
             f"[Style] Short chat messages, multiple lines. Natural and friendly. No robotic speech.\n"
-            f"[Forbidden] No CMD/QUERY/ACTION tags except [CMD:프로필수집완료] in this first greeting."
+            f"[Tool policy] Only tool allowed in this first greeting is `finish_profile_collection` (after conditions met). No other tool calls."
         )
 
     log_writer.system(t("onboarding.yuna_loading"))
