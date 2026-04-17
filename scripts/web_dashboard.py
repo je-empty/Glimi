@@ -305,6 +305,48 @@ HTML = r"""<!doctype html>
   .offline-banner b { color: var(--err); }
   .offline-banner span.muted { color: var(--text-dim); font-weight: 400; margin-left: auto; }
 
+  /* ==== Connection Graph ==== */
+  .graph-panel {
+    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 14px;
+    padding: 16px 20px; margin-bottom: 20px; box-shadow: var(--shadow);
+    position: relative; overflow: hidden;
+  }
+  .graph-panel .graph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .graph-panel .graph-head h3 {
+    font-size: 11.5px; font-weight: 700; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1.3px;
+  }
+  .graph-panel .graph-head .note { color: var(--text-faint); font-size: 11px; margin-left: auto; }
+  .graph-svg { width: 100%; height: 360px; display: block; }
+  .graph-svg .node-ring { transition: stroke-width 0.2s; }
+  .graph-svg .node-ring:hover { stroke-width: 3; }
+  .graph-svg .edge {
+    fill: none; stroke-linecap: round;
+    transition: stroke-width 0.3s, opacity 0.3s;
+  }
+  .graph-svg .edge.dim { opacity: 0.35; }
+  .graph-svg .edge.live { stroke-dasharray: 6 4; animation: edge-flow 1.6s linear infinite; }
+  @keyframes edge-flow { to { stroke-dashoffset: -20; } }
+  .graph-svg .edge-label {
+    font-family: "JetBrains Mono", monospace; font-size: 10px; fill: var(--text-dim);
+    pointer-events: none;
+  }
+  .graph-svg .edge-label-bg {
+    fill: var(--panel); stroke: var(--border); stroke-width: 0.5; rx: 4;
+  }
+  .graph-svg .node-name {
+    font-size: 11px; font-weight: 600; fill: var(--text);
+    text-anchor: middle; pointer-events: none;
+  }
+  .graph-empty {
+    padding: 40px 12px; text-align: center; color: var(--text-faint); font-size: 12px; font-style: italic;
+  }
+  .graph-legend {
+    display: flex; gap: 14px; margin-top: 10px; font-size: 10.5px; color: var(--text-dim); flex-wrap: wrap;
+  }
+  .graph-legend .item { display: flex; align-items: center; gap: 5px; }
+  .graph-legend .swatch { width: 12px; height: 3px; border-radius: 2px; }
+
   /* ==== Hero Overview ==== */
   .hero {
     background: var(--panel);
@@ -495,6 +537,15 @@ HTML = r"""<!doctype html>
   .msg .ch:hover { color: var(--accent); }
   .msg .ts { color: var(--text-faint); font-size: 10.5px; margin-left: auto; }
   .msg .text { color: var(--text); word-break: break-word; white-space: pre-wrap; }
+  .msg-del-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: transparent; border: 1px solid transparent; color: var(--text-faint);
+    width: 24px; height: 24px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    opacity: 0; transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .msg:hover .msg-del-btn { opacity: 1; }
+  .msg-del-btn:hover { color: var(--err); border-color: var(--err); }
 
   /* ==== Lightbox (full avatar) ==== */
   .lightbox {
@@ -535,15 +586,17 @@ HTML = r"""<!doctype html>
 
   /* ==== Detail Modal ==== */
   .detail-backdrop {
-    position: fixed; inset: 0; background: rgba(10, 12, 25, 0.5);
-    backdrop-filter: blur(6px); z-index: 2000; display: none;
-    align-items: center; justify-content: center; padding: 24px;
+    position: fixed; inset: 0; background: rgba(10, 12, 25, 0.6);
+    backdrop-filter: blur(8px); z-index: 2000; display: none;
+    align-items: flex-start; justify-content: center;
+    padding: 24px;
   }
   :root[data-theme="light"] .detail-backdrop { background: rgba(20, 24, 40, 0.25); }
   .detail-backdrop.open { display: flex; }
   .detail-panel {
     background: var(--bg-elev); border: 1px solid var(--border);
-    border-radius: 14px; width: 100%; max-width: 960px; max-height: 92vh;
+    border-radius: 14px; width: 100%; max-width: 960px;
+    max-height: calc(100vh - 48px);
     overflow: hidden; display: flex; flex-direction: column;
     box-shadow: var(--shadow-lg);
   }
@@ -707,6 +760,7 @@ HTML = r"""<!doctype html>
         <span class="muted" id="offline-last"></span>
       </div>
       <div class="hero" id="hero"></div>
+      <div class="graph-panel" id="graph-panel"></div>
       <div class="overview-grid">
         <div class="kpi"><div class="label">Server Status</div><div class="value" id="kpi-server">—</div></div>
         <div class="kpi"><div class="label">Discord Bot</div><div class="value" id="kpi-bot">—</div></div>
@@ -1030,11 +1084,11 @@ function renderChannelsGrouped(channels) {
   const groups = { mgr: [], dm: [], group: [], 'internal-dm': [], 'internal-group': [] };
   channels.forEach(c => { (groups[c.kind] || groups.mgr).push(c); });
   const labels = {
-    'mgr': '관리 채널',
-    'dm': '오너 DM',
-    'group': '오너 그룹',
-    'internal-dm': '내부 DM (멤버끼리)',
-    'internal-group': '내부 그룹 (멤버끼리)',
+    'mgr': 'Manager',
+    'dm': 'DM',
+    'group': 'Group',
+    'internal-dm': 'Internal DM',
+    'internal-group': 'Internal Group',
   };
   let html = '';
   for (const k of ['mgr', 'dm', 'group', 'internal-dm', 'internal-group']) {
@@ -1141,14 +1195,14 @@ async function openChannel(name) {
   const d = await j(q(`/api/channel?name=${encodeURIComponent(name)}`));
   if (!d) { openModal('⚠', 'Error', '<div class="empty">failed to load</div>'); return; }
   const parts = (d.participants || []).map(p => `<span class="pill neutral">${esc(p.name)}${p.type ? ' · ' + esc(p.type) : ''}</span>`).join(' ');
-  const msgs = (d.messages || []).map(m => renderMessage(m)).join('');
+  const msgs = (d.messages || []).map(m => renderMessageWithActions(m, name)).join('');
   const protected_ch = name.startsWith('mgr-') || name.startsWith('dm-');
   const actions = `
     <div class="detail-section">
       <h4>Actions</h4>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="act-btn danger small" onclick="doChannelClear('${esc(name)}')">🧹 메시지 전체 삭제 (DB만)</button>
-        ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : '<span style="color:var(--text-faint);font-size:11px;padding:6px 0">※ mgr-/dm- 채널은 보호됨</span>'}
+        ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : ''}
       </div>
     </div>`;
   const body = `
@@ -1159,9 +1213,40 @@ async function openChannel(name) {
     ${actions}
     <div class="detail-section">
       <h4>All Messages · ${d.message_count}</h4>
-      <div class="msg-list">${msgs || '<div class="empty">no messages</div>'}</div>
+      <div style="color:var(--text-dim);font-size:11px;margin-bottom:8px">각 메시지 우측 🗑 버튼으로 개별 trash 이동</div>
+      <div class="msg-list" id="ch-messages-${esc(name)}">${msgs || '<div class="empty">no messages</div>'}</div>
     </div>`;
   openModal(chIcon(name), '#' + name, body);
+}
+
+function renderMessageWithActions(m, channelName) {
+  return `<div class="msg ${roleClass(m)}" data-msg-id="${m.id || ''}" style="position:relative">
+    ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
+    <div class="msg-body" style="padding-right:28px">
+      <div class="head">
+        <span class="who">${esc(m.speaker)}</span>
+        <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
+        <span class="ts">${esc((m.timestamp||'').slice(11, 19))}</span>
+      </div>
+      <div class="text">${esc(m.message)}</div>
+    </div>
+    ${m.id ? `<button class="msg-del-btn" onclick="event.stopPropagation(); doTrashMessage('${esc(channelName)}', ${m.id}, this)" title="이 메시지 Trash로 이동">🗑</button>` : ''}
+  </div>`;
+}
+
+async function doTrashMessage(channel, msgId, btn) {
+  if (!confirm('이 메시지를 trash로 옮길까? (복구 가능)')) return;
+  const r = await postJson(q('/api/action/trash_message'), {channel, message_id: msgId});
+  if (r.error) return toast(r.message || r.error, 'err');
+  toast('trash로 이동됨', 'ok');
+  // 해당 메시지 카드 fade out + remove
+  const card = btn?.closest('.msg');
+  if (card) {
+    card.style.transition = 'opacity 0.3s, transform 0.3s';
+    card.style.opacity = '0';
+    card.style.transform = 'translateX(20px)';
+    setTimeout(() => card.remove(), 300);
+  }
 }
 
 // ==== Mutation actions ====
@@ -1330,6 +1415,207 @@ async function runServerControl(action) {
 }
 
 // ==== Main tick ====
+// ==== Connection Graph (SVG) ====
+// 각 활성 채널을 에이전트 간 엣지로 시각화
+function renderConnectionGraph(snap) {
+  const W = 760, H = 340;
+  const cx = W / 2, cy = H / 2;
+
+  // 에이전트 이름 → 에이전트 오브젝트 맵 (아바타 src 포함)
+  const nameToAgent = {};
+  for (const a of snap.agents) {
+    nameToAgent[a.name] = a;
+  }
+  const ownerName = snap.meta?.user_name || 'Owner';
+
+  // 활성 채널 수집 — 최근 5분 이내 활동 있거나 msg_count>0인 것만
+  const channels = (snap.channels || []).filter(c => {
+    if (c.msg_count === 0) return false;
+    // 활성 간주: 참여자 2명 이상, 메시지 있음
+    return c.participant_count >= 1;
+  });
+
+  // owner 참여 채널: dm-, group-, mgr-
+  // internal- 은 agents only
+  const edges = []; // {a, b, channel, kind, live}
+  for (const c of channels) {
+    // channel participants는 agent IDs만 — monitor에서 이미 list로 옴
+    // 전체 참여자 파악: DM/group이면 owner 포함
+    const parts = [];
+    if (c.kind === 'dm' || c.kind === 'group' || c.kind === 'mgr') {
+      parts.push('__owner__');
+    }
+    for (const pid of (c.participants || [])) {
+      // pid → agent name
+      const a = snap.agents.find(a => a.id === pid);
+      if (a) parts.push(a.name);
+    }
+    if (parts.length < 2) continue;
+
+    // live 여부 — 최근 3분 이내 활동
+    const live = c.last_ago && (c.last_ago.includes('초') || c.last_ago.includes('분') && parseInt(c.last_ago) < 5);
+
+    // 쌍 생성: 모든 조합 (클리크)
+    for (let i = 0; i < parts.length; i++) {
+      for (let j = i + 1; j < parts.length; j++) {
+        edges.push({
+          a: parts[i], b: parts[j],
+          channel: c.name, kind: c.kind, live, msg_count: c.msg_count,
+        });
+      }
+    }
+  }
+
+  // 노드 수집: 엣지에 참여한 에이전트 + owner
+  const nodeSet = new Set();
+  for (const e of edges) { nodeSet.add(e.a); nodeSet.add(e.b); }
+  // 엣지 없어도 주요 에이전트(mgr, creator)는 표시
+  for (const a of snap.agents) {
+    if (a.type === 'mgr' || a.type === 'creator') nodeSet.add(a.name);
+  }
+  const nodes = Array.from(nodeSet);
+
+  if (nodes.length === 0) {
+    return `<div class="graph-head"><h3>Connection Graph</h3></div>
+      <div class="graph-empty">활성 채널 없음 — 에이전트들이 조용히 대기 중</div>`;
+  }
+
+  // Layout: owner는 중앙, 나머지는 원형 배치
+  const ownerIdx = nodes.indexOf('__owner__');
+  const others = nodes.filter(n => n !== '__owner__');
+  const radius = Math.min(W, H) * 0.38;
+  const positions = {};
+  if (ownerIdx !== -1) positions['__owner__'] = { x: cx, y: cy };
+  others.forEach((n, i) => {
+    const angle = (i / others.length) * 2 * Math.PI - Math.PI / 2;
+    positions[n] = {
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+    };
+  });
+  // owner 없으면 중앙 비움, 원형만
+  if (!positions['__owner__']) {
+    others.forEach((n, i) => {
+      const angle = (i / others.length) * 2 * Math.PI - Math.PI / 2;
+      positions[n] = {
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius,
+      };
+    });
+  }
+
+  // SVG 색상 (채널 타입별)
+  const kindColor = {
+    dm: 'var(--accent)',
+    group: 'var(--ok)',
+    'internal-dm': 'var(--cmd)',
+    'internal-group': 'var(--creator)',
+    mgr: 'var(--mgr)',
+    other: 'var(--text-faint)',
+  };
+
+  // 같은 쌍에 여러 채널 있으면 curved offset
+  const edgeGroups = {};
+  for (const e of edges) {
+    const k = [e.a, e.b].sort().join('||');
+    (edgeGroups[k] = edgeGroups[k] || []).push(e);
+  }
+
+  // SVG 엣지 렌더
+  const edgeSvg = [];
+  const labelSvg = [];
+  Object.entries(edgeGroups).forEach(([k, group]) => {
+    const [na, nb] = k.split('||');
+    const pa = positions[na], pb = positions[nb];
+    if (!pa || !pb) return;
+    group.forEach((e, idx) => {
+      // 여러 edge 있으면 curved offset
+      const offset = (idx - (group.length - 1) / 2) * 18;
+      const mx = (pa.x + pb.x) / 2;
+      const my = (pa.y + pb.y) / 2;
+      // 수직 방향 offset
+      const dx = pb.x - pa.x, dy = pb.y - pa.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const ctrlX = mx + nx * offset;
+      const ctrlY = my + ny * offset;
+      const color = kindColor[e.kind] || kindColor.other;
+      const strokeWidth = e.live ? 2.2 : 1.5;
+      const cls = `edge ${e.live ? 'live' : 'dim'}`;
+      edgeSvg.push(
+        `<path class="${cls}" d="M ${pa.x} ${pa.y} Q ${ctrlX} ${ctrlY} ${pb.x} ${pb.y}" stroke="${color}" stroke-width="${strokeWidth}" />`
+      );
+      // 라벨 위치: 곡선 중간
+      const labelX = (pa.x + 2 * ctrlX + pb.x) / 4;
+      const labelY = (pa.y + 2 * ctrlY + pb.y) / 4;
+      const displayName = e.channel.length > 22 ? e.channel.slice(0, 20) + '…' : e.channel;
+      const textW = displayName.length * 6 + 10;
+      labelSvg.push(
+        `<g>
+          <rect class="edge-label-bg" x="${labelX - textW / 2}" y="${labelY - 8}" width="${textW}" height="16" rx="4" />
+          <text class="edge-label" x="${labelX}" y="${labelY + 3}" text-anchor="middle">${esc(displayName)}</text>
+        </g>`
+      );
+    });
+  });
+
+  // 노드 렌더 (avatar, 이름)
+  const nodeSvg = nodes.map(n => {
+    const p = positions[n];
+    if (!p) return '';
+    if (n === '__owner__') {
+      // owner는 orange ring
+      return `<g transform="translate(${p.x}, ${p.y})">
+        <circle class="node-ring" r="26" fill="var(--panel-2)" stroke="var(--user)" stroke-width="2.5" />
+        <text y="6" text-anchor="middle" font-size="20">👤</text>
+        <text class="node-name" y="50">${esc(ownerName)}</text>
+      </g>`;
+    }
+    const a = nameToAgent[n];
+    if (!a) return '';
+    const ringColor = {
+      mgr: 'var(--mgr)',
+      creator: 'var(--creator)',
+      persona: 'var(--persona)',
+    }[a.type] || 'var(--border)';
+    const avatarSrc = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+    // thinking/speaking 상태 반영
+    let outer = '';
+    if (a.thinking) outer = `<circle r="32" fill="none" stroke="var(--thinking)" stroke-width="2" opacity="0.6"><animate attributeName="r" values="28;34;28" dur="1.4s" repeatCount="indefinite"/></circle>`;
+    else if (a.speaking) outer = `<circle r="32" fill="none" stroke="var(--speaking)" stroke-width="2" opacity="0.6"><animate attributeName="r" values="28;34;28" dur="1.1s" repeatCount="indefinite"/></circle>`;
+    const patternId = `av-${a.id.replace(/[^a-z0-9]/gi, '')}`;
+    return `<g transform="translate(${p.x}, ${p.y})" style="cursor:pointer" onclick="openAgent('${esc(a.id)}')">
+      ${outer}
+      <defs>
+        <pattern id="${patternId}" patternUnits="objectBoundingBox" width="1" height="1">
+          <image href="${avatarSrc}" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid slice"/>
+        </pattern>
+      </defs>
+      <circle class="node-ring" r="24" fill="url(#${patternId})" stroke="${ringColor}" stroke-width="2.5" />
+      <text class="node-name" y="44">${esc(a.name)}</text>
+    </g>`;
+  }).join('');
+
+  const legend = `<div class="graph-legend">
+    <div class="item"><span class="swatch" style="background:${kindColor.dm}"></span>Owner DM</div>
+    <div class="item"><span class="swatch" style="background:${kindColor.group}"></span>Owner Group</div>
+    <div class="item"><span class="swatch" style="background:${kindColor['internal-dm']}"></span>Internal DM</div>
+    <div class="item"><span class="swatch" style="background:${kindColor['internal-group']}"></span>Internal Group</div>
+    <div class="item"><span class="swatch" style="background:${kindColor.mgr}"></span>Manager</div>
+    <div class="item" style="margin-left:auto"><span style="color:var(--text)">━━</span> 활성  <span style="color:var(--text-dim);margin-left:4px">┄┄</span> 대기</div>
+  </div>`;
+
+  return `<div class="graph-head">
+      <h3>Connection Graph</h3>
+      <span class="note">${edges.length} active connection${edges.length === 1 ? '' : 's'} across ${nodes.length} node${nodes.length === 1 ? '' : 's'}</span>
+    </div>
+    <svg class="graph-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      <g class="edges">${edgeSvg.join('')}${labelSvg.join('')}</g>
+      <g class="nodes">${nodeSvg}</g>
+    </svg>
+    ${legend}`;
+}
+
 function activeScenes(snap) {
   return (snap.scenes || []).filter(s => s.status === 'active');
 }
@@ -1519,6 +1805,10 @@ async function tick() {
     : `<span style="color:var(--text-faint);font-size:15px">—</span><small>nothing active</small>`;
   document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>total</small>`;
 
+  // Connection Graph (에이전트간 활성 채널 시각화)
+  const graphEl = document.getElementById('graph-panel');
+  if (graphEl) graphEl.innerHTML = renderConnectionGraph(snap);
+
   document.getElementById('overview-agents').innerHTML =
     snap.agents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
   const ovMsgs = document.getElementById('overview-msgs');
@@ -1556,7 +1846,21 @@ async function tick() {
     const diskPct = health.disk_total_bytes ? (health.disk_used_bytes / health.disk_total_bytes * 100).toFixed(1) : 0;
     const memPct = health.sys_mem_pct || 0;
     const glimiMemPct = health.sys_mem_total_bytes ? (health.glimi_mem_bytes / health.sys_mem_total_bytes * 100).toFixed(1) : 0;
+    const serverRun = health.bot_alive;
     document.getElementById('health-full').innerHTML = `
+      <div style="margin-bottom:18px">
+        <div class="section-title" style="margin-top:0">Server Control</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px;background:var(--panel);border:1px solid var(--border-soft);border-radius:10px">
+          <button class="act-btn success" onclick="runServerControl('start')" ${serverRun ? 'disabled' : ''}>▶ 서버 시작</button>
+          <button class="act-btn danger" onclick="runServerControl('stop')" ${!serverRun ? 'disabled' : ''}>⏸ 서버 중단</button>
+          <button class="act-btn primary" onclick="runServerControl('restart')">↻ 재시작</button>
+          <div style="flex:1"></div>
+          <span style="align-self:center;color:var(--text-dim);font-size:11.5px">
+            현재 상태: ${serverRun ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}
+          </span>
+        </div>
+      </div>
+
       <div style="margin-bottom:18px">
         <div class="section-title" style="margin-top:0">Processes</div>
         <div class="health-grid">
@@ -1635,15 +1939,10 @@ async function tick() {
   document.getElementById('sync-full').innerHTML = `
     ${guardNote}
     <div class="detail-section" style="margin-top:0">
-      <h4>Server Control</h4>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="act-btn success" onclick="runServerControl('start')" ${serverRunning ? 'disabled' : ''}>▶ 서버 시작</button>
-        <button class="act-btn danger" onclick="runServerControl('stop')" ${!serverRunning ? 'disabled' : ''}>⏸ 서버 중단</button>
-        <button class="act-btn primary" onclick="runServerControl('restart')">↻ 재시작</button>
-      </div>
-    </div>
-    <div class="detail-section">
       <h4>Sync Actions</h4>
+      <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
+        Discord 서버와 DB 사이 상태를 맞추는 작업. 서버 실행 중이면 자동 중단·작업·재시작.
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="act-btn primary" onclick="runSyncAction('scan')">🔍 Scan Discord</button>
         <button class="act-btn success" onclick="runSyncAction('sync')">▶ Full Sync</button>
@@ -1653,6 +1952,10 @@ async function tick() {
     </div>
     <div class="detail-section">
       <h4>Trash · <span id="trash-count" style="color:var(--text-faint)">...</span></h4>
+      <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
+        휴지통 — 채널/메시지 삭제 시 완전 삭제 대신 여기로 옮겨짐. 실수 복구용 안전망.
+        <br>Empty Trash 로 영구 삭제, 각 항목별 <b>복구</b> 가능.
+      </div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <button class="act-btn small" onclick="loadTrash()">새로고침</button>
         <button class="act-btn small danger" onclick="emptyTrash()">Empty Trash</button>
@@ -2345,7 +2648,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(200, body, "application/json; charset=utf-8")
 
     def _html(self, text):
-        self._send(200, text.encode("utf-8"), "text/html; charset=utf-8")
+        body = text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_GET(self):
         p = urlparse(self.path).path

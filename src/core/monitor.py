@@ -275,7 +275,7 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
         conn = db.get_conn()
         if channel:
             rows = conn.execute(
-                "SELECT c.speaker, c.channel, c.message, c.timestamp, "
+                "SELECT c.id, c.speaker, c.channel, c.message, c.timestamp, "
                 "       a.name as agent_name, u.name as user_name "
                 "FROM conversations c "
                 "LEFT JOIN agents a ON a.id = c.speaker "
@@ -286,7 +286,7 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT c.speaker, c.channel, c.message, c.timestamp, "
+                "SELECT c.id, c.speaker, c.channel, c.message, c.timestamp, "
                 "       a.name as agent_name, u.name as user_name "
                 "FROM conversations c "
                 "LEFT JOIN agents a ON a.id = c.speaker "
@@ -303,6 +303,7 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
     for r in reversed(rows):
         who = r["agent_name"] or r["user_name"] or r["speaker"]
         out.append({
+            "id": r["id"],
             "speaker_id": r["speaker"],
             "speaker": who,
             "is_user": bool(r["user_name"]),
