@@ -87,6 +87,19 @@ def _looks_like_claude_error(text: str) -> bool:
     return False
 
 
+def _report_claude_error(agent_name: str, text: str, source: str):
+    """에러 텍스트 필터링 시 system.log + Discord mgr-system-log 양쪽에 남김."""
+    snippet = text.strip().replace("\n", " ")[:200]
+    msg = f"⚠ Claude CLI 에러 필터 [{agent_name}/{source}]: {snippet}"
+    log_writer.system(msg)
+    # Discord mgr-system-log 채널에도 송출 (bot 모듈 임포트는 lazy — 순환 방지)
+    try:
+        from src.bot.core import queue_system_log
+        queue_system_log(msg, force=True)
+    except Exception:
+        pass
+
+
 class AgentRuntime:
 
     def __init__(self):
@@ -638,7 +651,7 @@ class AgentRuntime:
 
                 # Claude CLI 에러 메시지 감지 — 응답 전체가 에러면 placeholder
                 if _looks_like_claude_error(raw):
-                    log_writer.system(f"⚠ Claude CLI 에러 응답 (배치): {raw[:120]}")
+                    _report_claude_error(name, raw, source="batch")
                     return self._placeholder_response(profile, user_message)
 
                 # <tools> 블록 먼저 파싱 → calls는 stash, chat만 메시지 분리
@@ -765,7 +778,7 @@ class AgentRuntime:
 
                 # Claude CLI 에러 메시지 누출 차단 (사용량 한도, API 에러 등)
                 if _looks_like_claude_error(cleaned):
-                    log_writer.system(f"⚠ Claude CLI 에러 텍스트 필터 (스트림): {cleaned[:100]}")
+                    _report_claude_error(name, cleaned, source="stream")
                     # 에러 감지 시 즉시 스트리밍 종료 — 추가 에러 텍스트 방출 방지
                     try:
                         process.kill()
@@ -870,7 +883,7 @@ class AgentRuntime:
                 continue
             # Claude CLI 에러 메시지 누출 차단
             if _looks_like_claude_error(cleaned):
-                log_writer.system(f"⚠ Claude CLI 에러 텍스트 필터 (파싱): {cleaned[:100]}")
+                _report_claude_error(agent_name, cleaned, source="parse")
                 continue
             # JSON/구조화 데이터 유출 필터
             if (cleaned.startswith("{") or cleaned.startswith('"') or
