@@ -284,9 +284,10 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
         if err_text.strip():
             result["issues"].append(f"런타임 에러 발생: {err_text[:200]}")
 
-    # 온보딩 완료 여부
-    onboarding_done = (QA_DIR / "logs" / ".onboarding-done").exists()
-    result["onboarding_done"] = onboarding_done
+    # 온보딩 완료 여부 — `.onboarding-complete` (phase==complete 시점에만 set)
+    # cf. `.onboarding-done`은 "유나 첫 인사 완료" 용도 (대시보드 호환)
+    onboarding_complete = (QA_DIR / "logs" / ".onboarding-complete").exists()
+    result["onboarding_done"] = onboarding_complete
 
     # 로그 기반 판정
     if log_text:
@@ -332,7 +333,7 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
                     break
 
     # 최종 판정
-    if not onboarding_done:
+    if not onboarding_complete:
         result["status"] = "FAIL"
         result["issues"].append("온보딩 미완료")
     elif result["issues"]:

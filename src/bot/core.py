@@ -334,15 +334,17 @@ async def ensure_channels(guild: discord.Guild):
                         _db.set_channel_participants(ch.name, parts)
             first_run = False  # 일반 실행으로 전환
         elif should_clean:
-            # 명시적 정리 요청
-            glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
-            for cat in glimi_categories:
-                for ch in cat.text_channels:
+            # 명시적 정리 요청 — 이름 패턴 기반 (카테고리 불문, orphan 포함)
+            glimi_patterns = ("mgr-", "dm-", "group-", "internal-")
+            for ch in list(guild.text_channels):
+                if any(ch.name.startswith(p) for p in glimi_patterns):
                     try:
                         await ch.delete(reason="Glimi 초기화: 채널 정리")
                         log_writer.system(f"Channel deleted: {ch.name}")
                     except Exception:
                         pass
+            # 빈 glimi-* 카테고리 제거
+            for cat in [c for c in guild.categories if c.name.startswith("glimi")]:
                 if len(cat.channels) == 0:
                     try:
                         await cat.delete()

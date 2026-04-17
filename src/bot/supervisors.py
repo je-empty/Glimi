@@ -198,10 +198,23 @@ class OnboardingSupervisor(Supervisor):
         if not creator_msgs:
             return  # 하나 인사 대기
 
-        # 하나→유나 보고 여부 (internal-dm 존재)
+        # 페르소나 에이전트 존재 여부 — 하나가 최소 1명 생성했어야 Phase 3 진행
+        # (이거 없으면 "채널 구조 설명" 재촉하면 유나가 있지도 않은 dm 채널 환각함)
+        conn = db.get_conn()
+        persona_count = conn.execute(
+            "SELECT COUNT(*) FROM agents WHERE type='persona'"
+        ).fetchone()[0]
+        db_channels = [r[0] for r in conn.execute("SELECT channel FROM channels").fetchall()]
+        conn.close()
+
+        if persona_count == 0:
+            # 하나 작업 중. 유나 재촉하면 안 됨 (환각 방지)
+            return
+
+        # 하나→유나 보고 여부 — DB 기준 (Discord stale 채널 영향 제거)
         has_report = any(
             n.startswith("internal-dm-") and ("유나" in n or "하나" in n)
-            for n in ch_names
+            for n in db_channels
         )
 
         if has_report:

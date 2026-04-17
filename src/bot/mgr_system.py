@@ -699,6 +699,7 @@ async def execute_yuna_command(
     # ── 온보딩 최종 완료 (유나가 채널 설명 + 하나 보고 수신까지 마침) ──
     elif cmd == "온보딩완료":
         db.set_meta("onboarding_phase", "complete")
+        log_writer.mark_onboarding_complete()
         log_writer.system("온보딩 최종 완료")
 
     else:
