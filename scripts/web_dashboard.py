@@ -3292,6 +3292,10 @@ document.addEventListener('keydown', e => {
   applyLangLabel();
   await loadCommunities();
   await tick();
+  // ?openAgent=ID — auto-open agent modal (used for screenshot capture)
+  const _params = new URLSearchParams(location.search);
+  const _autoOpen = _params.get('openAgent');
+  if (_autoOpen) setTimeout(() => openAgent(_autoOpen), 500);
 })();
 setInterval(tick, 1500);
 setInterval(loadCommunities, 5000);  // 커뮤니티 running 상태 5초마다 갱신
