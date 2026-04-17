@@ -410,6 +410,10 @@ def get_agent_detail(agent_id: str) -> dict:
     """에이전트 전체 상세: 프로필 + 관계 + 메모리 + 추론 로그 + 주 채널 채팅."""
     from src.core.profile import load_profile
 
+    # test-user-bot 가상 에이전트 — DB에 없지만 상세뷰 제공
+    if agent_id == "test-user-bot":
+        return _get_test_user_detail()
+
     try:
         agent = db.get_agent(agent_id)
     except Exception:
@@ -503,6 +507,57 @@ def get_agent_detail(agent_id: str) -> dict:
         "model": model_info["model"],
         "provider": model_info["provider"],
         "model_override": model_info["override"],
+    }
+
+
+def _get_test_user_detail() -> dict:
+    """QA test-user-bot의 가상 상세 정보."""
+    import os as _os
+    alive = _ps_has("tests.e2e.test_user_bot")
+
+    # 환경변수에서 페르소나 정보
+    name = _os.environ.get("QA_USER_NAME", "심재빈")
+    nickname = _os.environ.get("QA_USER_NICKNAME", "빈이")
+    age = _os.environ.get("QA_USER_AGE", "26")
+    mbti = "ENTP"
+    background = "QA 자동 테스트용 가상 유저 — 프로젝트를 전혀 모르는 신규 유저로 온보딩 시나리오를 재현함. Claude Haiku 모델로 실시간 응답 생성."
+
+    # 이 agent가 남긴 메시지 (test-user가 DB에 speaker='test-user'로 log)
+    primary_chat = get_recent_messages(limit=20)
+    primary_chat = [m for m in primary_chat if m.get("is_user") and "심재빈" in (m.get("speaker") or "")][-15:]
+
+    # 로그에서 test-user 관련 라인
+    sys_lines = get_recent_system_logs(tail_lines=200)
+    thinking_logs = [l for l in sys_lines if "test-user" in l.lower() or "TestUser" in l][-20:]
+
+    return {
+        "id": "test-user-bot",
+        "name": f"{name} (QA)",
+        "type": "persona",
+        "status": "active" if alive else "inactive",
+        "emotion": "신남" if alive else "평온",
+        "emoji": "🤩" if alive else "😌",
+        "intensity": 7 if alive else 0,
+        "mbti": mbti,
+        "age": int(age) if str(age).isdigit() else 26,
+        "enneagram": "",
+        "traits": ["ENTP", "QA 자동화", "메타 질문 challenger", "카톡 스타일"],
+        "background": background,
+        "relationship_to_owner": {},
+        "thinking": False,
+        "speaking": alive,
+        "thinking_seconds": 0,
+        "speaking_seconds": 0,
+        "last_active": "",
+        "relationships": [],
+        "memories_by_channel": {},
+        "thinking_logs": thinking_logs,
+        "primary_channel": "mgr-dashboard",
+        "primary_chat": primary_chat,
+        "model": "claude-haiku-4-5-20251001",
+        "provider": "claude",
+        "model_override": True,
+        "synthetic": True,
     }
 
 
@@ -876,6 +931,100 @@ def get_usage_stats() -> dict:
     }
 
 
+def get_scenes() -> list[dict]:
+    """커뮤니티의 모든 씬(시나리오) 상태 — active/completed/not_started.
+
+    씬 = 시간 제한적 커뮤니티 이벤트. 현재:
+      - onboarding: 신규 오너 가입 시나리오
+      - auto_conversation: 에이전트간 자동 대화 세션 (채널 status='running')
+    향후 추가 가능: birthday, conflict, party 등.
+    """
+    from datetime import datetime
+    from pathlib import Path as _P
+    scenes: list[dict] = []
+
+    # ── 1. Onboarding ──────────────────────────────────
+    try:
+        phase = db.get_meta("onboarding_phase") or ""
+        greeted = db.get_meta("yuna_greeted") or ""
+    except Exception:
+        phase = ""
+        greeted = ""
+
+    status = "not_started"
+    if phase == "complete":
+        status = "completed"
+    elif greeted or phase:
+        status = "active"
+
+    # 완료 시간 — .onboarding-complete 플래그 파일의 mtime
+    completed_at = None
+    started_at = None
+    try:
+        log_dir = _P(community.get_log_dir())
+        complete_flag = log_dir / ".onboarding-complete"
+        if complete_flag.exists():
+            completed_at = datetime.fromtimestamp(complete_flag.stat().st_mtime).isoformat()
+        # 시작 시간: yuna_greeted=1 된 시점을 추정 — 유나 첫 메시지 timestamp
+        if greeted:
+            try:
+                conn = db.get_conn()
+                row = conn.execute(
+                    "SELECT MIN(timestamp) as ts FROM conversations WHERE channel='mgr-dashboard'"
+                ).fetchone()
+                conn.close()
+                if row and row["ts"]:
+                    started_at = row["ts"]
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    phase_desc_map = {
+        "": "프로필 수집 단계",
+        "channels_setup": "시스템 채널 셋업 중",
+        "channels_done": "최종 완료 대기",
+        "complete": "완료됨",
+    }
+    scenes.append({
+        "id": "onboarding",
+        "name": "Onboarding",
+        "icon": "🌱",
+        "description": "신규 오너 가입 — 프로필 수집 → 시스템 채널 → 크리에이터 소개 → 완료",
+        "status": status,
+        "phase": phase,
+        "phase_desc": phase_desc_map.get(phase, phase),
+        "started_at": started_at,
+        "completed_at": completed_at,
+    })
+
+    # ── 2. Auto Conversations (에이전트간 대화 세션) ──
+    try:
+        conn = db.get_conn()
+        running = conn.execute(
+            "SELECT channel, current_turn, max_turns, created_at FROM channels "
+            "WHERE status = 'running'"
+        ).fetchall()
+        conn.close()
+        for r in running:
+            scenes.append({
+                "id": f"conversation:{r['channel']}",
+                "name": f"Conversation",
+                "icon": "💬",
+                "description": f"#{r['channel']} 에이전트 자동 대화 ({r['current_turn']}/{r['max_turns']} 턴)",
+                "status": "active",
+                "phase": f"{r['current_turn']}/{r['max_turns']}",
+                "phase_desc": f"턴 진행 중",
+                "started_at": r["created_at"],
+                "completed_at": None,
+                "target_channel": r["channel"],
+            })
+    except Exception:
+        pass
+
+    return scenes
+
+
 def get_community_meta() -> dict:
     """registry.toml의 이 커뮤니티 정보 (name, description, language)."""
     try:
@@ -907,6 +1056,7 @@ def snapshot() -> dict:
         "agents": get_agents(),
         "channels": get_channels(),
         "events": get_events(),
+        "scenes": get_scenes(),
         "recent_messages": get_recent_messages(limit=30),
         "total_messages": get_total_message_count(),
         "community_id": community.get_community_id(),

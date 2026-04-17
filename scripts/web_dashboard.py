@@ -1330,21 +1330,93 @@ async function runServerControl(action) {
 }
 
 // ==== Main tick ====
-function detectActiveScene(snap) {
-  // 현재 진행 중인 씬(이벤트/퀘스트) 감지 — 확장 가능
-  // 1. Onboarding
-  const phase = snap.meta?.onboarding_phase;
-  if (!phase) return { name: 'Onboarding', status: 'not started' };
-  if (phase !== 'complete') {
-    const phaseMap = {
-      'channels_setup': 'channels 셋업 중',
-      'channels_done': '최종 완료 대기',
-      '': '시작 전',
-    };
-    return { name: 'Onboarding', status: phaseMap[phase] || phase };
+function activeScenes(snap) {
+  return (snap.scenes || []).filter(s => s.status === 'active');
+}
+
+function firstActiveScene(snap) {
+  return activeScenes(snap)[0] || null;
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return '';
+  return String(iso).slice(0, 19).replace('T', ' ');
+}
+
+function renderSceneCard(s) {
+  const statusLabel = {
+    active: '진행 중',
+    completed: '완료',
+    not_started: '시작 전',
+  }[s.status] || s.status;
+  const badgeStyle = {
+    active: 'background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)',
+    completed: 'background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)',
+    not_started: 'background:var(--panel-2);color:var(--text-faint);border:1px solid var(--border)',
+  }[s.status] || '';
+  const leftBorder = {
+    active: 'var(--accent)',
+    completed: 'var(--ok)',
+    not_started: 'var(--text-faint)',
+  }[s.status] || 'var(--text-faint)';
+  const dim = s.status === 'not_started' ? 'opacity:0.6;' : '';
+  return `<div style="padding:16px 20px;margin-bottom:10px;background:var(--panel);border:1px solid var(--border-soft);border-left:3px solid ${leftBorder};border-radius:10px;box-shadow:var(--shadow);${dim}">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <span style="font-size:22px">${s.icon || '🎭'}</span>
+      <span style="font-size:15px;font-weight:700;color:var(--text);flex:1">${esc(s.name)}</span>
+      <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;padding:3px 10px;border-radius:999px;${badgeStyle}">${statusLabel}</span>
+    </div>
+    <div style="color:var(--text-dim);font-size:12px;line-height:1.55;margin-bottom:8px">${esc(s.description)}</div>
+    ${s.phase_desc ? `<div style="display:inline-block;padding:3px 8px;background:var(--panel-2);border-radius:5px;font-size:11px;color:var(--text);font-family:'JetBrains Mono',monospace">${esc(s.phase_desc)}</div>` : ''}
+    <div style="display:flex;gap:14px;margin-top:8px;font-size:10.5px;color:var(--text-faint)">
+      ${s.started_at ? `<span>시작: <b style="color:var(--text-dim);font-weight:500">${esc(fmtDateTime(s.started_at))}</b></span>` : ''}
+      ${s.completed_at ? `<span>완료: <b style="color:var(--ok);font-weight:500">${esc(fmtDateTime(s.completed_at))}</b></span>` : ''}
+      ${s.status === 'active' ? '<span style="color:var(--accent)">● LIVE</span>' : ''}
+    </div>
+  </div>`;
+}
+
+function renderScenes(scenes) {
+  if (!scenes || !scenes.length) {
+    return '<div class="empty">씬 정보 없음</div>';
   }
-  // 2. 향후: 대화시작 running, 생일, 컨플릭트 등 검출 로직 추가
-  return null;
+  const active = scenes.filter(s => s.status === 'active');
+  const completed = scenes.filter(s => s.status === 'completed');
+  const notStarted = scenes.filter(s => s.status === 'not_started');
+
+  const sec = (title, arr, hint) => arr.length
+    ? `<div class="detail-section"${title === 'Active' ? ' style="margin-top:0"' : ''}>
+         <h4>${esc(title)} · ${arr.length}</h4>
+         ${hint ? `<div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">${esc(hint)}</div>` : ''}
+         ${arr.map(renderSceneCard).join('')}
+       </div>`
+    : '';
+
+  // 향후 추가 예정 씬 placeholder (정적)
+  const futureHint = `<div class="detail-section">
+    <h4>Future Scene Types</h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;font-size:12px">
+      <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
+        <div style="font-weight:600">🎂 Birthday</div>
+        <div style="color:var(--text-dim);font-size:11px">멤버 생일 이벤트 (TBD)</div>
+      </div>
+      <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
+        <div style="font-weight:600">⚡ Conflict</div>
+        <div style="color:var(--text-dim);font-size:11px">멤버간 갈등 씬 (TBD)</div>
+      </div>
+      <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
+        <div style="font-weight:600">🎉 Party</div>
+        <div style="color:var(--text-dim);font-size:11px">단체 모임 씬 (TBD)</div>
+      </div>
+    </div>
+  </div>`;
+
+  return [
+    sec('Active', active, '지금 진행 중인 씬'),
+    sec('Completed', completed, '이전에 완료된 씬'),
+    sec('Not Started', notStarted, '아직 시작 안 된 시나리오'),
+    futureHint,
+  ].join('');
 }
 
 function syntheticTestUserAgent(snap) {
@@ -1439,10 +1511,11 @@ async function tick() {
     ? `<span style="color:var(--ok)">● Running</span>`
     : `<span style="color:var(--err)">○ Stopped</span>`;
   document.getElementById('kpi-user').innerHTML = esc(m.user_name || '—');
-  // Active Scene: 현재 진행 중 활동 (지금은 onboarding phase 기반)
-  const scene = detectActiveScene(snap);
+  // Active Scene: 현재 진행 중 씬 (snap.scenes에서 status='active' 첫번째)
+  const scene = firstActiveScene(snap);
+  const actives = activeScenes(snap);
   document.getElementById('kpi-scene').innerHTML = scene
-    ? `<span style="color:var(--accent)">${esc(scene.name)}</span><small>${esc(scene.status)}</small>`
+    ? `<span style="color:var(--accent)">${esc(scene.icon || '')} ${esc(scene.name)}</span><small>${esc(scene.phase_desc || scene.status)}${actives.length > 1 ? ` +${actives.length - 1}` : ''}</small>`
     : `<span style="color:var(--text-faint);font-size:15px">—</span><small>nothing active</small>`;
   document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>total</small>`;
 
@@ -1461,47 +1534,11 @@ async function tick() {
   const keepFm = atBottom(fm);
   fm.innerHTML = snap.recent_messages.map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
   if (keepFm) fm.scrollTop = fm.scrollHeight;
-  // Scenes 탭: 진행 중 활동(시나리오). 온보딩, 대화시작 등 이후 추가 가능.
+  // Scenes 탭: 각 씬 카드 (active/completed/not_started 상태별 스타일)
   const scenesEl = document.getElementById('scenes-full');
   if (scenesEl) {
-    const activeScene = detectActiveScene(snap);
-    const activeHtml = activeScene
-      ? `<div class="detail-section" style="margin-top:0">
-          <h4>Active Scene</h4>
-          <div style="padding:16px 20px;background:color-mix(in srgb,var(--accent) 8%,var(--panel));border-left:3px solid var(--accent);border-radius:8px">
-            <div style="font-size:16px;font-weight:700;color:var(--accent);margin-bottom:4px">🎭 ${esc(activeScene.name)}</div>
-            <div style="font-size:12px;color:var(--text-dim)">${esc(activeScene.status)}</div>
-          </div>
-        </div>`
-      : `<div class="detail-section" style="margin-top:0">
-          <h4>Active Scene</h4>
-          <div style="padding:16px 20px;background:var(--panel-2);border-left:3px solid var(--text-faint);border-radius:8px;color:var(--text-faint);font-style:italic">
-            현재 진행 중인 씬 없음 — 커뮤니티는 일상 모드
-          </div>
-        </div>`;
-    // 추후 지원할 씬 목록 힌트
-    const futureHtml = `<div class="detail-section">
-      <h4>Scene Types</h4>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;font-size:12px">
-        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px">
-          <div style="font-weight:600;color:var(--text)">🌱 Onboarding</div>
-          <div style="color:var(--text-dim);font-size:11px">신규 유저 가입 시나리오</div>
-        </div>
-        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
-          <div style="font-weight:600;color:var(--text)">🎂 Birthday</div>
-          <div style="color:var(--text-dim);font-size:11px">멤버 생일 이벤트 (TBD)</div>
-        </div>
-        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
-          <div style="font-weight:600;color:var(--text)">⚡ Conflict</div>
-          <div style="color:var(--text-dim);font-size:11px">멤버간 갈등 씬 (TBD)</div>
-        </div>
-        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
-          <div style="font-weight:600;color:var(--text)">🎉 Party</div>
-          <div style="color:var(--text-dim);font-size:11px">단체 모임 씬 (TBD)</div>
-        </div>
-      </div>
-    </div>`;
-    scenesEl.innerHTML = activeHtml + futureHtml;
+    const scenes = snap.scenes || [];
+    scenesEl.innerHTML = renderScenes(scenes);
   }
 
   // Events 탭: events 테이블 — 발생한 일들의 로그 (멤버간 사건 기록)
