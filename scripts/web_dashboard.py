@@ -428,8 +428,23 @@ HTML = r"""<!doctype html>
     position: absolute; transform: translate(-50%, -50%);
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     cursor: pointer; transition: transform 0.2s;
+    animation: node-in 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+  }
+  @keyframes node-in {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   }
   .graph-node:hover { transform: translate(-50%, -50%) scale(1.08); z-index: 2; }
+  .graph-edges .edge { animation: edge-in 0.6s ease-out; }
+  .graph-edges .edge-label-group { animation: label-in 0.5s ease-out 0.2s both; }
+  @keyframes edge-in {
+    from { stroke-opacity: 0; stroke-dashoffset: 100; stroke-dasharray: 100; }
+    to { stroke-opacity: 1; stroke-dashoffset: 0; stroke-dasharray: 0; }
+  }
+  @keyframes label-in {
+    from { opacity: 0; transform: scale(0.5); transform-origin: center; }
+    to { opacity: 1; transform: scale(1); }
+  }
   .graph-node.center { /* owner, no hover lift */ }
   .graph-node .gn-name {
     font-size: 11px; font-weight: 600; color: var(--text);
@@ -1275,7 +1290,8 @@ document.getElementById('supervisor-toggle').addEventListener('click', () => {
   SHOW_SUP = !SHOW_SUP;
   localStorage.setItem('glimi-show-supervisors', SHOW_SUP ? 'true' : 'false');
   applySupVisibility();
-  tick();  // 그래프 즉시 재렌더
+  lastGraphSig = null;  // supervisor 노드 출현/사라짐 → 재렌더
+  tick();
 });
 
 // ==== Language toggle (가 <-> A <-> Auto) ====
@@ -1910,6 +1926,40 @@ function renderSupervisorsTab(supervisors) {
   ].join('');
 }
 
+// 그래프 구조 서명 — 다르면 재렌더, 같으면 live 상태만 업데이트
+let lastGraphSig = null;
+function graphSignature(snap) {
+  const agents = snap.agents.map(a => a.id).sort().join(',');
+  const chans = (snap.channels || [])
+    .filter(c => c.msg_count > 0 || c.status === 'running')
+    .map(c => `${c.name}:${c.participant_count}:${c.status}`)
+    .sort().join('|');
+  const sups = SHOW_SUP
+    ? (snap.supervisors || []).map(s => `${s.name}:${s.active ? 1 : 0}`).sort().join(',')
+    : '';
+  return `${agents}||${chans}||${sups}||${SHOW_SUP ? 1 : 0}||${document.body.classList.contains('graph-fullscreen') ? 'fs' : 'n'}`;
+}
+
+// 구조 동일 → 노드/엣지 live 상태(thinking/speaking, live edge)만 in-place 업데이트
+function updateGraphLiveState(snap) {
+  // 에이전트 노드 클래스 갱신
+  for (const a of snap.agents) {
+    const el = document.querySelector(`.graph-node[data-agent-id="${CSS.escape(a.id)}"] .gn-ring`);
+    if (!el) continue;
+    el.classList.toggle('thinking', !!a.thinking);
+    el.classList.toggle('speaking', !!a.speaking);
+  }
+  // supervisor 노드 클래스
+  if (SHOW_SUP) {
+    for (const s of (snap.supervisors || [])) {
+      const el = document.querySelector(`.graph-node.sup[data-sup-name="${CSS.escape(s.name)}"]`);
+      if (!el) continue;
+      el.classList.toggle('active', !!s.active);
+      el.classList.toggle('intervening', !!s.intervening);
+    }
+  }
+}
+
 // 이웃 노드(같은 채널 공유)끼리 원에서 인접하도록 재정렬 — 엣지 crossing 감소
 function reorderNodesForMinCrossings(others, edges) {
   if (others.length <= 2) return others;
@@ -2159,7 +2209,7 @@ function renderConnectionGraph(snap) {
     if (a.thinking) ringCls.push('thinking');
     else if (a.speaking) ringCls.push('speaking');
     const avatarSrc = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
-    return `<div class="graph-node" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('${esc(a.id)}')">
+    return `<div class="graph-node" data-agent-id="${esc(a.id)}" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('${esc(a.id)}')">
       <div class="${ringCls.join(' ')}">
         <img src="${avatarSrc}" alt="${esc(a.name)}" onerror="this.style.display='none';this.parentElement.textContent='${a.emoji}'">
       </div>
@@ -2181,7 +2231,7 @@ function renderConnectionGraph(snap) {
     if (sup.active) cls.push('active');
     if (sup.intervening) cls.push('intervening');
     // 다른 에이전트처럼 상세 모달 띄움 (sup: prefix로 라우팅)
-    return `<div class="${cls.join(' ')}" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('sup:${esc(sup.name)}')">
+    return `<div class="${cls.join(' ')}" data-sup-name="${esc(sup.name)}" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('sup:${esc(sup.name)}')">
       <div class="gn-ring">${sup.icon}</div>
       <div class="gn-name">${esc(sup.name)}</div>
     </div>`;
@@ -2219,6 +2269,7 @@ function renderConnectionGraph(snap) {
 
 function toggleGraphFullscreen() {
   document.body.classList.toggle('graph-fullscreen');
+  lastGraphSig = null;  // 재렌더 강제
   tick();
 }
 // ESC로 fullscreen 빠져나오기
@@ -2432,9 +2483,19 @@ async function tick() {
     : `<span style="color:var(--text-faint);font-size:15px">—</span><small>nothing active</small>`;
   document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>total</small>`;
 
-  // Connection Graph (에이전트간 활성 채널 시각화)
+  // Connection Graph — 구조 변화 있을 때만 재렌더 (깜빡임 방지)
+  //   동일 구조면 live 상태만 DOM 레벨로 업데이트
   const graphEl = document.getElementById('graph-panel');
-  if (graphEl) graphEl.innerHTML = renderConnectionGraph(snap);
+  if (graphEl) {
+    const sig = graphSignature(snap);
+    if (sig !== lastGraphSig) {
+      graphEl.innerHTML = renderConnectionGraph(snap);
+      lastGraphSig = sig;
+    } else {
+      // 구조 동일 → 노드 thinking/speaking 클래스만 갱신
+      updateGraphLiveState(snap);
+    }
+  }
 
   document.getElementById('overview-agents').innerHTML =
     snap.agents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
