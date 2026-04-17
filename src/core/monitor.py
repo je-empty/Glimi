@@ -1026,6 +1026,136 @@ def get_scenes() -> list[dict]:
     return scenes
 
 
+def get_supervisors() -> list[dict]:
+    """감시자(supervisor) 목록과 상태.
+
+    각 감시자:
+      name, description, active(bool), interval, target_agents(list),
+      recent_logs(list of log lines), last_action_time
+    """
+    import re as _re
+    import json as _json
+
+    # 감시자 메타데이터 (supervisors.py 코드 기반 하드코딩, 임포트 실패에도 동작)
+    SUPERVISOR_META = [
+        {
+            "name": "onboarding",
+            "class_name": "OnboardingSupervisor",
+            "description": "온보딩 전체 흐름 감시 — 프로필 수집 → 채널 셋업 → 크리에이터 보고 → 완료까지. 멈추면 재촉.",
+            "interval": 30,
+            "icon": "🌱",
+        },
+        {
+            "name": "channel-conv",
+            "class_name": "ChannelConversationSupervisor",
+            "description": "internal 채널 자동 대화 감시 — 멤버간 대화가 멈추면 재촉.",
+            "interval": 15,
+            "icon": "💬",
+        },
+    ]
+
+    # 활성 여부 판단 (should_run 로직 재현)
+    def _is_active_onboarding() -> bool:
+        try:
+            return db.get_meta("onboarding_phase") != "complete"
+        except Exception:
+            return False
+
+    def _is_active_channel_conv() -> bool:
+        try:
+            conn = db.get_conn()
+            row = conn.execute(
+                "SELECT COUNT(*) as c FROM channels WHERE status='running' AND channel LIKE 'internal-%'"
+            ).fetchone()
+            conn.close()
+            return bool(row and row["c"] > 0)
+        except Exception:
+            return False
+
+    # 대상 에이전트 계산
+    def _targets_onboarding() -> list[str]:
+        return ["agent-mgr-001", "agent-creator-001"]
+
+    def _targets_channel_conv() -> list[str]:
+        targets = set()
+        try:
+            conn = db.get_conn()
+            for r in conn.execute(
+                "SELECT participants FROM channels WHERE status='running' AND channel LIKE 'internal-%'"
+            ).fetchall():
+                try:
+                    parts = _json.loads(r["participants"] or "[]")
+                    targets.update(parts)
+                except Exception:
+                    pass
+            conn.close()
+        except Exception:
+            pass
+        return sorted(targets)
+
+    active_map = {
+        "onboarding": _is_active_onboarding,
+        "channel-conv": _is_active_channel_conv,
+    }
+    target_map = {
+        "onboarding": _targets_onboarding,
+        "channel-conv": _targets_channel_conv,
+    }
+
+    all_logs = get_recent_system_logs(tail_lines=500)
+    out = []
+    for meta in SUPERVISOR_META:
+        name = meta["name"]
+        active = active_map.get(name, lambda: False)()
+        targets = target_map.get(name, lambda: [])()
+        # 이 감시자 관련 로그 추출
+        sup_logs = [l for l in all_logs if f"[sup:{name}]" in l or f"[supervisor] 활성화: {name}" in l]
+        sup_logs = sup_logs[-15:]
+
+        # 최근 액션 시각 (로그의 [HH:MM:SS] prefix)
+        last_action = None
+        seconds_since = None
+        for l in reversed(sup_logs):
+            m = _re.match(r'\[(\d\d):(\d\d):(\d\d)\]', l)
+            if m:
+                last_action = m.group(0).strip("[]")
+                try:
+                    from datetime import datetime, timedelta
+                    now = datetime.now()
+                    today_action = now.replace(
+                        hour=int(m.group(1)), minute=int(m.group(2)), second=int(m.group(3)), microsecond=0
+                    )
+                    if today_action > now:
+                        today_action -= timedelta(days=1)
+                    seconds_since = (now - today_action).total_seconds()
+                except Exception:
+                    pass
+                break
+
+        # "재촉" / "강제 지시" / "트리거" 등 개입 액션 감지 — 최근 액션이 이런 종류면 지금 개입 중
+        intervening = False
+        if sup_logs and seconds_since is not None and seconds_since < 10:
+            last_log = sup_logs[-1].lower()
+            if any(kw in last_log for kw in ("재촉", "강제 지시", "트리거", "inject", "nudge")):
+                intervening = True
+
+        out.append({
+            "name": name,
+            "class_name": meta["class_name"],
+            "icon": meta["icon"],
+            "description": meta["description"],
+            "interval_sec": meta["interval"],
+            "active": active,
+            "target_agents": targets,
+            "recent_logs": sup_logs,
+            "last_action": last_action,
+            "seconds_since_action": seconds_since,
+            "intervening": intervening,
+        })
+
+    return out
+
+
 def get_community_meta() -> dict:
     """registry.toml의 이 커뮤니티 정보 (name, description, language)."""
     try:
@@ -1058,6 +1188,7 @@ def snapshot() -> dict:
         "channels": get_channels(),
         "events": get_events(),
         "scenes": get_scenes(),
+        "supervisors": get_supervisors(),
         "recent_messages": get_recent_messages(limit=30),
         "total_messages": get_total_message_count(),
         "community_id": community.get_community_id(),

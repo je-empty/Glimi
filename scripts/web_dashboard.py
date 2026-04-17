@@ -96,7 +96,7 @@ HTML = r"""<!doctype html>
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; overflow: hidden; }
+  html, body { height: 100%; overflow: hidden; isolation: isolate; }
   body {
     background: var(--bg);
     color: var(--text);
@@ -125,12 +125,9 @@ HTML = r"""<!doctype html>
   .brand {
     display: flex; align-items: center; gap: 10px; white-space: nowrap;
   }
-  .brand-glyph {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px; border-radius: 8px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #fff; font-weight: 800; font-size: 15px; letter-spacing: -0.5px;
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  .brand-logo {
+    width: 32px; height: 32px; object-fit: contain; border-radius: 7px;
+    display: block;
   }
   .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
 
@@ -139,15 +136,26 @@ HTML = r"""<!doctype html>
     position: relative; display: flex; align-items: center; gap: 8px;
     background: var(--panel); color: var(--text); border: 1px solid var(--border);
     border-radius: 10px; padding: 6px 12px 6px 10px; font-size: 12.5px;
-    font-weight: 600; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    font-weight: 600; cursor: pointer; transition: all 0.15s;
   }
-  .community-btn:hover { border-color: var(--accent); }
+  /* 실행 중 → 초록 테마 */
+  .community-btn:not(.stopped) {
+    background: color-mix(in srgb, var(--ok) 10%, var(--panel));
+    border-color: color-mix(in srgb, var(--ok) 35%, var(--border));
+    color: var(--ok);
+  }
+  .community-btn:not(.stopped):hover { background: color-mix(in srgb, var(--ok) 18%, var(--panel)); }
+  /* 중단된 서버 → 회색 */
+  .community-btn.stopped {
+    color: var(--text-dim);
+  }
+  .community-btn.stopped:hover { border-color: var(--accent); }
   .community-btn .sv-dot {
     width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
     box-shadow: 0 0 6px var(--ok); animation: live-pulse 1.8s infinite;
   }
-  .community-btn.idle .sv-dot { background: var(--text-faint); box-shadow: none; animation: none; }
-  .community-btn .chev { font-size: 9px; color: var(--text-faint); margin-left: 4px; }
+  .community-btn.stopped .sv-dot { background: var(--text-faint); box-shadow: none; animation: none; }
+  .community-btn .chev { font-size: 9px; opacity: 0.6; margin-left: 4px; }
   @keyframes live-pulse {
     0%, 100% { box-shadow: 0 0 6px var(--ok); }
     50% { box-shadow: 0 0 12px var(--ok); }
@@ -167,9 +175,9 @@ HTML = r"""<!doctype html>
   }
   .community-menu .ci:hover { background: var(--panel-2); }
   .community-menu .ci.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-  .community-menu .ci.idle { opacity: 0.5; }
+  .community-menu .ci.stopped { opacity: 0.55; }
   .community-menu .ci .ci-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); flex-shrink: 0; }
-  .community-menu .ci.idle .ci-dot { background: var(--text-faint); box-shadow: none; }
+  .community-menu .ci.stopped .ci-dot { background: var(--text-faint); box-shadow: none; }
   .community-menu .ci .ci-name { flex: 1; font-weight: 600; font-family: "JetBrains Mono", monospace; font-size: 12.5px; }
   .community-menu .ci .ci-meta { font-size: 10.5px; color: var(--text-dim); font-weight: 400; }
   .community-menu .ci .ci-check { color: var(--accent); font-weight: 700; }
@@ -305,11 +313,58 @@ HTML = r"""<!doctype html>
   .offline-banner b { color: var(--err); }
   .offline-banner span.muted { color: var(--text-dim); font-weight: 400; margin-left: auto; }
 
-  /* ==== Connection Graph ==== */
+  /* ==== Supervisor view ==== */
+  body:not(.show-supervisors) .sup-tab { display: none; }
+  #supervisor-toggle.active {
+    background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .sup-card {
+    padding: 14px 18px; margin-bottom: 10px;
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--text-faint); border-radius: 10px;
+    box-shadow: var(--shadow); transition: border-color 0.2s, opacity 0.3s;
+  }
+  .sup-card.active { border-left-color: var(--ok); }
+  .sup-card.intervening { border-left-color: var(--warn); box-shadow: 0 0 0 1px var(--warn), var(--shadow); }
+  .sup-card.inactive { opacity: 0.5; border-left-color: var(--text-faint); }
+  .sup-card .sup-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .sup-card .sup-icon { font-size: 22px; }
+  .sup-card .sup-name { font-size: 14px; font-weight: 700; color: var(--text); flex: 1; }
+  .sup-card .sup-badge {
+    font-size: 10.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.7px;
+  }
+  .sup-card .sup-badge.active { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); }
+  .sup-card .sup-badge.inactive { background: var(--panel-2); color: var(--text-faint); border: 1px solid var(--border); }
+  .sup-card .sup-badge.intervening { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); animation: pulse-bg 1.2s infinite; }
+  @keyframes pulse-bg { 50% { background: color-mix(in srgb, var(--warn) 35%, transparent); } }
+  .sup-card .sup-desc { color: var(--text-dim); font-size: 12px; line-height: 1.55; margin-bottom: 8px; }
+  .sup-card .sup-targets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+  .sup-card .sup-target-pill {
+    font-size: 10.5px; padding: 2px 8px; background: var(--panel-2); border-radius: 6px;
+    color: var(--text-dim); border: 1px solid var(--border-soft);
+    font-family: "JetBrains Mono", monospace;
+  }
+  .sup-card .sup-logs {
+    font-family: "JetBrains Mono", monospace; font-size: 10.5px;
+    background: var(--panel-3); border-radius: 8px; padding: 8px 10px;
+    color: var(--text-dim); max-height: 140px; overflow-y: auto;
+  }
+  .sup-card .sup-meta { font-size: 10.5px; color: var(--text-faint); display: flex; gap: 12px; }
+
+  /* Supervisor nodes in graph — 육각형 스타일 */
+  .graph-svg .sup-edge { stroke-dasharray: 3 3; opacity: 0.7; }
+  .graph-svg .sup-edge.active { opacity: 1; stroke-width: 2; }
+  .graph-svg .sup-edge.intervening { opacity: 1; stroke-width: 2.5; stroke-dasharray: 4 3; animation: edge-flow 0.8s linear infinite; }
+
+  /* ==== Connection Graph (HTML + SVG hybrid) ==== */
   .graph-panel {
     background: var(--panel); border: 1px solid var(--border-soft); border-radius: 14px;
     padding: 16px 20px; margin-bottom: 20px; box-shadow: var(--shadow);
-    position: relative; overflow: hidden;
+    position: relative; overflow: visible;
   }
   .graph-panel .graph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .graph-panel .graph-head h3 {
@@ -317,26 +372,80 @@ HTML = r"""<!doctype html>
     text-transform: uppercase; letter-spacing: 1.3px;
   }
   .graph-panel .graph-head .note { color: var(--text-faint); font-size: 11px; margin-left: auto; }
-  .graph-svg { width: 100%; height: 360px; display: block; }
-  .graph-svg .node-ring { transition: stroke-width 0.2s; }
-  .graph-svg .node-ring:hover { stroke-width: 3; }
-  .graph-svg .edge {
+  .graph-stage {
+    position: relative; width: 100%; height: 420px;
+    overflow: visible;
+  }
+  .graph-stage svg.graph-edges {
+    position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
+    overflow: visible;
+  }
+  .graph-edges .edge {
     fill: none; stroke-linecap: round;
     transition: stroke-width 0.3s, opacity 0.3s;
   }
-  .graph-svg .edge.dim { opacity: 0.35; }
-  .graph-svg .edge.live { stroke-dasharray: 6 4; animation: edge-flow 1.6s linear infinite; }
+  .graph-edges .edge.dim { opacity: 0.35; }
+  .graph-edges .edge.live { stroke-dasharray: 6 4; animation: edge-flow 1.6s linear infinite; }
   @keyframes edge-flow { to { stroke-dashoffset: -20; } }
-  .graph-svg .edge-label {
-    font-family: "JetBrains Mono", monospace; font-size: 10px; fill: var(--text-dim);
-    pointer-events: none;
+  .graph-edges .edge-label {
+    font-family: "JetBrains Mono", monospace; font-size: 10px; fill: var(--text);
+    pointer-events: auto;
   }
-  .graph-svg .edge-label-bg {
-    fill: var(--panel); stroke: var(--border); stroke-width: 0.5; rx: 4;
+  .graph-edges .edge-label-bg {
+    fill: var(--panel-2); stroke: var(--border); stroke-width: 0.5;
   }
-  .graph-svg .node-name {
-    font-size: 11px; font-weight: 600; fill: var(--text);
-    text-anchor: middle; pointer-events: none;
+  .graph-node {
+    position: absolute; transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    cursor: pointer; transition: transform 0.2s;
+  }
+  .graph-node:hover { transform: translate(-50%, -50%) scale(1.08); z-index: 2; }
+  .graph-node.center { /* owner, no hover lift */ }
+  .graph-node .gn-name {
+    font-size: 11px; font-weight: 600; color: var(--text);
+    text-align: center; padding: 1px 6px; border-radius: 4px;
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+    backdrop-filter: blur(4px);
+    white-space: nowrap;
+  }
+  .graph-node .gn-ring {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 3px solid var(--border); background: var(--panel-2);
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    box-shadow: var(--shadow);
+  }
+  .graph-node .gn-ring.mgr { border-color: var(--mgr); }
+  .graph-node .gn-ring.creator { border-color: var(--creator); }
+  .graph-node .gn-ring.persona { border-color: var(--persona); }
+  .graph-node .gn-ring.owner { border-color: var(--user); }
+  .graph-node .gn-ring.thinking {
+    border-color: var(--thinking);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--thinking) 30%, transparent), var(--shadow);
+    animation: pulse-ring 1.3s infinite;
+  }
+  .graph-node .gn-ring.speaking {
+    border-color: var(--speaking);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--speaking) 30%, transparent), var(--shadow);
+    animation: pulse-ring 1.0s infinite;
+  }
+  @keyframes pulse-ring {
+    0%,100% { box-shadow: 0 0 0 0 currentColor, var(--shadow); }
+    50% { box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 15%, transparent), var(--shadow); }
+  }
+  .graph-node .gn-ring img { width: 100%; height: 100%; object-fit: cover; }
+  /* Supervisor nodes — hexagon-ish 룩 */
+  .graph-node.sup .gn-ring {
+    width: 44px; height: 44px; border-radius: 10px;
+    transform: rotate(45deg);
+    border-style: dashed;
+    border-color: var(--accent-2);
+  }
+  .graph-node.sup .gn-ring > * { transform: rotate(-45deg); }
+  .graph-node.sup.active .gn-ring { border-style: solid; }
+  .graph-node.sup.intervening .gn-ring {
+    border-color: var(--warn); border-style: solid;
+    animation: pulse-ring 0.9s infinite;
   }
   .graph-empty {
     padding: 40px 12px; text-align: center; color: var(--text-faint); font-size: 12px; font-style: italic;
@@ -346,6 +455,11 @@ HTML = r"""<!doctype html>
   }
   .graph-legend .item { display: flex; align-items: center; gap: 5px; }
   .graph-legend .swatch { width: 12px; height: 3px; border-radius: 2px; }
+
+  /* Supervisor edge (overlay) */
+  .graph-edges .sup-edge { stroke-dasharray: 3 3; opacity: 0.7; }
+  .graph-edges .sup-edge.active { opacity: 1; stroke-width: 2; }
+  .graph-edges .sup-edge.intervening { opacity: 1; stroke-width: 2.5; stroke-dasharray: 4 3; animation: edge-flow 0.8s linear infinite; }
 
   /* ==== Hero Overview ==== */
   .hero {
@@ -549,8 +663,9 @@ HTML = r"""<!doctype html>
 
   /* ==== Lightbox (full avatar) ==== */
   .lightbox {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-    backdrop-filter: blur(10px); z-index: 3000;
+    display: none; position: fixed !important; inset: 0 !important;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(10px); z-index: 2147483640 !important;
     align-items: center; justify-content: center; padding: 40px; cursor: zoom-out;
   }
   .lightbox.open { display: flex; }
@@ -586,8 +701,9 @@ HTML = r"""<!doctype html>
 
   /* ==== Detail Modal ==== */
   .detail-backdrop {
-    position: fixed; inset: 0; background: rgba(10, 12, 25, 0.6);
-    backdrop-filter: blur(8px); z-index: 2000; display: none;
+    position: fixed !important; inset: 0 !important;
+    background: rgba(10, 12, 25, 0.6);
+    backdrop-filter: blur(8px); z-index: 2147483600 !important; display: none;
     align-items: flex-start; justify-content: center;
     padding: 24px;
   }
@@ -714,8 +830,8 @@ HTML = r"""<!doctype html>
 </head><body>
 <div class="app">
   <header class="status">
-    <span class="brand">
-      <span class="brand-glyph">G</span>
+    <span class="brand" onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:pointer" title="Glimi">
+      <img src="/logo" alt="Glimi" class="brand-logo">
       <span class="brand-name">Glimi</span>
     </span>
 
@@ -730,7 +846,9 @@ HTML = r"""<!doctype html>
 
     <div style="flex:1"></div>
 
-    <button class="btn-icon" id="theme-toggle" title="테마 전환">☀</button>
+    <button class="btn-icon" id="lang-toggle" title="언어 전환">가</button>
+    <button class="btn-icon" id="supervisor-toggle" title="Supervisor view">👁</button>
+    <button class="btn-icon" id="theme-toggle" title="Theme">☀</button>
   </header>
 
   <nav class="tabs" id="tabs">
@@ -740,6 +858,7 @@ HTML = r"""<!doctype html>
     <button data-tab="messages">Messages <span class="count" id="tc-messages">0</span></button>
     <button data-tab="scenes">Scenes <span class="count" id="tc-scenes">0</span></button>
     <button data-tab="events">Events <span class="count" id="tc-events">0</span></button>
+    <button data-tab="supervisors" class="sup-tab">Supervisors <span class="count" id="tc-supervisors">0</span></button>
     <button data-tab="health">Health</button>
     <button data-tab="sync">Sync</button>
     <button data-tab="dev">Dev</button>
@@ -791,6 +910,7 @@ HTML = r"""<!doctype html>
 
     <div class="view" id="view-usage"><div id="usage-full"></div></div>
 
+    <div class="view" id="view-supervisors"><div id="supervisors-full"></div></div>
     <div class="view" id="view-logs"><div class="log-view" id="logs-full"></div></div>
   </main>
 </div>
@@ -822,6 +942,191 @@ const params = new URLSearchParams(location.search);
 let COMMUNITY = params.get('community') || null;
 let THEME = localStorage.getItem('glimi-theme') || 'light';
 document.documentElement.setAttribute('data-theme', THEME);
+
+// ==== i18n ====
+// LANG_OVERRIDE: 'ko' | 'en' | null (null = 서버 설정 따라감)
+// 번역 dict는 /api/i18n?lang=... 엔드포인트에서 로드 (i18n/dashboard.{ko,en}.json)
+let LANG_OVERRIDE = localStorage.getItem('glimi-lang') || null;
+let SERVER_LANG = 'ko';
+let I18N_CACHE = {};  // lang → dict
+
+async function loadLang(lang) {
+  if (I18N_CACHE[lang]) return I18N_CACHE[lang];
+  try {
+    const r = await fetch(`/api/i18n?lang=${encodeURIComponent(lang)}`);
+    I18N_CACHE[lang] = await r.json();
+  } catch {
+    I18N_CACHE[lang] = {};
+  }
+  return I18N_CACHE[lang];
+}
+
+function currentLang() { return LANG_OVERRIDE || SERVER_LANG || 'ko'; }
+function t(key, vars) {
+  const dict = I18N_CACHE[currentLang()] || I18N_CACHE.ko || {};
+  let s = dict[key] || (I18N_CACHE.ko && I18N_CACHE.ko[key]) || key;
+  if (vars) Object.entries(vars).forEach(([k, v]) => { s = s.replace(`{${k}}`, v); });
+  return s;
+}
+
+// === removed inline I18N dict (moved to i18n/dashboard.{ko,en}.json) ===
+const I18N_UNUSED_OLD = {
+  ko: {
+    // Banners
+    offline_title: '오프라인',
+    offline_msg: '커뮤니티 서버가 실행 중이 아님. 마지막 스냅샷 표시 중 (실시간 아님)',
+    offline_last: '마지막 활동',
+    empty_community_title: '📭 이 커뮤니티는 비어있어요',
+    empty_community_msg: '아직 에이전트나 대화가 없어요. 커뮤니티 서버를 시작하면 데이터가 채워집니다.',
+    empty_community_hint: '서버 시작',
+    // KPI
+    kpi_server: 'Server Status',
+    kpi_bot: 'Discord Bot',
+    kpi_owner: 'Owner',
+    kpi_scene: 'Active Scene',
+    kpi_msgs: 'Messages',
+    online: '● Online',
+    offline_short: '○ Offline',
+    running: '● Running',
+    stopped: '○ Stopped',
+    nothing_active: 'nothing active',
+    // Sections
+    section_active_members: 'Agents',
+    section_recent_conv: 'Recent Conversations',
+    // Tabs
+    tab_overview: 'Overview', tab_agents: 'Agents', tab_channels: 'Channels',
+    tab_messages: 'Messages', tab_scenes: 'Scenes', tab_events: 'Events',
+    tab_health: 'Health', tab_sync: 'Sync', tab_dev: 'Dev', tab_usage: 'Usage',
+    tab_supervisors: 'Supervisors', tab_logs: 'Logs',
+    // Buttons
+    btn_server_start: '▶ 서버 시작',
+    btn_server_stop: '⏸ 서버 중단',
+    btn_server_restart: '↻ 재시작',
+    btn_scan: '🔍 Scan Discord',
+    btn_sync: '▶ Full Sync',
+    btn_restore: '↻ Restore Messages',
+    btn_clear_msgs: '🧹 메시지 전체 삭제 (DB만)',
+    btn_delete_ch: '🗑 채널 삭제',
+    btn_refresh: '새로고침',
+    btn_empty_trash: 'Empty Trash',
+    btn_close: '닫기',
+    // Section titles
+    sec_processes: 'Processes',
+    sec_glimi_resources: 'Glimi Resource Usage',
+    sec_system_resources: 'System Resources',
+    sec_server_control: 'Server Control',
+    sec_sync_actions: 'Sync Actions',
+    sec_trash: 'Trash',
+    sec_db_channels: 'DB-registered Channels',
+    sec_profile: 'Profile',
+    sec_relationships: 'Relationships',
+    sec_memory: 'Memory',
+    sec_thinking_logs: 'Thinking Logs',
+    sec_recent_chat: 'Recent Chat',
+    sec_participants: 'Participants',
+    sec_all_messages: 'All Messages',
+    sec_actions: 'Actions',
+    sec_connection_graph: 'Connection Graph',
+    // Status
+    status_active: '진행 중',
+    status_completed: '완료',
+    status_not_started: '시작 전',
+    active_badge: '● ACTIVE',
+    idle_badge: '○ IDLE',
+    intervening_badge: '● INTERVENING',
+    live_label: '● LIVE',
+    thinking: '생각 중',
+    speaking: '응답 중',
+    calm_idle: '평온 · 모두 대기 중',
+    // Misc
+    loading: '로딩 중…',
+    no_data: '데이터 없음',
+    no_members: '멤버 없음',
+    no_channels: '채널 없음',
+    no_events: '기록된 이벤트 없음',
+    no_scenes: '씬 정보 없음',
+    no_supervisors: '등록된 감시자 없음',
+    no_msgs: '대화 없음',
+    no_trash: '휴지통 비어있음',
+    // Field labels
+    f_age: 'Age', f_mbti: 'MBTI', f_enneagram: 'Enneagram', f_traits: 'Traits',
+    f_emotion: 'Emotion', f_status: 'Status', f_model: 'Model', f_owner: 'Owner',
+    f_background: 'Background',
+    f_started: '시작', f_completed: '완료', f_last_active: 'last active',
+    // Sync
+    sync_guard_running: 'ℹ 서버 실행 중 — Sync 버튼 클릭 시 자동으로 서버 중단 → 작업 → 재시작 진행. 취소 버튼 제공됨.',
+    sync_guard_stopped: '○ 서버 오프라인 — 모든 sync 작업 즉시 가능.',
+    sync_hint: 'Discord 서버와 DB 사이 상태를 맞추는 작업. 서버 실행 중이면 자동 중단·작업·재시작.',
+    trash_hint: '휴지통 — 채널/메시지 삭제 시 완전 삭제 대신 여기로 옮겨짐. 실수 복구용 안전망.',
+    // Confirm dialogs
+    confirm_clear: '#{ch}의 DB 메시지 전체 삭제. Discord 채널은 유지. 진행?',
+    confirm_delete_ch: '채널 #{ch} 완전 삭제. 복구 어려움. 진행?',
+    confirm_trash_msg: '이 메시지를 trash로 옮길까? (복구 가능)',
+    confirm_empty_trash: 'Trash 전체 비우기. 되돌릴 수 없음. 진행?',
+    confirm_stop_server: '커뮤니티 서버 중단?',
+    confirm_restart_server: '서버 재시작? (10~20초 소요)',
+    confirm_sync_restart: '{act}를 실행하려면 서버 일시 중단이 필요. 중단 → 실행 → 재시작 자동으로 진행할까?',
+  },
+  en: {
+    offline_title: 'Offline',
+    offline_msg: 'Community server is not running. Showing last snapshot (not live).',
+    offline_last: 'last activity',
+    empty_community_title: '📭 This community is empty',
+    empty_community_msg: "No agents or conversations yet. Start the community server to populate data.",
+    empty_community_hint: 'Start server',
+    kpi_server: 'Server Status', kpi_bot: 'Discord Bot', kpi_owner: 'Owner',
+    kpi_scene: 'Active Scene', kpi_msgs: 'Messages',
+    online: '● Online', offline_short: '○ Offline',
+    running: '● Running', stopped: '○ Stopped',
+    nothing_active: 'nothing active',
+    section_active_members: 'Agents', section_recent_conv: 'Recent Conversations',
+    tab_overview: 'Overview', tab_agents: 'Agents', tab_channels: 'Channels',
+    tab_messages: 'Messages', tab_scenes: 'Scenes', tab_events: 'Events',
+    tab_health: 'Health', tab_sync: 'Sync', tab_dev: 'Dev', tab_usage: 'Usage',
+    tab_supervisors: 'Supervisors', tab_logs: 'Logs',
+    btn_server_start: '▶ Start Server', btn_server_stop: '⏸ Stop Server',
+    btn_server_restart: '↻ Restart',
+    btn_scan: '🔍 Scan Discord', btn_sync: '▶ Full Sync', btn_restore: '↻ Restore Messages',
+    btn_clear_msgs: '🧹 Clear All Messages (DB only)',
+    btn_delete_ch: '🗑 Delete Channel',
+    btn_refresh: 'Refresh', btn_empty_trash: 'Empty Trash', btn_close: 'Close',
+    sec_processes: 'Processes', sec_glimi_resources: 'Glimi Resource Usage',
+    sec_system_resources: 'System Resources', sec_server_control: 'Server Control',
+    sec_sync_actions: 'Sync Actions', sec_trash: 'Trash',
+    sec_db_channels: 'DB-registered Channels',
+    sec_profile: 'Profile', sec_relationships: 'Relationships',
+    sec_memory: 'Memory', sec_thinking_logs: 'Thinking Logs',
+    sec_recent_chat: 'Recent Chat', sec_participants: 'Participants',
+    sec_all_messages: 'All Messages', sec_actions: 'Actions',
+    sec_connection_graph: 'Connection Graph',
+    status_active: 'Active', status_completed: 'Completed', status_not_started: 'Not Started',
+    active_badge: '● ACTIVE', idle_badge: '○ IDLE', intervening_badge: '● INTERVENING',
+    live_label: '● LIVE',
+    thinking: 'thinking', speaking: 'speaking',
+    calm_idle: 'calm · all idle',
+    loading: 'Loading…', no_data: 'No data',
+    no_members: 'No members', no_channels: 'No channels',
+    no_events: 'No events recorded',
+    no_scenes: 'No scenes', no_supervisors: 'No supervisors registered',
+    no_msgs: 'No conversations', no_trash: 'Trash is empty',
+    f_age: 'Age', f_mbti: 'MBTI', f_enneagram: 'Enneagram', f_traits: 'Traits',
+    f_emotion: 'Emotion', f_status: 'Status', f_model: 'Model', f_owner: 'Owner',
+    f_background: 'Background',
+    f_started: 'Started', f_completed: 'Completed', f_last_active: 'last active',
+    sync_guard_running: 'ℹ Server is running — clicking a sync button will auto stop server → run → restart. A confirm dialog lets you cancel.',
+    sync_guard_stopped: '○ Server offline — all sync actions available.',
+    sync_hint: 'Synchronize state between Discord and the DB. Server is auto-stopped/restarted as needed.',
+    trash_hint: 'Trash — deleted channels/messages go here first. Safety net for accidental deletion.',
+    confirm_clear: 'Clear all messages in #{ch} from DB? Discord channel will be kept.',
+    confirm_delete_ch: 'Delete channel #{ch} completely? Hard to recover.',
+    confirm_trash_msg: 'Move this message to trash? (recoverable)',
+    confirm_empty_trash: 'Empty the Trash permanently? This cannot be undone.',
+    confirm_stop_server: 'Stop the community server?',
+    confirm_restart_server: 'Restart the server? (takes 10-20s)',
+    confirm_sync_restart: 'Running {act} needs a temporary server stop. Auto stop → run → restart. Continue?',
+  },
+};
+// (duplicate currentLang/t removed — defined earlier using fetched I18N_CACHE)
 
 // ==== Utils ====
 function esc(s) { return String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
@@ -900,6 +1205,78 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
   localStorage.setItem('glimi-theme', THEME);
 });
 document.getElementById('theme-toggle').textContent = THEME === 'light' ? '☀' : '🌙';
+
+// ==== Supervisor view toggle ====
+let SHOW_SUP = localStorage.getItem('glimi-show-supervisors') === 'true';
+function applySupVisibility() {
+  document.body.classList.toggle('show-supervisors', SHOW_SUP);
+  document.getElementById('supervisor-toggle').classList.toggle('active', SHOW_SUP);
+  // 비활성화 시 Supervisors 탭에 있었으면 overview로 돌리기
+  if (!SHOW_SUP) {
+    const supView = document.getElementById('view-supervisors');
+    if (supView && supView.classList.contains('active')) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+      document.getElementById('view-overview').classList.add('active');
+      document.querySelector('nav.tabs button[data-tab="overview"]').classList.add('active');
+    }
+  }
+}
+applySupVisibility();
+document.getElementById('supervisor-toggle').addEventListener('click', () => {
+  SHOW_SUP = !SHOW_SUP;
+  localStorage.setItem('glimi-show-supervisors', SHOW_SUP ? 'true' : 'false');
+  applySupVisibility();
+  tick();  // 그래프 즉시 재렌더
+});
+
+// ==== Language toggle (가 <-> A <-> Auto) ====
+function applyLangLabel() {
+  const btn = document.getElementById('lang-toggle');
+  const l = currentLang();
+  btn.textContent = LANG_OVERRIDE ? (l === 'ko' ? '가' : 'A') : '⇆';
+  btn.title = LANG_OVERRIDE
+    ? (l === 'ko' ? 'Korean — click to English' : 'English — click to Auto')
+    : `Auto (server: ${SERVER_LANG}) — click to fix Korean`;
+  applyStaticI18n();
+}
+function applyStaticI18n() {
+  // 탭 라벨
+  const tabMap = {
+    overview: 'tab_overview', agents: 'tab_agents', channels: 'tab_channels',
+    messages: 'tab_messages', scenes: 'tab_scenes', events: 'tab_events',
+    health: 'tab_health', sync: 'tab_sync', dev: 'tab_dev', usage: 'tab_usage',
+    supervisors: 'tab_supervisors', logs: 'tab_logs',
+  };
+  document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
+    const k = tabMap[btn.dataset.tab];
+    if (!k) return;
+    const cnt = btn.querySelector('.count');
+    const cntHtml = cnt ? cnt.outerHTML : '';
+    btn.innerHTML = t(k) + ' ' + cntHtml;
+  });
+  // KPI labels
+  const kpiMap = [['kpi-server','kpi_server'],['kpi-bot','kpi_bot'],['kpi-user','kpi_owner'],['kpi-scene','kpi_scene'],['kpi-msgs','kpi_msgs']];
+  kpiMap.forEach(([id, k]) => {
+    const el = document.getElementById(id);
+    if (el && el.previousElementSibling && el.previousElementSibling.classList.contains('label')) {
+      el.previousElementSibling.textContent = t(k);
+    }
+  });
+  // Detail close button
+  const closeBtn = document.getElementById('d-close');
+  if (closeBtn) closeBtn.textContent = t('btn_close');
+}
+document.getElementById('lang-toggle').addEventListener('click', () => {
+  // cycle: auto → ko → en → auto
+  if (!LANG_OVERRIDE) LANG_OVERRIDE = 'ko';
+  else if (LANG_OVERRIDE === 'ko') LANG_OVERRIDE = 'en';
+  else LANG_OVERRIDE = null;
+  if (LANG_OVERRIDE) localStorage.setItem('glimi-lang', LANG_OVERRIDE);
+  else localStorage.removeItem('glimi-lang');
+  applyLangLabel();
+  tick();
+});
 
 // ==== Tabs ====
 document.querySelectorAll('nav.tabs button').forEach(btn => {
@@ -1043,15 +1420,32 @@ function renderHero(snap) {
   </div>`;
 }
 
-function openFullAvatar(agentId, name) {
+function openImgLightbox(src, caption) {
   const box = document.getElementById('lightbox');
   const img = document.getElementById('lightbox-img');
   const cap = document.getElementById('lightbox-caption');
-  const src = `/api/avatar?id=${encodeURIComponent(agentId)}&variant=full${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
   img.src = src;
-  cap.textContent = name || agentId;
+  cap.textContent = caption || '';
   box.classList.add('open');
 }
+
+function openFullAvatar(agentId, name) {
+  const src = `/api/avatar?id=${encodeURIComponent(agentId)}&variant=full${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+  openImgLightbox(src, name || agentId);
+}
+
+// 모든 <img> 클릭 시 자동으로 lightbox 띄우기 (delegation)
+document.addEventListener('click', (e) => {
+  const img = e.target.closest('img');
+  if (!img) return;
+  // 이미 lightbox 안의 이미지거나 미니 상태면 스킵
+  if (img.closest('.lightbox')) return;
+  // 아바타/로고는 별도 핸들러 우선 (onclick이 있으면 자동 스킵)
+  if (img.closest('[onclick]') && img.closest('[onclick]') !== img) return;
+  // 그 외 일반 이미지: 원본 띄우기
+  e.stopPropagation();
+  openImgLightbox(img.src, img.alt || '');
+});
 
 function renderMessage(m) {
   return `<div class="msg ${roleClass(m)}">
@@ -1415,10 +1809,54 @@ async function runServerControl(action) {
 }
 
 // ==== Main tick ====
-// ==== Connection Graph (SVG) ====
-// 각 활성 채널을 에이전트 간 엣지로 시각화
+// ==== Supervisors ====
+function renderSupervisorCard(s) {
+  const statusClass = s.intervening ? 'intervening' : (s.active ? 'active' : 'inactive');
+  const badgeText = s.intervening ? '● INTERVENING' : (s.active ? '● ACTIVE' : '○ IDLE');
+  const logs = (s.recent_logs || []).slice(-8).map(l => `<div>${esc(l)}</div>`).join('') || '<span style="color:var(--text-faint);font-style:italic">로그 없음</span>';
+  return `<div class="sup-card ${statusClass}">
+    <div class="sup-head">
+      <span class="sup-icon">${s.icon}</span>
+      <span class="sup-name">${esc(s.name)}</span>
+      <span class="sup-badge ${statusClass}">${badgeText}</span>
+    </div>
+    <div class="sup-desc">${esc(s.description)}</div>
+    ${s.target_agents && s.target_agents.length ? `
+      <div class="sup-targets">
+        <span style="font-size:10.5px;color:var(--text-faint);align-self:center;margin-right:4px">감시 대상:</span>
+        ${s.target_agents.map(a => `<span class="sup-target-pill">${esc(a)}</span>`).join('')}
+      </div>` : ''}
+    <div class="sup-logs">${logs}</div>
+    <div class="sup-meta" style="margin-top:8px">
+      <span>interval: <b style="color:var(--text-dim);font-weight:500">${s.interval_sec}s</b></span>
+      ${s.last_action ? `<span>마지막 액션: <b style="color:var(--text-dim);font-weight:500">${esc(s.last_action)}</b></span>` : ''}
+      ${s.seconds_since_action != null ? `<span>${Math.floor(s.seconds_since_action)}s ago</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderSupervisorsTab(supervisors) {
+  if (!supervisors || !supervisors.length) {
+    return '<div class="empty">등록된 감시자 없음</div>';
+  }
+  const active = supervisors.filter(s => s.active);
+  const inactive = supervisors.filter(s => !s.active);
+  const sec = (title, arr, hint) => arr.length
+    ? `<div class="detail-section"${title === 'Active' ? ' style="margin-top:0"' : ''}>
+         <h4>${esc(title)} · ${arr.length}</h4>
+         ${hint ? `<div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">${esc(hint)}</div>` : ''}
+         ${arr.map(renderSupervisorCard).join('')}
+       </div>`
+    : '';
+  return [
+    sec('Active', active, '현재 조건 충족 — 백그라운드로 감시 중'),
+    sec('Idle', inactive, '현재 조건 미충족 — 트리거 대기'),
+  ].join('');
+}
+
+// ==== Connection Graph (HTML nodes + SVG edges) ====
 function renderConnectionGraph(snap) {
-  const W = 760, H = 340;
+  const W = 780, H = 420;
   const cx = W / 2, cy = H / 2;
 
   // 에이전트 이름 → 에이전트 오브젝트 맵 (아바타 src 포함)
@@ -1522,6 +1960,38 @@ function renderConnectionGraph(snap) {
   }
 
   // SVG 엣지 렌더
+  // 슈퍼바이저 뷰 활성 시: supervisor 노드 + 에이전트로의 엣지 추가
+  const supEdges = [];  // {sup, agent, active, intervening}
+  const supNodes = [];  // supervisor nodes
+  if (SHOW_SUP && snap.supervisors) {
+    const nameToId = {};
+    for (const a of snap.agents) nameToId[a.id] = a.name;
+    snap.supervisors.forEach((s, i) => {
+      // 에이전트 이름으로 targets 매핑
+      const targetNames = (s.target_agents || []).map(aid => nameToId[aid]).filter(Boolean);
+      if (!targetNames.length && !s.active) return;  // idle + no targets → 그래프에 표시 안 함
+
+      // supervisor 노드 위치: 바깥쪽 원 (radius * 1.4)
+      const total = snap.supervisors.length;
+      const angle = (i / total) * 2 * Math.PI - Math.PI / 2 + Math.PI / total;
+      const supRadius = radius * 1.35;
+      const spos = {
+        x: cx + Math.cos(angle) * supRadius,
+        y: cy + Math.sin(angle) * supRadius,
+      };
+      // 화면 밖이면 clamp
+      spos.x = Math.max(60, Math.min(W - 60, spos.x));
+      spos.y = Math.max(40, Math.min(H - 40, spos.y));
+      supNodes.push({ sup: s, pos: spos });
+
+      for (const tn of targetNames) {
+        const tp = positions[tn];
+        if (!tp) continue;
+        supEdges.push({ sup: s, name: tn, from: spos, to: tp });
+      }
+    });
+  }
+
   const edgeSvg = [];
   const labelSvg = [];
   Object.entries(edgeGroups).forEach(([k, group]) => {
@@ -1559,60 +2029,78 @@ function renderConnectionGraph(snap) {
     });
   });
 
-  // 노드 렌더 (avatar, 이름)
-  const nodeSvg = nodes.map(n => {
+  // 노드는 HTML div로 (SVG pattern보다 이미지 렌더링 안정적)
+  const nodeHtml = nodes.map(n => {
     const p = positions[n];
     if (!p) return '';
+    // SVG 좌표 → HTML % 좌표 변환
+    const pctX = (p.x / W) * 100;
+    const pctY = (p.y / H) * 100;
     if (n === '__owner__') {
-      // owner는 orange ring
-      return `<g transform="translate(${p.x}, ${p.y})">
-        <circle class="node-ring" r="26" fill="var(--panel-2)" stroke="var(--user)" stroke-width="2.5" />
-        <text y="6" text-anchor="middle" font-size="20">👤</text>
-        <text class="node-name" y="50">${esc(ownerName)}</text>
-      </g>`;
+      return `<div class="graph-node center" style="left:${pctX}%;top:${pctY}%">
+        <div class="gn-ring owner">👤</div>
+        <div class="gn-name">${esc(ownerName)}</div>
+      </div>`;
     }
     const a = nameToAgent[n];
     if (!a) return '';
-    const ringColor = {
-      mgr: 'var(--mgr)',
-      creator: 'var(--creator)',
-      persona: 'var(--persona)',
-    }[a.type] || 'var(--border)';
+    const ringCls = ['gn-ring', a.type];
+    if (a.thinking) ringCls.push('thinking');
+    else if (a.speaking) ringCls.push('speaking');
     const avatarSrc = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
-    // thinking/speaking 상태 반영
-    let outer = '';
-    if (a.thinking) outer = `<circle r="32" fill="none" stroke="var(--thinking)" stroke-width="2" opacity="0.6"><animate attributeName="r" values="28;34;28" dur="1.4s" repeatCount="indefinite"/></circle>`;
-    else if (a.speaking) outer = `<circle r="32" fill="none" stroke="var(--speaking)" stroke-width="2" opacity="0.6"><animate attributeName="r" values="28;34;28" dur="1.1s" repeatCount="indefinite"/></circle>`;
-    const patternId = `av-${a.id.replace(/[^a-z0-9]/gi, '')}`;
-    return `<g transform="translate(${p.x}, ${p.y})" style="cursor:pointer" onclick="openAgent('${esc(a.id)}')">
-      ${outer}
-      <defs>
-        <pattern id="${patternId}" patternUnits="objectBoundingBox" width="1" height="1">
-          <image href="${avatarSrc}" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid slice"/>
-        </pattern>
-      </defs>
-      <circle class="node-ring" r="24" fill="url(#${patternId})" stroke="${ringColor}" stroke-width="2.5" />
-      <text class="node-name" y="44">${esc(a.name)}</text>
-    </g>`;
+    return `<div class="graph-node" style="left:${pctX}%;top:${pctY}%" onclick="openAgent('${esc(a.id)}')">
+      <div class="${ringCls.join(' ')}">
+        <img src="${avatarSrc}" alt="${esc(a.name)}" onerror="this.style.display='none';this.parentElement.textContent='${a.emoji}'">
+      </div>
+      <div class="gn-name">${esc(a.name)}</div>
+    </div>`;
+  }).join('');
+
+  // Supervisor edges (SVG) + nodes (HTML)
+  const supEdgeSvg = supEdges.map(e => {
+    const color = e.sup.intervening ? 'var(--warn)' : (e.sup.active ? 'var(--accent-2)' : 'var(--text-faint)');
+    const cls = e.sup.intervening ? 'sup-edge intervening' : (e.sup.active ? 'sup-edge active' : 'sup-edge');
+    return `<line class="edge ${cls}" x1="${e.from.x}" y1="${e.from.y}" x2="${e.to.x}" y2="${e.to.y}" stroke="${color}" />`;
+  }).join('');
+
+  const supNodeHtml = supNodes.map(({ sup, pos }) => {
+    const pctX = (pos.x / W) * 100;
+    const pctY = (pos.y / H) * 100;
+    const cls = ['graph-node', 'sup'];
+    if (sup.active) cls.push('active');
+    if (sup.intervening) cls.push('intervening');
+    return `<div class="${cls.join(' ')}" style="left:${pctX}%;top:${pctY}%" onclick="document.querySelector('nav.tabs button[data-tab=&quot;supervisors&quot;]').click()">
+      <div class="gn-ring">${sup.icon}</div>
+      <div class="gn-name">${esc(sup.name)}</div>
+    </div>`;
   }).join('');
 
   const legend = `<div class="graph-legend">
-    <div class="item"><span class="swatch" style="background:${kindColor.dm}"></span>Owner DM</div>
-    <div class="item"><span class="swatch" style="background:${kindColor.group}"></span>Owner Group</div>
+    <div class="item"><span class="swatch" style="background:${kindColor.dm}"></span>DM</div>
+    <div class="item"><span class="swatch" style="background:${kindColor.group}"></span>Group</div>
     <div class="item"><span class="swatch" style="background:${kindColor['internal-dm']}"></span>Internal DM</div>
     <div class="item"><span class="swatch" style="background:${kindColor['internal-group']}"></span>Internal Group</div>
     <div class="item"><span class="swatch" style="background:${kindColor.mgr}"></span>Manager</div>
+    ${SHOW_SUP ? `<div class="item"><span class="swatch" style="background:var(--warn)"></span>Supervisor</div>` : ''}
     <div class="item" style="margin-left:auto"><span style="color:var(--text)">━━</span> 활성  <span style="color:var(--text-dim);margin-left:4px">┄┄</span> 대기</div>
   </div>`;
 
+  const supCount = supNodes.length;
+  const note = `${edges.length} connection${edges.length === 1 ? '' : 's'} · ${nodes.length} node${nodes.length === 1 ? '' : 's'}${supCount ? ` · ${supCount} supervisor${supCount === 1 ? '' : 's'}` : ''}`;
+
   return `<div class="graph-head">
       <h3>Connection Graph</h3>
-      <span class="note">${edges.length} active connection${edges.length === 1 ? '' : 's'} across ${nodes.length} node${nodes.length === 1 ? '' : 's'}</span>
+      <span class="note">${note}</span>
     </div>
-    <svg class="graph-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
-      <g class="edges">${edgeSvg.join('')}${labelSvg.join('')}</g>
-      <g class="nodes">${nodeSvg}</g>
-    </svg>
+    <div class="graph-stage">
+      <svg class="graph-edges" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+        ${supEdgeSvg}
+        ${edgeSvg.join('')}
+        ${labelSvg.join('')}
+      </svg>
+      ${nodeHtml}
+      ${supNodeHtml}
+    </div>
     ${legend}`;
 }
 
@@ -1742,6 +2230,15 @@ async function tick() {
   COMMUNITY = snap.community_id;
   const b = snap.bot, m = snap.meta;
 
+  // 서버 언어 설정 반영 (community_meta.language)
+  const prevLang = currentLang();
+  SERVER_LANG = (snap.community_meta && snap.community_meta.language) || 'ko';
+  const newLang = currentLang();
+  if (newLang !== prevLang || !I18N_CACHE[newLang]) {
+    await loadLang(newLang);
+    applyLangLabel();
+  }
+
   // QA에 test-user 가상 에이전트 추가 (맨 앞)
   const testUser = syntheticTestUserAgent(snap);
   if (testUser) {
@@ -1772,9 +2269,14 @@ async function tick() {
   document.getElementById('tc-agents').textContent = snap.agents.length;
   document.getElementById('tc-channels').textContent = snap.channels.length;
   document.getElementById('tc-messages').textContent = snap.recent_messages.length;
-  const sceneCount = detectActiveScene(snap) ? 1 : 0;
-  document.getElementById('tc-scenes').textContent = sceneCount;
+  document.getElementById('tc-scenes').textContent = (snap.scenes || []).filter(s => s.status === 'active').length;
   document.getElementById('tc-events').textContent = snap.events.length;
+  const supActiveCount = (snap.supervisors || []).filter(s => s.active).length;
+  const supEl = document.getElementById('tc-supervisors');
+  if (supEl) supEl.textContent = supActiveCount;
+  // Supervisors 탭 렌더
+  const supFull = document.getElementById('supervisors-full');
+  if (supFull) supFull.innerHTML = renderSupervisorsTab(snap.supervisors || []);
 
   // 확장된 agent들 로그+채팅 추가 fetch
   const active = snap.agents.filter(a => a.thinking || a.speaking);
@@ -2088,17 +2590,20 @@ async function loadCommunities() {
 
   // 버튼 업데이트 (현재 선택된 커뮤니티)
   document.getElementById('community-btn-name').textContent = d.active;
-  if (activeItem && activeItem.running) btn.classList.remove('idle');
-  else btn.classList.add('idle');
+  if (activeItem && activeItem.running) btn.classList.remove('stopped');
+  else btn.classList.add('stopped');
 
-  // 메뉴 생성
+  // 메뉴 생성 — running 은 초록 테마, stopped 은 dim
   menu.innerHTML = (d.items || []).map(c => {
     const cls = ['ci'];
     if (c.id === d.active) cls.push('active');
-    if (!c.running) cls.push('idle');
+    if (!c.running) cls.push('stopped');
+    const ageText = c.last_log_age_sec != null
+      ? (c.last_log_age_sec < 60 ? `${c.last_log_age_sec}s` : c.last_log_age_sec < 3600 ? `${Math.floor(c.last_log_age_sec/60)}m` : `${Math.floor(c.last_log_age_sec/3600)}h`) + ' ago'
+      : '';
     const meta = c.running
-      ? `<span class="ci-meta" style="color:var(--ok)">● running${c.last_log_age_sec != null ? ` · ${c.last_log_age_sec}s ago` : ''}</span>`
-      : `<span class="ci-meta">○ idle${c.last_log_age_sec != null ? ` · ${c.last_log_age_sec}s ago` : ''}</span>`;
+      ? `<span class="ci-meta" style="color:var(--ok)">● running${ageText ? ` · ${ageText}` : ''}</span>`
+      : `<span class="ci-meta">○ stopped${ageText ? ` · ${ageText}` : ''}</span>`;
     return `<div class="${cls.join(' ')}" data-cid="${esc(c.id)}">
       <span class="ci-dot"></span>
       <div style="flex:1">
@@ -2139,8 +2644,14 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
 
-loadCommunities();
-tick();
+// 초기 i18n 프리로드 → 첫 tick → 주기적 갱신
+(async () => {
+  await loadLang('ko');
+  await loadLang('en');
+  applyLangLabel();
+  await loadCommunities();
+  await tick();
+})();
 setInterval(tick, 1500);
 setInterval(loadCommunities, 5000);  // 커뮤니티 running 상태 5초마다 갱신
 </script>
@@ -2243,6 +2754,41 @@ def api_usage(path):
         _set_active_community(_read_community(path))
     from src.core import monitor
     return monitor.get_usage_stats()
+
+
+def _serve_logo(handler):
+    """resources/Glimi-logo.png 서빙."""
+    fp = ROOT / "resources" / "Glimi-logo.png"
+    if not fp.exists():
+        handler._send(404, b"not found", "text/plain")
+        return
+    try:
+        with open(fp, "rb") as f:
+            data = f.read()
+    except Exception as e:
+        handler._send(500, str(e).encode(), "text/plain")
+        return
+    handler.send_response(200)
+    handler.send_header("Content-Type", "image/png")
+    handler.send_header("Cache-Control", "public, max-age=3600")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
+def api_i18n(path: str) -> dict:
+    """i18n/dashboard.{ko,en}.json 파일 로드."""
+    from urllib.parse import parse_qs, urlparse as _u
+    q = parse_qs(_u(path).query)
+    lang = (q.get("lang", ["ko"])[0] or "ko").lower()
+    if lang not in ("ko", "en"):
+        lang = "ko"
+    fp = ROOT / "i18n" / f"dashboard.{lang}.json"
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def api_communities():
@@ -2681,8 +3227,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json(api_usage(self.path))
             elif p == "/api/communities":
                 self._json(api_communities())
+            elif p == "/api/i18n":
+                self._json(api_i18n(self.path))
             elif p == "/api/avatar":
                 _serve_avatar(self, self.path)
+            elif p == "/logo":
+                _serve_logo(self)
             else:
                 self._send(404, b"not found", "text/plain")
         except Exception as e:
