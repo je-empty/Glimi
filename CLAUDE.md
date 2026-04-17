@@ -170,6 +170,9 @@ Glimi/
 - `ChannelConversationSupervisor`: `internal-*` 채널 중 `status=running`인 것 감시. 모든 internal 채널 idle 되면 비활성화.
 - 충돌: 같은 채널에 대해 `OnboardingSupervisor`가 `ChannelConversationSupervisor`에 위임. 대상이 thinking/speaking 이면 둘 다 스킵.
 
+## 작업 규칙
+- 커밋 메시지는 짧게 — 1줄 제목, 필요시 핵심 1-2줄. 장황한 본문 금지.
+
 ## 주의사항
 - 메모리/감정은 system prompt에 넣지 않음 (agent_runtime이 user prompt에 채널별로 동적 주입)
 - 그룹채팅에서 오너 메시지는 handle_group에서 1회만 로깅 (generate_response에 log_user_message=False)
