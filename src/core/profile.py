@@ -214,7 +214,7 @@ def setup_initial_relationships():
 
 
 def build_system_prompt(agent_id: str, include_avatar_template: bool = False) -> str:
-    """에이전트용 system prompt 생성"""
+    """에이전트용 system prompt 생성 (+ 공용 skills 섹션 append)"""
     profile = load_profile(agent_id)
     if not profile:
         return ""
@@ -222,12 +222,24 @@ def build_system_prompt(agent_id: str, include_avatar_template: bool = False) ->
     agent_type = profile.get("type", "persona")
 
     if agent_type == "persona":
-        return _build_persona_prompt(profile)
+        base = _build_persona_prompt(profile)
     elif agent_type == "mgr":
-        return _build_mgr_prompt(profile, include_avatar_template=include_avatar_template)
+        base = _build_mgr_prompt(profile, include_avatar_template=include_avatar_template)
     elif agent_type == "creator":
-        return _build_creator_prompt(profile)
-    return ""
+        base = _build_creator_prompt(profile)
+    else:
+        return ""
+
+    # 공용 스킬 섹션 추가 (Claude Code Skill 시스템에서 차용한 개념)
+    try:
+        from .skills import build_skills_section
+        skills_text = build_skills_section(agent_type)
+        if skills_text:
+            base = base + "\n\n" + skills_text
+    except Exception as e:
+        print(f"[Profile] skills 로드 실패 (무시): {e}")
+
+    return base
 
 
 def _format_speech_section(speech: dict) -> str:

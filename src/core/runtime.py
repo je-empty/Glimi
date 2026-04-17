@@ -76,23 +76,31 @@ class AgentRuntime:
 
     # ── Prompt building ──────────────────────────────
 
-    def _build_context(self, agent_info: dict, channel: str, recent: list[dict]) -> str:
-        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력)."""
+    def _build_context(self, agent_info: dict, channel: str, recent: list[dict],
+                       user_message: str = "") -> str:
+        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력).
+
+        동적 컨텍스트는 <system-reminder> 태그로 감싸서 페르소나(정적)와 구분.
+        이건 Claude Code 유출본에서 확인된 패턴 — 모델이 "현재 상태"와 "내면 설정"을 구분 잘 함.
+
+        user_message: 교차 채널 메모리의 on-demand 필터링에 사용 (멘션된 이름만 주입).
+        """
         profile = agent_info["profile"]
         agent_id = profile["id"]
         agent_type = profile.get("type", "persona")
 
         prompt_parts = []
+        reminder_parts = []  # <system-reminder>로 감쌀 동적 컨텍스트
 
-        # 채널 정보
+        # 채널 정보 (고정 정보지만 context 특정)
         ch_info = self._describe_channel(channel, agent_id)
         if ch_info:
-            prompt_parts.append(ch_info)
+            reminder_parts.append(ch_info)
 
-        # 현재 감정
+        # 현재 감정 (dynamic)
         agent_state = db.get_agent(agent_id)
         if agent_state:
-            prompt_parts.append(
+            reminder_parts.append(
                 f"[현재감정: {agent_state['current_emotion']}"
                 f"({agent_state['emotion_intensity']}/10)]"
             )
@@ -101,30 +109,38 @@ class AgentRuntime:
         if agent_type == "mgr":
             digest = self._build_activity_digest()
             if digest:
-                prompt_parts.append(digest)
+                reminder_parts.append(digest)
 
         # ── 기억 섹션 ──
+        # focus_hint로 최근 대화 + 사용자 메시지 넘겨서 on-demand 필터링
+        focus_hint = user_message + "\n" + "\n".join(m.get("message", "") for m in recent[-5:])
         memory_text = get_memory_context(agent_id, channel)
-        cross_memory = get_cross_channel_memory(agent_id, exclude_channel=channel)
+        cross_memory = get_cross_channel_memory(agent_id, exclude_channel=channel, focus_hint=focus_hint)
 
+        mem_block = []
         if memory_text or cross_memory:
-            prompt_parts.append("━━━ 기억 ━━━")
-
+            mem_block.append("━━━ 기억 ━━━")
         if memory_text:
-            prompt_parts.append(memory_text)
-
+            mem_block.append(memory_text)
         if cross_memory:
             if memory_text:
-                prompt_parts.append("")
-            prompt_parts.append(cross_memory)
-
+                mem_block.append("")
+            mem_block.append(cross_memory)
         if memory_text or cross_memory:
-            prompt_parts.append("━━━━━━━━━━━")
+            mem_block.append("━━━━━━━━━━━")
+        if mem_block:
+            reminder_parts.append("\n".join(mem_block))
 
         # ── 다른 채널 최근 대화 (요약 없이 직접 주입) ──
         cross_recent = self._get_cross_channel_recent(agent_id, channel)
         if cross_recent:
-            prompt_parts.append(cross_recent)
+            reminder_parts.append(cross_recent)
+
+        # 동적 컨텍스트 전체를 system-reminder로 감싸기
+        if reminder_parts:
+            prompt_parts.append("<system-reminder>")
+            prompt_parts.extend(reminder_parts)
+            prompt_parts.append("</system-reminder>")
 
         # 대화 이력 — mgr 채널은 오너 메시지가 묻히지 않게 보장
         if recent:
@@ -155,7 +171,7 @@ class AgentRuntime:
     def _build_prompt(self, agent_info: dict, channel: str, recent: list[dict],
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
         """프롬프트 구성. Returns: (full_prompt, system_prompt, model)"""
-        context = self._build_context(agent_info, channel, recent)
+        context = self._build_context(agent_info, channel, recent, user_message=user_message)
         name = speaker_name or get_user_display_name()
         full_prompt = context + f"{name}: {user_message}"
 
@@ -399,7 +415,7 @@ class AgentRuntime:
             )
 
             # 전체 맥락 (감정 + 메모리 + cross-channel + 대화이력) + 트리거
-            context = self._build_context(agent_info, channel, recent)
+            context = self._build_context(agent_info, channel, recent, user_message=user_message)
             full_prompt = context + "(자연스럽게 먼저 말 걸어)"
 
             model = AGENT_MODELS.get(profile.get("type", "persona"), "claude-sonnet-4-6")
@@ -820,7 +836,7 @@ class AgentRuntime:
         recent = db.get_recent_messages(channel, limit=RAW_WINDOW)
 
         # _build_context 재활용 (speaker 기준 메모리)
-        base_context = self._build_context(speaker_info, channel, recent)
+        base_context = self._build_context(speaker_info, channel, recent, user_message=context)
 
         if context:
             full_prompt = base_context + f"상황: {context}\n{listener_name}과(와)의 대화를 이어가."

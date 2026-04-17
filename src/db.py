@@ -99,6 +99,7 @@ def init_db():
             msg_id_to INTEGER,
             msg_count INTEGER DEFAULT 0,
             related_agent_id TEXT,
+            mem_type TEXT,  -- event | fact | emotion | relationship (nullable for legacy rows)
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -361,12 +362,12 @@ def get_events(participant: Optional[str] = None, limit: int = 20) -> list[dict]
 
 def add_memory(agent_id: str, channel: str, level: int, content: str,
                msg_id_from: int, msg_id_to: int, msg_count: int,
-               related_agent_id: str = None):
+               related_agent_id: str = None, mem_type: str = None):
     conn = get_conn()
     conn.execute(
-        """INSERT INTO memories (agent_id, channel, level, content, msg_id_from, msg_id_to, msg_count, related_agent_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (agent_id, channel, level, content, msg_id_from, msg_id_to, msg_count, related_agent_id)
+        """INSERT INTO memories (agent_id, channel, level, content, msg_id_from, msg_id_to, msg_count, related_agent_id, mem_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (agent_id, channel, level, content, msg_id_from, msg_id_to, msg_count, related_agent_id, mem_type)
     )
     conn.commit()
     conn.close()
@@ -662,6 +663,11 @@ def _migrate_schema():
     if "related_agent_id" not in mem_cols:
         conn.execute("ALTER TABLE memories ADD COLUMN related_agent_id TEXT")
         print("[DB] memories.related_agent_id 추가")
+
+    # memories.mem_type 추가 — 메모리 분류 (event/fact/emotion/relationship)
+    if "mem_type" not in mem_cols:
+        conn.execute("ALTER TABLE memories ADD COLUMN mem_type TEXT")
+        print("[DB] memories.mem_type 추가")
 
     # relationships 테이블 별칭 컬럼 추가
     rel_cols = [r["name"] for r in conn.execute("PRAGMA table_info(relationships)").fetchall()]
