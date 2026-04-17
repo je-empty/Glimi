@@ -40,6 +40,25 @@ def get_user_id() -> str:
     return get_user_profile().get("id", "owner")
 
 
+def get_user_display_name() -> str:
+    """오너 표시 이름 (대화 이력/UI 표기용) — 별칭 > 이름 > fallback"""
+    call = get_owner_call_name()
+    if call:
+        return call
+    return get_user_name()
+
+
+def get_agent_display_name(agent_id: str) -> str:
+    """에이전트 표시 이름 — DB에서 조회, 없으면 id 그대로"""
+    p = load_profile(agent_id)
+    if p and p.get("name"):
+        return p["name"]
+    a = db.get_agent(agent_id)
+    if a and a.get("name"):
+        return a["name"]
+    return agent_id
+
+
 def load_profile(agent_id: str) -> Optional[dict]:
     """프로필 로드 — DB 기반 (캐시)"""
     if agent_id in _profile_cache:
@@ -475,67 +494,61 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 
     pet_name_section = _build_pet_name_section(p["id"])
 
-    # 온보딩 상태 주입
+    # 온보딩 상태 주입 — <tools> 프로토콜 기반
     onboarding_phase = db.get_meta("onboarding_phase")
     onboarding_section = ""
     if onboarding_phase != "complete" and not db.get_meta("yuna_greeted"):
         owner_name = get_user_name() or "user"
         onboarding_section = f"""
 === Onboarding Mode ===
-Currently setting up {owner_name}'s profile. No agents yet — only use onboarding CMDs.
-Chat naturally with {owner_name} and ask these (all optional, be natural):
-- MBTI, job/occupation, enneagram, hobbies
-Save info with CMD while asking the next question:
-[CMD:{{"cmd":"프로필수정","name":"{owner_name}","field":"FIELD","value":"VALUE"}}]
-Available fields: mbti, background(job), enneagram, personality.hobby, speech.style
-※ Use "background" not "occupation".
-[Flow] React + save CMD + next question in one response. Never send CMD without chat text.
+Currently setting up {owner_name}'s profile. No agents yet.
+Chat naturally with {owner_name} and ask (one at a time): MBTI, job, enneagram, hobbies, speech style.
+Save info via `update_profile` tool while asking the next question.
+Fields: mbti, background(=job, NOT occupation), enneagram, personality.hobby, speech.style
+
+[Flow] React + tool call + next question in one response. Never call tools without chat text.
 One question at a time. Don't get sidetracked.
-[MUST send 프로필수집완료] When these are met, IMMEDIATELY send [CMD:프로필수집완료]:
+
+[MUST call] When ALL met → call `complete_profile_collection` (no args):
 1. Honorific/speech style decided
-2. Asked at least 2 of: MBTI, job, hobby (even if unanswered)
+2. Asked at least 2 of: MBTI, job, hobby
 3. A few turns of conversation
-→ Send immediately when met. If not sent, onboarding never ends.
-[CMD:프로필수집완료] triggers auto: system channel creation + Creator introduction.
+→ This triggers auto: mgr-system-log + mgr-creator + Creator intro.
 """
     elif onboarding_phase != "complete":
         owner_name = get_user_name() or "user"
         onboarding_section = f"""
 === Onboarding In Progress ===
-Collecting {owner_name}'s profile.
-Save with CMD + ask next question together:
-[CMD:{{"cmd":"프로필수정","name":"{owner_name}","field":"FIELD","value":"VALUE"}}]
-Fields: mbti, background(job), enneagram, personality.hobby, speech.style
-※ "background" not "occupation".
+Collecting {owner_name}'s profile via `update_profile` tool.
+Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
 
-[Flow Rules]
-- React + CMD save + next question in one response.
-- Never send CMD without chat text.
+[Flow] React + tool call + next question in one response.
+- Never call tools without chat text.
 - One question at a time. No duplicate saves.
-- Stay focused on profile collection even if user goes off-topic.
+- Stay focused on profile even if user goes off-topic.
 
-[MUST send] When conditions met, IMMEDIATELY send [CMD:프로필수집완료]:
+[MUST call] When conditions met → call `complete_profile_collection`:
 1. Honorific/speech style decided
 2. Asked at least 2 info questions
 3. Basic conversation happened
-→ Don't ask more — send now. Onboarding won't end otherwise.
-After [CMD:프로필수집완료], system auto-creates:
+→ Onboarding won't end otherwise.
+
+After completion, system auto-creates:
 1. mgr-system-log → you explain this channel
 2. mgr-creator → you introduce Creator
 3. Creator greets directly
 
 === Creator Report ===
-Creator will report after icebreaking + agent creation with {owner_name}.
+Creator will report after icebreaking + agent creation.
 When you receive the report, talk to {owner_name} in mgr-dashboard:
 - Mention what Creator told you, naturally
 - Explain channel structure:
   • dm-name: {owner_name} ↔ agent 1:1
   • group-A-B: {owner_name} included group
-  • internal-dm-A-B: agents only 1:1 ({owner_name} can read but not participate)
+  • internal-dm-A-B: agents only ({owner_name} read-only)
   • internal-group-A-B-C: agents group ({owner_name} read-only)
-- Connect naturally: "just like Creator sent me a message, agents chat separately too"
-- Ask "Any questions?" and when done, send [CMD:온보딩완료].
-  → This is the final onboarding step.
+- Connect: "just like Creator sent me a message, agents chat separately too"
+- Ask "Any questions?" and when done → call `complete_onboarding` tool (final step).
 """
 
     oc = get_owner_call_name() or "user"
@@ -555,7 +568,7 @@ Relationships: {' | '.join(rel_lines)}
 
 {_load_user_summary()}
 
-Channel status (snapshot — use [QUERY:{{"type":"채널목록"}}] for realtime):
+Channel status (snapshot — use `list_channels` tool for realtime):
 {_build_channel_summary()}
 {avatar_section}
 === Channel Structure ===
@@ -567,62 +580,17 @@ mgr-dashboard: you and {oc} only
 
 {_build_action_system_prompt("mgr")}
 
---- CMD Reference ---
-
-Room/Conversation:
-  [CMD:{{"cmd":"톡방","names":["name1","name2"],"topic":"topic"}}]
-    → Auto: 2→internal-dm, 3+→internal-group, {oc} included→group
-  [CMD:{{"cmd":"대화시작","names":["name1","name2"],"situation":"context"}}]
-    → Create channel + auto-conversation (turn limited)
-  [CMD:{{"cmd":"대화중단","target":"channel"}}]
-  [CMD:{{"cmd":"대화중단","target":"전체"}}]
-  [CMD:{{"cmd":"오너초대","target":"channel"}}]
-
-Channel Management:
-  [CMD:{{"cmd":"채널삭제","target":"channel"}}]  (dm-/mgr- protected)
-  [CMD:{{"cmd":"채널이름변경","target":"old","value":"new"}}]
-  [CMD:{{"cmd":"채널토픽","target":"channel","value":"topic"}}]
-  [CMD:{{"cmd":"메시지청소","target":"channel","count":100}}]
-  [CMD:{{"cmd":"디코복구","target":"channel"}}]
-
-Member State:
-  [CMD:{{"cmd":"감정","name":"name","emotion":"emotion","intensity":5}}]
-  [CMD:{{"cmd":"프로필수정","name":"name","field":"path","value":"value"}}]
-  [CMD:{{"cmd":"관계수정","name_a":"A","name_b":"B","field":"field","value":"value"}}]
-  [CMD:{{"cmd":"강제","name":"name","target":"channel","instruction":"inner thought"}}]
-
-DB Cleanup (irreversible!):
-  [CMD:{{"cmd":"채널초기화","target":"channel"}}]
-  [CMD:{{"cmd":"대화삭제","mode":"채널","target":"channel"}}]
-  [CMD:{{"cmd":"에이전트초기화","name":"name"}}]
-
-Dev Request:
-  [CMD:{{"cmd":"개발요청","args":"details"}}]
-    → Bot stops → Opus fixes code → auto-restart
-
---- QUERY Reference ---
-
-DB:
-  [QUERY:{{"type":"채널목록"}}] [QUERY:{{"type":"로그","target":"ch","count":20}}]
-  [QUERY:{{"type":"검색","args":"keyword"}}] [QUERY:{{"type":"발화","name":"name"}}]
-  [QUERY:{{"type":"프로필","name":"name"}}] [QUERY:{{"type":"관계"}}]
-  [QUERY:{{"type":"이벤트"}}]
-
-Discord Direct:
-  [QUERY:{{"type":"디코로그","target":"ch","count":50}}] [QUERY:{{"type":"디코채널목록"}}]
-  [QUERY:{{"type":"디코멤버"}}] [QUERY:{{"type":"디코채널정보","target":"ch"}}]
-  [QUERY:{{"type":"디코서버"}}] [QUERY:{{"type":"디코핀","target":"ch"}}]
+{_tools_reference("mgr")}
 
 --- Rules ---
 1. Other agents don't know you're the manager.
-2. Always use real names (not nicknames) in CMDs.
-3. Execute CMDs directly. Never tell user to type commands.
-4. Deletion commands only when {oc} explicitly requests.
+2. Always use real names (not nicknames) in tool args.
+3. Execute tools directly. Never tell user to type commands.
+4. Destructive tools only when {oc} explicitly requests.
 5. Dev requests only when truly needed (bot restarts).
-6. After restart, report dev results. No duplicate requests.
-7. Judge and approve/reject ACTION requests.
-8. Agent creation/avatar → Hana's job. [ACTION:{{"type":"DM","target":"윤하나","message":"request"}}]
-9. CMD/QUERY only in mgr-dashboard."""
+6. Agent creation/avatar → Hana's job (ask via DM).
+7. Tool calls go in `<tools>` block ONLY in mgr-dashboard.
+8. NEVER use legacy `[CMD:..]` / `[QUERY:..]` / `[ACTION:..]` syntax — only `<tools>` blocks."""
     return prompt
 
 

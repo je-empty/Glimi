@@ -139,13 +139,17 @@ class AgentRuntime:
 
     def _build_context(self, agent_info: dict, channel: str, recent: list[dict],
                        user_message: str = "") -> str:
-        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력).
+        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력)."""
+        import time as _time
+        _t = _time.monotonic()
+        def _checkpoint(label):
+            nonlocal _t
+            now = _time.monotonic()
+            dt = now - _t
+            if dt > 5.0:
+                log_writer.system(f"⏱ _build_context[{label}] {dt:.1f}s")
+            _t = now
 
-        동적 컨텍스트는 <system-reminder> 태그로 감싸서 페르소나(정적)와 구분.
-        이건 Claude Code 유출본에서 확인된 패턴 — 모델이 "현재 상태"와 "내면 설정"을 구분 잘 함.
-
-        user_message: 교차 채널 메모리의 on-demand 필터링에 사용 (멘션된 이름만 주입).
-        """
         profile = agent_info["profile"]
         agent_id = profile["id"]
         agent_type = profile.get("type", "persona")
@@ -157,6 +161,7 @@ class AgentRuntime:
         ch_info = self._describe_channel(channel, agent_id)
         if ch_info:
             reminder_parts.append(ch_info)
+        _checkpoint("describe_channel")
 
         # 현재 감정 (dynamic)
         agent_state = db.get_agent(agent_id)
@@ -171,12 +176,15 @@ class AgentRuntime:
             digest = self._build_activity_digest()
             if digest:
                 reminder_parts.append(digest)
+            _checkpoint("activity_digest")
 
         # ── 기억 섹션 ──
         # focus_hint로 최근 대화 + 사용자 메시지 넘겨서 on-demand 필터링
         focus_hint = user_message + "\n" + "\n".join(m.get("message", "") for m in recent[-5:])
         memory_text = get_memory_context(agent_id, channel)
+        _checkpoint("memory_context")
         cross_memory = get_cross_channel_memory(agent_id, exclude_channel=channel, focus_hint=focus_hint)
+        _checkpoint("cross_channel_memory")
 
         mem_block = []
         if memory_text or cross_memory:
@@ -196,6 +204,7 @@ class AgentRuntime:
         cross_recent = self._get_cross_channel_recent(agent_id, channel)
         if cross_recent:
             reminder_parts.append(cross_recent)
+        _checkpoint("cross_channel_recent")
 
         # 동적 컨텍스트 전체를 system-reminder로 감싸기
         if reminder_parts:
@@ -564,12 +573,34 @@ class AgentRuntime:
         log_writer.mark_thinking(agent_id)
         log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
+        # 단계별 타이밍 로그 + 하드 타임아웃 watchdog (>120초면 외부에서 stuck 알림)
+        import time as _time, threading as _threading
+        _t0 = _time.monotonic()
+        _watchdog_fired = {"v": False}
+        def _watchdog():
+            if _watchdog_fired["v"]:
+                return
+            log_writer.system(f"⚠ {agent_id} 응답 생성 120초 초과 — stuck 가능성")
+        _wd_timer = _threading.Timer(120.0, _watchdog)
+        _wd_timer.daemon = True
+        _wd_timer.start()
+
         try:
             if CLAUDE_AVAILABLE:
                 responses = self._call_claude_code(agent_info, channel, recent, user_message)
             else:
                 responses = self._placeholder_response(profile, user_message)
+            elapsed = _time.monotonic() - _t0
+            if elapsed > 60:
+                log_writer.system(f"⚠ {agent_id} 응답 생성 {elapsed:.1f}초 (느림)")
+        except Exception as e:
+            import traceback
+            log_writer.system(f"❌ generate_response 예외 ({agent_id}): {type(e).__name__}: {e}")
+            log_writer.system(f"   trace: {traceback.format_exc()[:500]}")
+            responses = self._placeholder_response(profile, user_message)
         finally:
+            _watchdog_fired["v"] = True
+            _wd_timer.cancel()
             log_writer.mark_done(agent_id)
 
         log_writer.agent_thinking(agent_id, f"응답 {len(responses)}건")
@@ -714,9 +745,23 @@ class AgentRuntime:
                 on_message(m)
             return msgs
 
-        full_prompt, system_prompt, model = self._build_prompt(
-            agent_info, channel, recent, user_message
-        )
+        # _build_prompt 단계 timing — stuck 위치 식별용
+        import time as _time
+        _bp_start = _time.monotonic()
+        try:
+            full_prompt, system_prompt, model = self._build_prompt(
+                agent_info, channel, recent, user_message
+            )
+        except Exception as e:
+            import traceback
+            log_writer.mark_done(agent_id)
+            log_writer.system(f"❌ _build_prompt 예외 ({agent_id}): {type(e).__name__}: {e}")
+            log_writer.system(f"   trace: {traceback.format_exc()[:400]}")
+            on_message(f"({name} 응답 생성 실패)")
+            return [f"({name} 응답 생성 실패)"]
+        _bp_elapsed = _time.monotonic() - _bp_start
+        if _bp_elapsed > 5:
+            log_writer.system(f"⏱ {agent_id} _build_prompt {_bp_elapsed:.1f}s")
 
         log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
@@ -749,6 +794,21 @@ class AgentRuntime:
                 bufsize=1,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
+
+            # Hard watchdog — Claude CLI가 stdout 안 닫고 hang 시 강제 kill (120s)
+            import threading as _threading
+            _wd_killed = {"v": False}
+            def _wd_kill():
+                if process.poll() is None:
+                    _wd_killed["v"] = True
+                    log_writer.system(f"❌ {name} CLI 응답 120초 초과 — 강제 kill")
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+            _wd = _threading.Timer(120.0, _wd_kill)
+            _wd.daemon = True
+            _wd.start()
 
             for line in process.stdout:
                 raw_line = line.rstrip("\n")
@@ -810,7 +870,15 @@ class AgentRuntime:
                     process.kill()
                     break
 
+            try:
+                _wd.cancel()
+            except Exception:
+                pass
             process.wait(timeout=60)
+            if _wd_killed["v"] and not messages:
+                msg = f"({name} 응답 지연 — 다시 시도해주세요)"
+                on_message(msg)
+                messages = [msg]
 
             # <tools> 블록 파싱 → stash
             if tool_buffer:
@@ -847,6 +915,10 @@ class AgentRuntime:
                     on_message(m)
                 messages = fallback
         finally:
+            try:
+                _wd.cancel()
+            except Exception:
+                pass
             log_writer.mark_done(agent_id)
             log_writer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
 
