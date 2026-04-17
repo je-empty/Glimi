@@ -408,11 +408,21 @@ HTML = r"""<!doctype html>
   .graph-edges .edge.live { stroke-dasharray: 6 4; animation: edge-flow 1.6s linear infinite; }
   @keyframes edge-flow { to { stroke-dashoffset: -20; } }
   .graph-edges .edge-label {
-    font-family: "JetBrains Mono", monospace; font-size: 10px; fill: var(--text);
-    pointer-events: auto;
+    font-family: "JetBrains Mono", monospace; font-size: 10.5px; font-weight: 500;
+    fill: var(--text);
+    pointer-events: none;
   }
   .graph-edges .edge-label-bg {
-    fill: var(--panel-2); stroke: var(--border); stroke-width: 0.5;
+    fill: var(--panel); stroke: var(--border); stroke-width: 1;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.08));
+    transition: all 0.2s;
+  }
+  .graph-edges .edge-label-bg.live {
+    stroke: var(--accent); stroke-width: 1.5;
+  }
+  .graph-edges .edge-label-group { pointer-events: auto; }
+  .graph-edges .edge-label-group:hover .edge-label-bg {
+    fill: var(--panel-2); stroke: var(--accent); stroke-width: 2;
   }
   .graph-node {
     position: absolute; transform: translate(-50%, -50%);
@@ -1930,43 +1940,64 @@ function renderConnectionGraph(snap) {
   }
   const ownerName = snap.meta?.user_name || 'Owner';
 
-  // 활성 채널 수집 — 최근 5분 이내 활동 있거나 msg_count>0인 것만
+  // 활성 채널 수집 — 최근 활동 있는 것만 (3일 이내, 또는 running 상태)
+  const RECENT_HOURS = fullscreen ? 24 * 14 : 24 * 3;  // fullscreen이면 2주, 기본 3일
   const channels = (snap.channels || []).filter(c => {
     if (c.msg_count === 0) return false;
-    // 활성 간주: 참여자 2명 이상, 메시지 있음
-    return c.participant_count >= 1;
+    if (c.participant_count < 1) return false;
+    if (c.status === 'running') return true;
+    if (!c.last_ts) return false;
+    try {
+      const age = (Date.now() - new Date(c.last_ts).getTime()) / 1000 / 3600;
+      return age < RECENT_HOURS;
+    } catch { return false; }
   });
 
-  // owner 참여 채널: dm-, group-, mgr-
-  // internal- 은 agents only
-  const edges = []; // {a, b, channel, kind, live}
+  // 엣지 수집 — 모든 채널의 참여자 쌍
+  const rawEdges = [];
   for (const c of channels) {
-    // channel participants는 agent IDs만 — monitor에서 이미 list로 옴
-    // 전체 참여자 파악: DM/group이면 owner 포함
     const parts = [];
     if (c.kind === 'dm' || c.kind === 'group' || c.kind === 'mgr') {
       parts.push('__owner__');
     }
     for (const pid of (c.participants || [])) {
-      // pid → agent name
       const a = snap.agents.find(a => a.id === pid);
       if (a) parts.push(a.name);
     }
     if (parts.length < 2) continue;
-
-    // live 여부 — 최근 3분 이내 활동
-    const live = c.last_ago && (c.last_ago.includes('초') || c.last_ago.includes('분') && parseInt(c.last_ago) < 5);
-
-    // 쌍 생성: 모든 조합 (클리크)
+    const live = c.last_ago && (c.last_ago.includes('초') || (c.last_ago.includes('분') && parseInt(c.last_ago) < 5));
     for (let i = 0; i < parts.length; i++) {
       for (let j = i + 1; j < parts.length; j++) {
-        edges.push({
-          a: parts[i], b: parts[j],
-          channel: c.name, kind: c.kind, live, msg_count: c.msg_count,
-        });
+        rawEdges.push({ a: parts[i], b: parts[j], channel: c.name, kind: c.kind, live, msg_count: c.msg_count, last_ts: c.last_ts });
       }
     }
   }
+
+  // 같은 쌍은 대표 1개만: 가장 최근 or 가장 활성 채널. 나머지는 개수 배지로.
+  const pairMap = {};  // "a||b" → { primary, extras: N, hasLive, kinds: Set }
+  for (const e of rawEdges) {
+    const k = [e.a, e.b].sort().join('||');
+    if (!pairMap[k]) {
+      pairMap[k] = { edges: [], hasLive: false, kinds: new Set() };
+    }
+    pairMap[k].edges.push(e);
+    if (e.live) pairMap[k].hasLive = true;
+    pairMap[k].kinds.add(e.kind);
+  }
+  const edges = [];
+  Object.values(pairMap).forEach(grp => {
+    // 우선순위: live > 최근 last_ts > msg_count
+    grp.edges.sort((a, b) => {
+      if (a.live !== b.live) return a.live ? -1 : 1;
+      const ta = a.last_ts ? new Date(a.last_ts).getTime() : 0;
+      const tb = b.last_ts ? new Date(b.last_ts).getTime() : 0;
+      return tb - ta;
+    });
+    const primary = grp.edges[0];
+    primary.bundle_count = grp.edges.length;  // 총 몇 개의 채널이 이 쌍 연결
+    primary.bundle_live = grp.hasLive;
+    edges.push(primary);
+  });
 
   // 노드 수집: 엣지에 참여한 에이전트 + owner
   const nodeSet = new Set();
@@ -2011,7 +2042,7 @@ function renderConnectionGraph(snap) {
     other: 'var(--text-faint)',
   };
 
-  // 같은 쌍에 여러 채널 있으면 curved offset
+  // 같은 쌍은 이미 bundle로 1개 대표만 남김 — edgeGroups는 쌍당 1개
   const edgeGroups = {};
   for (const e of edges) {
     const k = [e.a, e.b].sort().join('||');
@@ -2025,13 +2056,14 @@ function renderConnectionGraph(snap) {
   if (SHOW_SUP && snap.supervisors) {
     const nameToId = {};
     for (const a of snap.agents) nameToId[a.id] = a.name;
-    snap.supervisors.forEach((s, i) => {
-      // 에이전트 이름으로 targets 매핑
+    // 활성 supervisor만 그래프에 표시 (idle은 Supervisors 탭으로 확인)
+    const activeSups = snap.supervisors.filter(s => s.active);
+    activeSups.forEach((s, i) => {
       const targetNames = (s.target_agents || []).map(aid => nameToId[aid]).filter(Boolean);
-      if (!targetNames.length && !s.active) return;  // idle + no targets → 그래프에 표시 안 함
+      if (!targetNames.length) return;
 
-      // supervisor 노드 위치: 살짝 바깥쪽 원 (radius * 1.15) — 대상 에이전트와 시각적 근접
-      const total = snap.supervisors.length;
+      // supervisor 노드 위치: 살짝 바깥쪽 원 (radius * 1.12)
+      const total = activeSups.length;
       const angle = (i / total) * 2 * Math.PI - Math.PI / 2 + Math.PI / total;
       const supRadius = radius * 1.12;
       const spos = {
@@ -2077,12 +2109,18 @@ function renderConnectionGraph(snap) {
       // 라벨 위치: 곡선 중간
       const labelX = (pa.x + 2 * ctrlX + pb.x) / 4;
       const labelY = (pa.y + 2 * ctrlY + pb.y) / 4;
-      const displayName = e.channel.length > 22 ? e.channel.slice(0, 20) + '…' : e.channel;
-      const textW = displayName.length * 6 + 10;
+      const displayName = e.channel.length > 24 ? e.channel.slice(0, 22) + '…' : e.channel;
+      const bundleSuffix = (e.bundle_count && e.bundle_count > 1) ? ` +${e.bundle_count - 1}` : '';
+      const textLen = displayName.length + bundleSuffix.length;
+      // 문자 너비 가변 계산 (한글은 폭 넓게)
+      const hasKo = /[\u3131-\uD79D]/.test(displayName);
+      const charW = hasKo ? 7.2 : 5.8;
+      const textW = Math.max(44, textLen * charW + 14);
+      const cls = e.bundle_live ? 'edge-label-bg live' : 'edge-label-bg';
       labelSvg.push(
-        `<g>
-          <rect class="edge-label-bg" x="${labelX - textW / 2}" y="${labelY - 8}" width="${textW}" height="16" rx="4" />
-          <text class="edge-label" x="${labelX}" y="${labelY + 3}" text-anchor="middle">${esc(displayName)}</text>
+        `<g class="edge-label-group" style="cursor:pointer" onclick="openChannel('${esc(e.channel)}')">
+          <rect class="${cls}" x="${labelX - textW / 2}" y="${labelY - 10}" width="${textW}" height="20" rx="10" />
+          <text class="edge-label" x="${labelX}" y="${labelY + 3.5}" text-anchor="middle">${esc(displayName)}${bundleSuffix ? `<tspan style="fill:var(--accent);font-weight:700">${esc(bundleSuffix)}</tspan>` : ''}</text>
         </g>`
       );
     });
