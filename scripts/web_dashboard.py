@@ -220,7 +220,7 @@ HTML = r"""<!doctype html>
 
   /* ==== Overview KPI ==== */
   .overview-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;
   }
   .kpi {
     background: var(--panel); border: 1px solid var(--border-soft); border-radius: 12px;
@@ -626,6 +626,7 @@ HTML = r"""<!doctype html>
       </div>
       <div class="hero" id="hero"></div>
       <div class="overview-grid">
+        <div class="kpi"><div class="label">Server Status</div><div class="value" id="kpi-server">—</div></div>
         <div class="kpi"><div class="label">Discord Bot</div><div class="value" id="kpi-bot">—</div></div>
         <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
         <div class="kpi"><div class="label">Onboarding</div><div class="value" id="kpi-phase">—</div></div>
@@ -1084,6 +1085,10 @@ async function tick() {
   document.getElementById('hero').innerHTML = renderHero(snap);
 
   // Overview KPIs
+  // Server Status = 서버 전체 살아있는지 (bot alive 기반)
+  document.getElementById('kpi-server').innerHTML = b.bot_alive
+    ? `<span style="color:var(--ok)">● Online</span>`
+    : `<span style="color:var(--err)">○ Offline</span>`;
   document.getElementById('kpi-bot').innerHTML = b.bot_alive
     ? `<span style="color:var(--ok)">● Running</span>`
     : `<span style="color:var(--err)">○ Stopped</span>`;
