@@ -772,12 +772,29 @@ HTML = r"""<!doctype html>
   .kv dt { color: var(--text-dim); font-weight: 500; }
   .kv dd { color: var(--text); }
 
-  .rel-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; }
-  .rel-row .rname { font-weight: 600; min-width: 80px; }
-  .rel-row .rtype { color: var(--text-dim); }
-  .rel-row .intimacy-bar { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-  .rel-row .intimacy-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
-  .rel-row .intimacy-num { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-dim); min-width: 26px; text-align: right; }
+  .rel-row {
+    display: grid;
+    grid-template-columns: 110px 160px 1fr 40px;
+    align-items: center; gap: 10px;
+    padding: 6px 2px;
+    font-size: 12px;
+    border-bottom: 1px dashed var(--border-soft);
+  }
+  .rel-row:last-child { border-bottom: none; }
+  .rel-row .rname { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rel-row .rtype {
+    color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding: 2px 8px; background: var(--panel-2); border-radius: 5px; font-size: 11px;
+  }
+  .rel-row .intimacy-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .rel-row .intimacy-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
+  .rel-row .intimacy-num { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-dim); text-align: right; }
+  .rel-row .dynamics {
+    grid-column: 1 / -1;
+    color: var(--text-faint); font-size: 10.5px;
+    padding-left: 120px; padding-top: 2px; padding-bottom: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
 
   .mem-block { margin-bottom: 14px; }
   .mem-block h5 { font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text); display: flex; align-items: center; gap: 6px; }
@@ -1580,11 +1597,11 @@ async function openAgent(id) {
   const rels = (d.relationships || []).map(r => {
     const pct = Math.min(100, r.intimacy);
     return `<div class="rel-row">
-      <span class="rname">${esc(r.other_name)}</span>
-      <span class="rtype">${esc(r.type)}</span>
+      <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
+      <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
       <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
       <span class="intimacy-num">${r.intimacy}</span>
-      ${r.dynamics ? `<span style="color:var(--text-faint);font-size:10.5px">${esc(r.dynamics.slice(0,40))}</span>` : ''}
+      ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
     </div>`;
   }).join('');
 
