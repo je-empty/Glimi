@@ -148,34 +148,55 @@ class TestUserBot(discord.Client):
         await asyncio.sleep(random.uniform(3.0, 7.0))  # 자연스러운 첫 응답 딜레이
         asyncio.create_task(self._conversation_loop())
 
+    def _is_allowed_channel(self, channel_name: str) -> bool:
+        """테스트 유저가 개입해도 되는 채널 판단.
+
+        허용: mgr-dashboard, mgr-creator, dm-*, group-*
+        차단: internal-* (에이전트 전용), mgr-system-log (시스템 로그 전용),
+             기타 prefix 없는 일반 디스코드 채널
+        """
+        if channel_name in ("mgr-dashboard", "mgr-creator"):
+            return True
+        if channel_name.startswith("dm-") or channel_name.startswith("group-"):
+            return True
+        # internal-*, mgr-system-log, general 등 모두 차단
+        return False
+
     async def on_message(self, message: discord.Message):
-        """Glimi 에이전트 메시지 수신"""
+        """Glimi 에이전트 메시지 수신 — 허용 채널 모두 추적, 개입은 허용 채널에만"""
         if message.author == self.user:
             return
-        if not self.target_channel:
-            return
-        if message.channel.id != self.target_channel.id:
-            # 다른 채널 메시지도 기록 (mgr-creator 등)
+
+        ch_name = message.channel.name
+        if not self._is_allowed_channel(ch_name):
+            return  # internal-*, mgr-system-log 등 차단
+
+        # Webhook 메시지(에이전트) 또는 Glimi 봇 메시지만 처리
+        if not (message.webhook_id or (self._glimi_bot_id and message.author.id == self._glimi_bot_id)):
             return
 
-        # Webhook 메시지 (에이전트) 또는 Glimi 봇 메시지
-        if message.webhook_id or (self._glimi_bot_id and message.author.id == self._glimi_bot_id):
-            agent_name = message.author.display_name
-            self.conversation.append({
-                "role": "agent",
-                "name": agent_name,
-                "text": message.content,
-            })
-            print(f"[{agent_name}] {message.content[:80]}")
+        agent_name = message.author.display_name
+        self.conversation.append({
+            "role": "agent",
+            "name": agent_name,
+            "text": message.content,
+            "channel": ch_name,
+        })
+        print(f"[#{ch_name}] [{agent_name}] {message.content[:80]}")
 
-            # 응답 대기 중이면 알림
-            if self.waiting_for_response:
-                # 연속 메시지 대기 (에이전트가 여러 줄 보낼 수 있음)
-                self._pending_messages.append(message.content)
-                # 짧은 대기 후 더 안 오면 응답 완료로 판단
-                await asyncio.sleep(3.0)
-                if self._pending_messages and self._pending_messages[-1] == message.content:
-                    self._response_event.set()
+        # 에이전트가 다른 허용 채널에서 말 걸면 활성 채널 전환 (실사용자 모방)
+        if self.target_channel and message.channel.id != self.target_channel.id:
+            print(f"[TestUser] 활성 채널 전환: #{self.target_channel.name} → #{ch_name}")
+            self.target_channel = message.channel
+
+        # 응답 대기 중이면 알림
+        if self.waiting_for_response:
+            # 연속 메시지 대기 (에이전트가 여러 줄 보낼 수 있음)
+            self._pending_messages.append(message.content)
+            # 짧은 대기 후 더 안 오면 응답 완료로 판단
+            await asyncio.sleep(3.0)
+            if self._pending_messages and self._pending_messages[-1] == message.content:
+                self._response_event.set()
 
     async def _conversation_loop(self):
         """메인 대화 루프"""

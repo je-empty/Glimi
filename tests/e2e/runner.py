@@ -27,7 +27,8 @@ QA_DIR = COMMUNITIES_DIR / "qa"
 RESULTS_DIR = PROJECT_ROOT / "tests" / "e2e" / "results"
 
 QA_COMMUNITY_ID = "qa"
-TEST_TIMEOUT = 600  # 10분 — 온보딩 전체 타임아웃
+# 타임아웃 제거 — test_user_bot 자체 종료(--turns 소진) 또는 외부 중단(./scripts/qa.sh stop)까지 대기
+TEST_TIMEOUT = None
 
 # 테스트 유저 프로필 (환경변수 또는 기본값)
 TEST_USER = {
@@ -52,11 +53,20 @@ def _setup_qa_server(bot_token: str):
     env_path = QA_DIR / ".env"
     preserved = {}  # 보존할 키-값
 
+    preserve_keys = (
+        "TEST_BOT_TOKEN",
+        "DISCORD_GUILD_ID",
+        "QA_USER_NAME",
+        "QA_USER_NICKNAME",
+        "QA_USER_AGE",
+        "QA_USER_BIRTH_YEAR",
+        "QA_USER_GENDER",
+    )
     if env_path.exists():
         with open(env_path) as f:
             for line in f:
                 stripped = line.strip()
-                for key in ("TEST_BOT_TOKEN", "DISCORD_GUILD_ID"):
+                for key in preserve_keys:
                     if stripped.startswith(f"{key}="):
                         preserved[key] = stripped
 
@@ -64,7 +74,7 @@ def _setup_qa_server(bot_token: str):
         "# Glimi QA 서버 (자동 생성)\n"
         f"DISCORD_BOT_TOKEN='{bot_token}'\n"
     )
-    for key in ("DISCORD_GUILD_ID", "TEST_BOT_TOKEN"):
+    for key in preserve_keys:
         if key in preserved:
             env_content += f"{preserved[key]}\n"
 
@@ -392,7 +402,8 @@ def run_single_test(bot_token: str, test_token: str, run_id: str) -> dict:
     test_proc = _start_test_user(test_token)
     start_time = time.time()
 
-    # 6. 대기 (테스트 유저 봇 종료 또는 타임아웃)
+    # 6. 대기 — test_user_bot이 자체 종료(--turns 소진)하거나 외부에서 중단될 때까지
+    # TEST_TIMEOUT=None이면 무기한, 숫자면 해당 초 후 강제 종료
     try:
         test_proc.wait(timeout=TEST_TIMEOUT)
     except subprocess.TimeoutExpired:

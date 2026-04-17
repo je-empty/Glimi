@@ -34,3 +34,12 @@ Thumbs.db
 .claude/
 .env.dev
 .glimi.toml
+
+# QA 테스트 결과 (대화 발췌가 있어 개인정보 포함 가능)
+tests/e2e/results/
+
+# 백업 (개인 데이터)
+backups/
+
+# 로컬 프로젝트 가이드 (개인 메모)
+GLIMI_PROJECT_GUIDE.md
