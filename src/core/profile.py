@@ -251,6 +251,16 @@ def _get_community_language() -> str:
         return "en"
 
 
+def _tools_reference(agent_type: str) -> str:
+    """에이전트 타입별 <tools> 도구 레퍼런스 — system prompt 주입용.
+    src.core.tools.reference.build_reference 위임 (지연 import로 순환 의존 회피)."""
+    try:
+        from src.core.tools.reference import build_reference
+        return build_reference(agent_type)
+    except Exception:
+        return ""
+
+
 def _build_common_prompt() -> str:
     """모든 에이전트에 공통으로 들어가는 기본 규칙"""
     owner_call = get_owner_call_name()
