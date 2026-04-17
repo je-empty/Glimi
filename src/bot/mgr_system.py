@@ -44,61 +44,76 @@ async def parse_and_execute_actions(
     report_channel: discord.TextChannel,
     responses: list[str],
     guild: discord.Guild,
+    caller_agent_id: str = None,
 ) -> list[str]:
     """
-    유나 응답에서 [CMD:...] / [QUERY:...] 태그를 파싱하고 실행.
-    CMD: 즉시 실행 (톡방 생성 등)
-    QUERY: DB 조회 → 결과를 유나에게 다시 전달 → 분석 응답만 반환 (원문 버림)
+    신규 Tool Protocol 기반 실행.
+
+    - runtime에 stash된 tool_calls를 dispatcher로 실행
+    - query 결과 있으면 followup generate → 분석 응답 추가 반환
+    - 응답 텍스트(responses)는 chat만 (tool 블록은 이미 runtime이 제거)
+
+    caller_agent_id: 호출한 에이전트. None이면 MGR_ID (유나) 가정.
     """
-    cleaned = []
-    query_results = []
-    has_query = False
+    from src.core.tools import run_tools, ToolContext, format_results_block, get_tool
+    from src.core.runtime import runtime
 
-    for resp in responses:
-        cmds = CMD_PATTERN.findall(resp)
-        queries = QUERY_PATTERN.findall(resp)
-        actions = ACTION_PATTERN.findall(resp)
-        clean_text = CMD_PATTERN.sub('', resp)
-        clean_text = QUERY_PATTERN.sub('', clean_text)
-        clean_text = ACTION_PATTERN.sub('', clean_text).strip()
+    cleaned = [r.strip() for r in responses if r and r.strip()]
+    agent_id = caller_agent_id or MGR_ID
+    profile = load_profile(agent_id) or {}
+    agent_type = profile.get("type", "mgr")
 
-        if queries:
-            has_query = True
+    calls = runtime.pop_tool_calls(agent_id)
+    if not calls:
+        return cleaned
 
-        # QUERY 없는 메시지만 cleaned에 추가 (QUERY 있으면 followup이 대체)
-        if clean_text and not queries:
-            cleaned.append(clean_text)
+    ctx = ToolContext(
+        caller_agent_id=agent_id,
+        caller_agent_type=agent_type,
+        channel_name=getattr(report_channel, "name", "") or "",
+        channel_obj=report_channel,
+        guild=guild,
+    )
+    results = await run_tools(calls, ctx)
 
-        # CMD 실행
-        for cmd_str in cmds:
-            try:
-                await execute_yuna_command(report_channel, cmd_str.strip(), guild)
-            except Exception as e:
-                log.error(f"[유나CMD] 실행 실패: {cmd_str} → {e}")
-                await send_as_agent(report_channel, MGR_ID, f"명령 실행 실패했어.. ({str(e)[:60]})")
+    for r in results:
+        mark = "✓" if r.ok else "✗"
+        tail = str(r.data)[:80] if r.ok and r.data else (r.error or "")
+        log_writer.system(f"[Tool] {mark} {r.tool} {tail}")
 
-        # ACTION 처리 (유나 → 직접 실행, 페르소나 → 유나에게 전달)
-        for action in actions:
-            try:
-                await _forward_action_to_yuna(MGR_ID, action.strip(), guild)
-            except Exception as e:
-                log.error(f"[ACTION] 실행 실패: {action} → {e}")
-
-        # QUERY 수집
-        for q_str in queries:
-            result = await execute_yuna_query(q_str.strip(), guild)
-            if result:
-                query_results.append(result)
-
-    # QUERY 결과가 있으면 유나에게 다시 전달해서 분석 받기
-    if query_results:
-        followup = await _yuna_followup_with_data(
-            report_channel, "\n\n".join(query_results), guild
-        )
+    # 쿼리 결과 있으면 다음 턴에 <tool_results> 주입 + followup 생성
+    has_query_result = any(
+        (get_tool(r.tool) and get_tool(r.tool).category == "query") for r in results if r.ok
+    )
+    if has_query_result:
+        block = format_results_block(results)
+        runtime.stash_tool_results(agent_id, ctx.channel_name, block)
+        followup = await _tool_followup_generate(report_channel, agent_id, guild)
         if followup:
             cleaned.extend(followup)
 
     return cleaned
+
+
+async def _tool_followup_generate(
+    report_channel: discord.TextChannel,
+    agent_id: str,
+    guild: discord.Guild,
+) -> list[str]:
+    """tool_results가 stash된 상태에서 에이전트 재생성 — 결과 분석 chat만 반환.
+
+    runtime._build_prompt가 stash된 결과를 user_message 앞에 삽입.
+    """
+    loop = asyncio.get_event_loop()
+    ch_name = getattr(report_channel, "name", "") or ""
+    trigger = "(위 tool_results를 보고 자연스럽게 마무리해. 결과를 대화에 녹여서 간결하게. 추가 도구 호출 불필요하면 tools 블록 비워도 돼.)"
+    responses = await loop.run_in_executor(
+        None,
+        lambda: runtime.generate_response(
+            agent_id, ch_name, trigger, log_user_message=False
+        )
+    )
+    return [r for r in responses if r and r.strip()]
 
 
 async def execute_yuna_query(query_str: str, guild: discord.Guild = None) -> str:
@@ -699,6 +714,7 @@ async def execute_yuna_command(
     # ── 온보딩 최종 완료 (유나가 채널 설명 + 하나 보고 수신까지 마침) ──
     elif cmd == "온보딩완료":
         db.set_meta("onboarding_phase", "complete")
+        log_writer.mark_onboarding_complete()
         log_writer.system("온보딩 최종 완료")
 
     else:
@@ -1001,6 +1017,10 @@ async def yuna_set_channel_topic(report_channel, args_str, guild):
 
 # ── 프로필/관계 관리 ─────────────────────────────────────
 
+# 프로필 수정 중복 방지 — (이름, 필드) → (값, 시각)
+_recent_profile_edits: dict[tuple[str, str], tuple[str, float]] = {}
+_PROFILE_EDIT_DEDUP_SECONDS = 30  # 30초 내 동일 수정 무시
+
 
 async def yuna_edit_profile(report_channel, args_str):
     """유나가 에이전트 프로필 수정 — '이름 필드경로 값'
@@ -1013,6 +1033,16 @@ async def yuna_edit_profile(report_channel, args_str):
         return
 
     agent_name, field_path, value = parts[0], parts[1], parts[2]
+
+    # 중복 수정 방지 — 같은 대상+필드에 같은 값을 짧은 시간 내 재실행 차단
+    import time as _time
+    dedup_key = (agent_name, field_path)
+    prev = _recent_profile_edits.get(dedup_key)
+    now = _time.time()
+    if prev and prev[0] == value and (now - prev[1]) < _PROFILE_EDIT_DEDUP_SECONDS:
+        log_writer.system(f"[프로필] 중복 수정 스킵: {agent_name}.{field_path} → {value}")
+        return
+    _recent_profile_edits[dedup_key] = (value, now)
 
     # 에이전트에서 먼저 검색
     agents = db.list_agents()
@@ -1151,8 +1181,8 @@ async def _onboarding_setup_channels(guild):
             "[상황] 오너 프로필 세팅이 끝났어. 이제 시스템 채널을 만들었어.\n"
             f"[지시] 방금 #{MGR_SYSTEM_LOG} 채널을 만들었다고 알려줘.\n"
             "이 채널은 시스템 로그가 올라오는 곳이라고 설명해. "
-            "에이전트들 활동, CMD 실행 결과, 봇 상태 등이 여기 기록된다고.\n"
-            "그리고 자연스럽게 '이제 에이전트를 만들어볼까?' 라고 전환해.\n"
+            "멤버들 활동, 상태 변화 등이 여기 기록된다고.\n"
+            "그리고 자연스럽게 '이제 새로운 친구를 만들어볼까?' 라고 전환해.\n"
             "곧 크리에이터가 인사할 거라고 말해.\n"
             "[스타일] 카톡처럼 짧게. 자연스러운 너의 말투로.\n"
             "[금지] [CMD:...], [QUERY:...], [ACTION:...] 태그 사용 금지."
@@ -1220,13 +1250,13 @@ async def _onboarding_setup_channels(guild):
     creator_prompt = (
         f"[상황] 유나가 너를 소개해줬어. 오너 정보: 이름={owner_name}, 별명={owner_nickname or '없음'}, 나이={owner_age}, 성별={owner_gender}\n"
         f"{'유나랑은 ' + speech_info + '로 대화하기로 했대.' if speech_info else ''}\n"
-        f"[지시] 너({creator_name})는 에이전트 크리에이터야. {call_name}에게 처음 인사하는 상황이야.\n"
+        f"[지시] 너({creator_name})는 크리에이터야. {call_name}에게 처음 인사하는 상황이야.\n"
         f"[포함할 내용]\n"
-        f"- 자기소개 (이름, 성격, 역할: 새 에이전트의 외모/성격/배경을 디자인해서 만들어주는 크리에이터)\n"
+        f"- 자기소개 (이름, 성격, 역할: 새 친구의 외모/성격/배경을 디자인해서 만들어주는 크리에이터)\n"
         f"- 자연스럽게 아이스브레이킹 (가벼운 대화)\n"
         f"- 어떻게 불러줄지 물어봐 (이름/별명)\n"
         f"- 존댓말/반말 선호도 물어봐\n"
-        f"- 에이전트를 만들 준비가 되면 말해달라고 (급하지 않게)\n"
+        f"- 새 친구를 만들 준비가 되면 말해달라고 (급하지 않게)\n"
         f"[규칙]\n"
         f"- '오너' '오너분' 쓰지 마. {call_name} 이름이나 별명으로 불러.\n"
         f"- {call_name}은(는) {owner_age}살. {'너보다 연상이니까 존댓말로 시작.' if older else '나이 비슷하거나 모르니까 일단 존댓말.'}\n"
@@ -1507,10 +1537,18 @@ async def yuna_restore_discord(report_channel, args_str, guild):
     agents_db = db.list_agents()
     agent_id_by_name = {a["name"]: a["id"] for a in agents_db}
 
+    import re as _re
+    _restore_tag_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
+
     sent = 0
     for msg in messages:
         speaker = msg["speaker"]
         text = msg["message"]
+
+        # CMD/QUERY/ACTION 태그 제거 (DB에 태그가 남아있을 수 있음)
+        text = _restore_tag_pat.sub('', text).strip()
+        if not text:
+            continue
 
         try:
             if speaker == get_user_id() or speaker == get_user_name():

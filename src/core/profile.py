@@ -408,7 +408,7 @@ def _build_persona_prompt(p: dict) -> str:
     oc = get_user_name()
     prompt = f"""You are {name}.
 {_build_common_prompt()}
-{name} / age {p.get('age','?')} / {p.get('mbti','?')} | {', '.join(personality.get('traits', []))}
+{name} / age {p.get('age','?')} / {p.get('gender','?')} / {p.get('mbti','?')} | {', '.join(personality.get('traits', []))}
 Likes: {', '.join(personality.get('likes', []))} | Dislikes: {', '.join(personality.get('dislikes', []))}
 Daily life: {daily.get('occupation', '?')} | {daily.get('routine', '')}
 Background: {p.get('background', '')}
@@ -630,7 +630,7 @@ def _build_creator_prompt(p: dict) -> str:
     """생성 에이전트 system prompt — 캐릭터 생성 + 아바타 프롬프트 생성"""
     existing = list_all_profiles()
     existing_summary = ", ".join([
-        f"{e['name']}({e.get('mbti', '?')}/{e.get('age', '?')}살)"
+        f"{e['name']}({e.get('mbti', '?')}/{e.get('age', '?')}살/{e.get('gender', '?')})"
         for e in existing if e.get('type') == 'persona'
     ])
 
@@ -645,7 +645,7 @@ def _build_creator_prompt(p: dict) -> str:
         rel = profile.get("relationship_to_owner", {})
         appearance = profile.get("appearance", {})
         agent_lines.append(
-            f"- {profile['name']}: {profile.get('age','?')}살/{profile.get('mbti','?')} | "
+            f"- {profile['name']}: {profile.get('age','?')}살/{profile.get('gender','?')}/{profile.get('mbti','?')} | "
             f"{', '.join(personality.get('traits', [])[:3])} | "
             f"관계:{rel.get('type', '?')} | "
             f"외모:{appearance.get('summary', '?')[:30]}"
@@ -723,6 +723,7 @@ Create new characters with this JSON structure:
   "emotion_intensity": 5,
   "birth_year": YYYY,
   "age": N,
+  "gender": "남자|여자|기타",
   "mbti": "XXXX",
   "enneagram": "Xw Y",
   "background": "Background description",

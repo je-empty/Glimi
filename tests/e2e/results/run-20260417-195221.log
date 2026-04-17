@@ -1,0 +1,25 @@
+[19:52:25] 봇 로그인: Glimi
+[19:52:25] Server connected: Glimi (dev)
+[19:52:25] Initializing channels...
+[19:52:25] [초기화] 기존 glimi 채널 4개 발견 — 유지하고 온보딩 스킵
+[19:52:25] Initial setup: mgr-dashboard ready
+[19:52:26] Categories sorted
+[19:52:26] Syncing avatars...
+[19:52:28]   Webhook 아바타 업데이트: agent-mgr-001 → #mgr-dashboard
+[19:52:28] Webhook 스캔: #mgr-dashboard (1/4)
+[19:52:29] Webhook 스캔: #mgr-system-log (2/4)
+[19:52:30]   Webhook 아바타 업데이트: agent-creator-001 → #mgr-creator
+[19:52:30] Webhook 스캔: #mgr-creator (3/4)
+[19:52:31]   Webhook 아바타 업데이트: agent-creator-001 → #internal-dm-윤하나-서유나
+[19:52:32]   Webhook 아바타 업데이트: agent-mgr-001 → #internal-dm-윤하나-서유나
+[19:52:32] Webhook 스캔: #internal-dm-윤하나-서유나 (4/4)
+[19:52:32] Avatar sync done: 4개 Webhook updated
+[19:52:32] Activating agents... (2명)
+[19:52:32]   [1/2] 서유나 (mgr) 활성화
+[19:52:32]   [2/2] 윤하나 (creator) 활성화
+[19:52:32] Bot ready
+[19:52:32] [Onboarding] Checking owner profile
+[19:52:32] [Onboarding] yuna_greeted=1
+[19:52:32] [Onboarding] 오너: 심재빈 (#273792110887698433)
+[19:52:32] [Onboarding] mgr 채널 검색: 'mgr-dashboard' → 찾음
+[19:52:32] [supervisor] 활성화할 감시자 없음

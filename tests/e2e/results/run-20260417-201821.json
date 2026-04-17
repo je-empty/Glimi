@@ -1,0 +1,11 @@
+{
+  "run_id": "run-20260417-201821",
+  "timestamp": "2026-04-17T20:20:48.120098",
+  "elapsed_seconds": 124.0,
+  "status": "FAIL",
+  "issues": [
+    "온보딩 미완료"
+  ],
+  "log_lines": 20,
+  "onboarding_done": false
+}

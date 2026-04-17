@@ -17,8 +17,9 @@ import shutil
 import os
 from typing import Optional, Callable
 from src import db
-from .profile import load_profile, build_system_prompt, get_user_name, get_user_id
+from .profile import load_profile, build_system_prompt, get_user_name, get_user_id, get_user_display_name
 from .memory import check_and_summarize, get_memory_context, get_cross_channel_memory, RAW_WINDOW
+from .tools import parse_response as parse_tools_in_output, ToolCall
 from src import log_writer
 
 
@@ -43,10 +44,70 @@ def _normalize(s):
     return re.sub(r'[.?!,~\s…·ㅋㅎㅠ]', '', s).lower()
 
 
+# Claude CLI가 stdout으로 토해내는 에러/상태 메시지 패턴.
+# 이게 agent 응답인 척 DB/Discord에 찍히면 몰입 깨지므로 필터.
+_CLAUDE_ERROR_PREFIXES = (
+    "you've hit your limit",
+    "you have hit your limit",
+    "your usage limit",
+    "usage limit",
+    "rate limit exceeded",
+    "anthropic api error",
+    "anthropic error",
+    "api error:",
+    "request was too large",
+    "insufficient credits",
+    "service unavailable",
+    "too many requests",
+    "context length exceeded",
+    "overloaded_error",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+    "claude api",
+    "model not found",
+    "authentication",
+)
+
+
+def _looks_like_claude_error(text: str) -> bool:
+    """Claude CLI 에러 메시지가 agent 응답으로 새어나오는 케이스 감지."""
+    if not text:
+        return False
+    t = text.strip().lower()
+    if not t:
+        return False
+    for p in _CLAUDE_ERROR_PREFIXES:
+        if t.startswith(p) or p in t[:80]:  # 첫 80자 내 포함도 체크
+            return True
+    # "resets <time>" 패턴 (사용량 한도 도달 메시지 후반부)
+    if "resets" in t and ("am" in t or "pm" in t or ":" in t):
+        if "limit" in t or "reset" in t:
+            return True
+    return False
+
+
+def _report_claude_error(agent_name: str, text: str, source: str):
+    """에러 텍스트 필터링 시 system.log + Discord mgr-system-log 양쪽에 남김."""
+    snippet = text.strip().replace("\n", " ")[:200]
+    msg = f"⚠ Claude CLI 에러 필터 [{agent_name}/{source}]: {snippet}"
+    log_writer.system(msg)
+    # Discord mgr-system-log 채널에도 송출 (bot 모듈 임포트는 lazy — 순환 방지)
+    try:
+        from src.bot.core import queue_system_log
+        queue_system_log(msg, force=True)
+    except Exception:
+        pass
+
+
 class AgentRuntime:
 
     def __init__(self):
         self._active_agents: dict[str, dict] = {}
+        # 최근 응답에서 추출한 tool_calls 저장소 (key=agent_id, consume 후 삭제)
+        self._last_tool_calls: dict[str, list[ToolCall]] = {}
+        # 다음 호출 시 prompt에 주입할 <tool_results> 블록 (key=agent_id:channel)
+        self._pending_tool_results: dict[str, str] = {}
 
         if CLAUDE_AVAILABLE:
             print("[Runtime] Claude Code CLI 감지됨 — 실제 대화 모드")
@@ -71,30 +132,36 @@ class AgentRuntime:
         return list(self._active_agents.keys())
 
     def get_agent_name(self, agent_id: str) -> str:
-        if agent_id in self._active_agents:
-            return self._active_agents[agent_id]["profile"]["name"]
-        profile = load_profile(agent_id)
-        return profile["name"] if profile else agent_id
+        from .profile import get_agent_display_name
+        return get_agent_display_name(agent_id)
 
     # ── Prompt building ──────────────────────────────
 
-    def _build_context(self, agent_info: dict, channel: str, recent: list[dict]) -> str:
-        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력)."""
+    def _build_context(self, agent_info: dict, channel: str, recent: list[dict],
+                       user_message: str = "") -> str:
+        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력).
+
+        동적 컨텍스트는 <system-reminder> 태그로 감싸서 페르소나(정적)와 구분.
+        이건 Claude Code 유출본에서 확인된 패턴 — 모델이 "현재 상태"와 "내면 설정"을 구분 잘 함.
+
+        user_message: 교차 채널 메모리의 on-demand 필터링에 사용 (멘션된 이름만 주입).
+        """
         profile = agent_info["profile"]
         agent_id = profile["id"]
         agent_type = profile.get("type", "persona")
 
         prompt_parts = []
+        reminder_parts = []  # <system-reminder>로 감쌀 동적 컨텍스트
 
-        # 채널 정보
+        # 채널 정보 (고정 정보지만 context 특정)
         ch_info = self._describe_channel(channel, agent_id)
         if ch_info:
-            prompt_parts.append(ch_info)
+            reminder_parts.append(ch_info)
 
-        # 현재 감정
+        # 현재 감정 (dynamic)
         agent_state = db.get_agent(agent_id)
         if agent_state:
-            prompt_parts.append(
+            reminder_parts.append(
                 f"[현재감정: {agent_state['current_emotion']}"
                 f"({agent_state['emotion_intensity']}/10)]"
             )
@@ -103,30 +170,38 @@ class AgentRuntime:
         if agent_type == "mgr":
             digest = self._build_activity_digest()
             if digest:
-                prompt_parts.append(digest)
+                reminder_parts.append(digest)
 
         # ── 기억 섹션 ──
+        # focus_hint로 최근 대화 + 사용자 메시지 넘겨서 on-demand 필터링
+        focus_hint = user_message + "\n" + "\n".join(m.get("message", "") for m in recent[-5:])
         memory_text = get_memory_context(agent_id, channel)
-        cross_memory = get_cross_channel_memory(agent_id, exclude_channel=channel)
+        cross_memory = get_cross_channel_memory(agent_id, exclude_channel=channel, focus_hint=focus_hint)
 
+        mem_block = []
         if memory_text or cross_memory:
-            prompt_parts.append("━━━ 기억 ━━━")
-
+            mem_block.append("━━━ 기억 ━━━")
         if memory_text:
-            prompt_parts.append(memory_text)
-
+            mem_block.append(memory_text)
         if cross_memory:
             if memory_text:
-                prompt_parts.append("")
-            prompt_parts.append(cross_memory)
-
+                mem_block.append("")
+            mem_block.append(cross_memory)
         if memory_text or cross_memory:
-            prompt_parts.append("━━━━━━━━━━━")
+            mem_block.append("━━━━━━━━━━━")
+        if mem_block:
+            reminder_parts.append("\n".join(mem_block))
 
         # ── 다른 채널 최근 대화 (요약 없이 직접 주입) ──
         cross_recent = self._get_cross_channel_recent(agent_id, channel)
         if cross_recent:
-            prompt_parts.append(cross_recent)
+            reminder_parts.append(cross_recent)
+
+        # 동적 컨텍스트 전체를 system-reminder로 감싸기
+        if reminder_parts:
+            prompt_parts.append("<system-reminder>")
+            prompt_parts.extend(reminder_parts)
+            prompt_parts.append("</system-reminder>")
 
         # 대화 이력 — mgr 채널은 오너 메시지가 묻히지 않게 보장
         if recent:
@@ -144,22 +219,47 @@ class AgentRuntime:
                         # 오너 메시지 바로 다음 유나 응답만 포함
                         filtered.append(msg)
                 for msg in filtered[-15:]:
-                    speaker = get_user_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
+                    speaker = get_user_display_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
                     prompt_parts.append(f"{speaker}: {msg['message']}")
             else:
                 for msg in recent:
-                    speaker = get_user_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
+                    speaker = get_user_display_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
                     prompt_parts.append(f"{speaker}: {msg['message']}")
             prompt_parts.append("")
 
         return "\n".join(prompt_parts)
 
+    def pop_tool_calls(self, agent_id: str) -> list[ToolCall]:
+        """generate_response 이후 마지막 tool_calls 꺼내서 소비 (재호출 시 덮어씀)"""
+        calls = self._last_tool_calls.pop(agent_id, [])
+        return calls
+
+    def stash_tool_results(self, agent_id: str, channel: str, results_block: str):
+        """다음 generate_response 호출 시 prompt에 주입될 <tool_results> 블록 저장"""
+        key = f"{agent_id}:{channel}"
+        if results_block:
+            self._pending_tool_results[key] = results_block
+        else:
+            self._pending_tool_results.pop(key, None)
+
+    def _consume_tool_results(self, agent_id: str, channel: str) -> str:
+        """stash된 tool_results 꺼내고 제거"""
+        key = f"{agent_id}:{channel}"
+        return self._pending_tool_results.pop(key, "")
+
     def _build_prompt(self, agent_info: dict, channel: str, recent: list[dict],
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
         """프롬프트 구성. Returns: (full_prompt, system_prompt, model)"""
-        context = self._build_context(agent_info, channel, recent)
-        name = speaker_name or get_user_name()
-        full_prompt = context + f"{name}: {user_message}"
+        agent_id = agent_info["profile"]["id"]
+        context = self._build_context(agent_info, channel, recent, user_message=user_message)
+
+        # 이전 턴의 tool_results가 있으면 user_message 앞에 주입
+        tool_results = self._consume_tool_results(agent_id, channel)
+        name = speaker_name or get_user_display_name()
+        if tool_results:
+            full_prompt = context + tool_results + "\n\n" + f"{name}: {user_message}"
+        else:
+            full_prompt = context + f"{name}: {user_message}"
 
         system_prompt = agent_info["system_prompt"]
         model = AGENT_MODELS.get(agent_info["profile"].get("type", "persona"), "claude-sonnet-4-6")
@@ -174,7 +274,7 @@ class AgentRuntime:
 
         lines = []
         for r in recent:
-            speaker = get_user_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+            speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
             lines.append(f"{speaker}: {r['message']}")
         conversation = "\n".join(lines[-10:])
 
@@ -239,12 +339,12 @@ class AgentRuntime:
                 continue
 
             r = recent[0]
-            speaker = get_user_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+            speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
             preview = r["message"][:40]
 
             # 채널 라벨
             if ch_name.startswith("dm-"):
-                label = f"{get_user_name()}과 DM"
+                label = f"{get_user_display_name()}과 DM"
             elif ch_name.startswith("internal-dm-"):
                 names = ch_name.replace("internal-dm-", "").split("-")
                 other = [n for n in names if n != self.get_agent_name(agent_id)]
@@ -277,7 +377,7 @@ class AgentRuntime:
             if profile:
                 names.append(profile["name"])
 
-        owner_name = get_user_name()
+        owner_name = get_user_display_name()
 
         # 채널 타입별 설명
         if channel.startswith("dm-"):
@@ -345,7 +445,7 @@ class AgentRuntime:
                 recent = db.get_recent_messages(ch_name, limit=1)
                 if recent:
                     r = recent[0]
-                    speaker = get_user_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+                    speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
                     msg_preview = r["message"][:30]
                     lines.append(f"  {ch_name}({mins_ago}분전): {speaker}→\"{msg_preview}\"")
                 else:
@@ -401,7 +501,7 @@ class AgentRuntime:
             )
 
             # 전체 맥락 (감정 + 메모리 + cross-channel + 대화이력) + 트리거
-            context = self._build_context(agent_info, channel, recent)
+            context = self._build_context(agent_info, channel, recent, user_message=user_message)
             full_prompt = context + "(자연스럽게 먼저 말 걸어)"
 
             model = AGENT_MODELS.get(profile.get("type", "persona"), "claude-sonnet-4-6")
@@ -517,38 +617,62 @@ class AgentRuntime:
 
         log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
-        try:
-            result = subprocess.run(
-                [
-                    "claude",
-                    "-p", full_prompt,
-                    "--system-prompt", system_prompt,
-                    "--output-format", "text",
-                    "--model", model,
-                ],
-                capture_output=True, text=True, timeout=60,
-                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-            )
+        cli_args = [
+            "claude",
+            "-p", full_prompt,
+            "--system-prompt", system_prompt,
+            "--output-format", "text",
+            "--model", model,
+        ]
+        cli_env = {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"}
 
-            if result.returncode != 0:
-                log_writer.system(f"❌ CLI 오류: {result.stderr[:200]}")
+        last_err = None
+        for attempt in range(2):
+            try:
+                result = subprocess.run(
+                    cli_args,
+                    capture_output=True, text=True, timeout=60,
+                    env=cli_env,
+                )
+
+                if result.returncode != 0:
+                    err_detail = result.stderr[:200] if result.stderr else result.stdout[:200]
+                    last_err = f"exit={result.returncode}: {err_detail}"
+                    if attempt == 0:
+                        log_writer.system(f"⚠ CLI 오류 ({last_err}) — 재시도")
+                        import time; time.sleep(2)
+                        continue
+                    log_writer.system(f"❌ CLI 오류 ({last_err})")
+                    return self._placeholder_response(profile, user_message)
+
+                raw = result.stdout.strip()
+                if not raw:
+                    return ["..."]
+
+                # Claude CLI 에러 메시지 감지 — 응답 전체가 에러면 placeholder
+                if _looks_like_claude_error(raw):
+                    _report_claude_error(name, raw, source="batch")
+                    return self._placeholder_response(profile, user_message)
+
+                # <tools> 블록 먼저 파싱 → calls는 stash, chat만 메시지 분리
+                parsed = parse_tools_in_output(raw)
+                self._last_tool_calls[agent_id] = parsed.tool_calls
+                if parsed.errors:
+                    log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                return self._parse_response(parsed.chat, agent_name=name)
+
+            except subprocess.TimeoutExpired:
+                log_writer.system(f"❌ CLI 타임아웃 (60초)")
+                return [f"({name} 응답 지연 — 다시 시도해주세요)"]
+            except FileNotFoundError:
+                print("[Runtime] claude CLI를 찾을 수 없습니다")
+                return self._placeholder_response(profile, user_message)
+            except Exception as e:
+                log_writer.system(f"❌ 런타임 오류: {e}")
                 return self._placeholder_response(profile, user_message)
 
-            raw = result.stdout.strip()
-            if not raw:
-                return ["..."]
-
-            return self._parse_response(raw, agent_name=name)
-
-        except subprocess.TimeoutExpired:
-            log_writer.system(f"❌ CLI 타임아웃 (60초)")
-            return [f"({name} 응답 지연 — 다시 시도해주세요)"]
-        except FileNotFoundError:
-            print("[Runtime] claude CLI를 찾을 수 없습니다")
-            return self._placeholder_response(profile, user_message)
-        except Exception as e:
-            log_writer.system(f"❌ 런타임 오류: {e}")
-            return self._placeholder_response(profile, user_message)
+        log_writer.system(f"❌ CLI 재시도 실패: {last_err}")
+        return self._placeholder_response(profile, user_message)
 
     # ── Streaming ────────────────────────────────────
 
@@ -598,6 +722,17 @@ class AgentRuntime:
 
         messages = []
         seen = set()
+        tool_buffer: list[str] = []  # <tools> 블록 누적 (chat 스트림에서 제외)
+        in_tools = False
+
+        # 에이전트 타입별 최대 응답 수 제한
+        MAX_STREAMING_MESSAGES = {
+            "persona": 10,
+            "mgr": 15,
+            "creator": 10,
+        }
+        agent_type = profile.get("type", "persona")
+        max_messages = MAX_STREAMING_MESSAGES.get(agent_type, 10)
 
         try:
             process = subprocess.Popen(
@@ -619,6 +754,20 @@ class AgentRuntime:
                 raw_line = line.rstrip("\n")
                 line = raw_line.strip()
                 if not line:
+                    if in_tools:
+                        tool_buffer.append("")
+                    continue
+
+                # <tools> 블록 진입 감지 — 이 시점 이후는 chat으로 방출 금지
+                if "<tools>" in line.lower() and not in_tools:
+                    in_tools = True
+                    tool_buffer.append(raw_line)
+                    continue
+                if in_tools:
+                    tool_buffer.append(raw_line)
+                    if "</tools>" in line.lower():
+                        # 블록 끝 — 이후 line이 또 있을 경우 무시 또는 체크
+                        pass
                     continue
 
                 # [MSG] 태그 처리
@@ -626,6 +775,16 @@ class AgentRuntime:
                 cleaned = " ".join(line.split())
                 if not cleaned:
                     continue
+
+                # Claude CLI 에러 메시지 누출 차단 (사용량 한도, API 에러 등)
+                if _looks_like_claude_error(cleaned):
+                    _report_claude_error(name, cleaned, source="stream")
+                    # 에러 감지 시 즉시 스트리밍 종료 — 추가 에러 텍스트 방출 방지
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                    break
 
                 # 자기 이름 prefix 제거 ("윤하나: 메시지" → "메시지")
                 if cleaned.startswith(f"{name}:"):
@@ -645,11 +804,28 @@ class AgentRuntime:
                 messages.append(cleaned)
                 on_message(cleaned)
 
+                # 최대 응답 수 초과 시 중단
+                if len(messages) >= max_messages:
+                    log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
+                    process.kill()
+                    break
+
             process.wait(timeout=60)
+
+            # <tools> 블록 파싱 → stash
+            if tool_buffer:
+                try:
+                    parsed = parse_tools_in_output("\n".join(tool_buffer))
+                    self._last_tool_calls[agent_id] = parsed.tool_calls
+                    if parsed.errors:
+                        log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                except Exception as e:
+                    log_writer.system(f"[Tools] 스트림 파싱 실패: {e}")
 
             if process.returncode != 0:
                 stderr = process.stderr.read() if process.stderr else ""
-                log_writer.system(f"❌ CLI stderr: {stderr[:200]}")
+                err_detail = stderr[:200] if stderr.strip() else "(stderr empty)"
+                log_writer.system(f"❌ CLI 오류 (exit={process.returncode}): {err_detail}")
                 if not messages:
                     fallback = self._placeholder_response(profile, user_message)
                     for m in fallback:
@@ -690,6 +866,9 @@ class AgentRuntime:
         if not lines:
             return ["..."]
 
+        # CMD/QUERY/ACTION 태그가 포함된 줄은 태그만 보존 (대화 내용과 분리)
+        _tag_pattern = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
+
         messages = []
         for line in lines:
             cleaned = " ".join(line.split())
@@ -700,8 +879,19 @@ class AgentRuntime:
                 cleaned = cleaned[len(agent_name)+1:].strip()
             elif agent_name and cleaned.startswith(f"{agent_name} :"):
                 cleaned = cleaned[len(agent_name)+2:].strip()
-            if cleaned:
-                messages.append(cleaned)
+            if not cleaned:
+                continue
+            # Claude CLI 에러 메시지 누출 차단
+            if _looks_like_claude_error(cleaned):
+                _report_claude_error(agent_name, cleaned, source="parse")
+                continue
+            # JSON/구조화 데이터 유출 필터
+            if (cleaned.startswith("{") or cleaned.startswith('"') or
+                    '":"' in cleaned or 'target_id' in cleaned or
+                    'relationship_templates' in cleaned or
+                    'is_owner_relationship' in cleaned):
+                continue
+            messages.append(cleaned)
 
         if not messages:
             return ["..."]
@@ -734,7 +924,7 @@ class AgentRuntime:
 
         # 사용자 호칭: relationship_to_owner.pet_name → user name → 기본값
         rel = profile.get("relationship_to_owner", {})
-        owner_call = rel.get("pet_name") or get_user_name() or "사용자"
+        owner_call = rel.get("pet_name") or get_user_display_name() or "사용자"
 
         if agent_type == "mgr":
             return [
@@ -782,7 +972,7 @@ class AgentRuntime:
         recent = db.get_recent_messages(channel, limit=RAW_WINDOW)
 
         # _build_context 재활용 (speaker 기준 메모리)
-        base_context = self._build_context(speaker_info, channel, recent)
+        base_context = self._build_context(speaker_info, channel, recent, user_message=context)
 
         if context:
             full_prompt = base_context + f"상황: {context}\n{listener_name}과(와)의 대화를 이어가."

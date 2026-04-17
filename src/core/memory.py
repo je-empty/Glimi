@@ -15,6 +15,9 @@
 import subprocess
 import shutil
 import os
+import json as _json
+import re as _re
+from datetime import datetime
 from typing import Optional
 from src import db
 
@@ -26,7 +29,45 @@ L1_MAX_KEEP = 10      # system prompt에 포함할 L1 요약 최대 개수
 L2_BATCH_SIZE = 5     # L2 요약 단위 (L1 N개 → 1단락)
 L2_MAX_KEEP = 5       # system prompt에 포함할 L2 요약 최대 개수
 
+# 신선도 경고 임계값 (시간 단위)
+STALE_L1_HOURS = 24   # L1은 하루 지나면 "오래됐다" 표시
+STALE_L2_DAYS = 3     # L2는 3일 지나면 경고
+VERY_STALE_DAYS = 7   # 일주일 이상은 system-reminder 전역 경고
+
+# 메모리 타입 분류
+MEMORY_TYPES = ("event", "fact", "emotion", "relationship")
+# event: 어떤 사건 발생
+# fact: 상대/자신에 대해 알게 된 사실
+# emotion: 강한 감정적 순간
+# relationship: 관계 변화·역학
+
 CLAUDE_AVAILABLE = shutil.which("claude") is not None
+
+
+def _format_age(created_at: str) -> str:
+    """메모리 created_at에서 얼마나 지났는지 짧게 포맷 ('3시간 전', '2일 전')"""
+    try:
+        dt = datetime.fromisoformat(created_at)
+    except Exception:
+        return ""
+    delta = datetime.now() - dt
+    secs = delta.total_seconds()
+    if secs < 60:
+        return "방금"
+    if secs < 3600:
+        return f"{int(secs/60)}분 전"
+    if secs < 86400:
+        return f"{int(secs/3600)}시간 전"
+    return f"{int(secs/86400)}일 전"
+
+
+def _is_stale(created_at: str, hours: float) -> bool:
+    """created_at이 hours시간 이전이면 True"""
+    try:
+        dt = datetime.fromisoformat(created_at)
+    except Exception:
+        return False
+    return (datetime.now() - dt).total_seconds() >= hours * 3600
 
 
 # ── 채널 → 관련 에이전트 파싱 ─────────────────────────
@@ -103,10 +144,19 @@ def _try_l1_summarize(agent_id: str, channel: str):
     if len(msgs_to_summarize) < L1_BATCH_SIZE:
         return
 
-    # Claude로 요약
-    summary = _generate_summary(
+    # Claude로 요약 + 타입 분류 (JSON 응답 요청)
+    summary, mem_type = _generate_summary_typed(
         agent_id, msgs_to_summarize, level=1,
-        instruction="아래 대화를 핵심 사건/감정/관계 변화 중심으로 한 문장으로 요약해. 한국어로."
+        instruction=(
+            "아래 대화를 분석해서 다음을 한 줄 JSON으로 출력해:\n"
+            '{"type":"event|fact|emotion|relationship","summary":"<핵심을 한 문장, 한국어>"}\n'
+            "type 선택 기준:\n"
+            "  event    = 구체적인 사건/행동이 일어남\n"
+            "  fact     = 상대나 자신에 대해 새롭게 알게 된 사실/정보\n"
+            "  emotion  = 강한 감정적 순간 (기쁨/분노/슬픔 등)\n"
+            "  relationship = 관계·친밀도·역학의 변화\n"
+            "JSON만 출력. 다른 텍스트 없이."
+        )
     )
 
     if summary:
@@ -119,9 +169,10 @@ def _try_l1_summarize(agent_id: str, channel: str):
             msg_id_from=msgs_to_summarize[0]["id"],
             msg_id_to=msgs_to_summarize[-1]["id"],
             msg_count=len(msgs_to_summarize),
-            related_agent_id=related
+            related_agent_id=related,
+            mem_type=mem_type,
         )
-        print(f"[Memory] L1 요약 생성: {agent_id} ({len(msgs_to_summarize)}개 → 1문장, related={related})")
+        print(f"[Memory] L1 요약 생성: {agent_id} ({len(msgs_to_summarize)}개 → 1문장, type={mem_type}, related={related})")
 
 
 def _try_l2_summarize(agent_id: str, channel: str):
@@ -147,6 +198,14 @@ def _try_l2_summarize(agent_id: str, channel: str):
     batch = [dict(m) for m in l1_memories[:L2_BATCH_SIZE]]
     batch_text = "\n".join([f"- {m['content']}" for m in batch])
 
+    # 묶을 L1들 중 가장 많이 나온 type을 L2 type으로 승계
+    type_counts: dict = {}
+    for m in batch:
+        t = m.get("mem_type")
+        if t:
+            type_counts[t] = type_counts.get(t, 0) + 1
+    dominant_type = max(type_counts, key=type_counts.get) if type_counts else None
+
     summary = _generate_summary_from_text(
         agent_id, batch_text, level=2,
         instruction="아래 요약들을 하나의 짧은 단락(2~3문장)으로 통합 요약해. 핵심 사건과 관계 변화 중심으로. 한국어로."
@@ -162,9 +221,10 @@ def _try_l2_summarize(agent_id: str, channel: str):
             msg_id_from=batch[0]["msg_id_from"],
             msg_id_to=batch[-1]["msg_id_to"],
             msg_count=sum(m["msg_count"] for m in batch),
-            related_agent_id=related
+            related_agent_id=related,
+            mem_type=dominant_type,
         )
-        print(f"[Memory] L2 요약 생성: {agent_id} (L1 {len(batch)}개 → 1단락, related={related})")
+        print(f"[Memory] L2 요약 생성: {agent_id} (L1 {len(batch)}개 → 1단락, type={dominant_type}, related={related})")
 
 
 # ── 요약 생성 ────────────────────────────────────────
@@ -183,6 +243,41 @@ def _generate_summary(agent_id: str, messages: list[dict], level: int, instructi
     ])
 
     return _generate_summary_from_text(agent_id, conv_text, level, instruction)
+
+
+def _generate_summary_typed(agent_id: str, messages: list[dict], level: int, instruction: str) -> tuple[str, Optional[str]]:
+    """메시지 리스트를 JSON 응답으로 요약 → (summary, mem_type) 반환.
+    JSON 파싱 실패 시 (raw_text, None) 반환 (타입 없음 — fallback)."""
+    from .profile import load_profile, get_user_name, get_user_id
+
+    profile = load_profile(agent_id)
+    agent_name = profile["name"] if profile else agent_id
+    conv_text = "\n".join([
+        f"{get_user_name() if m['speaker'] == get_user_id() else agent_name}: {m['message']}"
+        for m in messages
+    ])
+    raw = _generate_summary_from_text(agent_id, conv_text, level, instruction)
+    if not raw:
+        return "", None
+
+    # JSON 파싱 시도 — 응답에 섞인 전후 텍스트 허용하도록 {} 추출
+    match = _re.search(r'\{[^{}]*"type"[^{}]*"summary"[^{}]*\}', raw, _re.DOTALL)
+    if not match:
+        match = _re.search(r'\{.*?\}', raw, _re.DOTALL)
+    if match:
+        try:
+            data = _json.loads(match.group(0))
+            s = str(data.get("summary", "")).strip()
+            t = data.get("type")
+            if t not in MEMORY_TYPES:
+                t = None
+            if s:
+                return s, t
+        except Exception:
+            pass
+
+    # JSON 파싱 실패 — 원문 그대로, 타입 없음
+    return raw.strip(), None
 
 
 def _generate_summary_from_text(agent_id: str, text: str, level: int, instruction: str) -> str:
@@ -222,21 +317,38 @@ def _generate_summary_from_text(agent_id: str, text: str, level: int, instructio
 
 # ── 메모리 조회 (system prompt용) ────────────────────
 
+def _format_memory_line(m: dict, stale_hours: float) -> str:
+    """메모리 한 줄 포맷 — type 라벨 + 신선도 주석"""
+    age = _format_age(m.get("created_at", ""))
+    type_prefix = ""
+    t = m.get("mem_type")
+    if t:
+        # 타입별 짧은 기호 (공간 절약)
+        symbols = {"event": "◆", "fact": "▪", "emotion": "♥", "relationship": "◎"}
+        type_prefix = f"{symbols.get(t, '·')} "
+    stale_mark = " ⚠stale" if _is_stale(m.get("created_at", ""), stale_hours) else ""
+    age_suffix = f" ({age}{stale_mark})" if age else ""
+    return f"- {type_prefix}{m['content']}{age_suffix}"
+
+
 def get_memory_context(agent_id: str, channel: str) -> str:
     """
-    현재 채널의 기억 (상세)
+    현재 채널의 기억 (상세) + 신선도 표시
 
     Returns:
         포맷된 기억 텍스트 (비어있으면 빈 문자열)
     """
     parts = []
+    any_very_stale = False
 
     # L2 장기 기억 (최근 5개)
     l2_memories = db.get_memories(agent_id, channel, level=2, limit=L2_MAX_KEEP)
     if l2_memories:
         parts.append("## 이 대화 장기 기억")
         for m in l2_memories:
-            parts.append(f"- {m['content']}")
+            parts.append(_format_memory_line(m, STALE_L2_DAYS * 24))
+            if _is_stale(m.get("created_at", ""), VERY_STALE_DAYS * 24):
+                any_very_stale = True
 
     # L1 단기 기억 (최근 10개, L2에 이미 포함된 건 제외)
     l1_memories = db.get_memories(agent_id, channel, level=1, limit=L1_MAX_KEEP)
@@ -249,25 +361,44 @@ def get_memory_context(agent_id: str, channel: str) -> str:
     if l1_memories:
         parts.append("## 이 대화 최근 기억")
         for m in l1_memories:
-            parts.append(f"- {m['content']}")
+            parts.append(_format_memory_line(m, STALE_L1_HOURS))
 
     if not parts:
         return ""
 
+    # 7일 이상 오래된 장기 기억 있으면 헤더에 경고
+    if any_very_stale:
+        parts.insert(0, "⚠ 일부 장기 기억이 1주일 이상 지났어. 현재 대화에서 사실 확인하고 필요하면 업데이트해.")
+
     return "\n".join(parts)
 
 
-def get_cross_channel_memory(agent_id: str, exclude_channel: str, limit: int = 5) -> str:
+def get_cross_channel_memory(agent_id: str, exclude_channel: str, limit: int = 5,
+                              focus_hint: str = "") -> str:
     """
     다른 채널에서의 기억 — 관계(상대방)별로 독립 블록 분리
 
     각 블록에 출처 가이드라인을 삽입해서 에이전트가 현재 대화와 혼동하지 않게 함.
     related_agent_id가 있으면 그걸로 그룹핑, 없으면 채널명 기반 라벨.
 
+    focus_hint: 최근 대화 원문 텍스트(또는 사용자 메시지). 이 텍스트에서 언급된
+    에이전트/유저 이름만 우선 주입 (on-demand). 멘션 없으면 기존처럼 limit 안에서 전체.
+
     Returns:
         포맷된 교차 기억 텍스트 (비어있으면 빈 문자열)
     """
     from .profile import load_profile
+
+    # focus_hint에서 언급된 이름 추출 (다른 에이전트 이름만)
+    mentioned_names: set = set()
+    if focus_hint:
+        all_agents = db.list_agents() if hasattr(db, "list_agents") else []
+        for a in all_agents:
+            if a.get("id") == agent_id:
+                continue
+            name = a.get("name") or ""
+            if name and name in focus_hint:
+                mentioned_names.add(name)
 
     conn = db.get_conn()
 
@@ -317,6 +448,10 @@ def get_cross_channel_memory(agent_id: str, exclude_channel: str, limit: int = 5
                 label = other_channel[9:]
             else:
                 label = other_channel
+
+        # on-demand 필터: mentioned_names 있으면 해당 이름만 포함
+        if mentioned_names and label not in mentioned_names:
+            continue
 
         if label not in relation_blocks:
             relation_blocks[label] = {"contents": [], "is_internal": is_internal, "channels": []}

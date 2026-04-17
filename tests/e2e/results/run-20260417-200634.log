@@ -1,0 +1,26 @@
+[20:06:38] 봇 로그인: Glimi
+[20:06:38] ❌ DISCORD_GUILD_ID=1494648684292472863 서버를 찾을 수 없음
+[20:06:38] Server connected: Glimi (dev)
+[20:06:38] Initializing channels...
+[20:06:38] [초기화] 기존 glimi 채널 4개 발견 — 유지하고 온보딩 스킵
+[20:06:38] Initial setup: mgr-dashboard ready
+[20:06:39] Categories sorted
+[20:06:39] Syncing avatars...
+[20:06:41]   Webhook 아바타 업데이트: agent-mgr-001 → #mgr-dashboard
+[20:06:41] Webhook 스캔: #mgr-dashboard (1/4)
+[20:06:41] Webhook 스캔: #mgr-system-log (2/4)
+[20:06:42]   Webhook 아바타 업데이트: agent-creator-001 → #mgr-creator
+[20:06:42] Webhook 스캔: #mgr-creator (3/4)
+[20:06:44]   Webhook 아바타 업데이트: agent-creator-001 → #internal-dm-윤하나-서유나
+[20:06:45]   Webhook 아바타 업데이트: agent-mgr-001 → #internal-dm-윤하나-서유나
+[20:06:45] Webhook 스캔: #internal-dm-윤하나-서유나 (4/4)
+[20:06:45] Avatar sync done: 4개 Webhook updated
+[20:06:45] Activating agents... (2명)
+[20:06:45]   [1/2] 서유나 (mgr) 활성화
+[20:06:45]   [2/2] 윤하나 (creator) 활성화
+[20:06:45] Bot ready
+[20:06:45] [Onboarding] Checking owner profile
+[20:06:45] [Onboarding] yuna_greeted=1
+[20:06:45] [Onboarding] 오너: 심재빈 (#273792110887698433)
+[20:06:45] [Onboarding] mgr 채널 검색: 'mgr-dashboard' → 찾음
+[20:06:45] [supervisor] 활성화할 감시자 없음

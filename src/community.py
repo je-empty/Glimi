@@ -45,11 +45,11 @@ def set_community(community_id: str):
     global _current_id
     _current_id = community_id
     os.environ["GLIMI_COMMUNITY"] = community_id
-    # 언어 설정 연동
+    # 에이전트 언어 연동 (서버별)
     lang = get_language()
     try:
-        from src.i18n import set_language
-        set_language(lang)
+        from src.i18n import set_agent_language
+        set_agent_language(lang)
     except ImportError:
         pass
 
