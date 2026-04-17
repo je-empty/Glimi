@@ -332,26 +332,29 @@ HTML = r"""<!doctype html>
 
   /* ==== Agent Card ==== */
   .agent-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 12px; align-items: start;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 380px));
+    gap: 12px; align-items: start; justify-content: start;
   }
   .agent-card {
     background: var(--panel); border: 1.5px solid var(--border-soft); border-radius: 14px;
     padding: 13px 15px; transition: border-color 0.2s, transform 0.2s, box-shadow 0.3s;
     position: relative; overflow: hidden; cursor: pointer;
     box-shadow: var(--shadow);
+    min-width: 0;
   }
   .agent-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-lg); }
   .agent-card.mgr { border-left: 3px solid var(--mgr); }
   .agent-card.creator { border-left: 3px solid var(--creator); }
   .agent-card.persona { border-left: 3px solid var(--persona); }
   .agent-card.thinking {
-    grid-column: 1 / -1;
+    grid-column: span 2;
+    max-width: 760px;
     border-color: var(--thinking);
     box-shadow: var(--glow-thinking), var(--shadow-lg);
   }
   .agent-card.speaking {
-    grid-column: 1 / -1;
+    grid-column: span 2;
+    max-width: 760px;
     border-color: var(--speaking);
     box-shadow: var(--glow-speaking), var(--shadow-lg);
   }
@@ -393,9 +396,15 @@ HTML = r"""<!doctype html>
   .agent-card.thinking .state-badge.thinking::before { content: '🧠 '; }
   .agent-card.speaking .state-badge.speaking::before { content: '💬 '; }
 
-  .agent-meta { display: flex; gap: 10px; align-items: center; margin-top: 7px; font-size: 11px; color: var(--text-dim); }
-  .agent-meta .bar { width: 60px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .agent-meta {
+    display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
+    margin-top: 7px; font-size: 11px; color: var(--text-dim);
+    min-width: 0;
+  }
+  .agent-meta > * { flex-shrink: 0; }
+  .agent-meta .bar { width: 48px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .agent-meta .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
+  .agent-meta .model-tag { margin-left: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .agent-expanded { display: none; margin-top: 12px; }
   .agent-card.thinking .agent-expanded, .agent-card.speaking .agent-expanded { display: block; }
