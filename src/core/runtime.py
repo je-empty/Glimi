@@ -17,7 +17,7 @@ import shutil
 import os
 from typing import Optional, Callable
 from src import db
-from .profile import load_profile, build_system_prompt, get_user_name, get_user_id
+from .profile import load_profile, build_system_prompt, get_user_name, get_user_id, get_user_display_name
 from .memory import check_and_summarize, get_memory_context, get_cross_channel_memory, RAW_WINDOW
 from src import log_writer
 
@@ -71,10 +71,8 @@ class AgentRuntime:
         return list(self._active_agents.keys())
 
     def get_agent_name(self, agent_id: str) -> str:
-        if agent_id in self._active_agents:
-            return self._active_agents[agent_id]["profile"]["name"]
-        profile = load_profile(agent_id)
-        return profile["name"] if profile else agent_id
+        from .profile import get_agent_display_name
+        return get_agent_display_name(agent_id)
 
     # ── Prompt building ──────────────────────────────
 
@@ -144,11 +142,11 @@ class AgentRuntime:
                         # 오너 메시지 바로 다음 유나 응답만 포함
                         filtered.append(msg)
                 for msg in filtered[-15:]:
-                    speaker = get_user_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
+                    speaker = get_user_display_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
                     prompt_parts.append(f"{speaker}: {msg['message']}")
             else:
                 for msg in recent:
-                    speaker = get_user_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
+                    speaker = get_user_display_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
                     prompt_parts.append(f"{speaker}: {msg['message']}")
             prompt_parts.append("")
 
@@ -158,7 +156,7 @@ class AgentRuntime:
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
         """프롬프트 구성. Returns: (full_prompt, system_prompt, model)"""
         context = self._build_context(agent_info, channel, recent)
-        name = speaker_name or get_user_name()
+        name = speaker_name or get_user_display_name()
         full_prompt = context + f"{name}: {user_message}"
 
         system_prompt = agent_info["system_prompt"]
@@ -174,7 +172,7 @@ class AgentRuntime:
 
         lines = []
         for r in recent:
-            speaker = get_user_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+            speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
             lines.append(f"{speaker}: {r['message']}")
         conversation = "\n".join(lines[-10:])
 
@@ -239,12 +237,12 @@ class AgentRuntime:
                 continue
 
             r = recent[0]
-            speaker = get_user_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+            speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
             preview = r["message"][:40]
 
             # 채널 라벨
             if ch_name.startswith("dm-"):
-                label = f"{get_user_name()}과 DM"
+                label = f"{get_user_display_name()}과 DM"
             elif ch_name.startswith("internal-dm-"):
                 names = ch_name.replace("internal-dm-", "").split("-")
                 other = [n for n in names if n != self.get_agent_name(agent_id)]
@@ -277,7 +275,7 @@ class AgentRuntime:
             if profile:
                 names.append(profile["name"])
 
-        owner_name = get_user_name()
+        owner_name = get_user_display_name()
 
         # 채널 타입별 설명
         if channel.startswith("dm-"):
@@ -345,7 +343,7 @@ class AgentRuntime:
                 recent = db.get_recent_messages(ch_name, limit=1)
                 if recent:
                     r = recent[0]
-                    speaker = get_user_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+                    speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
                     msg_preview = r["message"][:30]
                     lines.append(f"  {ch_name}({mins_ago}분전): {speaker}→\"{msg_preview}\"")
                 else:
@@ -517,38 +515,52 @@ class AgentRuntime:
 
         log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
-        try:
-            result = subprocess.run(
-                [
-                    "claude",
-                    "-p", full_prompt,
-                    "--system-prompt", system_prompt,
-                    "--output-format", "text",
-                    "--model", model,
-                ],
-                capture_output=True, text=True, timeout=60,
-                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-            )
+        cli_args = [
+            "claude",
+            "-p", full_prompt,
+            "--system-prompt", system_prompt,
+            "--output-format", "text",
+            "--model", model,
+        ]
+        cli_env = {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"}
 
-            if result.returncode != 0:
-                log_writer.system(f"❌ CLI 오류: {result.stderr[:200]}")
+        last_err = None
+        for attempt in range(2):
+            try:
+                result = subprocess.run(
+                    cli_args,
+                    capture_output=True, text=True, timeout=60,
+                    env=cli_env,
+                )
+
+                if result.returncode != 0:
+                    err_detail = result.stderr[:200] if result.stderr else result.stdout[:200]
+                    last_err = f"exit={result.returncode}: {err_detail}"
+                    if attempt == 0:
+                        log_writer.system(f"⚠ CLI 오류 ({last_err}) — 재시도")
+                        import time; time.sleep(2)
+                        continue
+                    log_writer.system(f"❌ CLI 오류 ({last_err})")
+                    return self._placeholder_response(profile, user_message)
+
+                raw = result.stdout.strip()
+                if not raw:
+                    return ["..."]
+
+                return self._parse_response(raw, agent_name=name)
+
+            except subprocess.TimeoutExpired:
+                log_writer.system(f"❌ CLI 타임아웃 (60초)")
+                return [f"({name} 응답 지연 — 다시 시도해주세요)"]
+            except FileNotFoundError:
+                print("[Runtime] claude CLI를 찾을 수 없습니다")
+                return self._placeholder_response(profile, user_message)
+            except Exception as e:
+                log_writer.system(f"❌ 런타임 오류: {e}")
                 return self._placeholder_response(profile, user_message)
 
-            raw = result.stdout.strip()
-            if not raw:
-                return ["..."]
-
-            return self._parse_response(raw, agent_name=name)
-
-        except subprocess.TimeoutExpired:
-            log_writer.system(f"❌ CLI 타임아웃 (60초)")
-            return [f"({name} 응답 지연 — 다시 시도해주세요)"]
-        except FileNotFoundError:
-            print("[Runtime] claude CLI를 찾을 수 없습니다")
-            return self._placeholder_response(profile, user_message)
-        except Exception as e:
-            log_writer.system(f"❌ 런타임 오류: {e}")
-            return self._placeholder_response(profile, user_message)
+        log_writer.system(f"❌ CLI 재시도 실패: {last_err}")
+        return self._placeholder_response(profile, user_message)
 
     # ── Streaming ────────────────────────────────────
 
@@ -599,6 +611,15 @@ class AgentRuntime:
         messages = []
         seen = set()
 
+        # 에이전트 타입별 최대 응답 수 제한
+        MAX_STREAMING_MESSAGES = {
+            "persona": 10,
+            "mgr": 15,
+            "creator": 10,
+        }
+        agent_type = profile.get("type", "persona")
+        max_messages = MAX_STREAMING_MESSAGES.get(agent_type, 10)
+
         try:
             process = subprocess.Popen(
                 [
@@ -645,11 +666,18 @@ class AgentRuntime:
                 messages.append(cleaned)
                 on_message(cleaned)
 
+                # 최대 응답 수 초과 시 중단
+                if len(messages) >= max_messages:
+                    log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
+                    process.kill()
+                    break
+
             process.wait(timeout=60)
 
             if process.returncode != 0:
                 stderr = process.stderr.read() if process.stderr else ""
-                log_writer.system(f"❌ CLI stderr: {stderr[:200]}")
+                err_detail = stderr[:200] if stderr.strip() else "(stderr empty)"
+                log_writer.system(f"❌ CLI 오류 (exit={process.returncode}): {err_detail}")
                 if not messages:
                     fallback = self._placeholder_response(profile, user_message)
                     for m in fallback:
@@ -690,6 +718,9 @@ class AgentRuntime:
         if not lines:
             return ["..."]
 
+        # CMD/QUERY/ACTION 태그가 포함된 줄은 태그만 보존 (대화 내용과 분리)
+        _tag_pattern = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
+
         messages = []
         for line in lines:
             cleaned = " ".join(line.split())
@@ -700,8 +731,15 @@ class AgentRuntime:
                 cleaned = cleaned[len(agent_name)+1:].strip()
             elif agent_name and cleaned.startswith(f"{agent_name} :"):
                 cleaned = cleaned[len(agent_name)+2:].strip()
-            if cleaned:
-                messages.append(cleaned)
+            if not cleaned:
+                continue
+            # JSON/구조화 데이터 유출 필터
+            if (cleaned.startswith("{") or cleaned.startswith('"') or
+                    '":"' in cleaned or 'target_id' in cleaned or
+                    'relationship_templates' in cleaned or
+                    'is_owner_relationship' in cleaned):
+                continue
+            messages.append(cleaned)
 
         if not messages:
             return ["..."]
@@ -734,7 +772,7 @@ class AgentRuntime:
 
         # 사용자 호칭: relationship_to_owner.pet_name → user name → 기본값
         rel = profile.get("relationship_to_owner", {})
-        owner_call = rel.get("pet_name") or get_user_name() or "사용자"
+        owner_call = rel.get("pet_name") or get_user_display_name() or "사용자"
 
         if agent_type == "mgr":
             return [

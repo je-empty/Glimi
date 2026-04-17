@@ -37,6 +37,7 @@ def init_db():
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL CHECK(type IN ('persona', 'mgr', 'creator')),
             name TEXT NOT NULL,
+            name_i18n TEXT,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'archived')),
             current_emotion TEXT DEFAULT '평온',
             emotion_intensity INTEGER DEFAULT 5 CHECK(emotion_intensity BETWEEN 1 AND 10),
@@ -680,6 +681,7 @@ def _migrate_schema():
         "avatar_filename": "TEXT",
         "version": "INTEGER DEFAULT 1",
         "created_at": "DATETIME",
+        "name_i18n": "TEXT",
     }
     for col, col_type in new_cols.items():
         if col not in agent_cols:
@@ -841,18 +843,24 @@ def save_agent_profile(profile: dict):
     conn = get_conn()
 
     # agents 테이블
+    # name_i18n을 JSON 문자열로 변환
+    name_i18n = profile.get("name_i18n")
+    if name_i18n and not isinstance(name_i18n, str):
+        name_i18n = json.dumps(name_i18n, ensure_ascii=False)
+
     conn.execute("""
-        INSERT INTO agents (id, type, name, birth_year, age, mbti, enneagram,
+        INSERT INTO agents (id, type, name, name_i18n, birth_year, age, mbti, enneagram,
                             background, avatar_filename, version, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-            type=excluded.type, name=excluded.name,
+            type=excluded.type, name=excluded.name, name_i18n=excluded.name_i18n,
             birth_year=excluded.birth_year, age=excluded.age,
             mbti=excluded.mbti, enneagram=excluded.enneagram,
             background=excluded.background, avatar_filename=excluded.avatar_filename,
             version=excluded.version
     """, (
         agent_id, profile.get("type", "persona"), profile["name"],
+        name_i18n,
         profile.get("birth_year"), profile.get("age"),
         profile.get("mbti"), profile.get("enneagram"),
         profile.get("background"), profile.get("avatar_filename"),

@@ -40,7 +40,7 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 
 from src import community
-from src.i18n import t
+from src.i18n import t, get_language
 from src.tui.components import LoadingOverlay, ConfirmDialog
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -459,6 +459,69 @@ class InputDialog(ModalScreen[str]):
         self.dismiss("")
 
 
+class ExistingChannelsDialog(ModalScreen[bool]):
+    """기존 Glimi 채널 발견 시 삭제 여부 확인 모달"""
+
+    DEFAULT_CSS = """
+    ExistingChannelsDialog {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    ExistingChannelsDialog > Vertical {
+        width: 64;
+        height: auto;
+        max-height: 22;
+        background: $panel;
+        border: round $warning;
+        padding: 1 2;
+    }
+    ExistingChannelsDialog .action-bar {
+        height: 3;
+        margin: 1 0 0 0;
+    }
+    ExistingChannelsDialog .action-bar Button {
+        margin: 0 1;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "keep", "Keep")]
+
+    def __init__(self, channel_names: list[str]):
+        super().__init__()
+        self._channel_names = channel_names
+
+    def compose(self) -> ComposeResult:
+        count = len(self._channel_names)
+        names = ", ".join(self._channel_names[:8])
+        if count > 8:
+            names += f" +{count - 8}"
+        with Vertical():
+            yield Static(
+                f"[yellow bold]⚠ {t('wizard.existing_channels_found', count=count)}[/yellow bold]\n\n"
+                f"[dim]{names}[/dim]\n",
+                markup=True,
+            )
+            yield Static(f"[dim]{t('wizard.existing_channels_clean_help')}[/dim]", markup=True)
+            yield Static("")
+            with Horizontal(classes="action-bar"):
+                yield Button(t("wizard.existing_channels_clean"), variant="error", id="clean")
+                yield Button(t("wizard.existing_channels_keep"), variant="primary", id="keep")
+
+    def on_mount(self):
+        self.query_one("#keep", Button).focus()
+
+    @on(Button.Pressed, "#clean")
+    def on_clean(self):
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#keep")
+    def on_keep(self):
+        self.dismiss(False)
+
+    def action_keep(self):
+        self.dismiss(False)
+
+
 DISCORD_SETUP_GUIDE = """\
 [bold cyan]Discord Bot 설정 가이드[/bold cyan]
 
@@ -709,6 +772,7 @@ class CreateScreen(Screen):
         self._community_id = ""
         self._page = 1
         self._gender = ""
+        self._language = get_language()  # UI 언어를 기본 에이전트 언어로
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -719,13 +783,16 @@ class CreateScreen(Screen):
             # Page 1: Server info
             with Container(id="page-1", classes="input-group"):
                 yield Label(f"{t('wizard.server_id')} [dim]({t('wizard.server_id_hint')})[/dim]")
-                yield Input(placeholder="my-server", id="cid-input")
+                yield Input(placeholder=t("wizard.placeholder_server_id"), id="cid-input")
                 yield Static("")
                 yield Label(f"{t('wizard.description')} [dim]({t('wizard.description_hint')})[/dim]")
-                yield Input(placeholder="My Discord server", id="desc-input")
+                yield Input(placeholder=t("wizard.placeholder_description"), id="desc-input")
                 yield Static("")
                 yield Label(t("wizard.language"))
-                yield Button("🌐 English", id="btn-agent-lang", classes="lang-select-btn")
+                _ui_lang = get_language()
+                _default_flag = {"en": "🇺🇸", "ko": "🇰🇷"}.get(_ui_lang, "🌐")
+                _default_lang_name = {"en": "English", "ko": "한국어"}.get(_ui_lang, "English")
+                yield Button(f"{_default_flag} {_default_lang_name}", id="btn-agent-lang", classes="lang-select-btn")
                 yield Static("", id="lang-display")
                 yield Static("")
                 yield Button(t("wizard.next"), variant="primary", id="btn-next")
@@ -736,7 +803,7 @@ class CreateScreen(Screen):
                 yield Label(f"[dim]{t('wizard.owner_info_hint')}[/dim]")
                 yield Static("")
                 yield Label(f"{t('wizard.name')} [dim]({t('wizard.name_required')})[/dim]")
-                yield Input(placeholder="John Doe", id="owner-name-input")
+                yield Input(placeholder=t("wizard.placeholder_name"), id="owner-name-input")
                 yield Static("")
                 yield Label(f"{t('wizard.nickname')} [dim]({t('wizard.nickname_hint')})[/dim]")
                 yield Input(placeholder="", id="owner-nickname-input")
@@ -779,6 +846,7 @@ class CreateScreen(Screen):
 
     def on_mount(self):
         self._show_page(1)
+        self._clean_existing_channels = False
         self.query_one("#cid-input", Input).focus()
 
     def _show_page(self, page: int):
@@ -942,15 +1010,28 @@ class CreateScreen(Screen):
             f"  토큰: {_mask_token(self.query_one('#token-input', Input).value.strip())}\n"
         )
         self.app.call_from_thread(self.query_one("#verify-result", Static).update, verify_text)
+
         self.app.call_from_thread(self._show_page, 4)
+
+        # 기존 glimi 채널 존재 시 모달
+        glimi_channels = guild.get("glimi_channels", [])
+        if glimi_channels:
+            ch_names = [ch["name"] for ch in glimi_channels]
+            def on_channel_decision(clean: bool):
+                self._clean_existing_channels = clean
+            self.app.call_from_thread(
+                self.app.push_screen,
+                ExistingChannelsDialog(ch_names),
+                on_channel_decision,
+            )
 
     def _do_create(self):
         cid = self.query_one("#cid-input", Input).value.strip()
         token = self.query_one("#token-input", Input).value.strip()
-        desc = self.query_one("#desc-input", Input).value.strip()
+        desc = self.query_one("#desc-input", Input).value.strip() or t("wizard.placeholder_description")
         owner_name = self.query_one("#owner-name-input", Input).value.strip()
         owner_nickname = self.query_one("#owner-nickname-input", Input).value.strip()
-        owner_birth = self.query_one("#owner-birth-input", Input).value.strip()
+        owner_birth = self._normalize_birth(self.query_one("#owner-birth-input", Input).value.strip())
         owner_gender = getattr(self, '_gender', '')
         language = getattr(self, '_language', 'en')
         result = self.query_one("#create-result", Static)
@@ -961,6 +1042,12 @@ class CreateScreen(Screen):
 
         self._community_id = cid
         community.init_community(cid)
+
+        # 기존 채널 삭제 옵션 처리
+        if self._clean_existing_channels:
+            log_dir = community.COMMUNITIES_DIR / cid / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / ".clean-channels").touch()
 
         # registry에 description + language 업데이트
         reg = community.REGISTRY_PATH
@@ -988,6 +1075,16 @@ class CreateScreen(Screen):
         )
 
         self._ask_init_db(cid)
+
+    @staticmethod
+    def _normalize_birth(raw: str) -> str:
+        """생년월일 정규화: 20010101 → 2001-01-01"""
+        if not raw:
+            return ""
+        digits = raw.replace("-", "").replace("/", "").replace(".", "").strip()
+        if len(digits) == 8 and digits.isdigit():
+            return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+        return raw
 
     def _save_owner_profile(self, cid, name, nickname, birth, gender):
         """오너 프로필을 Server DB에 저장"""
@@ -1488,8 +1585,8 @@ class ManageScreen(Screen):
                                 self._finalize_delete()
                         self.app.push_screen(
                             ConfirmDialog(
-                                "[red bold]Really delete Discord server channels?[/red bold]\n"
-                                "Deleted channel messages cannot be recovered.",
+                                f"[red bold]{t('wizard.delete_discord_really')}[/red bold]\n"
+                                f"{t('wizard.delete_discord_warn')}",
                                 danger=True,
                             ),
                             on_double_confirm,
@@ -1497,7 +1594,7 @@ class ManageScreen(Screen):
                     else:
                         self._finalize_delete()
                 self.app.push_screen(
-                    ConfirmDialog("Delete glimi channels from Discord server?", danger=True, default_no=True),
+                    ConfirmDialog(t("wizard.delete_discord_ask"), danger=True, default_no=True),
                     on_discord,
                 )
             else:
@@ -1506,17 +1603,16 @@ class ManageScreen(Screen):
                     if typed == self._cid:
                         self._finalize_delete()
                     else:
-                        self._result("[dim]Cancelled[/dim]")
+                        self._result(f"[dim]{t('wizard.delete_cancelled')}[/dim]")
                 self.app.push_screen(
-                    InputDialog(f"Confirm delete: '{self._cid}'to confirm"),
+                    InputDialog(t("wizard.delete_confirm_id", id=self._cid)),
                     on_id,
                 )
 
         self.app.push_screen(
             ConfirmDialog(
-                f"[red bold]Server '{self._cid}' 삭제[/red bold]\n\n"
-                "DB, 아바타, 로그, .env 모두 삭제됩니다.\n"
-                "이 작업은 되돌릴 수 없습니다.",
+                f"[red bold]{t('wizard.delete_confirm', id=self._cid)}[/red bold]\n\n"
+                f"{t('wizard.delete_confirm_body')}",
                 danger=True,
             ),
             on_confirm,
@@ -1524,7 +1620,7 @@ class ManageScreen(Screen):
 
     @work(thread=True)
     def _delete_with_discord_cleanup(self, token: str):
-        self.app.call_from_thread(self._result, "[dim]Deleting Discord channels...[/dim]")
+        self.app.call_from_thread(self._result, f"[dim]{t('wizard.delete_discord_progress')}[/dim]")
         loop = asyncio.new_event_loop()
         info = loop.run_until_complete(_discord_connect(token))
         if info.get("ok"):
@@ -1535,7 +1631,7 @@ class ManageScreen(Screen):
                     deleted = loop.run_until_complete(_discord_delete_channels(token, g["id"], ids))
                     self.app.call_from_thread(
                         self._result,
-                        f"[green]Discord channels deleted[/green]"
+                        f"[green]{t('wizard.delete_discord_done')}[/green]"
                     )
         loop.close()
 
@@ -1544,10 +1640,10 @@ class ManageScreen(Screen):
             if typed == self._cid:
                 self._finalize_delete()
             else:
-                self._result("[dim]Cancelled[/dim]")
+                self._result(f"[dim]{t('wizard.delete_cancelled')}[/dim]")
         self.app.call_from_thread(
             self.app.push_screen,
-            InputDialog(f"Confirm delete: '{self._cid}'to confirm"),
+            InputDialog(t("wizard.delete_confirm_id", id=self._cid)),
             on_id,
         )
 
@@ -2059,8 +2155,8 @@ class DevServerScreen(Screen):
 
         self.app.call_from_thread(
             self.query_one("#dev-srv-result", Static).update,
-            "[green]DB 전체 초기화 + 디코 채널 삭제 예약 완료[/green]\n"
-            "Discord channels will be deleted and onboarding restarts on next dashboard entry"
+            f"[green]{t('wizard.delete_reset_done')}[/green]\n"
+            f"{t('wizard.delete_reset_next')}"
         )
 
     def _delete_server(self):

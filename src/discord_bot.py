@@ -57,6 +57,7 @@ def _kill_existing_bot():
 
 def main():
     cid = community.get_community_id()
+    community.set_community(cid)  # 언어 등 커뮤니티 컨텍스트 초기화
     log.info(f"커뮤니티: {cid} ({community.get_community_dir()})")
 
     _kill_existing_bot()

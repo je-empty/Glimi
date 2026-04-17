@@ -446,13 +446,9 @@ class DashboardScreen(Screen):
 
     def _check_first_run_cleanup(self):
         """첫 실행 판단 — 봇이 기존 디코 채널 유무를 보고 판단"""
-        # 플래그 정리 (이전 세션 잔여)
-        for flag_name in (".clean-channels", ".keep-channels"):
-            flag_path = os.path.join(log_writer.get_log_dir(), flag_name)
-            try:
-                os.remove(flag_path)
-            except FileNotFoundError:
-                pass
+        # .clean-channels / .keep-channels 플래그는 봇이 ensure_channels()에서 처리 후 제거함
+        # 대시보드에서 미리 제거하면 위저드에서 설정한 플래그가 사라짐
+        pass
 
     # ── Bot / Dev 프로세스 관리 ──────────────────────────
 

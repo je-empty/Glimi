@@ -231,7 +231,14 @@ async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
         # CMD/QUERY — 대화에 안 보이고 시스템 로그로
         agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
         await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
-        cleaned = await parse_and_execute_actions(channel, [msg], guild)
+        # creator의 CMD는 유나 응답이 mgr-dashboard로 가도록 (mgr-creator에서 유나 차단 방지)
+        from src.bot import MGR_CHANNEL, MGR_ID
+        if is_creator:
+            mgr_ch = discord.utils.get(channel.guild.text_channels, name=MGR_CHANNEL)
+            report_ch = mgr_ch or channel
+        else:
+            report_ch = channel
+        cleaned = await parse_and_execute_actions(report_ch, [msg], guild)
         for resp in cleaned:
             for part in _split_for_chat(resp):
                 await send_as_agent(channel, agent_id, part)

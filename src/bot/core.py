@@ -85,7 +85,7 @@ def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
     if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
         return agent_id == MGR_ID
     if ch_name == CREATOR_CHANNEL:
-        return agent_id == "agent-creator-001"
+        return agent_id == "agent-creator-001" or agent_id == MGR_ID
     if ch_name.startswith("dm-"):
         dm_name = ch_name[3:]
         return dm_name == agent_name or agent_id == MGR_ID

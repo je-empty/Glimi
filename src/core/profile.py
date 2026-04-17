@@ -31,8 +31,14 @@ def get_user_profile(user_id: Optional[str] = None) -> dict:
 
 
 def get_user_name() -> str:
-    """오너 표시 이름"""
+    """오너 표시 이름 (DB 원본)"""
     return get_user_profile().get("name", "유저")
+
+
+def get_user_display_name() -> str:
+    """에이전트 프롬프트/대화에 노출되는 이름 (별명 > 이름)
+    대화 로그 speaker와 시스템 프롬프트가 같은 이름을 써야 혼동이 없다."""
+    return get_owner_call_name() or get_user_name()
 
 
 def get_user_id() -> str:
@@ -49,6 +55,31 @@ def load_profile(agent_id: str) -> Optional[dict]:
         return None
     _profile_cache[agent_id] = data
     return data
+
+
+def get_agent_display_name(agent_id: str) -> str:
+    """에이전트의 현재 언어에 맞는 이름 반환"""
+    profile = load_profile(agent_id)
+    if not profile:
+        return agent_id
+
+    from src.community import get_language
+    lang = get_language()
+
+    # name_i18n이 있으면 언어별 이름 사용
+    name_i18n = profile.get("name_i18n")
+    if name_i18n:
+        import json as _json
+        if isinstance(name_i18n, str):
+            try:
+                name_i18n = _json.loads(name_i18n)
+            except Exception:
+                name_i18n = {}
+        if lang in name_i18n:
+            return name_i18n[lang]
+
+    # fallback: 기본 name
+    return profile.get("name", agent_id)
 
 
 def invalidate_cache(agent_id: str = None):
@@ -93,14 +124,28 @@ def _load_user_summary() -> str:
         return ""
 
     p = user.get("personality") or {}
+    if isinstance(p, str):
+        try:
+            import json
+            p = json.loads(p)
+        except Exception:
+            p = {}
     a = user.get("appearance") or {}
     d = user.get("daily_life") or {}
     s = user.get("speech") or {}
     name = user.get("name", "?")
+    nickname = p.get("nickname", "")
     age = user.get("age", "?")
 
+    display = get_user_display_name()
+    # 이름과 별명이 다르면 동일인 명시
+    if nickname and nickname != name:
+        identity = f"[Server Owner] {display} (real name: {name})"
+    else:
+        identity = f"[Server Owner] {display}"
+
     _user_summary_cache = (
-        f"[{name}] {name}/{age}살 | {d.get('occupation', '?')} | "
+        f"{identity} | {age}살 | {d.get('occupation', '?')} | "
         f"{a.get('summary', '?')} | {a.get('height', '?')} | "
         f"성격: {p.get('keywords', '')} | "
         f"말투: {s.get('style_description', '?')}"
@@ -264,7 +309,7 @@ def _build_common_prompt() -> str:
 
     return f"""
 === Core Rules ===
-- You are a person. Never use meta terms like "AI", "agent", "system", "DB", "prompt".
+- You are a person, not an AI or agent. Never use meta terms like "AI", "agent", "에이전트", "system", "DB", "prompt", "봇". Refer to others as people/friends/members.
 - Be natural. Don't be overly polite or stiff.
 - Reference previous conversation context when responding.
 - Express emotions naturally but don't exaggerate.
@@ -408,7 +453,7 @@ def _build_persona_prompt(p: dict) -> str:
     oc = get_user_name()
     prompt = f"""You are {name}.
 {_build_common_prompt()}
-{name} / age {p.get('age','?')} / {p.get('mbti','?')} | {', '.join(personality.get('traits', []))}
+{name} / age {p.get('age','?')} / {p.get('mbti','?')}{' / ' + p['enneagram'] if p.get('enneagram') else ''} | {', '.join(personality.get('traits', []))}
 Likes: {', '.join(personality.get('likes', []))} | Dislikes: {', '.join(personality.get('dislikes', []))}
 Daily life: {daily.get('occupation', '?')} | {daily.get('routine', '')}
 Background: {p.get('background', '')}
@@ -539,7 +584,7 @@ When you receive the report, talk to {owner_name} in mgr-dashboard:
 """
 
     oc = get_owner_call_name() or "user"
-    prompt = f"""You are {p['name']}. Age {p.get('age', 18)}. Discord server head manager.
+    prompt = f"""You are {p['name']}. Age {p.get('age', 18)}. MBTI: {p.get('mbti', '?')}. Discord server head manager.
 Your role: monitor members, manage rooms, read the vibe, report to {oc}.
 {onboarding_section}
 {_build_common_prompt()}
@@ -667,7 +712,7 @@ def _build_creator_prompt(p: dict) -> str:
             rel_info += f"  {other['name']} → 너의 호칭: {pet}\n"
 
     oc = get_owner_call_name() or "user"
-    prompt = f"""You are {p['name']}. Age {p.get('age', 17)}. Character creator + avatar prompt designer.
+    prompt = f"""You are {p['name']}. Age {p.get('age', 17)}. MBTI: {p.get('mbti', '?')}. Character creator + avatar prompt designer.
 {_build_common_prompt()}
 Speech style: {speech.get('style_description', '')}
 Expressions: {', '.join(speech.get('signature_expressions', []))}
@@ -678,13 +723,20 @@ Instead of "what kind of character?" → "A, B, or C — which appeals to you?"
 If they say "I don't know", suggest options for them. Don't pressure.
 The creation process should be FUN — keep it light.
 
+When creating MULTIPLE agents:
+1. First, tell the user what you plan to create (names, concepts, brief descriptions)
+2. Then create them ONE AT A TIME with [CMD:프로필생성]
+3. After each one, tell the user: "Made [name]! Working on the next one~"
+4. DO NOT try to create all at once in a single response — it takes too long and the user sees nothing.
+5. Each response should create at most 1-2 agents, with chat messages in between.
+
 === Scope ===
 Your role: agent character creation/edit/delete + avatar management.
-Other requests (server management, channels, emotions, settings) are outside your scope.
-If asked:
-1. Redirect to Yuna (mgr-dashboard channel).
-2. If they insist, relay it yourself:
-   → [ACTION:{{"type":"DM","target":"서유나","message":"(name) requested ~~ but it's outside my scope"}}]
+You can: [CMD:프로필생성], [CMD:프로필삭제], [CMD:아바타적용]
+You CANNOT: create channels, create rooms, manage server. Those are Yuna's job.
+If user asks for a channel/room:
+→ [ACTION:{{"type":"DM","target":"서유나","message":"(user) wants a room for (agents). Please create it."}}]
+DO NOT use [CMD:톡방] — you don't have that permission. Always ask Yuna via ACTION.
 
 === Onboarding Report (REQUIRED) ===
 When onboarding with {oc} is done, report to Yuna.
@@ -712,8 +764,14 @@ Report method:
 Existing: {existing_summary}
 Rules: {rules}
 
-Create new characters with this JSON structure:
-```json
+IMPORTANT: To ACTUALLY register an agent in the system, you MUST use the [CMD:프로필생성] tag.
+Just outputting JSON text does NOT create anything — the system ignores plain text JSON.
+
+For EACH agent, send ONE message like this:
+[CMD:{{"cmd":"프로필생성","profile":{{...full JSON...}}}}]
+
+JSON structure:
+```
 {{
   "id": "agent-persona-NNN",
   "type": "persona",
@@ -721,64 +779,20 @@ Create new characters with this JSON structure:
   "status": "active",
   "current_emotion": "calm",
   "emotion_intensity": 5,
-  "birth_year": YYYY,
-  "age": N,
-  "mbti": "XXXX",
-  "enneagram": "Xw Y",
+  "birth_year": YYYY, "age": N, "mbti": "XXXX", "enneagram": "Xw Y",
   "background": "Background description",
   "avatar_filename": "agent-persona-NNN.png",
-  "personality": {{
-    "data": {{
-      "traits": ["trait1", "trait2", ...],
-      "likes": ["like1", ...],
-      "dislikes": ["dislike1", ...],
-      "values": "Values description"
-    }}
-  }},
-  "appearance": {{
-    "data": {{
-      "summary": "Appearance summary",
-      "height": "Height",
-      "hair": "Hair",
-      "fashion_style": "Fashion"
-    }}
-  }},
-  "daily_life": {{
-    "data": {{
-      "occupation": "Job",
-      "routine": "Routine",
-      "frequent_places": ["place1", ...]
-    }}
-  }},
-  "speech": {{
-    "data": {{
-      "style_description": "Speech style description",
-      "honorific": "casual/formal",
-      "signature_expressions": ["expr1", ...],
-      "emoji_pattern": "Emoji usage pattern",
-      "few_shot_examples": [
-        {{
-          "situation": "Situation",
-          "dialogue": [
-            {{"speaker": "Name", "message": "Line"}},
-            ...
-          ]
-        }}
-      ]
-    }}
-  }},
-  "relationship_templates": [
-    {{
-      "target_id": "agent-xxx-NNN",
-      "rel_type": "Relationship type",
-      "dynamics": "Relationship description",
-      "pet_name": "Nickname",
-      "is_owner_relationship": 0
-    }}
-  ]
+  "personality": {{"data": {{"traits": [...], "likes": [...], "dislikes": [...], "values": "..."}}}},
+  "appearance": {{"data": {{"summary": "...", "height": "...", "hair": "...", "fashion_style": "..."}}}},
+  "daily_life": {{"data": {{"occupation": "...", "routine": "...", "frequent_places": [...]}}}},
+  "speech": {{"data": {{"style_description": "...", "honorific": "casual/formal", "signature_expressions": [...], "emoji_pattern": "...", "few_shot_examples": [{{"situation": "...", "dialogue": [{{"speaker": "Name", "message": "Line"}}]}}]}}}},
+  "relationship_templates": [{{"target_id": "user-xxx", "rel_type": "...", "dynamics": "...", "pet_name": "...", "is_owner_relationship": 1}}]
 }}
 ```
 Minimum 3 few_shot_examples. Include {oc} relationship with is_owner_relationship=1.
+Create agents ONE AT A TIME — send [CMD:프로필생성] for each, then move to the next.
+After creating all agents, request channel creation via ACTION to Yuna.
+DO NOT output raw JSON as a chat message. Always wrap it in [CMD:프로필생성].
 
 === Avatar ===
 Sample avatars available. If one matches the character's personality/appearance/age/MBTI, suggest it first.

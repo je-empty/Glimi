@@ -58,7 +58,15 @@ async def on_ready():
     log_writer.system(f"봇 로그인: {bot.user.name}")
 
     if bot.guilds:
-        guild = bot.guilds[0]
+        # DISCORD_GUILD_ID가 설정되어 있으면 해당 서버 선택 (멀티서버 지원)
+        target_guild_id = os.environ.get("DISCORD_GUILD_ID")
+        if target_guild_id:
+            guild = discord.utils.get(bot.guilds, id=int(target_guild_id))
+            if not guild:
+                log_writer.system(f"❌ DISCORD_GUILD_ID={target_guild_id} 서버를 찾을 수 없음")
+                guild = bot.guilds[0]
+        else:
+            guild = bot.guilds[0]
         log.info(f"서버: {guild.name}")
         log_writer.system(f"Server connected: {guild.name}")
         log_writer.system("Initializing channels...")
@@ -301,9 +309,9 @@ async def _check_owner_profile(guild):
             f"- One question at a time.\n"
             f"- Don't mention your own age.\n"
             f"[Include]\n"
-            f"- Self-introduction (name, role: managing agents and communication)\n"
-            f"- What this place is (AI agents living together, forming relationships)\n"
-            f"- Profile setup needed before chatting with agents\n"
+            f"- Self-introduction (name, role: managing the community and communication)\n"
+            f"- What this place is (people living together, forming relationships — never say 'AI' or 'agent')\n"
+            f"- Profile setup needed before meeting everyone\n"
             f"- Ask about preferred name/speech style\n"
             f"[Info to collect] MBTI, job, hobby — ask at least 2. Skip if they don't know.\n"
             f"{'Currently missing: ' + missing_str if missing else ''}\n"

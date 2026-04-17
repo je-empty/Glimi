@@ -75,13 +75,27 @@ class Supervisor:
 class OnboardingSupervisor(Supervisor):
     """온보딩 전 과정 감시 + 재촉"""
     name = "onboarding"
-    interval = 15
+    interval = 30  # 30초 간격 (15초는 너무 빈번)
+
+    def __init__(self):
+        super().__init__()
+        self._last_nudge_time: float = 0  # 마지막 재촉 시각
+        self._nudge_cooldown: float = 120  # 재촉 쿨다운 2분
 
     def should_run(self) -> bool:
         return db.get_meta("onboarding_phase") != "complete"
 
     def is_done(self) -> bool:
         return db.get_meta("onboarding_phase") == "complete"
+
+    def _can_nudge(self) -> bool:
+        """쿨다운 체크 — 마지막 재촉 후 일정 시간 경과해야 다시 재촉 가능"""
+        import time
+        return (time.time() - self._last_nudge_time) > self._nudge_cooldown
+
+    def _mark_nudged(self):
+        import time
+        self._last_nudge_time = time.time()
 
     async def check(self, guild: discord.Guild):
         phase = db.get_meta("onboarding_phase")
@@ -105,7 +119,7 @@ class OnboardingSupervisor(Supervisor):
             return  # 첫 인사 대기
 
         idle = self._get_idle_seconds(MGR_CHANNEL)
-        if idle < 10:
+        if idle < 15:
             return  # 대화 진행 중
 
         # 프로필 충분한지 체크
@@ -119,30 +133,54 @@ class OnboardingSupervisor(Supervisor):
         collected = sum([has_mbti, has_bg])
 
         if collected >= 2:
-            # 조건 충족 — 강제 트리거
             log_writer.system("[sup:onboarding] 프로필수집 조건 충족 — 강제 트리거")
             from src.bot.mgr_system import _trigger_onboarding_phase2
             await _trigger_onboarding_phase2(guild)
             return
 
+        # 마지막 발화자 확인
+        recent = db.get_recent_messages(MGR_CHANNEL, limit=5)
+        if not recent:
+            return
+
+        last_speaker = recent[-1].get("speaker", "")
+
+        # 유나가 마지막으로 말했고 유저 응답 없으면 → 기다림 (재촉 안 함)
+        if last_speaker == MGR_ID:
+            return
+
+        # 쿨다운 체크
+        if not self._can_nudge():
+            return
+
+        # 유저가 마지막으로 말한 뒤 유나가 아직 대답 안 한 경우에만 개입
+        # (유나가 응답을 안 하고 있는 상황 = 시스템 문제이거나 유나가 멈춤)
         # 대화 맥락 판단 (haiku)
         loop = asyncio.get_event_loop()
         judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
             MGR_CHANNEL,
-            "에이전트가 온보딩(프로필 수집)을 진행하고 있나? "
-            "아니면 잡담으로 빠지거나 멈춰있나? "
-            "'진행중', '멈춤', '잡담' 중 하나로."
+            "최근 대화를 보고 판단해줘. "
+            "유저가 마지막에 말했는데 에이전트가 아직 반응하지 않은 건가? "
+            "아니면 잡담으로 빠져서 프로필 수집이 진행되지 않는 건가? "
+            "'미응답', '잡담', '진행중' 중 하나로."
         ))
 
-        if judgment in ("멈춤", "잡담", "stopped", "chatting", "idle"):
-            log_writer.system(f"[sup:onboarding] 대화 판단: {judgment} — 유나 재촉")
+        if judgment in ("미응답", "no_response", "unanswered"):
+            # 유나가 유저 메시지에 반응 못한 상태 → 부드럽게 지시
+            log_writer.system(f"[sup:onboarding] 판단: {judgment} — 유나 응답 유도")
+            self._mark_nudged()
             await self._nudge_yuna(guild,
-                "대화가 좀 멈춘 것 같다. 상황 판단해서 적절히 행동하자. "
-                "프로필 수집이 아직이면 다음 질문을 하고, 충분히 했으면 마무리. "
-                "유저가 답을 안 하는 것 같으면 가볍게 말 걸어도 되고 기다려도 돼."
+                "유저가 방금 뭔가 말했는데 아직 반응을 안 한 것 같다. "
+                "자연스럽게 대답해주자."
             )
-        elif judgment in ("진행중", "progressing", "ongoing"):
-            pass  # 정상 진행 중
+        elif judgment in ("잡담", "chatting"):
+            log_writer.system(f"[sup:onboarding] 판단: {judgment} — 유나 복귀 유도")
+            self._mark_nudged()
+            await self._nudge_yuna(guild,
+                "잡담이 길어진 것 같다. "
+                "자연스럽게 화제를 돌려서 다음 프로필 질문으로 넘어가자. "
+                "갑자기 전환하지 말고 대화 흐름에 맞춰서."
+            )
 
     # ── 채널 세팅 단계 ──
 
@@ -169,7 +207,8 @@ class OnboardingSupervisor(Supervisor):
         if has_report:
             # 유나가 온보딩완료를 보냈는지 체크
             idle = self._get_idle_seconds(MGR_CHANNEL)
-            if idle > 45:
+            if idle > 60 and self._can_nudge():
+                self._mark_nudged()
                 await self._nudge_yuna(guild,
                     "하나한테 보고 받은 걸 전달해야겠다. "
                     "채널 구조도 설명해주고 온보딩 마무리하자."
@@ -188,6 +227,13 @@ class OnboardingSupervisor(Supervisor):
         if idle < 30:
             return  # 아직 대화 중 — 서두르지 않음
 
+        # 마지막 발화자가 에이전트(하나)이고 유저가 답 안 한 상태 → 재촉하지 않음
+        creator_recent = db.get_recent_messages(CREATOR_CHANNEL, limit=3)
+        if creator_recent:
+            last_speaker = creator_recent[-1].get("speaker", "")
+            if last_speaker == CREATOR_ID:
+                return  # 하나가 말했고 유저가 아직 답 안 함 — 기다림
+
         # 하나 채널 대화가 최소 5턴 미만이면 아직 아이스브레이킹 중
         creator_all = db.get_recent_messages(CREATOR_CHANNEL, limit=20)
         if len(creator_all) < 8:
@@ -197,16 +243,15 @@ class OnboardingSupervisor(Supervisor):
         judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
             CREATOR_CHANNEL,
             "크리에이터가 아이스브레이킹을 충분히 했나? "
-            "아니면 아직 진행 중이거나 멈춰있나? "
-            "'충분', '진행중', '멈춤' 중 하나로."
+            "에이전트 생성까지 진행됐나? "
+            "'충분', '진행중' 중 하나로."
         ))
 
-        if judgment in ("충분", "enough", "done", "멈춤", "stopped"):
+        if judgment in ("충분", "enough", "done") and self._can_nudge():
             log_writer.system(f"[sup:onboarding] 하나 판단: {judgment} — 재촉")
+            self._mark_nudged()
             await self._nudge_agent(guild, CREATOR_ID, CREATOR_CHANNEL,
-                "대화가 멈춘 것 같다. 상황 판단해서 적절히. "
                 "아이스브레이킹이 충분했으면 에이전트 생성 얘기 꺼내고 유나 언니한테 보고. "
-                "아직 부족하면 유저한테 가볍게 말 걸어봐. "
                 "이미 보고했으면 다시 보내지 마."
             )
 
@@ -238,26 +283,46 @@ class OnboardingSupervisor(Supervisor):
     async def _inject_and_send(self, agent_id, ch_name, channel, instruction):
         """에이전트에게 강제 지시 주입 (에이전트는 자기 내면의 생각으로 인식).
         에이전트가 판단해서 메시지를 안 보낼 수도 있음."""
-        loop = asyncio.get_event_loop()
-        responses = await loop.run_in_executor(
-            None,
-            lambda: runtime.generate_response_force(
-                agent_id, ch_name, instruction
+        # 에이전트가 이미 추론/전송 중이면 스킵 (race condition 방지)
+        if log_writer.is_thinking(agent_id) or log_writer.is_speaking(agent_id):
+            log_writer.system(f"[sup:{self.name}] {agent_id} 이미 추론 중 — 강제 지시 스킵")
+            return
+
+        from src.bot import _get_channel_lock
+        lock = _get_channel_lock(ch_name)
+        if lock.locked():
+            log_writer.system(f"[sup:{self.name}] #{ch_name} 채널 잠금 중 — 강제 지시 스킵")
+            return
+
+        async with lock:
+            loop = asyncio.get_event_loop()
+            responses = await loop.run_in_executor(
+                None,
+                lambda: runtime.generate_response_force(
+                    agent_id, ch_name, instruction
+                )
             )
-        )
-        cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
-        sent_count = 0
-        for resp in responses:
-            clean = cmd_pat.sub('', resp).strip()
-            # "..." 또는 빈 응답은 에이전트가 아무 말 안 하기로 한 것
-            if clean and clean != "..." and clean != "(무시)":
-                for part in _split_for_chat(clean):
-                    await send_as_agent(channel, agent_id, part)
-                    await asyncio.sleep(0.1)
-                    db.log_message(ch_name, agent_id, part)
-                    sent_count += 1
-        if sent_count == 0:
-            log_writer.system(f"[sup:{self.name}] {agent_id} 재촉 응답 없음 (에이전트가 불필요 판단)")
+            cmd_pat = _re.compile(r'\[CMD:((?:[^\[\]]|\[[^\]]*\])*)\]')
+            query_pat = _re.compile(r'\[QUERY:((?:[^\[\]]|\[[^\]]*\])*)\]')
+            all_tag_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+            sent_count = 0
+            for resp in responses:
+                # CMD/QUERY 실행 (mgr만)
+                if agent_id == MGR_ID and (cmd_pat.search(resp) or query_pat.search(resp)):
+                    from src.bot.mgr_system import parse_and_execute_actions
+                    guild = channel.guild
+                    if guild:
+                        await parse_and_execute_actions(channel, [resp], guild)
+
+                clean = all_tag_pat.sub('', resp).strip()
+                # "..." 또는 빈 응답은 에이전트가 아무 말 안 하기로 한 것
+                if clean and clean != "..." and clean != "(무시)":
+                    for part in _split_for_chat(clean):
+                        await send_as_agent(channel, agent_id, part)
+                        await asyncio.sleep(0.1)
+                        sent_count += 1
+            if sent_count == 0:
+                log_writer.system(f"[sup:{self.name}] {agent_id} 재촉 응답 없음 (에이전트가 불필요 판단)")
 
 
 # ── 채널 대화 감시자 ────────────────────────────────────
@@ -357,19 +422,29 @@ class ChannelConversationSupervisor(Supervisor):
 
     async def _inject_and_send(self, agent_id, ch_name, channel, instruction):
         """에이전트에게 강제 지시 주입"""
-        loop = asyncio.get_event_loop()
-        responses = await loop.run_in_executor(
-            None,
-            lambda: runtime.generate_response_force(agent_id, ch_name, instruction)
-        )
-        cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
-        for resp in responses:
-            clean = cmd_pat.sub('', resp).strip()
-            if clean and clean != "..." and clean != "(무시)":
-                for part in _split_for_chat(clean):
-                    await send_as_agent(channel, agent_id, part)
-                    await asyncio.sleep(0.1)
-                    db.log_message(ch_name, agent_id, part)
+        # 에이전트가 이미 추론/전송 중이면 스킵
+        if log_writer.is_thinking(agent_id) or log_writer.is_speaking(agent_id):
+            return
+
+        from src.bot import _get_channel_lock
+        lock = _get_channel_lock(ch_name)
+        if lock.locked():
+            return
+
+        async with lock:
+            loop = asyncio.get_event_loop()
+            responses = await loop.run_in_executor(
+                None,
+                lambda: runtime.generate_response_force(agent_id, ch_name, instruction)
+            )
+            cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+            for resp in responses:
+                clean = cmd_pat.sub('', resp).strip()
+                if clean and clean != "..." and clean != "(무시)":
+                    for part in _split_for_chat(clean):
+                        await send_as_agent(channel, agent_id, part)
+                        await asyncio.sleep(0.1)
+                        # DB 로깅은 generate_response_force에서 이미 처리
 
 
 # ── 감시자 레지스트리 + 루프 ────────────────────────────
@@ -400,29 +475,36 @@ async def _run_checks():
             log_writer.system(f"[sup:{sup.name}] 오류: {e}")
 
 
+_notify_idle_tasks: dict[str, asyncio.Task] = {}  # 채널별 대기 태스크 (중복 방지)
+
+
 async def notify_idle(channel_name: str):
     """에이전트 응답 완료 후 호출 — 일정 시간 후 유저 응답 없으면 감시자 실행"""
     if not _active:
         return
 
     # 관련 채널인지 체크
-    relevant = any(
-        channel_name in (MGR_CHANNEL, CREATOR_CHANNEL) or channel_name.startswith("internal-")
-        for _ in [1]
-    )
+    relevant = channel_name in (MGR_CHANNEL, CREATOR_CHANNEL) or channel_name.startswith("internal-")
     if not relevant:
         return
 
-    await asyncio.sleep(15)  # 15초 대기 — 유저 응답 기다림
+    # 이전 대기 태스크 취소 (같은 채널에서 연속 호출 시 중복 방지)
+    prev = _notify_idle_tasks.get(channel_name)
+    if prev and not prev.done():
+        prev.cancel()
 
-    # 대기 후에도 마지막 메시지가 에이전트 것이면 (유저가 응답 안 함) → 체크
-    recent = db.get_recent_messages(channel_name, limit=1)
-    if recent:
-        from src.core.profile import get_user_id
-        last_speaker = recent[-1]["speaker"]
-        if last_speaker != get_user_id():
-            # 에이전트가 마지막 발화 → 유저 응답 없음 → 감시자 체크
-            await _run_checks()
+    async def _delayed_check():
+        await asyncio.sleep(15)  # 15초 대기 — 유저 응답 기다림
+
+        # 대기 후에도 마지막 메시지가 에이전트 것이면 (유저가 응답 안 함) → 체크
+        recent = db.get_recent_messages(channel_name, limit=1)
+        if recent:
+            from src.core.profile import get_user_id
+            last_speaker = recent[-1]["speaker"]
+            if last_speaker != get_user_id():
+                await _run_checks()
+
+    _notify_idle_tasks[channel_name] = asyncio.create_task(_delayed_check())
 
 
 def start_supervisors():
