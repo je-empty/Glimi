@@ -419,7 +419,8 @@ def human_ago(iso_ts: str) -> str:
         dt = datetime.fromisoformat(iso_ts)
     except Exception:
         return ""
-    secs = (datetime.now() - dt).total_seconds()
+    # SQLite CURRENT_TIMESTAMP는 UTC. datetime.now()는 local → 시간대 mismatch 발생.
+    secs = (datetime.utcnow() - dt).total_seconds()
     if secs < 0:
         return "방금"
     if secs < 60:
@@ -656,6 +657,18 @@ def _get_test_user_detail() -> dict:
     """QA test-user-bot의 가상 상세 정보."""
     import os as _os
     alive = _ps_has("tests.e2e.test_user_bot")
+    # 실제 활동 상태 — test_user_bot이 .thinking-test-user / .speaking-test-user 토글
+    log_dir = community.get_log_dir() if hasattr(community, "get_log_dir") else None
+    is_thinking = False
+    is_speaking = False
+    if alive:
+        try:
+            from src.log_writer import _get_log_dir as _ld
+            d = _ld()
+            is_thinking = _os.path.exists(_os.path.join(d, ".thinking-test-user"))
+            is_speaking = _os.path.exists(_os.path.join(d, ".speaking-test-user"))
+        except Exception:
+            pass
 
     # 환경변수에서 페르소나 정보
     name = _os.environ.get("QA_USER_NAME", "심재빈")
@@ -686,8 +699,8 @@ def _get_test_user_detail() -> dict:
         "traits": ["ENTP", "QA 자동화", "메타 질문 challenger", "카톡 스타일"],
         "background": background,
         "relationship_to_owner": {},
-        "thinking": False,
-        "speaking": alive,
+        "thinking": is_thinking,
+        "speaking": is_speaking,
         "thinking_seconds": 0,
         "speaking_seconds": 0,
         "last_active": "",

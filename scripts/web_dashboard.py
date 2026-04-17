@@ -662,15 +662,36 @@ HTML = r"""<!doctype html>
   .agent-card.thinking .agent-expanded, .agent-card.speaking .agent-expanded { display: block; }
   .progress-wrap { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-dim); margin-bottom: 10px; }
   .progress-wrap .elapsed { font-family: "JetBrains Mono", monospace; color: var(--text); font-weight: 600; }
-  .progress-bar { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  /* 진행바 — 단정한 시머 한 레이어 */
+  .progress-bar {
+    flex: 1; height: 4px; border-radius: 999px; overflow: hidden;
+    background: color-mix(in srgb, var(--text-faint) 16%, transparent);
+    position: relative;
+  }
   .progress-bar > span {
     display: block; height: 100%; width: 100%;
-    background: linear-gradient(90deg, transparent, var(--thinking), transparent);
-    background-size: 40% 100%; background-repeat: no-repeat;
-    animation: slide 2s linear infinite;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--accent) 35%, transparent) 30%,
+      var(--accent) 50%,
+      color-mix(in srgb, var(--accent) 35%, transparent) 70%,
+      transparent 100%);
+    background-size: 220% 100%;
+    animation: bar-shimmer 1.6s linear infinite;
   }
-  .agent-card.speaking .progress-bar > span { background: linear-gradient(90deg, transparent, var(--speaking), transparent); background-size: 40% 100%; background-repeat: no-repeat; }
-  @keyframes slide { 0% { background-position: -40% 0; } 100% { background-position: 140% 0; } }
+  .agent-card.speaking .progress-bar > span {
+    background: linear-gradient(90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--speaking) 35%, transparent) 30%,
+      var(--speaking) 50%,
+      color-mix(in srgb, var(--speaking) 35%, transparent) 70%,
+      transparent 100%);
+    background-size: 220% 100%;
+  }
+  @keyframes bar-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 
   .agent-logs, .agent-chat {
     background: var(--panel-3); border-radius: 8px; padding: 8px 11px;
@@ -2117,12 +2138,66 @@ function destroyCyGraph() {
   }
 }
 
+// 추론/발화 중 노드: border-width + 색상 펄스 (skin-of-the-teeth halo via underlay-padding)
+let cyNodePulseTimer = null;
+let cyNodePulsePrev = [];
+function _resetNodeInlineStyle(n) {
+  try { n.removeStyle('border-width underlay-color underlay-padding underlay-opacity underlay-shape'); }
+  catch (e) {}
+}
+function startNodePulseAnimation() {
+  if (!cyInstance) return;
+  if (cyNodePulseTimer) { clearInterval(cyNodePulseTimer); cyNodePulseTimer = null; }
+  // 이전 라운드에서 펄스 적용한 노드들의 inline 스타일 제거 (class 빠진 노드 깨끗이)
+  for (const n of cyNodePulsePrev) {
+    if (!n.hasClass('thinking') && !n.hasClass('speaking')) _resetNodeInlineStyle(n);
+  }
+  // 오프라인 (stale flag)이면 펄스 안 함 — agent-card와 동일 정책
+  if (document.body.classList.contains('offline')) {
+    cyInstance.nodes('.thinking, .speaking').forEach(_resetNodeInlineStyle);
+    cyNodePulsePrev = [];
+    return;
+  }
+  const liveNodes = cyInstance.nodes('.thinking, .speaking');
+  cyNodePulsePrev = liveNodes.toArray();
+  if (liveNodes.length === 0) return;
+  let pulse = 0;
+  cyNodePulseTimer = setInterval(() => {
+    pulse = (pulse + 0.06) % (Math.PI * 2);
+    const sin = Math.sin(pulse);
+    const ease = (sin + 1) * 0.5;            // 0 ~ 1
+    const borderWidth = 4.5 + ease * 1.0;    // 4.5 ~ 5.5
+    const underlayPad = 2 + ease * 6;        // 2 ~ 8
+    const underlayOp = 0.10 + ease * 0.18;   // 0.10 ~ 0.28
+    cyInstance.batch(() => {
+      liveNodes.forEach(n => {
+        const isSpeak = n.hasClass('speaking');
+        const color = isSpeak ? n.cy().scratch('_speakingColor') : n.cy().scratch('_thinkingColor');
+        n.style({
+          'border-width': borderWidth,
+          'underlay-color': color,
+          'underlay-padding': underlayPad,
+          'underlay-opacity': underlayOp,
+          'underlay-shape': 'ellipse',
+        });
+      });
+    });
+  }, 60);
+}
+
 // 라이브(활성) 엣지: 굵기 + 글로우 padding 펄스 — solid line 위로 pulsing halo 효과
 function startLiveEdgeAnimation() {
   if (!cyInstance) return;
   if (cyLiveAnimTimer) { clearInterval(cyLiveAnimTimer); cyLiveAnimTimer = null; }
   const liveEdges = cyInstance.edges('.live');
   if (liveEdges.length === 0) return;
+  // 오프라인이면 정적 라인만
+  if (document.body.classList.contains('offline')) {
+    cyInstance.batch(() => {
+      liveEdges.forEach(e => e.style({ 'width': 2, 'opacity': 0.5, 'overlay-opacity': 0 }));
+    });
+    return;
+  }
   let pulse = 0;
   cyLiveAnimTimer = setInterval(() => {
     pulse = (pulse + 0.1) % (Math.PI * 2);
@@ -2134,6 +2209,7 @@ function startLiveEdgeAnimation() {
       liveEdges.forEach(e => {
         e.style({
           'width': width,
+          'overlay-color': cyInstance.scratch('_thinkingColor'),
           'overlay-opacity': overlayOp,
           'overlay-padding': overlayPad,
         });
@@ -2145,6 +2221,23 @@ function startLiveEdgeAnimation() {
 // 구조 동일 → 노드 live 상태(thinking/speaking, sup active/intervening) cy 클래스 토글
 function updateGraphLiveState(snap) {
   if (!cyInstance) return;
+  const agentMap = {};
+  for (const a of snap.agents) agentMap[a.id] = a;
+  // 채널별 활성 상태 재계산 (recent OR party thinking/speaking)
+  const liveChannels = new Set();
+  for (const c of (snap.channels || [])) {
+    const recent = c.last_ago && (
+      c.last_ago === '방금' ||
+      c.last_ago.includes('초') ||
+      (c.last_ago.includes('분') && parseInt(c.last_ago) < 2)
+    );
+    const party = (c.participants || []).some(pid => {
+      const ag = agentMap[pid];
+      return ag && (ag.thinking || ag.speaking);
+    });
+    if (recent || party) liveChannels.add(c.name);
+  }
+  let liveCountChanged = false;
   cyInstance.batch(() => {
     for (const a of snap.agents) {
       const n = cyInstance.getElementById(a.id);
@@ -2152,6 +2245,15 @@ function updateGraphLiveState(snap) {
       n.toggleClass('thinking', !!a.thinking);
       n.toggleClass('speaking', !!a.speaking);
     }
+    cyInstance.edges().forEach(e => {
+      const ch = e.data('channel');
+      const wasLive = e.hasClass('live');
+      const nowLive = liveChannels.has(ch);
+      if (wasLive !== nowLive) {
+        e.toggleClass('live', nowLive);
+        liveCountChanged = true;
+      }
+    });
     if (SHOW_SUP) {
       for (const s of (snap.supervisors || [])) {
         const n = cyInstance.getElementById('sup:' + s.name);
@@ -2161,6 +2263,10 @@ function updateGraphLiveState(snap) {
       }
     }
   });
+  if (liveCountChanged) {
+    startLiveEdgeAnimation();
+  }
+  startNodePulseAnimation();
 }
 
 // snap → { nodes, edges } cytoscape elements
@@ -2190,7 +2296,23 @@ function buildGraphElements(snap) {
       }
     }
     if (parts.length < 2) continue;
-    const live = c.last_ago && (c.last_ago.includes('초') || (c.last_ago.includes('분') && parseInt(c.last_ago) < 5));
+    // 활성 판정: 최근 발화 OR 참여자(에이전트 또는 owner) 중 한 명이라도 활동 중
+    const recentLive = c.last_ago && (
+      c.last_ago === '방금' ||
+      c.last_ago.includes('초') ||
+      (c.last_ago.includes('분') && parseInt(c.last_ago) < 2)
+    );
+    const partyLive = (c.participants || []).some(pid => {
+      const ag = idToAgent[pid];
+      return ag && (ag.thinking || ag.speaking);
+    });
+    // owner가 채널의 활동 주체일 수도 있음 — last_speaker 가 owner 면 즉시 활성
+    const ownerActive = includeOwner && c.last_speaker && (
+      c.last_speaker.startsWith('user') ||
+      c.last_speaker === 'test-user' ||
+      c.last_speaker === 'owner'
+    ) && recentLive;
+    const live = recentLive || partyLive || ownerActive;
     for (let i = 0; i < parts.length; i++) {
       for (let j = i + 1; j < parts.length; j++) {
         rawEdges.push({
@@ -2456,11 +2578,11 @@ function mountCytoscapeGraph(snap) {
       { selector: 'node.agent.persona', style: { 'border-color': C.persona } },
       {
         selector: 'node.agent.thinking',
-        style: { 'border-color': C.thinking, 'border-width': 5, 'overlay-color': C.thinking, 'overlay-opacity': 0.15, 'overlay-padding': 4 },
+        style: { 'border-color': C.accent, 'border-width': 4 },
       },
       {
         selector: 'node.agent.speaking',
-        style: { 'border-color': C.speaking, 'border-width': 5, 'overlay-color': C.speaking, 'overlay-opacity': 0.15, 'overlay-padding': 4 },
+        style: { 'border-color': C.speaking, 'border-width': 4 },
       },
       // ===== Owner node — Material person SVG, viewBox 큼 + figure 가운데에 작게 =====
       //   shape:ellipse + bg-clip 으로 잘리는 문제 방지를 위해 figure 를 inscribed circle 안에 배치
@@ -2530,10 +2652,7 @@ function mountCytoscapeGraph(snap) {
         style: {
           'border-style': 'solid',
           'border-color': C.warn,
-          'border-width': 3,
-          'overlay-color': C.warn,
-          'overlay-opacity': 0.15,
-          'overlay-padding': 4,
+          'border-width': 4,
         },
       },
       // ===== Edges =====
@@ -2545,12 +2664,12 @@ function mountCytoscapeGraph(snap) {
           'curve-style': 'unbundled-bezier',
           'control-point-distances': 'data(cpd)',
           'control-point-weights': 'data(cpw)',
-          'width': 1.8,
+          'width': 1.4,
           'line-color': C.textDim,
           'line-style': 'dashed',
-          'line-dash-pattern': [6, 5],
+          'line-dash-pattern': [4, 6],
           'target-arrow-shape': 'none',
-          'opacity': 0.7,
+          'opacity': 0.35,
           // 기본 라벨 숨김 — hover 시에만 보임 (라벨 떡짐 회피)
           //   midpoint label (target-label 대신 label) → 엣지 가운데에 깔끔히 배치
           'label': 'data(label)',
@@ -2567,20 +2686,15 @@ function mountCytoscapeGraph(snap) {
           'text-events': 'yes',
         },
       },
-      { selector: 'edge.ch-dm', style: { 'line-color': C.accent } },
-      { selector: 'edge.ch-group', style: { 'line-color': C.ok } },
-      { selector: 'edge.ch-internal-dm', style: { 'line-color': C.cmd } },
-      { selector: 'edge.ch-internal-group', style: { 'line-color': C.creator } },
-      { selector: 'edge.ch-mgr', style: { 'line-color': C.mgr } },
+      // 채널 종류별 색상은 hover label 정도로만 활용. 기본 라인은 중성톤으로 통일해
+      // 노드 컬러와 충돌하지 않게 (사용자 피드백: "엣지가 너무 튀어서 미감 망침")
       {
         selector: 'edge.live',
         style: {
           'line-style': 'solid',
-          'opacity': 1,
-          'width': 3,
-          'overlay-color': C.accent,
-          'overlay-opacity': 0.2,
-          'overlay-padding': 5,
+          'opacity': 0.85,
+          'width': 2.0,
+          'line-color': C.accent,
         },
       },
       {
@@ -2650,8 +2764,14 @@ function mountCytoscapeGraph(snap) {
     cyInstance.fit(undefined, fullscreen ? 140 : 25);
   });
 
-  // ===== 라이브 엣지 dash flow + 펄스 애니메이션 시작 =====
+  // 노드 펄스용 색상 stash. thinking 머스타드 노랑은 따뜻한 아바타 위에 더러워보여서
+  // 차분한 accent (indigo)로 통일. speaking 만 cyan 유지 (대비)
+  cyInstance.scratch('_thinkingColor', C.accent);
+  cyInstance.scratch('_speakingColor', C.speaking);
+
+  // ===== 라이브 엣지 + 노드 펄스 애니메이션 시작 =====
   startLiveEdgeAnimation();
+  startNodePulseAnimation();
 
   // ===== Note (n connections · m nodes · k supervisors) =====
   const noteEl = document.getElementById('graph-note');

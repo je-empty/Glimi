@@ -127,6 +127,8 @@ async def on_ready():
             yuna_watcher.start()
         if not system_log_sync.is_running():
             system_log_sync.start()
+        if not alive_heartbeat.is_running():
+            alive_heartbeat.start()
     except Exception as e:
         log_writer.system(f"❌ 태스크 시작 오류: {e}")
 
@@ -373,6 +375,21 @@ async def _check_owner_profile(guild):
 
     log_writer.system("온보딩 완료")
     log_writer.mark_onboarding_done()
+
+
+# ── 봇 alive heartbeat ──────────────────────────────────
+#   대시보드는 system.log mtime 기반으로 봇 alive 판정 (120초 임계).
+#   봇이 응답 생성으로 오래 묶여서 로그 미발생 시 false offline 처리되는 걸 방지.
+
+@tasks.loop(seconds=45)
+async def alive_heartbeat():
+    try:
+        path = os.path.join(log_writer.get_log_dir(), "system.log")
+        if not os.path.exists(path):
+            open(path, "a").close()
+        os.utime(path, None)
+    except Exception:
+        pass
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────

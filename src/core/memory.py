@@ -50,7 +50,7 @@ def _format_age(created_at: str) -> str:
         dt = datetime.fromisoformat(created_at)
     except Exception:
         return ""
-    delta = datetime.now() - dt
+    delta = datetime.utcnow() - dt
     secs = delta.total_seconds()
     if secs < 60:
         return "방금"
@@ -67,7 +67,7 @@ def _is_stale(created_at: str, hours: float) -> bool:
         dt = datetime.fromisoformat(created_at)
     except Exception:
         return False
-    return (datetime.now() - dt).total_seconds() >= hours * 3600
+    return (datetime.utcnow() - dt).total_seconds() >= hours * 3600
 
 
 # ── 채널 → 관련 에이전트 파싱 ─────────────────────────

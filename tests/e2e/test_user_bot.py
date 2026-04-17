@@ -61,7 +61,8 @@ Rules:
 """
 
 MAX_TURNS = 50  # 최대 대화 턴
-IDLE_TIMEOUT = 120  # 봇 응답 대기 타임아웃 (초)
+IDLE_TIMEOUT = 240  # 봇 응답 대기 타임아웃 (초) — Sonnet 긴 응답 대비
+THINKING_GRACE = 90  # 타임아웃 시점에 봇이 추론 중이면 추가 대기 (초)
 REPLY_DELAY = (2.0, 6.0)  # 응답 딜레이 범위 (자연스럽게)
 MULTI_MSG_CHANCE = 0.3  # 여러 줄 메시지를 따로 보낼 확률
 
@@ -198,18 +199,61 @@ class TestUserBot(discord.Client):
             if self._pending_messages and self._pending_messages[-1] == message.content:
                 self._response_event.set()
 
+    def _qa_log_dir(self) -> str:
+        return os.path.join(
+            os.path.dirname(__file__), "..", "..",
+            "communities", "qa", "logs",
+        )
+
+    def _flag_path(self, name: str) -> str:
+        return os.path.join(self._qa_log_dir(), name)
+
+    def _set_state(self, kind: str, on: bool):
+        """kind = 'thinking' | 'speaking'. flag 파일 토글."""
+        try:
+            p = self._flag_path(f".{kind}-test-user")
+            if on:
+                open(p, "w").close()
+            else:
+                if os.path.exists(p):
+                    os.remove(p)
+        except OSError:
+            pass
+
+    def _bot_is_thinking(self) -> bool:
+        """봇 추론 중 여부 — communities/qa/logs/.thinking-* 플래그"""
+        log_dir = os.path.join(
+            os.path.dirname(__file__), "..", "..",
+            "communities", "qa", "logs",
+        )
+        try:
+            for name in os.listdir(log_dir):
+                if name.startswith(".thinking-") or name.startswith(".speaking-"):
+                    return True
+        except OSError:
+            pass
+        return False
+
     async def _conversation_loop(self):
         """메인 대화 루프"""
         while not self._done and self.turn_count < self.max_turns:
             try:
-                # 유저 응답 생성
-                reply = await self._generate_reply()
+                # 유저 응답 생성 (thinking 플래그)
+                self._set_state("thinking", True)
+                try:
+                    reply = await self._generate_reply()
+                finally:
+                    self._set_state("thinking", False)
                 if not reply:
                     print("[TestUser] 응답 생성 실패 — 종료")
                     break
 
-                # 메시지 전송
-                await self._send_reply(reply)
+                # 메시지 전송 (speaking 플래그)
+                self._set_state("speaking", True)
+                try:
+                    await self._send_reply(reply)
+                finally:
+                    self._set_state("speaking", False)
                 self.turn_count += 1
 
                 # 에이전트 응답 대기
@@ -220,8 +264,17 @@ class TestUserBot(discord.Client):
                 try:
                     await asyncio.wait_for(self._response_event.wait(), timeout=IDLE_TIMEOUT)
                 except asyncio.TimeoutError:
-                    print(f"[TestUser] 에이전트 응답 타임아웃 ({IDLE_TIMEOUT}초)")
-                    break
+                    # 봇이 추론 중이면 추가 대기 (Sonnet은 긴 응답이 가끔 1~2분 추가 소요)
+                    if self._bot_is_thinking():
+                        print(f"[TestUser] 응답 대기 {IDLE_TIMEOUT}초 — 추론 중 감지, +{THINKING_GRACE}초 추가 대기")
+                        try:
+                            await asyncio.wait_for(self._response_event.wait(), timeout=THINKING_GRACE)
+                        except asyncio.TimeoutError:
+                            print(f"[TestUser] 추가 대기 후도 무응답 — 종료")
+                            break
+                    else:
+                        print(f"[TestUser] 에이전트 응답 타임아웃 ({IDLE_TIMEOUT}초) — 추론 플래그 없음")
+                        break
 
                 self.waiting_for_response = False
 
@@ -242,6 +295,9 @@ class TestUserBot(discord.Client):
                 print(f"[TestUser] 대화 루프 오류: {e}")
                 break
 
+        # 종료 시 flag 정리
+        self._set_state("thinking", False)
+        self._set_state("speaking", False)
         elapsed = time.time() - self._test_start_time
         print(f"\n[TestUser] 테스트 종료 — {self.turn_count}턴, {elapsed:.0f}초")
         print(f"[TestUser] 대화 기록 {len(self.conversation)}건")
@@ -272,7 +328,7 @@ class TestUserBot(discord.Client):
                     "--output-format", "text",
                     "--model", "claude-haiku-4-5-20251001",
                 ],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=90,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
             if result.returncode == 0 and result.stdout.strip():

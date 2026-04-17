@@ -33,12 +33,25 @@ mkdir -p dev
 
 # PID 파일
 PID_FILE="dev/.bot.pid"
+DASHBOARD_PID_FILE="dev/.dashboard.pid"
+DASHBOARD_PORT="${GLIMI_DASHBOARD_PORT:-8765}"
+
+# 웹 대시보드 자동 시작 (외부망 접속용 — 포트 $DASHBOARD_PORT 포워딩하면 됨)
+DASH_COMMUNITY="${GLIMI_COMMUNITY:-default}"
+echo -e "${CYAN}[run.sh] 웹 대시보드 시작 (port ${DASHBOARD_PORT}, community ${DASH_COMMUNITY})${NC}"
+python scripts/web_dashboard.py "$DASH_COMMUNITY" --port "$DASHBOARD_PORT" --host 0.0.0.0 \
+    > dev/dashboard.log 2>&1 &
+echo $! > "$DASHBOARD_PID_FILE"
 
 cleanup() {
     echo -e "\n${YELLOW}Glimi 종료${NC}"
     if [ -f "$PID_FILE" ]; then
         kill "$(cat $PID_FILE)" 2>/dev/null || true
         rm -f "$PID_FILE"
+    fi
+    if [ -f "$DASHBOARD_PID_FILE" ]; then
+        kill "$(cat $DASHBOARD_PID_FILE)" 2>/dev/null || true
+        rm -f "$DASHBOARD_PID_FILE"
     fi
     exit 0
 }

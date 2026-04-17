@@ -276,7 +276,8 @@ class OnboardingSupervisor(Supervisor):
             return 999
         try:
             last_dt = datetime.fromisoformat(recent[-1]["timestamp"])
-            return (datetime.now() - last_dt).total_seconds()
+            # SQLite CURRENT_TIMESTAMP는 UTC. utcnow로 비교해야 시간대 mismatch 안 남.
+            return (datetime.utcnow() - last_dt).total_seconds()
         except Exception:
             return 999
 
@@ -429,7 +430,8 @@ class ChannelConversationSupervisor(Supervisor):
             return 999
         try:
             last_dt = datetime.fromisoformat(recent[-1]["timestamp"])
-            return (datetime.now() - last_dt).total_seconds()
+            # SQLite CURRENT_TIMESTAMP는 UTC. utcnow로 비교해야 시간대 mismatch 안 남.
+            return (datetime.utcnow() - last_dt).total_seconds()
         except Exception:
             return 999
 
