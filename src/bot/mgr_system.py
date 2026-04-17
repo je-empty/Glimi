@@ -44,61 +44,76 @@ async def parse_and_execute_actions(
     report_channel: discord.TextChannel,
     responses: list[str],
     guild: discord.Guild,
+    caller_agent_id: str = None,
 ) -> list[str]:
     """
-    유나 응답에서 [CMD:...] / [QUERY:...] 태그를 파싱하고 실행.
-    CMD: 즉시 실행 (톡방 생성 등)
-    QUERY: DB 조회 → 결과를 유나에게 다시 전달 → 분석 응답만 반환 (원문 버림)
+    신규 Tool Protocol 기반 실행.
+
+    - runtime에 stash된 tool_calls를 dispatcher로 실행
+    - query 결과 있으면 followup generate → 분석 응답 추가 반환
+    - 응답 텍스트(responses)는 chat만 (tool 블록은 이미 runtime이 제거)
+
+    caller_agent_id: 호출한 에이전트. None이면 MGR_ID (유나) 가정.
     """
-    cleaned = []
-    query_results = []
-    has_query = False
+    from src.core.tools import run_tools, ToolContext, format_results_block, get_tool
+    from src.core.runtime import runtime
 
-    for resp in responses:
-        cmds = CMD_PATTERN.findall(resp)
-        queries = QUERY_PATTERN.findall(resp)
-        actions = ACTION_PATTERN.findall(resp)
-        clean_text = CMD_PATTERN.sub('', resp)
-        clean_text = QUERY_PATTERN.sub('', clean_text)
-        clean_text = ACTION_PATTERN.sub('', clean_text).strip()
+    cleaned = [r.strip() for r in responses if r and r.strip()]
+    agent_id = caller_agent_id or MGR_ID
+    profile = load_profile(agent_id) or {}
+    agent_type = profile.get("type", "mgr")
 
-        if queries:
-            has_query = True
+    calls = runtime.pop_tool_calls(agent_id)
+    if not calls:
+        return cleaned
 
-        # QUERY 없는 메시지만 cleaned에 추가 (QUERY 있으면 followup이 대체)
-        if clean_text and not queries:
-            cleaned.append(clean_text)
+    ctx = ToolContext(
+        caller_agent_id=agent_id,
+        caller_agent_type=agent_type,
+        channel_name=getattr(report_channel, "name", "") or "",
+        channel_obj=report_channel,
+        guild=guild,
+    )
+    results = await run_tools(calls, ctx)
 
-        # CMD 실행
-        for cmd_str in cmds:
-            try:
-                await execute_yuna_command(report_channel, cmd_str.strip(), guild)
-            except Exception as e:
-                log.error(f"[유나CMD] 실행 실패: {cmd_str} → {e}")
-                await send_as_agent(report_channel, MGR_ID, f"명령 실행 실패했어.. ({str(e)[:60]})")
+    for r in results:
+        mark = "✓" if r.ok else "✗"
+        tail = str(r.data)[:80] if r.ok and r.data else (r.error or "")
+        log_writer.system(f"[Tool] {mark} {r.tool} {tail}")
 
-        # ACTION 처리 (유나 → 직접 실행, 페르소나 → 유나에게 전달)
-        for action in actions:
-            try:
-                await _forward_action_to_yuna(MGR_ID, action.strip(), guild)
-            except Exception as e:
-                log.error(f"[ACTION] 실행 실패: {action} → {e}")
-
-        # QUERY 수집
-        for q_str in queries:
-            result = await execute_yuna_query(q_str.strip(), guild)
-            if result:
-                query_results.append(result)
-
-    # QUERY 결과가 있으면 유나에게 다시 전달해서 분석 받기
-    if query_results:
-        followup = await _yuna_followup_with_data(
-            report_channel, "\n\n".join(query_results), guild
-        )
+    # 쿼리 결과 있으면 다음 턴에 <tool_results> 주입 + followup 생성
+    has_query_result = any(
+        (get_tool(r.tool) and get_tool(r.tool).category == "query") for r in results if r.ok
+    )
+    if has_query_result:
+        block = format_results_block(results)
+        runtime.stash_tool_results(agent_id, ctx.channel_name, block)
+        followup = await _tool_followup_generate(report_channel, agent_id, guild)
         if followup:
             cleaned.extend(followup)
 
     return cleaned
+
+
+async def _tool_followup_generate(
+    report_channel: discord.TextChannel,
+    agent_id: str,
+    guild: discord.Guild,
+) -> list[str]:
+    """tool_results가 stash된 상태에서 에이전트 재생성 — 결과 분석 chat만 반환.
+
+    runtime._build_prompt가 stash된 결과를 user_message 앞에 삽입.
+    """
+    loop = asyncio.get_event_loop()
+    ch_name = getattr(report_channel, "name", "") or ""
+    trigger = "(위 tool_results를 보고 자연스럽게 마무리해. 결과를 대화에 녹여서 간결하게. 추가 도구 호출 불필요하면 tools 블록 비워도 돼.)"
+    responses = await loop.run_in_executor(
+        None,
+        lambda: runtime.generate_response(
+            agent_id, ch_name, trigger, log_user_message=False
+        )
+    )
+    return [r for r in responses if r and r.strip()]
 
 
 async def execute_yuna_query(query_str: str, guild: discord.Guild = None) -> str:

@@ -221,58 +221,35 @@ def _has_open_tag(text):
 
 
 async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
-    """메시지 하나를 처리해서 전송 + DB 로깅. mgr/creator면 CMD/QUERY, 페르소나면 ACTION 파싱."""
+    """메시지 하나를 처리해서 전송 + DB 로깅.
+
+    신규 tool protocol 기준:
+    - runtime이 이미 <tools> 블록을 chat 스트림에서 제외했음
+    - 따라서 이 함수가 받는 msg는 순수 chat text
+    - tool 실행은 스트리밍 종료 후 일괄 처리 (parse_and_execute_actions)
+    - 메타 용어 필터링 + 이미지 ACTION 같은 특수 케이스만 여기서 처리
+    """
     from src.bot.core import send_system_log
     ch_name = getattr(channel, 'name', '')
-    is_creator = (load_profile(agent_id) or {}).get("type") == "creator"
-    has_cmd_access = is_mgr or is_creator
-    has_cmd = CMD_PATTERN.search(msg) or QUERY_PATTERN.search(msg)
-    has_action = ACTION_PATTERN.search(msg)
 
     # 에이전트 감정 (DB 로깅용)
     agent_db = db.get_agent(agent_id)
     emotion = agent_db.get("current_emotion", "평온") if agent_db else None
 
-    if has_cmd_access and guild and has_cmd:
-        # CMD/QUERY — 대화에 안 보이고 시스템 로그로
-        agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
-        await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
-        # creator의 CMD는 유나 응답이 mgr-dashboard로 가도록 (mgr-creator에서 유나 차단 방지)
-        from src.bot import MGR_CHANNEL, MGR_ID
-        if is_creator:
-            mgr_ch = discord.utils.get(channel.guild.text_channels, name=MGR_CHANNEL)
-            report_ch = mgr_ch or channel
-        else:
-            report_ch = channel
-        cleaned = await parse_and_execute_actions(report_ch, [msg], guild)
-        for resp in cleaned:
-            for part in _split_for_chat(resp):
-                await send_as_agent(channel, agent_id, part)
-                sent_msgs.append(part)
-                db.log_message(ch_name, agent_id, part, emotion=emotion)
-    elif has_action:
-        agent_name = (load_profile(agent_id) or {}).get("name", agent_id)
-        await send_system_log(f"{agent_id} ({agent_name}) {msg}", force=True)
-        actions = ACTION_PATTERN.findall(msg)
-        clean_text = ACTION_PATTERN.sub('', msg).strip()
-        clean_text = _filter_meta_speech(clean_text, agent_id)
-        if clean_text:
-            for part in _split_for_chat(clean_text):
-                await send_as_agent(channel, agent_id, part)
-                sent_msgs.append(part)
-                db.log_message(ch_name, agent_id, part, emotion=emotion)
-        for action in actions:
-            # 이미지 ACTION 처리
-            action_str = action.strip()
-            if _is_image_action(action_str):
-                await _handle_image_action(channel, agent_id, action_str)
-            else:
-                await _forward_action_to_yuna(agent_id, action_str, guild)
-    else:
-        for part in _split_for_chat(msg):
-            await send_as_agent(channel, agent_id, part)
-            sent_msgs.append(part)
-            db.log_message(ch_name, agent_id, part, emotion=emotion)
+    # 이미지 ACTION (persona만, 아직 tool 시스템 외)
+    if _is_image_action(msg):
+        await _handle_image_action(channel, agent_id, msg)
+        return
+
+    # 메타 용어 필터 (AI/봇/에이전트 등)
+    cleaned = _filter_meta_speech(msg, agent_id)
+    if not cleaned:
+        return
+
+    for part in _split_for_chat(cleaned):
+        await send_as_agent(channel, agent_id, part)
+        sent_msgs.append(part)
+        db.log_message(ch_name, agent_id, part, emotion=emotion)
 
 
 async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, user_message: str):
@@ -290,7 +267,6 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
 
         # 전 에이전트 공통: 스트리밍 생성 + 즉시 전송
         sent_msgs = []
-        _tag_buffer = ""  # CMD/QUERY 태그가 여러 줄에 걸칠 때 버퍼
 
         def _on_message(msg):
             loop.call_soon_threadsafe(msg_queue.put_nowait, msg)
@@ -303,28 +279,7 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             loop.call_soon_threadsafe(msg_queue.put_nowait, None)
 
         async def _handle_msg(msg):
-            """메시지 처리 — CMD/QUERY 태그가 여러 줄에 걸치면 합침 (JSON 깊이 추적)"""
-            nonlocal _tag_buffer
-
-            if _tag_buffer:
-                _tag_buffer += "\n" + msg
-                if _is_tag_complete(_tag_buffer):
-                    full_msg = _tag_buffer
-                    _tag_buffer = ""
-                    await _process_and_send(
-                        message.channel, agent_id, full_msg,
-                        is_mgr, message.guild, sent_msgs
-                    )
-                elif len(_tag_buffer) > 5000:
-                    # 너무 길면 포기 — 시스템 로그에만
-                    log_writer.system(f"[태그 버퍼] 초과 (5000자) — 드롭")
-                    _tag_buffer = ""
-                return
-
-            if _has_open_tag(msg):
-                _tag_buffer = msg
-                return
-
+            """메시지 처리 — 신규 tool protocol에서는 chat만 스트림됨 (runtime이 <tools> 제외)"""
             await _process_and_send(
                 message.channel, agent_id, msg,
                 is_mgr, message.guild, sent_msgs
@@ -350,12 +305,20 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             await _handle_msg(msg)
             await asyncio.sleep(0.1)  # rate limit 방지
 
-        # 버퍼에 남은 불완전 태그 처리 (닫히지 않은 채 끝남)
-        if _tag_buffer:
-            await _process_and_send(
-                message.channel, agent_id, _tag_buffer,
-                is_mgr, message.guild, sent_msgs
-            )
+        # 스트리밍 종료 → runtime에 stash된 tool_calls 실행
+        from src.bot.mgr_system import parse_and_execute_actions
+        followup_msgs = await parse_and_execute_actions(
+            message.channel, [], message.guild, caller_agent_id=agent_id
+        )
+        # followup (query 결과 분석)이 있으면 추가 전송
+        ch_name = getattr(message.channel, "name", "") or channel_name
+        agent_db = db.get_agent(agent_id)
+        emotion = agent_db.get("current_emotion", "평온") if agent_db else None
+        for resp in followup_msgs:
+            for part in _split_for_chat(resp):
+                await send_as_agent(message.channel, agent_id, part)
+                sent_msgs.append(part)
+                db.log_message(ch_name, agent_id, part, emotion=emotion)
 
         # 전송 완료 → speaking 해제 + 메모리 요약 + supervisor 알림
         log_writer.mark_speaking_done(agent_id)
@@ -427,25 +390,8 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
 
             sent_msgs = []
             first = True
-            _tag_buffer = ""
 
             async def _handle_group_msg(msg_text):
-                nonlocal _tag_buffer
-                if _tag_buffer:
-                    _tag_buffer += "\n" + msg_text
-                    if _is_tag_complete(_tag_buffer):
-                        full_msg = _tag_buffer
-                        _tag_buffer = ""
-                        await _process_and_send(
-                            message.channel, agent_id, full_msg,
-                            False, message.guild, sent_msgs
-                        )
-                    elif len(_tag_buffer) > 5000:
-                        _tag_buffer = ""
-                    return
-                if _has_open_tag(msg_text):
-                    _tag_buffer = msg_text
-                    return
                 await _process_and_send(
                     message.channel, agent_id, msg_text,
                     False, message.guild, sent_msgs
@@ -466,12 +412,20 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                 await _handle_group_msg(msg)
                 await asyncio.sleep(0.1)  # rate limit 방지
 
-            # 버퍼에 남은 불완전 태그 처리
-            if _tag_buffer:
-                await _process_and_send(
-                    message.channel, agent_id, _tag_buffer,
-                    False, message.guild, sent_msgs
-                )
+            # 스트리밍 종료 → stash된 tool_calls 실행
+            from src.bot.mgr_system import parse_and_execute_actions
+            followup_msgs = await parse_and_execute_actions(
+                message.channel, [], message.guild, caller_agent_id=agent_id
+            )
+            if followup_msgs:
+                agent_db = db.get_agent(agent_id)
+                emotion = agent_db.get("current_emotion", "평온") if agent_db else None
+                ch_name_g = getattr(message.channel, "name", "") or channel_name
+                for resp in followup_msgs:
+                    for part in _split_for_chat(resp):
+                        await send_as_agent(message.channel, agent_id, part)
+                        sent_msgs.append(part)
+                        db.log_message(ch_name_g, agent_id, part, emotion=emotion)
 
             # 전송 완료 → speaking 해제 + 메모리 요약 + supervisor 알림
             log_writer.mark_speaking_done(agent_id)

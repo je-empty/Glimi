@@ -57,6 +57,15 @@ async def on_ready():
     log.info(f"🟢 봇 로그인: {bot.user.name}")
     log_writer.system(f"봇 로그인: {bot.user.name}")
 
+    # Tool handlers 등록 (registry에 handler 주입)
+    try:
+        from src.bot.tool_handlers import register_all as _register_tools
+        _register_tools()
+        from src.core.tools import TOOLS as _TOOLS
+        log_writer.system(f"Tools registered: {len(_TOOLS)}")
+    except Exception as e:
+        log_writer.system(f"❌ Tool registration failed: {e}")
+
     if bot.guilds:
         # DISCORD_GUILD_ID가 설정되어 있으면 해당 서버 선택 (멀티서버 지원)
         target_guild_id = os.environ.get("DISCORD_GUILD_ID")

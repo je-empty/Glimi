@@ -19,6 +19,7 @@ from typing import Optional, Callable
 from src import db
 from .profile import load_profile, build_system_prompt, get_user_name, get_user_id, get_user_display_name
 from .memory import check_and_summarize, get_memory_context, get_cross_channel_memory, RAW_WINDOW
+from .tools import parse_response as parse_tools_in_output, ToolCall
 from src import log_writer
 
 
@@ -47,6 +48,10 @@ class AgentRuntime:
 
     def __init__(self):
         self._active_agents: dict[str, dict] = {}
+        # 최근 응답에서 추출한 tool_calls 저장소 (key=agent_id, consume 후 삭제)
+        self._last_tool_calls: dict[str, list[ToolCall]] = {}
+        # 다음 호출 시 prompt에 주입할 <tool_results> 블록 (key=agent_id:channel)
+        self._pending_tool_results: dict[str, str] = {}
 
         if CLAUDE_AVAILABLE:
             print("[Runtime] Claude Code CLI 감지됨 — 실제 대화 모드")
@@ -168,12 +173,37 @@ class AgentRuntime:
 
         return "\n".join(prompt_parts)
 
+    def pop_tool_calls(self, agent_id: str) -> list[ToolCall]:
+        """generate_response 이후 마지막 tool_calls 꺼내서 소비 (재호출 시 덮어씀)"""
+        calls = self._last_tool_calls.pop(agent_id, [])
+        return calls
+
+    def stash_tool_results(self, agent_id: str, channel: str, results_block: str):
+        """다음 generate_response 호출 시 prompt에 주입될 <tool_results> 블록 저장"""
+        key = f"{agent_id}:{channel}"
+        if results_block:
+            self._pending_tool_results[key] = results_block
+        else:
+            self._pending_tool_results.pop(key, None)
+
+    def _consume_tool_results(self, agent_id: str, channel: str) -> str:
+        """stash된 tool_results 꺼내고 제거"""
+        key = f"{agent_id}:{channel}"
+        return self._pending_tool_results.pop(key, "")
+
     def _build_prompt(self, agent_info: dict, channel: str, recent: list[dict],
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
         """프롬프트 구성. Returns: (full_prompt, system_prompt, model)"""
+        agent_id = agent_info["profile"]["id"]
         context = self._build_context(agent_info, channel, recent, user_message=user_message)
+
+        # 이전 턴의 tool_results가 있으면 user_message 앞에 주입
+        tool_results = self._consume_tool_results(agent_id, channel)
         name = speaker_name or get_user_display_name()
-        full_prompt = context + f"{name}: {user_message}"
+        if tool_results:
+            full_prompt = context + tool_results + "\n\n" + f"{name}: {user_message}"
+        else:
+            full_prompt = context + f"{name}: {user_message}"
 
         system_prompt = agent_info["system_prompt"]
         model = AGENT_MODELS.get(agent_info["profile"].get("type", "persona"), "claude-sonnet-4-6")
@@ -563,7 +593,12 @@ class AgentRuntime:
                 if not raw:
                     return ["..."]
 
-                return self._parse_response(raw, agent_name=name)
+                # <tools> 블록 먼저 파싱 → calls는 stash, chat만 메시지 분리
+                parsed = parse_tools_in_output(raw)
+                self._last_tool_calls[agent_id] = parsed.tool_calls
+                if parsed.errors:
+                    log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                return self._parse_response(parsed.chat, agent_name=name)
 
             except subprocess.TimeoutExpired:
                 log_writer.system(f"❌ CLI 타임아웃 (60초)")
@@ -626,6 +661,8 @@ class AgentRuntime:
 
         messages = []
         seen = set()
+        tool_buffer: list[str] = []  # <tools> 블록 누적 (chat 스트림에서 제외)
+        in_tools = False
 
         # 에이전트 타입별 최대 응답 수 제한
         MAX_STREAMING_MESSAGES = {
@@ -656,6 +693,20 @@ class AgentRuntime:
                 raw_line = line.rstrip("\n")
                 line = raw_line.strip()
                 if not line:
+                    if in_tools:
+                        tool_buffer.append("")
+                    continue
+
+                # <tools> 블록 진입 감지 — 이 시점 이후는 chat으로 방출 금지
+                if "<tools>" in line.lower() and not in_tools:
+                    in_tools = True
+                    tool_buffer.append(raw_line)
+                    continue
+                if in_tools:
+                    tool_buffer.append(raw_line)
+                    if "</tools>" in line.lower():
+                        # 블록 끝 — 이후 line이 또 있을 경우 무시 또는 체크
+                        pass
                     continue
 
                 # [MSG] 태그 처리
@@ -689,6 +740,16 @@ class AgentRuntime:
                     break
 
             process.wait(timeout=60)
+
+            # <tools> 블록 파싱 → stash
+            if tool_buffer:
+                try:
+                    parsed = parse_tools_in_output("\n".join(tool_buffer))
+                    self._last_tool_calls[agent_id] = parsed.tool_calls
+                    if parsed.errors:
+                        log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                except Exception as e:
+                    log_writer.system(f"[Tools] 스트림 파싱 실패: {e}")
 
             if process.returncode != 0:
                 stderr = process.stderr.read() if process.stderr else ""
