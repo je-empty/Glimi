@@ -499,7 +499,7 @@ HTML = r"""<!doctype html>
   /* ==== Lightbox (full avatar) ==== */
   .lightbox {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-    backdrop-filter: blur(10px); z-index: 100;
+    backdrop-filter: blur(10px); z-index: 3000;
     align-items: center; justify-content: center; padding: 40px; cursor: zoom-out;
   }
   .lightbox.open { display: flex; }
@@ -536,7 +536,7 @@ HTML = r"""<!doctype html>
   /* ==== Detail Modal ==== */
   .detail-backdrop {
     position: fixed; inset: 0; background: rgba(10, 12, 25, 0.5);
-    backdrop-filter: blur(6px); z-index: 20; display: none;
+    backdrop-filter: blur(6px); z-index: 2000; display: none;
     align-items: center; justify-content: center; padding: 24px;
   }
   :root[data-theme="light"] .detail-backdrop { background: rgba(20, 24, 40, 0.25); }
@@ -644,7 +644,7 @@ HTML = r"""<!doctype html>
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 20px; box-shadow: var(--shadow-lg); font-size: 13px; z-index: 200;
+    padding: 12px 20px; box-shadow: var(--shadow-lg); font-size: 13px; z-index: 4000;
     display: none; max-width: 500px;
   }
   .toast.show { display: block; animation: toast-in 0.2s ease-out; }
