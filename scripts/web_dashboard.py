@@ -1957,21 +1957,15 @@ function renderConnectionGraph(snap) {
   }
   const ownerName = snap.meta?.user_name || 'Owner';
 
-  // 활성 채널 수집 — 최근 활동 있는 것만 (3일 이내, 또는 running 상태)
-  const RECENT_HOURS = fullscreen ? 24 * 14 : 24 * 3;  // fullscreen이면 2주, 기본 3일
+  // 모든 채널 수집 — msg_count > 0 이거나 running이면 포함
   const channels = (snap.channels || []).filter(c => {
-    if (c.msg_count === 0) return false;
     if (c.participant_count < 1) return false;
-    if (c.status === 'running') return true;
-    if (!c.last_ts) return false;
-    try {
-      const age = (Date.now() - new Date(c.last_ts).getTime()) / 1000 / 3600;
-      return age < RECENT_HOURS;
-    } catch { return false; }
+    return c.msg_count > 0 || c.status === 'running';
   });
 
-  // 엣지 수집 — 모든 채널의 참여자 쌍
-  const rawEdges = [];
+  // 엣지 수집 — 채널마다 참여자 쌍 조합. 같은 쌍 여러 채널은 모두 그대로 유지
+  // (bundling 안 함 — 사용자 요구: 각 채널 라인 개별 표시, curve offset으로 겹침 방지)
+  const edges = [];
   for (const c of channels) {
     const parts = [];
     if (c.kind === 'dm' || c.kind === 'group' || c.kind === 'mgr') {
@@ -1985,36 +1979,15 @@ function renderConnectionGraph(snap) {
     const live = c.last_ago && (c.last_ago.includes('초') || (c.last_ago.includes('분') && parseInt(c.last_ago) < 5));
     for (let i = 0; i < parts.length; i++) {
       for (let j = i + 1; j < parts.length; j++) {
-        rawEdges.push({ a: parts[i], b: parts[j], channel: c.name, kind: c.kind, live, msg_count: c.msg_count, last_ts: c.last_ts });
+        edges.push({
+          a: parts[i], b: parts[j],
+          channel: c.name, kind: c.kind, live,
+          msg_count: c.msg_count, last_ts: c.last_ts,
+          bundle_count: 1, bundle_live: live,
+        });
       }
     }
   }
-
-  // 같은 쌍은 대표 1개만: 가장 최근 or 가장 활성 채널. 나머지는 개수 배지로.
-  const pairMap = {};  // "a||b" → { primary, extras: N, hasLive, kinds: Set }
-  for (const e of rawEdges) {
-    const k = [e.a, e.b].sort().join('||');
-    if (!pairMap[k]) {
-      pairMap[k] = { edges: [], hasLive: false, kinds: new Set() };
-    }
-    pairMap[k].edges.push(e);
-    if (e.live) pairMap[k].hasLive = true;
-    pairMap[k].kinds.add(e.kind);
-  }
-  const edges = [];
-  Object.values(pairMap).forEach(grp => {
-    // 우선순위: live > 최근 last_ts > msg_count
-    grp.edges.sort((a, b) => {
-      if (a.live !== b.live) return a.live ? -1 : 1;
-      const ta = a.last_ts ? new Date(a.last_ts).getTime() : 0;
-      const tb = b.last_ts ? new Date(b.last_ts).getTime() : 0;
-      return tb - ta;
-    });
-    const primary = grp.edges[0];
-    primary.bundle_count = grp.edges.length;  // 총 몇 개의 채널이 이 쌍 연결
-    primary.bundle_live = grp.hasLive;
-    edges.push(primary);
-  });
 
   // 노드 수집: 엣지에 참여한 에이전트 + owner
   const nodeSet = new Set();
@@ -2038,7 +2011,10 @@ function renderConnectionGraph(snap) {
   const ownerIdx = nodes.indexOf('__owner__');
   const othersRaw = nodes.filter(n => n !== '__owner__');
   const others = reorderNodesForMinCrossings(othersRaw, edges);
-  const radius = Math.min(W, H) * 0.34;
+  // 동적 반경 — 에이전트 많아지면 원 크게 (노드 겹침 완화)
+  //   3명 → 0.28, 6명 → 0.34, 10명 → 0.40, 최대 0.45
+  const radiusFactor = Math.max(0.26, Math.min(0.45, 0.22 + others.length * 0.022));
+  const radius = Math.min(W, H) * radiusFactor;
   const positions = {};
   if (ownerIdx !== -1) positions['__owner__'] = { x: cx, y: cy };
   others.forEach((n, i) => {
