@@ -365,7 +365,27 @@ HTML = r"""<!doctype html>
     background: var(--panel); border: 1px solid var(--border-soft); border-radius: 14px;
     padding: 16px 20px; margin-bottom: 20px; box-shadow: var(--shadow);
     position: relative; overflow: visible;
+    transition: background 0.2s;
   }
+  /* Fullscreen mode */
+  body.graph-fullscreen .graph-panel {
+    position: fixed !important; inset: 20px !important; z-index: 2147483500 !important;
+    margin: 0; padding: 20px 28px;
+    max-width: none; max-height: none;
+  }
+  body.graph-fullscreen .graph-stage { height: calc(100vh - 160px) !important; }
+  /* Hide everything else when graph fullscreen */
+  body.graph-fullscreen header,
+  body.graph-fullscreen nav.tabs,
+  body.graph-fullscreen main > .view > :not(.graph-panel),
+  body.graph-fullscreen .view:not(.active) { visibility: hidden; }
+  body.graph-fullscreen main { overflow: visible; }
+  .graph-fs-btn {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+    font-family: inherit;
+  }
+  .graph-fs-btn:hover { border-color: var(--accent); background: var(--panel-3); }
   .graph-panel .graph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .graph-panel .graph-head h3 {
     font-size: 11.5px; font-weight: 700; color: var(--text-dim);
@@ -1854,9 +1874,47 @@ function renderSupervisorsTab(supervisors) {
   ].join('');
 }
 
+// 이웃 노드(같은 채널 공유)끼리 원에서 인접하도록 재정렬 — 엣지 crossing 감소
+function reorderNodesForMinCrossings(others, edges) {
+  if (others.length <= 2) return others;
+  // 각 노드의 연결 이웃 집합
+  const neighbors = {};
+  others.forEach(n => neighbors[n] = new Set());
+  for (const e of edges) {
+    if (neighbors[e.a]) neighbors[e.a].add(e.b);
+    if (neighbors[e.b]) neighbors[e.b].add(e.a);
+  }
+  // greedy: 가장 degree 높은 노드 먼저, 그 이웃 → 이웃의 이웃 순으로 배치
+  const degree = n => (neighbors[n] || new Set()).size;
+  const remaining = new Set(others);
+  const order = [];
+  // 시작: 최다 연결 노드
+  const start = others.slice().sort((a, b) => degree(b) - degree(a))[0];
+  order.push(start); remaining.delete(start);
+  while (remaining.size) {
+    const last = order[order.length - 1];
+    // last의 이웃 중 남아있는 것 우선
+    const lastN = Array.from(neighbors[last] || []).filter(n => remaining.has(n));
+    if (lastN.length) {
+      // 남은 이웃 중 가장 degree 높은 것 선택
+      lastN.sort((a, b) => degree(b) - degree(a));
+      order.push(lastN[0]);
+      remaining.delete(lastN[0]);
+    } else {
+      // 고립 — 남은 것 중 degree 높은 아무나
+      const next = Array.from(remaining).sort((a, b) => degree(b) - degree(a))[0];
+      order.push(next);
+      remaining.delete(next);
+    }
+  }
+  return order;
+}
+
 // ==== Connection Graph (HTML nodes + SVG edges) ====
 function renderConnectionGraph(snap) {
-  const W = 780, H = 420;
+  const fullscreen = document.body.classList.contains('graph-fullscreen');
+  const W = fullscreen ? 1400 : 780;
+  const H = fullscreen ? 760 : 420;
   const cx = W / 2, cy = H / 2;
 
   // 에이전트 이름 → 에이전트 오브젝트 맵 (아바타 src 포함)
@@ -1919,8 +1977,10 @@ function renderConnectionGraph(snap) {
   }
 
   // Layout: owner는 중앙, 나머지는 원형 배치
+  //   → 엣지 crossing 최소화 위해 이웃끼리 인접 배치
   const ownerIdx = nodes.indexOf('__owner__');
-  const others = nodes.filter(n => n !== '__owner__');
+  const othersRaw = nodes.filter(n => n !== '__owner__');
+  const others = reorderNodesForMinCrossings(othersRaw, edges);
   const radius = Math.min(W, H) * 0.38;
   const positions = {};
   if (ownerIdx !== -1) positions['__owner__'] = { x: cx, y: cy };
@@ -1931,16 +1991,6 @@ function renderConnectionGraph(snap) {
       y: cy + Math.sin(angle) * radius,
     };
   });
-  // owner 없으면 중앙 비움, 원형만
-  if (!positions['__owner__']) {
-    others.forEach((n, i) => {
-      const angle = (i / others.length) * 2 * Math.PI - Math.PI / 2;
-      positions[n] = {
-        x: cx + Math.cos(angle) * radius,
-        y: cy + Math.sin(angle) * radius,
-      };
-    });
-  }
 
   // SVG 색상 (채널 타입별)
   const kindColor = {
@@ -2091,6 +2141,7 @@ function renderConnectionGraph(snap) {
   return `<div class="graph-head">
       <h3>Connection Graph</h3>
       <span class="note">${note}</span>
+      <button class="graph-fs-btn" onclick="toggleGraphFullscreen()">${fullscreen ? '✕ 닫기' : '⛶ 전체보기'}</button>
     </div>
     <div class="graph-stage">
       <svg class="graph-edges" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
@@ -2103,6 +2154,18 @@ function renderConnectionGraph(snap) {
     </div>
     ${legend}`;
 }
+
+function toggleGraphFullscreen() {
+  document.body.classList.toggle('graph-fullscreen');
+  tick();
+}
+// ESC로 fullscreen 빠져나오기
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('graph-fullscreen')) {
+    document.body.classList.remove('graph-fullscreen');
+    tick();
+  }
+});
 
 function activeScenes(snap) {
   return (snap.scenes || []).filter(s => s.status === 'active');
