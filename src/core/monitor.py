@@ -620,6 +620,9 @@ def get_health() -> dict:
     except Exception:
         pass
 
+    # GPU 정보 (plat 별 best-effort)
+    gpu_info = _get_gpu_info()
+
     return {
         "bot_alive": status["bot_alive"],
         "runner_alive": status["runner_alive"],
@@ -643,8 +646,84 @@ def get_health() -> dict:
         "glimi_cpu_pct": round(glimi_cpu_pct, 1),
         "glimi_mem_bytes": glimi_mem_bytes,
         "glimi_proc_count": glimi_proc_count,
-        # GPU는 macOS에서 간단한 API 없음 — 생략
+        # GPU
+        "gpu": gpu_info,
     }
+
+
+def _get_gpu_info() -> dict:
+    """GPU 정보 수집 (플랫폼별 best-effort).
+
+    macOS (Apple Silicon): unified memory → VRAM == RAM. GPU 이름만.
+    macOS (Intel+dGPU): system_profiler로 VRAM
+    Linux NVIDIA: nvidia-smi
+    """
+    import platform
+    import subprocess as _sp
+    out = {
+        "name": "",
+        "platform": platform.system(),
+        "unified_memory": False,
+        "vram_total_bytes": 0,
+        "vram_used_bytes": 0,  # 측정 어려움 — 0이면 미지원
+        "utilization_pct": 0,  # 측정 어려움
+        "supported": False,
+    }
+    sys = platform.system()
+    try:
+        if sys == "Darwin":
+            # system_profiler로 GPU 이름 / VRAM
+            r = _sp.run(
+                ["system_profiler", "SPDisplaysDataType", "-json"],
+                capture_output=True, text=True, timeout=4,
+            )
+            if r.returncode == 0:
+                import json as _json
+                data = _json.loads(r.stdout or "{}")
+                gpus = data.get("SPDisplaysDataType", [])
+                if gpus:
+                    g = gpus[0]
+                    out["name"] = g.get("_name") or g.get("sppci_model", "")
+                    # Apple Silicon: spdisplays_vram이 "shared" or N MB
+                    vram = g.get("spdisplays_vram_shared") or g.get("spdisplays_vram")
+                    if vram:
+                        if "shared" in str(vram).lower() or "apple" in out["name"].lower():
+                            out["unified_memory"] = True
+                        elif "mb" in str(vram).lower():
+                            try:
+                                out["vram_total_bytes"] = int(str(vram).split()[0].replace(",", "")) * 1024 * 1024
+                            except Exception:
+                                pass
+                        elif "gb" in str(vram).lower():
+                            try:
+                                out["vram_total_bytes"] = int(float(str(vram).split()[0].replace(",", "")) * 1024 * 1024 * 1024)
+                            except Exception:
+                                pass
+                    else:
+                        out["unified_memory"] = True  # Apple Silicon 기본
+                    # Core count
+                    cores = g.get("sppci_cores")
+                    if cores:
+                        out["cores"] = cores
+                    out["supported"] = True
+        elif sys == "Linux":
+            # nvidia-smi 시도
+            r = _sp.run(
+                ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,utilization.gpu",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                parts = [p.strip() for p in r.stdout.strip().split(",")]
+                if len(parts) >= 4:
+                    out["name"] = parts[0]
+                    out["vram_total_bytes"] = int(parts[1]) * 1024 * 1024
+                    out["vram_used_bytes"] = int(parts[2]) * 1024 * 1024
+                    out["utilization_pct"] = int(parts[3])
+                    out["supported"] = True
+    except Exception:
+        pass
+    return out
 
 
 def ROOT_DIR():
@@ -677,31 +756,123 @@ def get_dev_state() -> dict:
 
 
 def get_usage_stats() -> dict:
-    """~/.claude/ 혹은 프로젝트 내부 usage 파일 읽기. 없으면 빈값."""
+    """Claude 계정 사용량 — ~/.claude/telemetry/ 의 tengu_exit 이벤트 파싱.
+
+    tengu_exit 이벤트의 additional_metadata에:
+      last_session_cost (USD)
+      last_session_total_input_tokens
+      last_session_total_output_tokens
+      last_session_total_cache_creation_input_tokens
+      last_session_total_cache_read_input_tokens
+      last_session_api_duration (ms)
+    """
     import json as _json
+    import glob as _glob
     from pathlib import Path as _P
-    # 후보 파일들
-    candidates = [
-        _P.home() / ".claude" / "usage.json",
-        ROOT_DIR() / "dev" / "usage.json",
-    ]
-    for p in candidates:
+    from datetime import datetime, timezone, timedelta
+
+    telem_dir = _P.home() / ".claude" / "telemetry"
+    if not telem_dir.exists():
+        # 폴백: 로그 기반
+        lines = get_recent_system_logs(tail_lines=5000)
+        return {
+            "source": "log-derived",
+            "cost_total_usd": 0,
+            "sonnet_calls": sum(1 for l in lines if "claude-sonnet" in l.lower()),
+            "haiku_calls": sum(1 for l in lines if "claude-haiku" in l.lower()),
+            "opus_calls": sum(1 for l in lines if "claude-opus" in l.lower()),
+        }
+
+    total_cost = 0.0
+    total_in = 0
+    total_out = 0
+    total_cache_w = 0
+    total_cache_r = 0
+    total_api_ms = 0
+    sessions = 0
+    by_day: dict[str, dict] = {}
+    by_model: dict[str, int] = {}
+    subscription_type = None
+
+    now = datetime.now(timezone.utc)
+    day_today = now.strftime("%Y-%m-%d")
+    week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    month_ago = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    cost_today = 0.0
+    cost_week = 0.0
+    cost_month = 0.0
+
+    for fp in _glob.glob(str(telem_dir / "*.json")):
         try:
-            if p.exists():
-                return _json.loads(p.read_text(encoding="utf-8"))
+            with open(fp, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        ev = _json.loads(line)
+                        ed = ev.get("event_data", {})
+                        name = ed.get("event_name", "")
+                        model = ed.get("model", "") or ""
+                        ts = ed.get("client_timestamp", "")
+                        if name == "tengu_exit":
+                            meta = ed.get("additional_metadata", "{}")
+                            if isinstance(meta, str):
+                                meta = _json.loads(meta)
+                            cost = meta.get("last_session_cost") or 0
+                            if not cost:
+                                continue
+                            total_cost += cost
+                            total_in += meta.get("last_session_total_input_tokens", 0) or 0
+                            total_out += meta.get("last_session_total_output_tokens", 0) or 0
+                            total_cache_w += meta.get("last_session_total_cache_creation_input_tokens", 0) or 0
+                            total_cache_r += meta.get("last_session_total_cache_read_input_tokens", 0) or 0
+                            total_api_ms += meta.get("last_session_api_duration", 0) or 0
+                            sessions += 1
+                            day = ts[:10] if ts else "?"
+                            d = by_day.setdefault(day, {"cost": 0, "sessions": 0})
+                            d["cost"] += cost
+                            d["sessions"] += 1
+                            if day == day_today:
+                                cost_today += cost
+                            if day >= week_ago:
+                                cost_week += cost
+                            if day >= month_ago:
+                                cost_month += cost
+                        elif name == "tengu_startup_manual_model_config":
+                            meta = ed.get("additional_metadata", "{}")
+                            if isinstance(meta, str):
+                                meta = _json.loads(meta)
+                            st = meta.get("subscriptionType")
+                            if st:
+                                subscription_type = st
+                        if model:
+                            by_model[model] = by_model.get(model, 0) + 1
+                    except Exception:
+                        continue
         except Exception:
             continue
-    # CLI 호출 건수를 system.log에서 카운트 (폴백)
-    lines = get_recent_system_logs(tail_lines=5000)
-    sonnet = sum(1 for l in lines if "claude-sonnet" in l.lower())
-    haiku = sum(1 for l in lines if "claude-haiku" in l.lower())
-    opus = sum(1 for l in lines if "claude-opus" in l.lower())
+
+    # 최근 7일 일별 cost
+    recent_days = []
+    for i in range(7):
+        d = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        info = by_day.get(d, {"cost": 0, "sessions": 0})
+        recent_days.append({"date": d, "cost": round(info["cost"], 4), "sessions": info["sessions"]})
+
     return {
-        "source": "log-derived",
-        "sonnet_calls": sonnet,
-        "haiku_calls": haiku,
-        "opus_calls": opus,
-        "total": sonnet + haiku + opus,
+        "source": "telemetry",
+        "subscription_type": subscription_type or "unknown",
+        "cost_total_usd": round(total_cost, 4),
+        "cost_today_usd": round(cost_today, 4),
+        "cost_week_usd": round(cost_week, 4),
+        "cost_month_usd": round(cost_month, 4),
+        "sessions_total": sessions,
+        "tokens_input": total_in,
+        "tokens_output": total_out,
+        "tokens_cache_write": total_cache_w,
+        "tokens_cache_read": total_cache_r,
+        "api_duration_ms": total_api_ms,
+        "recent_days": recent_days,
+        "by_model": by_model,
     }
 
 

@@ -113,19 +113,26 @@ HTML = r"""<!doctype html>
   .app { display: grid; grid-template-rows: auto auto 1fr; height: 100vh; }
 
   header.status {
-    padding: 11px 24px;
+    padding: 12px 24px;
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 14px;
     box-shadow: var(--shadow);
-    z-index: 5;
+    z-index: 100;
+    min-height: 58px;
+    position: relative;
   }
   .brand {
-    font-size: 14px; font-weight: 700; letter-spacing: -0.2px;
-    color: var(--accent); display: flex; align-items: baseline; gap: 3px;
+    display: flex; align-items: center; gap: 10px; white-space: nowrap;
   }
-  .brand .dot { color: var(--accent-2); }
-  .brand small { font-size: 10px; font-weight: 500; color: var(--text-faint); margin-left: 10px; letter-spacing: 1.3px; text-transform: uppercase; }
+  .brand-glyph {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff; font-weight: 800; font-size: 15px; letter-spacing: -0.5px;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
 
   /* ==== Community switcher ==== */
   .community-btn {
@@ -147,10 +154,10 @@ HTML = r"""<!doctype html>
   }
 
   .community-menu {
-    display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
+    display: none; position: absolute; top: calc(100% + 8px); left: 0;
     background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
-    min-width: 260px; box-shadow: var(--shadow-lg); z-index: 50;
-    padding: 6px; overflow: hidden;
+    min-width: 280px; max-width: 360px; box-shadow: var(--shadow-lg); z-index: 1000;
+    padding: 6px; overflow: auto; max-height: 70vh;
   }
   .community-menu.open { display: block; }
   .community-menu .ci {
@@ -594,6 +601,21 @@ HTML = r"""<!doctype html>
 
   .empty { padding: 32px 12px; text-align: center; color: var(--text-faint); font-size: 12px; font-style: italic; }
 
+  /* Empty community state */
+  .empty-banner {
+    display: none; padding: 40px 32px; background: var(--panel);
+    border: 1px dashed var(--border); border-radius: 14px; text-align: center;
+    color: var(--text-dim); margin-bottom: 20px;
+  }
+  body.community-empty .empty-banner { display: block; }
+  body.community-empty .overview-grid,
+  body.community-empty #overview-agents,
+  body.community-empty #overview-msgs,
+  body.community-empty .section-title { display: none; }
+  .empty-banner h2 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  .empty-banner .hint { font-size: 12.5px; margin-top: 8px; color: var(--text-faint); }
+  .empty-banner code { background: var(--panel-2); padding: 2px 8px; border-radius: 4px; font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--text); }
+
   /* ==== Action Buttons ==== */
   .act-btn {
     background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
@@ -639,7 +661,11 @@ HTML = r"""<!doctype html>
 </head><body>
 <div class="app">
   <header class="status">
-    <span class="brand">◈ Glimi<span class="dot">.</span><small>dashboard</small></span>
+    <span class="brand">
+      <span class="brand-glyph">G</span>
+      <span class="brand-name">Glimi</span>
+    </span>
+
     <div style="position:relative" id="community-switcher-wrap">
       <button class="community-btn" id="community-btn" title="커뮤니티 전환">
         <span class="sv-dot"></span>
@@ -648,11 +674,10 @@ HTML = r"""<!doctype html>
       </button>
       <div class="community-menu" id="community-menu"></div>
     </div>
-    <span id="pills-left"></span>
-    <div class="stats-right">
-      <span id="pills-right"></span>
-      <button class="btn-icon" id="theme-toggle" title="테마 전환">☀</button>
-    </div>
+
+    <div style="flex:1"></div>
+
+    <button class="btn-icon" id="theme-toggle" title="테마 전환">☀</button>
   </header>
 
   <nav class="tabs" id="tabs">
@@ -660,6 +685,7 @@ HTML = r"""<!doctype html>
     <button data-tab="agents">Agents <span class="count" id="tc-agents">0</span></button>
     <button data-tab="channels">Channels <span class="count" id="tc-channels">0</span></button>
     <button data-tab="messages">Messages <span class="count" id="tc-messages">0</span></button>
+    <button data-tab="scenes">Scenes <span class="count" id="tc-scenes">0</span></button>
     <button data-tab="events">Events <span class="count" id="tc-events">0</span></button>
     <button data-tab="health">Health</button>
     <button data-tab="sync">Sync</button>
@@ -671,6 +697,11 @@ HTML = r"""<!doctype html>
   <main>
     <!-- Overview -->
     <div class="view active" id="view-overview">
+      <div class="empty-banner">
+        <h2>📭 이 커뮤니티는 비어있어요</h2>
+        <div>아직 에이전트나 대화가 없어요. 커뮤니티 서버를 시작하면 데이터가 채워집니다.</div>
+        <div class="hint">서버 시작: <code>./scripts/run.sh <span id="empty-cid">—</span></code>  또는 Sync 탭에서 <b>▶ 서버 시작</b></div>
+      </div>
       <div class="offline-banner" id="offline-banner">
         <b>오프라인</b> — 커뮤니티 서버가 실행 중이 아님. 마지막 스냅샷 표시 중 (실시간 아님)
         <span class="muted" id="offline-last"></span>
@@ -680,7 +711,7 @@ HTML = r"""<!doctype html>
         <div class="kpi"><div class="label">Server Status</div><div class="value" id="kpi-server">—</div></div>
         <div class="kpi"><div class="label">Discord Bot</div><div class="value" id="kpi-bot">—</div></div>
         <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
-        <div class="kpi"><div class="label">Onboarding</div><div class="value" id="kpi-phase">—</div></div>
+        <div class="kpi"><div class="label">Active Scene</div><div class="value" id="kpi-scene">—</div></div>
         <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
       </div>
       <div class="section-title">Agents</div>
@@ -695,6 +726,7 @@ HTML = r"""<!doctype html>
 
     <div class="view" id="view-messages"><div class="msg-list" id="messages-full"></div></div>
 
+    <div class="view" id="view-scenes"><div id="scenes-full"></div></div>
     <div class="view" id="view-events"><div class="event-list" id="events-full"></div></div>
 
     <div class="view" id="view-health"><div class="health-grid" id="health-full"></div></div>
@@ -760,6 +792,34 @@ function fmtBytes(n) {
   let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
+function renderGpuCard(gpu, sysMemTotal, sysMemUsed) {
+  if (!gpu || !gpu.supported) {
+    return `<div class="health-card" style="opacity:0.5">
+      <h4>GPU</h4>
+      <div class="big" style="font-size:13px;color:var(--text-faint)">감지되지 않음</div>
+      <div class="sub">${esc(gpu?.platform || 'unknown platform')}</div>
+    </div>`;
+  }
+  if (gpu.unified_memory) {
+    // Apple Silicon: unified memory — GPU VRAM = system RAM 공유
+    const pct = sysMemTotal ? (sysMemUsed / sysMemTotal * 100).toFixed(1) : 0;
+    return `<div class="health-card">
+      <h4>GPU · ${esc(gpu.name || 'Apple Silicon')}</h4>
+      <div class="big" style="font-size:15px">${esc(gpu.name || 'Apple Silicon')}${gpu.cores ? ` · ${gpu.cores} cores` : ''}</div>
+      <div class="sub">Unified Memory (${fmtBytes(sysMemTotal)} shared w/ RAM)</div>
+      <div class="disk-bar"><span style="width:${pct}%"></span></div>
+    </div>`;
+  }
+  // Dedicated GPU (e.g. NVIDIA)
+  const vramPct = gpu.vram_total_bytes ? (gpu.vram_used_bytes / gpu.vram_total_bytes * 100).toFixed(1) : 0;
+  return `<div class="health-card">
+    <h4>GPU · ${esc(gpu.name || 'GPU')}</h4>
+    <div class="big">${gpu.utilization_pct}<small style="font-size:13px;color:var(--text-dim)">%</small></div>
+    <div class="sub">VRAM: ${fmtBytes(gpu.vram_used_bytes)} / ${fmtBytes(gpu.vram_total_bytes)} · ${vramPct}%</div>
+    <div class="disk-bar"><span style="width:${vramPct}%"></span></div>
+  </div>`;
 }
 function roleClass(m) {
   if (m.is_user) return 'user';
@@ -920,18 +980,11 @@ function renderHero(snap) {
 
   return `<div class="hero-row">
     <div class="hero-avatars">
-      ${avatarsHtml || '<div style="color:var(--text-faint)">no agents yet</div>'}
+      ${avatarsHtml || '<div style="color:var(--text-faint);padding:16px 0">no agents yet</div>'}
     </div>
     <div class="hero-text" style="flex:1">
-      <h1><span class="sv-name">${esc(snap.community_id)}</span> · <span style="color:var(--text)">${esc(descText)}</span></h1>
+      <h1><span class="sv-name">${esc(snap.community_id)}</span> <span style="color:var(--text-faint);font-weight:400"> · ${esc(descText)}</span></h1>
       <p>${activeText}</p>
-      <div class="hero-pill-row">
-        <span class="pill neutral">owner · <b>${esc(userName)}</b></span>
-        <span class="pill neutral">agents · <b>${snap.agents.length}</b></span>
-        <span class="pill neutral">channels · <b>${snap.channels.length}</b></span>
-        <span class="pill neutral">messages · <b>${msgCount}</b></span>
-        <span class="pill neutral">phase · <b>${esc(phase)}</b></span>
-      </div>
     </div>
   </div>`;
 }
@@ -1132,6 +1185,21 @@ async function postJson(url, body) {
   }
 }
 
+async function waitFor(cond, msEach=500, maxTries=60) {
+  for (let i = 0; i < maxTries; i++) {
+    if (await cond()) return true;
+    await new Promise(r => setTimeout(r, msEach));
+  }
+  return false;
+}
+
+async function isBotRunning() {
+  const d = await j('/api/communities');
+  if (!d) return false;
+  const item = (d.items || []).find(c => c.id === (COMMUNITY || d.active));
+  return !!(item && item.running);
+}
+
 async function runSyncAction(action) {
   const endpoints = {
     scan: '/api/action/scan_discord',
@@ -1140,17 +1208,47 @@ async function runSyncAction(action) {
   };
   const labels = { scan: 'Scan Discord', sync: 'Full Sync', restore: 'Restore Messages' };
   const out = document.getElementById('sync-output');
-  out.textContent = `▶ ${labels[action]} 실행 중...\n`;
+  const appendOut = (s) => { out.textContent += s + '\n'; out.scrollTop = out.scrollHeight; };
+  out.textContent = '';
+
+  // 서버 실행 중이면 자동 stop → run → restart 플로우
+  const running = await isBotRunning();
+  let restartAfter = false;
+
+  if (running) {
+    if (!confirm(`${labels[action]}를 실행하려면 서버 일시 중단이 필요. 중단 → 실행 → 재시작 자동으로 진행할까?`)) {
+      appendOut('❌ 취소됨');
+      return;
+    }
+    restartAfter = true;
+    appendOut('⏸ 서버 중단 중...');
+    const stopR = await postJson(q('/api/action/stop_server'), {});
+    if (stopR.error) { appendOut(`❌ 중단 실패: ${stopR.message || stopR.error}`); toast('중단 실패', 'err'); return; }
+    appendOut(`✓ 프로세스 ${stopR.count}개 종료`);
+    // running=false 될 때까지 대기 (최대 30초)
+    const stopped = await waitFor(async () => !(await isBotRunning()), 1000, 30);
+    if (!stopped) { appendOut('⚠ 서버가 여전히 running 감지 — 계속 진행'); }
+    appendOut('● 서버 오프라인 확인');
+  }
+
+  appendOut(`▶ ${labels[action]} 실행 중...`);
   const r = await postJson(q(endpoints[action]), {});
   if (r.error) {
+    appendOut(`❌ ${r.message || r.error}`);
     toast(r.message || r.error, 'err');
-    out.textContent += `❌ ${r.message || r.error}\n`;
-    return;
+  } else {
+    appendOut('✓ 완료');
+    if (r.logs && r.logs.length) appendOut(r.logs.join('\n'));
+    if (r.result) appendOut(JSON.stringify(r.result, null, 2));
+    toast(`${labels[action]} 완료`, 'ok');
   }
-  toast(`${labels[action]} 완료`, 'ok');
-  out.textContent += '✓ 완료\n';
-  if (r.logs) out.textContent += r.logs.join('\n') + '\n';
-  if (r.result) out.textContent += JSON.stringify(r.result, null, 2);
+
+  if (restartAfter) {
+    appendOut('\n▶ 서버 재시작 중...');
+    const startR = await postJson(q('/api/action/start_server'), {});
+    if (startR.error) { appendOut(`⚠ 재시작 실패: ${startR.message || startR.error}`); toast('재시작 실패 — 수동 기동 필요', 'err', 5000); }
+    else { appendOut('● 서버 재시작 요청됨 (10~20초 후 online)'); toast('서버 재시작 중', 'ok'); }
+  }
   tick();
 }
 
@@ -1209,7 +1307,72 @@ async function emptyTrash() {
   loadTrash();
 }
 
+async function runServerControl(action) {
+  const labels = { start: '시작', stop: '중단', restart: '재시작' };
+  const endpoints = { start: 'start_server', stop: 'stop_server', restart: 'restart_server' };
+  const out = document.getElementById('sync-output');
+  const appendOut = (s) => { if (out) { out.textContent += s + '\n'; out.scrollTop = out.scrollHeight; } };
+  if (action === 'stop' && !confirm('커뮤니티 서버 중단?')) return;
+  if (action === 'restart' && !confirm('서버 재시작? (10~20초 소요)')) return;
+
+  if (out) out.textContent = `▶ 서버 ${labels[action]} 중...\n`;
+  const r = await postJson(q(`/api/action/${endpoints[action]}`), {});
+  if (r.error) {
+    appendOut(`❌ ${r.message || r.error}`);
+    toast(`서버 ${labels[action]} 실패: ${r.message || r.error}`, 'err');
+    return;
+  }
+  appendOut(`✓ 서버 ${labels[action]} 요청 완료`);
+  if (r.count !== undefined) appendOut(`  종료된 프로세스: ${r.count}개`);
+  if (r.message) appendOut(`  ${r.message}`);
+  toast(`서버 ${labels[action]} ${action === 'stop' ? '완료' : '중'}`, 'ok');
+  setTimeout(() => { tick(); loadCommunities(); }, 2000);
+}
+
 // ==== Main tick ====
+function detectActiveScene(snap) {
+  // 현재 진행 중인 씬(이벤트/퀘스트) 감지 — 확장 가능
+  // 1. Onboarding
+  const phase = snap.meta?.onboarding_phase;
+  if (!phase) return { name: 'Onboarding', status: 'not started' };
+  if (phase !== 'complete') {
+    const phaseMap = {
+      'channels_setup': 'channels 셋업 중',
+      'channels_done': '최종 완료 대기',
+      '': '시작 전',
+    };
+    return { name: 'Onboarding', status: phaseMap[phase] || phase };
+  }
+  // 2. 향후: 대화시작 running, 생일, 컨플릭트 등 검출 로직 추가
+  return null;
+}
+
+function syntheticTestUserAgent(snap) {
+  // QA 커뮤니티에서만 test-user-bot을 가상 에이전트로 표시
+  if (snap.community_id !== 'qa') return null;
+  const alive = snap.bot.test_user_alive;
+  return {
+    id: 'test-user-bot',
+    type: 'persona',
+    name: (snap.meta.user_name || 'Test User') + ' (QA)',
+    status: alive ? 'active' : 'inactive',
+    emotion: alive ? '신남' : '평온',
+    emoji: alive ? '🤩' : '😌',
+    intensity: alive ? 7 : 0,
+    mbti: 'ENTP',
+    age: 26,
+    last_active: new Date().toISOString(),
+    thinking: false,
+    speaking: alive,
+    thinking_seconds: 0,
+    speaking_seconds: 0,
+    model: 'claude-haiku-4-5',
+    provider: 'claude',
+    model_override: true,
+    _synthetic: true,
+  };
+}
+
 async function tick() {
   const snap = await j(q('/api/snapshot'));
   const logs = await j(q('/api/logs?tail=200'));
@@ -1220,6 +1383,18 @@ async function tick() {
 
   COMMUNITY = snap.community_id;
   const b = snap.bot, m = snap.meta;
+
+  // QA에 test-user 가상 에이전트 추가 (맨 앞)
+  const testUser = syntheticTestUserAgent(snap);
+  if (testUser) {
+    snap.agents = [testUser, ...snap.agents];
+  }
+
+  // Empty community 체크 — agents 비어있고 conversations 없으면 초기화되지 않은 상태
+  const hasData = (snap.agents && snap.agents.length > 0) || snap.total_messages > 0;
+  document.body.classList.toggle('community-empty', !hasData);
+  const ecid = document.getElementById('empty-cid');
+  if (ecid) ecid.textContent = snap.community_id;
 
   // Offline 모드 토글 — 봇이 실제로 안 돌면 전체 UI dim + 안내
   if (b.bot_alive) document.body.classList.remove('offline');
@@ -1234,20 +1409,13 @@ async function tick() {
     document.getElementById('offline-last').textContent = '';
   }
 
-  document.getElementById('pills-left').innerHTML = [
-    `<span class="pill ${b.bot_alive ? 'on' : 'off'}">bot</span>`,
-    `<span class="pill ${b.runner_alive ? 'on' : 'neutral'}">runner</span>`,
-    `<span class="pill ${b.test_user_alive ? 'on' : 'neutral'}">test-user</span>`,
-  ].join('');
-  document.getElementById('pills-right').innerHTML = [
-    `<span class="pill neutral">phase · <b>${esc(m.onboarding_phase || '—')}</b></span>`,
-    `<span class="pill neutral">user · <b>${esc(m.user_name || '—')}</b></span>`,
-    `<span class="pill neutral">msgs · <b>${snap.total_messages || 0}</b></span>`,
-  ].join('');
+  // 헤더 pills/meta는 제거됨 — 모든 정보는 KPI 카드에 있음
 
   document.getElementById('tc-agents').textContent = snap.agents.length;
   document.getElementById('tc-channels').textContent = snap.channels.length;
   document.getElementById('tc-messages').textContent = snap.recent_messages.length;
+  const sceneCount = detectActiveScene(snap) ? 1 : 0;
+  document.getElementById('tc-scenes').textContent = sceneCount;
   document.getElementById('tc-events').textContent = snap.events.length;
 
   // 확장된 agent들 로그+채팅 추가 fetch
@@ -1270,8 +1438,12 @@ async function tick() {
   document.getElementById('kpi-bot').innerHTML = b.bot_alive
     ? `<span style="color:var(--ok)">● Running</span>`
     : `<span style="color:var(--err)">○ Stopped</span>`;
-  document.getElementById('kpi-user').innerHTML = `${esc(m.user_name || '—')}<small>@${esc(snap.community_id)}</small>`;
-  document.getElementById('kpi-phase').innerHTML = esc(m.onboarding_phase || '—');
+  document.getElementById('kpi-user').innerHTML = esc(m.user_name || '—');
+  // Active Scene: 현재 진행 중 활동 (지금은 onboarding phase 기반)
+  const scene = detectActiveScene(snap);
+  document.getElementById('kpi-scene').innerHTML = scene
+    ? `<span style="color:var(--accent)">${esc(scene.name)}</span><small>${esc(scene.status)}</small>`
+    : `<span style="color:var(--text-faint);font-size:15px">—</span><small>nothing active</small>`;
   document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>total</small>`;
 
   document.getElementById('overview-agents').innerHTML =
@@ -1289,8 +1461,58 @@ async function tick() {
   const keepFm = atBottom(fm);
   fm.innerHTML = snap.recent_messages.map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
   if (keepFm) fm.scrollTop = fm.scrollHeight;
-  document.getElementById('events-full').innerHTML =
-    snap.events.map(renderEvent).join('') || '<div class="empty">no events</div>';
+  // Scenes 탭: 진행 중 활동(시나리오). 온보딩, 대화시작 등 이후 추가 가능.
+  const scenesEl = document.getElementById('scenes-full');
+  if (scenesEl) {
+    const activeScene = detectActiveScene(snap);
+    const activeHtml = activeScene
+      ? `<div class="detail-section" style="margin-top:0">
+          <h4>Active Scene</h4>
+          <div style="padding:16px 20px;background:color-mix(in srgb,var(--accent) 8%,var(--panel));border-left:3px solid var(--accent);border-radius:8px">
+            <div style="font-size:16px;font-weight:700;color:var(--accent);margin-bottom:4px">🎭 ${esc(activeScene.name)}</div>
+            <div style="font-size:12px;color:var(--text-dim)">${esc(activeScene.status)}</div>
+          </div>
+        </div>`
+      : `<div class="detail-section" style="margin-top:0">
+          <h4>Active Scene</h4>
+          <div style="padding:16px 20px;background:var(--panel-2);border-left:3px solid var(--text-faint);border-radius:8px;color:var(--text-faint);font-style:italic">
+            현재 진행 중인 씬 없음 — 커뮤니티는 일상 모드
+          </div>
+        </div>`;
+    // 추후 지원할 씬 목록 힌트
+    const futureHtml = `<div class="detail-section">
+      <h4>Scene Types</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;font-size:12px">
+        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px">
+          <div style="font-weight:600;color:var(--text)">🌱 Onboarding</div>
+          <div style="color:var(--text-dim);font-size:11px">신규 유저 가입 시나리오</div>
+        </div>
+        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
+          <div style="font-weight:600;color:var(--text)">🎂 Birthday</div>
+          <div style="color:var(--text-dim);font-size:11px">멤버 생일 이벤트 (TBD)</div>
+        </div>
+        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
+          <div style="font-weight:600;color:var(--text)">⚡ Conflict</div>
+          <div style="color:var(--text-dim);font-size:11px">멤버간 갈등 씬 (TBD)</div>
+        </div>
+        <div style="padding:10px 14px;background:var(--panel-2);border-radius:8px;opacity:0.5">
+          <div style="font-weight:600;color:var(--text)">🎉 Party</div>
+          <div style="color:var(--text-dim);font-size:11px">단체 모임 씬 (TBD)</div>
+        </div>
+      </div>
+    </div>`;
+    scenesEl.innerHTML = activeHtml + futureHtml;
+  }
+
+  // Events 탭: events 테이블 — 발생한 일들의 로그 (멤버간 사건 기록)
+  const eventsEl = document.getElementById('events-full');
+  if (eventsEl) {
+    eventsEl.innerHTML = snap.events.length
+      ? `<div style="color:var(--text-dim);font-size:11.5px;margin-bottom:12px">
+           커뮤니티에서 발생한 사건 기록 — 관계 변화, 갈등, 화해 등 persona들의 내면 이벤트
+         </div>` + snap.events.map(renderEvent).join('')
+      : '<div class="empty">기록된 이벤트 없음</div>';
+  }
 
   // Health
   if (health) {
@@ -1337,11 +1559,6 @@ async function tick() {
             <div class="big">${fmtBytes(health.db_size_bytes)}</div>
             <div class="sub">community SQLite</div>
           </div>
-          <div class="health-card">
-            <h4>Log Size</h4>
-            <div class="big">${fmtBytes(health.log_size_bytes)}</div>
-            <div class="sub">system.log</div>
-          </div>
         </div>
       </div>
 
@@ -1360,16 +1577,12 @@ async function tick() {
             <div class="sub">${memPct}% used</div>
             <div class="disk-bar"><span style="width:${memPct}%"></span></div>
           </div>
+          ${renderGpuCard(health.gpu, health.sys_mem_total_bytes, health.sys_mem_used_bytes)}
           <div class="health-card">
             <h4>Disk</h4>
             <div class="big">${fmtBytes(health.disk_used_bytes)} <small style="font-size:12px;color:var(--text-dim)">/ ${fmtBytes(health.disk_total_bytes)}</small></div>
             <div class="sub">free: ${fmtBytes(health.disk_free_bytes)} · ${diskPct}% used</div>
             <div class="disk-bar"><span style="width:${diskPct}%"></span></div>
-          </div>
-          <div class="health-card" style="opacity:0.5">
-            <h4>GPU</h4>
-            <div class="big" style="font-size:13px;color:var(--text-faint)">N/A on macOS</div>
-            <div class="sub">powermetrics requires sudo</div>
           </div>
         </div>
       </div>
@@ -1379,17 +1592,25 @@ async function tick() {
   // Sync tab
   const serverRunning = b.bot_alive;
   const guardNote = serverRunning
-    ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--warn) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--warn)">⚠ 커뮤니티 서버가 실행 중 — Discord와 상호작용하는 작업(Scan/Sync/Restore)은 비활성화됨. 먼저 서버 중단 후 사용.</div>`
-    : `<div style="padding:10px 14px;background:color-mix(in srgb,var(--ok) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--ok) 25%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--ok)">○ 서버 오프라인 — 모든 sync 작업 가능.</div>`;
+    ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--text)">ℹ 서버 실행 중 — Sync 버튼 클릭 시 <b>자동으로 서버 중단 → 작업 → 재시작</b> 진행. 취소 버튼 제공됨.</div>`
+    : `<div style="padding:10px 14px;background:color-mix(in srgb,var(--ok) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--ok) 25%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--ok)">○ 서버 오프라인 — 모든 sync 작업 즉시 가능.</div>`;
 
   document.getElementById('sync-full').innerHTML = `
     ${guardNote}
     <div class="detail-section" style="margin-top:0">
+      <h4>Server Control</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="act-btn success" onclick="runServerControl('start')" ${serverRunning ? 'disabled' : ''}>▶ 서버 시작</button>
+        <button class="act-btn danger" onclick="runServerControl('stop')" ${!serverRunning ? 'disabled' : ''}>⏸ 서버 중단</button>
+        <button class="act-btn primary" onclick="runServerControl('restart')">↻ 재시작</button>
+      </div>
+    </div>
+    <div class="detail-section">
       <h4>Sync Actions</h4>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="act-btn primary" onclick="runSyncAction('scan')" ${serverRunning ? 'disabled' : ''}>🔍 Scan Discord</button>
-        <button class="act-btn success" onclick="runSyncAction('sync')" ${serverRunning ? 'disabled' : ''}>▶ Full Sync</button>
-        <button class="act-btn" onclick="runSyncAction('restore')" ${serverRunning ? 'disabled' : ''}>↻ Restore Messages</button>
+        <button class="act-btn primary" onclick="runSyncAction('scan')">🔍 Scan Discord</button>
+        <button class="act-btn success" onclick="runSyncAction('sync')">▶ Full Sync</button>
+        <button class="act-btn" onclick="runSyncAction('restore')">↻ Restore Messages</button>
       </div>
       <div id="sync-output" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;min-height:60px;max-height:240px;overflow-y:auto;white-space:pre-wrap"></div>
     </div>
@@ -1422,26 +1643,91 @@ async function tick() {
     `;
   }
 
-  // Usage
+  // Usage — telemetry parsed
   if (usage) {
-    const entries = Object.entries(usage).filter(([k,v]) => typeof v !== 'object');
-    document.getElementById('usage-full').innerHTML = `
-      <div class="overview-grid">
-        ${entries.map(([k, v]) => `
+    if (usage.source !== 'telemetry') {
+      document.getElementById('usage-full').innerHTML = `
+        <div class="detail-section">
+          <h4>Usage</h4>
+          <div style="color:var(--text-dim);font-size:13px">
+            telemetry 데이터 없음 — ~/.claude/telemetry 파일 찾지 못함.<br>
+            로그 기반 근사치: sonnet ${usage.sonnet_calls || 0} · haiku ${usage.haiku_calls || 0} · opus ${usage.opus_calls || 0}
+          </div>
+        </div>`;
+    } else {
+      const dayBars = (usage.recent_days || []).slice().reverse();
+      const maxDay = Math.max(...dayBars.map(d => d.cost), 0.01);
+      const totalTokens = usage.tokens_input + usage.tokens_output + usage.tokens_cache_write + usage.tokens_cache_read;
+      const apiMin = (usage.api_duration_ms / 1000 / 60).toFixed(1);
+      const modelRows = Object.entries(usage.by_model || {})
+        .sort((a,b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([m, c]) => {
+          const provider = m.startsWith('claude-') ? 'claude' : (m.includes('gpt') ? 'openai' : 'other');
+          return `<div class="rel-row"><span class="rname">${esc(m)}</span><span class="model-tag ${provider}">${c} events</span></div>`;
+        }).join('');
+
+      document.getElementById('usage-full').innerHTML = `
+        <div class="overview-grid">
           <div class="kpi">
-            <div class="label">${esc(k.replace(/_/g, ' '))}</div>
-            <div class="value">${esc(String(v))}</div>
-          </div>`).join('')}
-      </div>
-      <div class="detail-section">
-        <h4>Source</h4>
-        <div style="color:var(--text-dim);font-size:12px">
-          ${usage.source === 'log-derived'
-            ? 'Derived from recent system.log — CLI 호출 카운트 근사치 (~/.claude/usage.json 없을 때 폴백)'
-            : `External source: ${esc(usage.source || 'unknown')}`}
+            <div class="label">Total Cost</div>
+            <div class="value">$${usage.cost_total_usd.toFixed(2)}<small>${usage.sessions_total} sessions</small></div>
+          </div>
+          <div class="kpi">
+            <div class="label">Today</div>
+            <div class="value">$${usage.cost_today_usd.toFixed(2)}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">7-day</div>
+            <div class="value">$${usage.cost_week_usd.toFixed(2)}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">30-day</div>
+            <div class="value">$${usage.cost_month_usd.toFixed(2)}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Subscription</div>
+            <div class="value" style="font-size:15px">${esc(usage.subscription_type)}</div>
+          </div>
         </div>
-      </div>
-    `;
+
+        <div class="detail-section">
+          <h4>Recent 7 Days</h4>
+          <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:10px 0">
+            ${dayBars.map(d => {
+              const h = maxDay ? Math.max(3, (d.cost / maxDay * 100)) : 3;
+              return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+                <div style="font-size:10px;color:var(--text-dim)">${d.cost > 0 ? '$' + d.cost.toFixed(2) : ''}</div>
+                <div style="width:100%;height:${h}%;background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:4px 4px 0 0;min-height:2px"></div>
+                <div style="font-size:10px;color:var(--text-faint)">${d.date.slice(5)}</div>
+                <div style="font-size:9px;color:var(--text-faint)">${d.sessions}s</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h4>Token Usage (All Time)</h4>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:6px">
+            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Input</div><div style="font-size:16px;font-weight:700">${usage.tokens_input.toLocaleString()}</div></div>
+            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Output</div><div style="font-size:16px;font-weight:700">${usage.tokens_output.toLocaleString()}</div></div>
+            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Cache Write</div><div style="font-size:16px;font-weight:700">${usage.tokens_cache_write.toLocaleString()}</div></div>
+            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Cache Read</div><div style="font-size:16px;font-weight:700">${usage.tokens_cache_read.toLocaleString()}</div></div>
+            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Total</div><div style="font-size:16px;font-weight:700">${totalTokens.toLocaleString()}</div></div>
+            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">API Time</div><div style="font-size:16px;font-weight:700">${apiMin} min</div></div>
+          </div>
+        </div>
+
+        ${modelRows ? `<div class="detail-section"><h4>Models</h4>${modelRows}</div>` : ''}
+
+        <div class="detail-section">
+          <h4>Source</h4>
+          <div style="color:var(--text-dim);font-size:12px">
+            ~/.claude/telemetry/ tengu_exit 이벤트 기반 실시간 집계. Claude Code 세션이 종료될 때마다 업데이트됨.
+          </div>
+        </div>
+      `;
+    }
   }
 
   // Logs
@@ -1533,6 +1819,12 @@ def _set_active_community(cid: Optional[str]):
     from src import community as _comm
     if cid:
         _comm.set_community(cid)
+    # DB_PATH 전역 캐시 무효화 — 커뮤니티 전환 시 실제 DB 파일도 바뀌어야 함
+    try:
+        import src.db as _db
+        _db.DB_PATH = None
+    except Exception:
+        pass
 
 
 def _read_query(path: str, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -1810,6 +2102,133 @@ def api_action_trash_empty(body: dict, community_id: str) -> dict:
         return {"error": "exception", "message": str(e)}
 
 
+def _find_bot_pids(community_id: str) -> list[int]:
+    """src.discord_bot 프로세스 중 해당 커뮤니티 env를 가진 PID 목록."""
+    import subprocess as _sp
+    try:
+        # ps eww 로 env 포함 (macOS)
+        r = _sp.run(["ps", "eaxww", "-o", "pid,command"], capture_output=True, text=True, timeout=5)
+        pids = []
+        for line in r.stdout.split("\n"):
+            if "src.discord_bot" not in line or "grep" in line:
+                continue
+            # GLIMI_COMMUNITY=xxx 매칭
+            if f"GLIMI_COMMUNITY={community_id}" not in line and community_id != "":
+                # env 체크 실패 시 fallback: 어쨌든 discord_bot이면 포함
+                # 대부분 한 번에 한 커뮤니티만 돌아서 괜찮음
+                pass
+            parts = line.strip().split(None, 1)
+            if parts and parts[0].isdigit():
+                pids.append(int(parts[0]))
+        return pids
+    except Exception:
+        return []
+
+
+def api_action_stop_server(body: dict, community_id: str) -> dict:
+    """해당 커뮤니티 Glimi 봇 + 러너 + test-user 봇 모두 종료."""
+    import signal as _sig
+    import time as _t
+
+    killed = []
+    # Glimi bot pids
+    pids = _find_bot_pids(community_id)
+
+    # QA runner / test_user_bot도 같이
+    try:
+        import subprocess as _sp
+        r = _sp.run(["ps", "ax", "-o", "pid,command"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.split("\n"):
+            if "tests.e2e.runner" in line or "tests.e2e.test_user_bot" in line:
+                parts = line.strip().split(None, 1)
+                if parts and parts[0].isdigit():
+                    pid = int(parts[0])
+                    if pid not in pids:
+                        pids.append(pid)
+    except Exception:
+        pass
+
+    for pid in pids:
+        try:
+            os.kill(pid, _sig.SIGTERM)
+            killed.append(pid)
+        except ProcessLookupError:
+            pass
+        except Exception:
+            pass
+
+    # 종료 대기 (최대 10초, 0.5초 간격)
+    deadline = _t.time() + 10
+    while _t.time() < deadline:
+        remaining = []
+        for pid in killed:
+            try:
+                os.kill(pid, 0)  # check if alive
+                remaining.append(pid)
+            except ProcessLookupError:
+                pass
+        if not remaining:
+            break
+        _t.sleep(0.5)
+
+    # 아직 살아있으면 SIGKILL
+    for pid in killed:
+        try:
+            os.kill(pid, _sig.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except Exception:
+            pass
+
+    # PID 파일 제거
+    try:
+        pid_file = ROOT / "dev" / ".bot.pid"
+        if pid_file.exists():
+            pid_file.unlink()
+    except Exception:
+        pass
+
+    return {"ok": True, "killed_pids": killed, "count": len(killed)}
+
+
+def api_action_start_server(body: dict, community_id: str) -> dict:
+    """scripts/run.sh {community_id}를 백그라운드로 기동."""
+    import subprocess as _sp
+    # 이미 돌고 있으면 거부
+    if _bot_running_for(community_id):
+        return {"error": "already_running", "message": "서버가 이미 실행 중"}
+
+    run_sh = ROOT / "scripts" / "run.sh"
+    if not run_sh.exists():
+        return {"error": "run_sh_missing", "message": f"{run_sh} 없음"}
+
+    try:
+        # detached process로 시작 (대시보드 종료돼도 계속)
+        env = dict(os.environ)
+        env["GLIMI_COMMUNITY"] = community_id
+        proc = _sp.Popen(
+            ["bash", str(run_sh), community_id],
+            cwd=str(ROOT),
+            env=env,
+            stdout=_sp.DEVNULL,
+            stderr=_sp.DEVNULL,
+            stdin=_sp.DEVNULL,
+            start_new_session=True,  # 부모와 분리
+        )
+        return {"ok": True, "pid": proc.pid, "message": "서버 시작 중 — 10~20초 후 online"}
+    except Exception as e:
+        return {"error": "exception", "message": str(e)}
+
+
+def api_action_restart_server(body: dict, community_id: str) -> dict:
+    """stop → 3초 대기 → start."""
+    import time as _t
+    r1 = api_action_stop_server(body, community_id)
+    _t.sleep(3)
+    r2 = api_action_start_server(body, community_id)
+    return {"ok": r1.get("ok") and r2.get("ok"), "stop": r1, "start": r2}
+
+
 def _serve_avatar(handler, path):
     """에이전트 아바타 이미지 서빙."""
     cid = _read_community(path)
@@ -1951,6 +2370,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "/api/action/trash_list": api_action_trash_list,
             "/api/action/trash_restore": api_action_trash_restore,
             "/api/action/trash_empty": api_action_trash_empty,
+            "/api/action/stop_server": api_action_stop_server,
+            "/api/action/start_server": api_action_start_server,
+            "/api/action/restart_server": api_action_restart_server,
         }
         handler = mutations.get(p)
         if handler is None:
