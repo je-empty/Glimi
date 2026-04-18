@@ -58,6 +58,13 @@ Rules:
 - Occasionally go off-topic (mention food, weather, games, etc.)
 - If someone says something confusing, ask "뭐야 그게?" or similar
 - Never break character. You are a real person.
+
+Memory & channels:
+- You remember EVERYTHING you said before in this server, across all channels. Don't repeat yourself and don't say "언제 내가 그랬어?" when the log clearly shows you did say it.
+- The conversation log is labeled [#channel] so you know which room each line came from.
+- Multiple channels can be active in parallel — e.g. you may chat with "서유나" in #mgr-dashboard and "윤하나" in #mgr-creator at the same time. Treat them as different rooms/people.
+- When someone new greets you in a different channel, respond in THAT channel (the reply will go to the most recent agent's channel automatically). Don't ignore them.
+- If info (MBTI, job, hobby, speech style) was already given earlier, don't re-answer from scratch — reference your earlier answer or push back ("아까 말했잖아 ㅋㅋ").
 """
 
 MAX_TURNS = 50  # 최대 대화 턴
@@ -306,18 +313,23 @@ class TestUserBot(discord.Client):
 
     async def _generate_reply(self) -> str:
         """Claude CLI로 테스트 유저 응답 생성"""
-        # 최근 대화 맥락 구성
+        # 최근 대화 맥락 구성 — 채널 라벨 포함, 창 크기 50
+        # (Yuna가 턴당 5~9건 연속 메시지 + 여러 채널 동시 진행 고려)
         context_lines = []
-        for msg in self.conversation[-15:]:
+        for msg in self.conversation[-50:]:
+            ch = msg.get("channel", "?")
             prefix = "나" if msg["role"] == "user" else msg["name"]
-            context_lines.append(f"{prefix}: {msg['text']}")
+            context_lines.append(f"[#{ch}] {prefix}: {msg['text']}")
         context = "\n".join(context_lines)
 
+        target_ch = self.target_channel.name if self.target_channel else "?"
         prompt = (
-            f"대화 기록:\n{context}\n\n"
-            f"위 대화를 보고 다음 답장을 해. "
-            f"카톡처럼 짧게 1~3문장. 줄바꿈으로 메시지 구분. "
-            f"자연스럽게."
+            f"대화 기록 (각 줄 앞의 [#채널]은 해당 메시지가 나온 채널):\n{context}\n\n"
+            f"지금 네가 답장할 활성 채널: #{target_ch}\n"
+            f"위 로그 전체를 기억하고 다음 답장을 해.\n"
+            f"- 이미 네가 한 말/답한 정보는 반복하지 말고 \"아까 말했잖아\" 식으로 받아쳐.\n"
+            f"- 다른 채널에서 누가 인사하면 그 사람에게 반응하되 지금 활성 채널에 쓸 답이면 돼.\n"
+            f"카톡처럼 짧게 1~3문장. 줄바꿈으로 메시지 구분. 자연스럽게."
         )
 
         try:
@@ -371,18 +383,24 @@ class TestUserBot(discord.Client):
         if not cleaned:
             return
 
+        ch_name = self.target_channel.name if self.target_channel else "?"
+
         # 일정 확률로 메시지를 따로 보냄 (카톡 스타일)
         if len(cleaned) > 1 and random.random() < MULTI_MSG_CHANCE:
             for line in cleaned:
                 await self.target_channel.send(line)
-                self.conversation.append({"role": "user", "name": _QA_NAME, "text": line})
-                print(f"[{_QA_NAME}] {line}")
+                self.conversation.append({
+                    "role": "user", "name": _QA_NAME, "text": line, "channel": ch_name,
+                })
+                print(f"[#{ch_name}] [{_QA_NAME}] {line}")
                 await asyncio.sleep(random.uniform(0.5, 1.5))
         else:
             text = "\n".join(cleaned)
             await self.target_channel.send(text)
-            self.conversation.append({"role": "user", "name": _QA_NAME, "text": text})
-            print(f"[{_QA_NAME}] {text}")
+            self.conversation.append({
+                "role": "user", "name": _QA_NAME, "text": text, "channel": ch_name,
+            })
+            print(f"[#{ch_name}] [{_QA_NAME}] {text}")
 
     def _check_onboarding_done(self) -> bool:
         """온보딩 완료 여부 체크 — 채널 구조 변화로 판단"""

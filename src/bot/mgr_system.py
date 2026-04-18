@@ -1105,11 +1105,14 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
     # JSON blob 필드
     json_fields = {"personality", "appearance", "daily_life", "speech"}
 
+    from src.core.profile import invalidate_cache as _invalidate_profile_cache
+
     if field_path in simple_fields:
         conn = db.get_conn()
         conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (value, user_id))
         conn.commit()
         conn.close()
+        _invalidate_profile_cache()  # 유저 프로필 캐시/요약 갱신 → mgr 프롬프트에 즉시 반영
         log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 
@@ -1136,6 +1139,7 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
                 conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (_json.dumps({"style": value}, ensure_ascii=False), user_id))
         conn.commit()
         conn.close()
+        _invalidate_profile_cache()
         log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 
