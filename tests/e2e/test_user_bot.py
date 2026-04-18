@@ -199,10 +199,9 @@ class TestUserBot(discord.Client):
         })
         print(f"[#{ch_name}] [{agent_name}] {message.content[:80]}")
 
-        # 에이전트가 다른 허용 채널에서 말 걸면 활성 채널 전환 (실사용자 모방)
-        if self.target_channel and message.channel.id != self.target_channel.id:
-            print(f"[TestUser] 활성 채널 전환: #{self.target_channel.name} → #{ch_name}")
-            self.target_channel = message.channel
+        # on_message에서 target_channel을 바꾸지 않는다 — 다음 턴 시작 시
+        # _pick_reply_channel이 conversation 로그를 스캔해서 올바른 채널을 고름.
+        # (중간에 바꾸면 생성 중인 응답 내용과 대상 채널이 어긋남)
 
         # 응답 대기 중이면 알림
         if self.waiting_for_response:
@@ -252,10 +251,15 @@ class TestUserBot(discord.Client):
         """메인 대화 루프"""
         while not self._done and self.turn_count < self.max_turns:
             try:
+                # 답장할 채널 먼저 결정 — 선택된 채널 맥락에 맞춰 응답 생성하기 위함.
+                # (이전엔 reply 생성 후 채널 선택 → 내용/대상 불일치 발생)
+                self._pick_reply_channel()
+                target_ch_name = self.target_channel.name if self.target_channel else "?"
+
                 # 유저 응답 생성 (thinking 플래그)
                 self._set_state("thinking", True)
                 try:
-                    reply = await self._generate_reply()
+                    reply = await self._generate_reply(target_ch_name)
                 finally:
                     self._set_state("thinking", False)
                 if not reply:
@@ -318,8 +322,12 @@ class TestUserBot(discord.Client):
         await asyncio.sleep(2)
         await self.close()
 
-    async def _generate_reply(self) -> str:
-        """Claude CLI로 테스트 유저 응답 생성"""
+    async def _generate_reply(self, target_ch: str = "") -> str:
+        """Claude CLI로 테스트 유저 응답 생성.
+
+        target_ch: 이 답변이 전송될 채널 (사전 결정됨). 프롬프트에 명시해서
+        다른 채널 맥락을 실수로 끌어오지 않도록 한다.
+        """
         # 최근 대화 맥락 구성 — 채널 라벨 포함, 창 크기 50
         # (Yuna가 턴당 5~9건 연속 메시지 + 여러 채널 동시 진행 고려)
         context_lines = []
@@ -329,13 +337,26 @@ class TestUserBot(discord.Client):
             context_lines.append(f"[#{ch}] {prefix}: {msg['text']}")
         context = "\n".join(context_lines)
 
-        target_ch = self.target_channel.name if self.target_channel else "?"
+        if not target_ch:
+            target_ch = self.target_channel.name if self.target_channel else "?"
+
+        # 대상 채널의 마지막 에이전트 메시지 (답해야 할 핵심 포인트)
+        last_agent_in_target = ""
+        for msg in reversed(self.conversation):
+            if msg.get("channel") == target_ch and msg.get("role") == "agent":
+                last_agent_in_target = f"{msg['name']}: {msg['text']}"
+                break
+
         prompt = (
             f"대화 기록 (각 줄 앞의 [#채널]은 해당 메시지가 나온 채널):\n{context}\n\n"
-            f"지금 네가 답장할 활성 채널: #{target_ch}\n"
-            f"위 로그 전체를 기억하고 다음 답장을 해.\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"이번 답장은 #{target_ch} 채널로 간다. 오직 그 채널의 사람에게 할 말만 써.\n"
+            f"- #{target_ch} 의 가장 최근 에이전트 메시지: {last_agent_in_target or '(없음)'}\n"
+            f"- 그 메시지/맥락에 맞춰 답해. 다른 채널 맥락(예: 유나가 \"가봐\"라고 한 말)을\n"
+            f"  이 답에 섞지 마. '가볼게' 같은 말은 그 채널 사람이 아니라 #mgr-dashboard의\n"
+            f"  유나한테 할 말이니까, 여기서 쓰면 엉뚱해짐.\n"
             f"- 이미 네가 한 말/답한 정보는 반복하지 말고 \"아까 말했잖아\" 식으로 받아쳐.\n"
-            f"- 다른 채널에서 누가 인사하면 그 사람에게 반응하되 지금 활성 채널에 쓸 답이면 돼.\n"
+            f"- 이 채널 사람에게 할 말이 딱히 없으면 가볍게 응수만 해 (\"ㅇㅇ\" / \"오케이\").\n"
             f"카톡처럼 짧게 1~3문장. 줄바꿈으로 메시지 구분. 자연스럽게."
         )
 
@@ -428,12 +449,12 @@ class TestUserBot(discord.Client):
                     self.target_channel = new_ch
 
     async def _send_reply(self, reply: str):
-        """응답을 디스코드에 전송"""
-        # 대기 중인 on_message 태스크(Creator 메시지 등)에 먼저 기회 줘서
-        # target_channel이 최신 상태로 갱신되도록 함
-        await asyncio.sleep(0)
-        # 미답 에이전트 메시지 있는 채널 중 가장 오래된 쪽으로 target_channel 조정
-        self._pick_reply_channel()
+        """응답을 디스코드에 전송.
+
+        target_channel은 _conversation_loop에서 _pick_reply_channel()로 이미 결정됨.
+        여기서는 그 값으로 전송만 — 중간에 on_message가 target_channel을 덮어써서
+        답장이 엉뚱한 채널로 튀는 상황 방지 위해 첫 줄에서 채널 객체 고정."""
+        target = self.target_channel  # 잠금
         lines = [l.strip() for l in reply.strip().split("\n") if l.strip()]
 
         # 자기 이름 prefix 제거 + 메타 stage direction 스트립
@@ -452,15 +473,15 @@ class TestUserBot(discord.Client):
             if line:
                 cleaned.append(line)
 
-        if not cleaned:
+        if not cleaned or target is None:
             return
 
-        ch_name = self.target_channel.name if self.target_channel else "?"
+        ch_name = target.name
 
         # 일정 확률로 메시지를 따로 보냄 (카톡 스타일)
         if len(cleaned) > 1 and random.random() < MULTI_MSG_CHANCE:
             for line in cleaned:
-                await self.target_channel.send(line)
+                await target.send(line)
                 self.conversation.append({
                     "role": "user", "name": _QA_NAME, "text": line, "channel": ch_name,
                 })
@@ -468,7 +489,7 @@ class TestUserBot(discord.Client):
                 await asyncio.sleep(random.uniform(0.5, 1.5))
         else:
             text = "\n".join(cleaned)
-            await self.target_channel.send(text)
+            await target.send(text)
             self.conversation.append({
                 "role": "user", "name": _QA_NAME, "text": text, "channel": ch_name,
             })
