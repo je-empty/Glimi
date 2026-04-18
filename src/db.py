@@ -502,7 +502,7 @@ def is_channel_participant(channel: str, agent_id: str) -> bool:
 
 
 def set_channel_status(channel: str, status: str, max_turns: int = 0):
-    """채널 대화 상태 설정"""
+    """채널 대화 상태 설정 + supervisor pool 동기화 트리거."""
     conn = get_conn()
     conn.execute(
         "UPDATE channels SET status=?, max_turns=?, current_turn=0 WHERE channel=?",
@@ -510,6 +510,16 @@ def set_channel_status(channel: str, status: str, max_turns: int = 0):
     )
     conn.commit()
     conn.close()
+    # channel running/idle 변화는 ChatSupervisor 인스턴스 생성/제거 트리거
+    # (지연 실행 — 이벤트 루프 안에서만 유효, 없으면 조용히 패스)
+    try:
+        import asyncio as _aio
+        from src.supervisors.base import pool as _pool
+        loop = _aio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_pool.sync())
+    except Exception:
+        pass
 
 
 def get_channel_status(channel: str) -> dict:

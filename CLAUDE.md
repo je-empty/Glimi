@@ -164,11 +164,66 @@ Glimi/
 - mgr-creator: 에이전트 생성 채널 (`glimi-mgr`)
 - mgr-system-log: 시스템 로그/도구 호출 기록 (`glimi-mgr`)
 
-## Supervisor 시스템 (`src/bot/supervisors.py`)
-백그라운드 감시자. 페르소나 에이전트는 존재 자체를 모름. Haiku로 컨텍스트 판단 후 `generate_response_force`로 본인 내면 생각처럼 nudge 주입.
-- `OnboardingSupervisor`: 온보딩 진행 (프로필 수집 → 채널 세팅 → Creator 아이스브레이킹). `onboarding_phase=complete` 시 비활성화.
-- `ChannelConversationSupervisor`: `internal-*` 채널 중 `status=running`인 것 감시. 모든 internal 채널 idle 되면 비활성화.
-- 충돌: 같은 채널에 대해 `OnboardingSupervisor`가 `ChannelConversationSupervisor`에 위임. 대상이 thinking/speaking 이면 둘 다 스킵.
+## Supervisor 시스템 (`src/supervisors/`, `src/scenes/*/supervisor.py`)
+
+### 정의
+슈퍼바이저 = **백그라운드 감시자**. 관찰 → 감지 → 개입 루프. **Reactive 안전망**이지 content 생성자가 아님.
+에이전트가 평소 흐름 주도, supervisor는 흐름 끊기면 복원 (재촉, 자동 전이, 강제 지시).
+페르소나 에이전트는 supervisor 존재 모름. Haiku로 컨텍스트 판단 후 `generate_response_force`로 내면 생각처럼 nudge 주입.
+
+### 3가지 종류 (kind)
+| kind | scope | lifetime | cardinality |
+|------|-------|----------|-------------|
+| **scene** | 특정 씬 | 씬 시작~완료 | 씬 1개당 N개 가능 |
+| **channel** | 특정 채널 | 채널 running~idle | running 채널 수만큼 (1:1) |
+| **system** | 전역 | 봇 수명 | 싱글톤 |
+
+### 네이밍 규칙
+- Class: `{Scope}{Role}Supervisor` (scene-scoped) / `{Role}Supervisor` (system/channel)
+- id: `scope.role` (scene) / `role:<instance_key>` (channel) / `role` (system)
+- display (KR): `범주 · 서브` 스타일
+
+예시:
+- `OnboardingFlowSupervisor` id=`onboarding.flow` label=`온보딩 · 흐름` kind=scene
+- `ChatSupervisor` id=`chat:internal-dm-유나-하나` label=`대화 · 유나·하나` kind=channel
+- `OrchestratorSupervisor` id=`orchestrator` label=`오케스트레이터` kind=system
+
+### SupervisorPool — 중앙 레지스트리
+`src/supervisors/base.py` 의 싱글톤. 인스턴스 등록/해제/tick 관리.
+
+**lifecycle triggers** — 이 시점에 `pool.sync()` 호출:
+1. 봇 ready (초기화)
+2. `db.set_channel_status(ch, status)` — running↔idle 변화
+3. `Scene.set_phase(phase)` — 씬 phase 전환
+4. tick loop (정기 정합성 보장, 매 N초)
+
+**sync 로직**:
+- scene-scoped: 활성 씬의 `supervisors()` 리스트 수집, 없으면 제거
+- channel-scoped: `status=running` internal-* 채널들 → 각각 ChatSupervisor 인스턴스 보장
+- system: 항상 존재
+
+**tick 격리**: 각 supervisor `check()` 호출을 try/except 로 감싸서 1개 실패가 전체 영향 X.
+
+### 현재 구현된 Supervisors
+- **OnboardingFlowSupervisor** (scene) — `src/scenes/onboarding/supervisor.py`: 온보딩 phase 전이·재촉·auto-finish
+- **ChatSupervisor** (channel, per-instance) — `src/supervisors/chat.py`: running internal-* 채널별 stall 감지·재촉
+- **OrchestratorSupervisor** (system) — `src/supervisors/orchestrator.py`: 에이전트 페어 스캔 → 자연스러운 대화 시작 결정 (유나가 직접 하지 않음)
+
+### 채널 running/idle 결정
+`internal-*` 채널의 `status` 전이 경로:
+1. **유저 요청**: 오너가 유나한테 "재내 얘기좀 시켜봐" → Yuna가 `start_conversation` 도구 호출 → status=running
+2. **에이전트 결심**: 에이전트가 `request_room` tool로 타인과 대화 요청 → 생성 + running
+3. **오케스트레이터 자동**: `OrchestratorSupervisor` 가 주기적 스캔 (친밀도, idle 시간, 최근 대화 이력) → 자연스러운 페어 대화 시작 → running
+
+idle 전이:
+- `state.should_end(responses)` 감지 시 `db.set_channel_status(ch, "idle")`
+- 최대 턴 도달
+- 유저 수동 stop
+
+### 시각화
+- **Scene supervisor**: 씬 카드 안 뱃지
+- **Channel supervisor**: 엣지(채널) 위 뱃지. peer 노드로 X
+- **System supervisor**: 헤더/사이드 상시 표시
 
 ## 작업 규칙
 - 커밋 메시지는 짧게 — 1줄 제목, 필요시 핵심 1-2줄. 장황한 본문 금지.
