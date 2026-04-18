@@ -164,7 +164,10 @@ async def _h_finish_profile_collection(args: dict, ctx: ToolContext):
 
 
 async def _h_finish_onboarding(args: dict, ctx: ToolContext):
+    from src.core.runtime import runtime
+    from src.bot import MGR_ID
     db.set_meta("onboarding_phase", "complete")
+    runtime.refresh_agent(MGR_ID)  # phase 바뀌었으니 유나 프롬프트 갱신
     log_writer.mark_onboarding_complete()
     log_writer.system("온보딩 최종 완료")
     return {"phase": "complete"}
