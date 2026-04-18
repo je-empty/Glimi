@@ -32,6 +32,14 @@ else
 fi
 export PYTHON
 
+# macOS Keychain 자동 언락 (non-interactive SSH 세션에서 claude CLI 자격증명 접근용)
+# ~/.config/glimi/keychain-pw 파일이 있으면 그 비번으로 login.keychain-db 해제
+if [ "$(uname)" = "Darwin" ] && [ -r "$HOME/.config/glimi/keychain-pw" ]; then
+    /usr/bin/security unlock-keychain -p "$(cat "$HOME/.config/glimi/keychain-pw")" \
+        "$HOME/Library/Keychains/login.keychain-db" 2>/dev/null \
+        && echo "[qa.sh] login.keychain-db 언락 완료"
+fi
+
 SESSION="Glimi-QA-Runner"
 
 GREEN='\033[0;32m'
