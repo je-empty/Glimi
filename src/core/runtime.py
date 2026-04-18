@@ -491,7 +491,7 @@ class AgentRuntime:
 
         agent_info = self._active_agents[agent_id]
         profile = agent_info["profile"]
-        _limit = 50 if profile.get("type") == "mgr" else RAW_WINDOW
+        _limit = 50 if profile.get("type") in ("mgr", "creator") else RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
         log_writer.mark_thinking(agent_id)
@@ -567,7 +567,7 @@ class AgentRuntime:
         profile = agent_info["profile"]
         if model_override:
             self._model_override = model_override
-        _limit = 50 if profile.get("type") == "mgr" else RAW_WINDOW
+        _limit = 50 if profile.get("type") in ("mgr", "creator") else RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
         log_writer.mark_thinking(agent_id)
@@ -727,7 +727,7 @@ class AgentRuntime:
         agent_info = self._active_agents[agent_id]
         profile = agent_info["profile"]
         name = profile["name"]
-        _limit = 50 if profile.get("type") == "mgr" else RAW_WINDOW
+        _limit = 50 if profile.get("type") in ("mgr", "creator") else RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
         # 오너 메시지 먼저 로깅
