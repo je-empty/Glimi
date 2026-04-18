@@ -216,7 +216,8 @@ async def _h_delete_agent_profile(args: dict, ctx: ToolContext):
 async def _h_apply_avatar(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _apply_sample_avatar
     s = f"{args['name']} {args['avatar_filename']}"
-    await _apply_sample_avatar(ctx.channel_obj, s, ctx.guild)
+    await _apply_sample_avatar(ctx.channel_obj, s, ctx.guild,
+                               caller_agent_id=ctx.caller_agent_id)
     return {"name": args["name"], "avatar": args["avatar_filename"]}
 
 

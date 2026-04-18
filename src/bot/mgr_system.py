@@ -1905,7 +1905,7 @@ async def handle_room_request_detection(
             await asyncio.sleep(0.5)
 
 
-async def _apply_sample_avatar(report_channel, args_str, guild):
+async def _apply_sample_avatar(report_channel, args_str, guild, caller_agent_id: str = ""):
     """샘플 아바타를 에이전트에 적용"""
     import shutil
     parts = args_str.split(None, 1)
@@ -1955,8 +1955,11 @@ async def _apply_sample_avatar(report_channel, args_str, guild):
     conn.close()
 
     log_writer.system(f"✓ 샘플 아바타 적용: {agent_name} ← {sample_file}")
-    await send_as_agent(report_channel, target["id"] if target["type"] != "persona" else MGR_ID,
-                        f"{agent_name} 아바타 적용했어!")
+    # 확인 메시지는 tool을 호출한 에이전트 (일반적으로 하나=creator)로 보낸다.
+    # 이전엔 persona 대상일 때 MGR_ID로 보내서 mgr-creator 참가자가 아닌 Yuna가
+    # 차단되는 버그 있었음. caller_agent_id를 우선 사용.
+    sender_id = caller_agent_id or ("agent-creator-001" if target["type"] == "persona" else target["id"])
+    await send_as_agent(report_channel, sender_id, f"{agent_name} 아바타 적용했어!")
 
 
 # ── ACTION 전달 ──────────────────────────────────────────

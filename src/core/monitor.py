@@ -1214,9 +1214,9 @@ def get_supervisors() -> list[dict]:
             "icon": "🌱",
         },
         {
-            "name": "channel-conv",
-            "class_name": "ChannelConversationSupervisor",
-            "description": "internal 채널 자동 대화 감시 — 멤버간 대화가 멈추면 재촉.",
+            "name": "agent-talk",
+            "class_name": "AgentTalkSupervisor",
+            "description": "에이전트간 대화(internal-dm, internal-group) 감시 — 대화 멈추면 재촉. 활성 running 채널 있을 때만.",
             "interval": 15,
             "icon": "💬",
         },
@@ -1229,7 +1229,7 @@ def get_supervisors() -> list[dict]:
         except Exception:
             return False
 
-    def _is_active_channel_conv() -> bool:
+    def _is_active_agent_talk() -> bool:
         try:
             conn = db.get_conn()
             row = conn.execute(
@@ -1240,11 +1240,16 @@ def get_supervisors() -> list[dict]:
         except Exception:
             return False
 
-    # 대상 에이전트 계산
+    # 대상 에이전트 계산 — 비활성 시 빈 리스트 반환 (그래프에서 제외되도록)
     def _targets_onboarding() -> list[str]:
+        if not _is_active_onboarding():
+            return []
         return ["agent-mgr-001", "agent-creator-001"]
 
-    def _targets_channel_conv() -> list[str]:
+    def _targets_agent_talk() -> list[str]:
+        # 비활성이면 빈 리스트 (그래프에서 제외)
+        if not _is_active_agent_talk():
+            return []
         targets = set()
         try:
             conn = db.get_conn()
@@ -1263,11 +1268,11 @@ def get_supervisors() -> list[dict]:
 
     active_map = {
         "onboarding": _is_active_onboarding,
-        "channel-conv": _is_active_channel_conv,
+        "agent-talk": _is_active_agent_talk,
     }
     target_map = {
         "onboarding": _targets_onboarding,
-        "channel-conv": _targets_channel_conv,
+        "agent-talk": _targets_agent_talk,
     }
 
     all_logs = get_recent_system_logs(tail_lines=500)

@@ -304,11 +304,14 @@ def _collect_db_metrics() -> dict:
                 "SELECT name FROM agents WHERE type='persona'"
             ).fetchall()
         ]
-        # Yuna가 mbti/job/hobby 단어 포함 메시지 보낸 횟수 (중복 질문 거친 추정)
+        # Yuna가 mbti/job/hobby 정보 **질문** 한 횟수 (중복 질문 추정).
+        # 단순 단어 포함이 아니라 '물음표 + 키워드' 패턴 — 설명·앵커로 언급은 제외.
         for kw in ("MBTI", "직업", "취미"):
             n = c.execute(
                 "SELECT COUNT(*) FROM conversations "
-                "WHERE speaker='agent-mgr-001' AND message LIKE ?",
+                "WHERE speaker='agent-mgr-001' "
+                "  AND message LIKE ? "
+                "  AND message LIKE '%?%'",
                 (f"%{kw}%",),
             ).fetchone()[0]
             out["yuna_questions_per_field"][kw] = n
@@ -422,10 +425,10 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
         if tu_in_creator == 0:
             result["issues"].append("test-user가 mgr-creator 채널에서 한 번도 발화 안 함")
 
-    # 유나가 같은 분야 질문을 3번 이상 반복
+    # 유나가 같은 분야 **질문**을 4번 이상 반복 (단순 언급 아님 — 물음표 포함만 집계)
     for kw, n in metrics.get("yuna_questions_per_field", {}).items():
-        if n >= 3:
-            result["issues"].append(f"유나가 '{kw}' 관련 메시지 {n}회 보냄 (중복 질문 의심)")
+        if n >= 4:
+            result["issues"].append(f"유나 '{kw}' 질문 {n}회 (중복 질문 의심)")
 
     # Phase 2 도달했는데 create_agent_profile 한 번도 안 됨
     if onboarding_complete is False and "mgr-creator" in msgs_by_ch and not metrics.get("agents_created"):

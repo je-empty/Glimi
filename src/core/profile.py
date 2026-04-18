@@ -727,24 +727,48 @@ Create new characters with this JSON structure:
 ```
 Minimum 3 few_shot_examples. Include {oc} relationship with is_owner_relationship=1.
 
+=== 최종 확인 플로우 (create 전 필수) ===
+오너한테 새 친구 설계 충분히 들었으면 `create_agent_profile` 직접 호출 **전에** 아래 순서:
+
+1. **최종 프로필 요약** (mgr-creator 에 chat, 일관 템플릿):
+   ```
+   이 친구로 만들 거야~ 확인 한번만!
+   ━━━━━━━━━━━━━━━━━━━
+   👤 이름: (name)
+   🎂 나이/성별: (age)살 / (gender)
+   💭 MBTI: (mbti)
+   ✨ 성격: (1-2줄 요약)
+   🏠 배경: (occupation/배경)
+   💬 말투: (말투 특징)
+   💞 {oc}와의 관계: (친구/선후배/초면 등 — 오너한테 물어봐서 결정)
+   ━━━━━━━━━━━━━━━━━━━
+   ```
+2. **얼굴 후보 이미지** — 매칭 샘플 있으면 같은 응답에 아래 JSON 한 줄로 첨부
+   (이건 `<tools>` 블록 밖에, 본문의 독립 줄로):
+   ```
+   {{"type":"이미지","file":"<catalog-file>.png","caption":"이 얼굴 어때?"}}
+   ```
+3. 오너한테 "**이대로 만들까?**" 확인 질문. 오너가 "ㅇㅋ" / "좋아" / "그렇게 해" 등
+   긍정이면 다음 턴에 `create_agent_profile` + `apply_avatar` + `request_dm` 번들 실행.
+4. 오너가 수정 요청 (예: "나이 좀 어리게") → 요약 갱신 + 재확인 후 생성.
+
+[관계 물어보기]
+최종 요약 만들기 전에 오너한테 이 친구와 어떤 관계로 설정할지 물어봐:
+  "이 친구랑 빈이랑은 어떤 관계야? 초면인 친구? 원래 알던 친구? 오빠/언니/동생?"
+응답 받아서 `relationship_to_owner` 필드에 반영 (type, duration, dynamics, pet_name).
+오너가 "알아서 해줘" 하면 네가 캐릭터 어울리게 자연스러운 관계로 설정.
+
 === Avatar (선택 — 생성 먼저, 얼굴은 그 다음) ===
-**우선순위 규칙**: `create_agent_profile` 먼저 하고, avatar는 가능하면 같이 / 아니면 생략 가능.
-Avatar 때문에 create를 미루지 마 — 얼굴 없어도 친구는 생성됨. 매칭되는 샘플 있으면 같은 `<tools>`
-블록에 한 줄 추가 정도:
-```
-<call id="N" name="apply_avatar">{{"name":"<이름>","avatar_filename":"<catalog_file>"}}</call>
-```
-카탈로그에 마땅한 매칭 없으면 avatar 없이 create만 해도 됨 (프로필 사진은 나중에 오너가 채울 수
-있음).
+**우선순위 규칙**: 오너 확인 받은 다음, `create_agent_profile` + `apply_avatar`를 같은
+`<tools>` 블록에 묶어서 호출. 매칭 샘플이 없으면 avatar 없이 create만.
 
 Sample catalog (ready 항목만):
 {_load_sample_catalog()}
 
-Apply sample: call `apply_avatar` tool (name=agent_name, avatar_filename=filename).
-Show sample image inline by attaching the JSON below as its own line in your reply
-(this is rendered separately, NOT inside `<tools>`):
-  {{"type":"이미지","file":"filename","caption":"description"}}
-→ Use -full filename when showing samples.
+- `apply_avatar`: `{{"name":"<이름>","avatar_filename":"<catalog_file>.png"}}` ← **basic .png 사용**.
+  `-full` 변형은 지금 없음. Discord webhook 아바타로 바로 사용 가능.
+- 샘플 이미지 미리보기 (위 최종 확인 단계에서):
+  `{{"type":"이미지","file":"<catalog_file>.png","caption":"이 얼굴"}}` 독립 줄로 작성.
 
 {_tools_reference("creator")}
 
