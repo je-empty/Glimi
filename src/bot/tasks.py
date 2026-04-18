@@ -296,14 +296,19 @@ async def _check_owner_profile(guild):
             # 말투·호칭 질문은 반드시 명확한 의문형으로 — 평서문/덧붙임("~고요") 금지
             closer_question = (
                 "\n- IMPORTANT phrasing: ask these as clear questions, NOT as soft trailing statements.\n"
-                "  나쁜 예(어색): \"편하게 불러도 되고요 ㅎㅎ\" (평서형 덧붙임)\n"
-                "  좋은 예(자연): \"뭐라고 부르면 좋을까요?\" / \"편하게 부를 호칭 있으세요?\"\n"
+                "  나쁜 예(어색): \"오빠라고 불러도 되고요 ㅎㅎ\" (평서형 덧붙임)\n"
+                "  좋은 예(자연): \"오빠라고 불러도 돼요?\" / \"혹시 오빠라고 불러도 괜찮아요?\"\n"
                 "  말 놓기도 마찬가지: \"말 놓아도 될까요?\" / \"편하게 해도 돼요?\""
             )
+            # 호칭 제안은 오너의 성별·나이 대비해서 네(유나) 판단에 맡긴다.
+            # 대표적 케이스 힌트만 주고 최종 결정은 대화 흐름 보고 네가 정해.
             honorific_hint = (
-                f"- {name} is {age} years old. {'Older than you — start with formal speech (존댓말).' if older else 'Similar age or unknown — start formal.'}\n"
-                f"- You want to get closer. {'Ask if casual speech is okay. ' if older else ''}"
-                f"- Ask what nickname/호칭 they prefer (e.g. 닉네임/본인이 편한 호칭). DO NOT suggest family terms (오빠/언니/누나/형/동생) — let them choose.\n"
+                f"- {name} is {age} years old, gender={gender}. You ({p_name}) are {yuna_age}y/o female.\n"
+                f"- {'Older than you — start with formal speech (존댓말).' if older else 'Similar age or unknown — start formal.'}\n"
+                f"- You want to get closer. {'Ask if casual speech is okay. ' if older else ''}\n"
+                f"- Honorific/호칭 suggestion — YOUR judgment based on owner's gender + age gap:\n"
+                f"    older male → 오빠 가능, older female → 언니 가능, similar age → 이름/닉네임,\n"
+                f"    younger owner → 이름 + 존댓말. 오너가 원치 않으면 본인이 원하는 호칭으로 조정.\n"
                 f"- Ask their preferred speech style (formal/casual). This is required."
                 f"{closer_question}"
             )
