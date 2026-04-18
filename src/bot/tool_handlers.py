@@ -157,16 +157,48 @@ async def _h_request_dev_task(args: dict, ctx: ToolContext):
     return {"accepted": True}
 
 
+async def _h_scene_advance(args: dict, ctx: ToolContext):
+    """범용 씬 phase 전환. scene_id + phase 조합별로 적절한 handler 호출."""
+    from src.scenes import get_scene
+    scene_id = args.get("scene_id", "").strip()
+    phase = args.get("phase", "").strip()
+    if not scene_id or not phase:
+        return {"ok": False, "reason": "scene_id + phase 필수"}
+    scene = get_scene(scene_id)
+    if scene is None:
+        return {"ok": False, "reason": f"unknown scene: {scene_id}"}
+
+    # 씬별 특수 핸들러 위임 (채널 생성 등 side-effect 포함 단계)
+    if scene_id == "onboarding":
+        if phase == "channels_setup":
+            from src.scenes.onboarding.handlers import trigger_phase2
+            await trigger_phase2(ctx.guild)
+            return {"scene_id": scene_id, "phase": "channels_setup"}
+        if phase == "complete":
+            from src.scenes.onboarding.handlers import complete_onboarding
+            await complete_onboarding()
+            return {"scene_id": scene_id, "phase": "complete"}
+
+    # 기본: 씬 phase만 업데이트 (side-effect 없는 단순 전환)
+    scene.set_phase(phase)
+    from src.core.runtime import runtime
+    from src.bot import MGR_ID
+    runtime.refresh_agent(MGR_ID)
+    return {"scene_id": scene_id, "phase": phase}
+
+
 async def _h_finish_profile_collection(args: dict, ctx: ToolContext):
-    from src.scenes.onboarding.handlers import trigger_phase2
-    await trigger_phase2(ctx.guild)
-    return {"phase": "channels_setup"}
+    # alias → scene_advance 위임
+    return await _h_scene_advance(
+        {"scene_id": "onboarding", "phase": "channels_setup"}, ctx
+    )
 
 
 async def _h_finish_onboarding(args: dict, ctx: ToolContext):
-    from src.scenes.onboarding.handlers import complete_onboarding
-    await complete_onboarding()
-    return {"phase": "complete"}
+    # alias → scene_advance 위임
+    return await _h_scene_advance(
+        {"scene_id": "onboarding", "phase": "complete"}, ctx
+    )
 
 
 async def _h_create_agent_profile(args: dict, ctx: ToolContext):
@@ -271,13 +303,43 @@ async def _h_discord_get_pins(args, ctx):
 
 async def _h_request_dm(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _forward_action_to_yuna
+    target = args["target"]
+    # 중복 호출 차단 — 같은 caller가 같은 target에게 한 번 보낸 보고를 또 보내는 경우
+    # (하나가 온보딩 리포트를 중복 전송해서 내부-dm이 어지러워지는 사례 방지).
+    # 메시지 내용이 완전 다르면 허용 (caller가 의도적으로 후속 메시지 보낼 수 있음)이라
+    # 직전 1건만 비교. meta key에 저장하고 helper에서 체크.
+    dedup_key = f"request_dm:last:{ctx.caller_agent_id}:{target}"
+    prev = db.get_meta(dedup_key) or ""
+    cur_msg = args.get("message", "")
+    # 너무 비슷한 내용 (80% 이상 prefix 동일) 재전송 차단
+    if prev and _similar_prefix(prev, cur_msg, threshold=0.7):
+        log_writer.system(
+            f"[request_dm] {ctx.caller_agent_id} → {target} 중복 보고 스킵 "
+            f"(prev='{prev[:40]}', cur='{cur_msg[:40]}')"
+        )
+        return {"skipped": True, "reason": "duplicate", "target": target}
+    db.set_meta(dedup_key, cur_msg)
     s = json.dumps({
         "type": "DM",
-        "target": args["target"],
-        "message": args["message"],
+        "target": target,
+        "message": cur_msg,
     }, ensure_ascii=False)
     await _forward_action_to_yuna(ctx.caller_agent_id, s, ctx.guild)
-    return {"forwarded_to": args["target"]}
+    return {"forwarded_to": target}
+
+
+def _similar_prefix(a: str, b: str, threshold: float = 0.7) -> bool:
+    """두 문자열의 앞부분이 threshold 이상 겹치면 True. 정교한 유사도 계산 대신
+    첫 30자 기준 Jaccard 유사도로 가볍게."""
+    if not a or not b:
+        return False
+    al = a[:60].lower().replace(" ", "")
+    bl = b[:60].lower().replace(" ", "")
+    if not al or not bl:
+        return False
+    shorter = min(len(al), len(bl))
+    match = sum(1 for i in range(shorter) if al[i] == bl[i])
+    return (match / shorter) >= threshold
 
 
 async def _h_request_room(args: dict, ctx: ToolContext):
@@ -312,6 +374,7 @@ _MAP = {
     "clear_messages": _h_clear_messages,
     "reset_agent": _h_reset_agent,
     "request_dev_task": _h_request_dev_task,
+    "scene_advance": _h_scene_advance,
     "finish_profile_collection": _h_finish_profile_collection,
     "finish_onboarding": _h_finish_onboarding,
     "create_agent_profile": _h_create_agent_profile,
