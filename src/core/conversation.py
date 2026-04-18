@@ -221,9 +221,11 @@ async def start_conversation(
                 # CMD 실행 (mgr만)
                 if cmds and speaker_id == "agent-mgr-001":
                     from src.bot.mgr_system import parse_and_execute_actions
+                    from src.bot.core import get_target_guild
                     import discord as _disc
                     import asyncio as _aio
-                    for guild in __import__('src.bot', fromlist=['bot']).bot.guilds:
+                    guild = get_target_guild()
+                    if guild:
                         mgr_ch = _disc.utils.get(guild.text_channels, name="mgr-dashboard")
                         if mgr_ch:
                             for cmd_body in cmds:
@@ -234,8 +236,10 @@ async def start_conversation(
                 # ACTION 전달
                 if actions:
                     from src.bot.mgr_system import _forward_action_to_yuna
+                    from src.bot.core import get_target_guild
                     import asyncio as _aio
-                    for guild in __import__('src.bot', fromlist=['bot']).bot.guilds:
+                    guild = get_target_guild()
+                    if guild:
                         for action in actions:
                             _aio.create_task(_forward_action_to_yuna(speaker_id, action.strip(), guild))
 
