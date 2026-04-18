@@ -362,16 +362,20 @@ async def ensure_channels(guild: discord.Guild):
                 os.remove(keep_flag)
             except FileNotFoundError:
                 pass
-        elif existing_glimi:
-            # default: clean (명시적 clean flag 있든 없든)
+        else:
+            # default: clean (명시적 clean flag 있든 없든).
+            # existing_glimi 수와 무관하게 pattern 매칭되는 채널은 전부 정리 —
+            # glimi-* 카테고리 밖에 orphan 된 mgr-/dm-/group-/internal- 채널까지 커버.
             glimi_patterns = ("mgr-", "dm-", "group-", "internal-")
+            deleted_any = False
             for ch in list(guild.text_channels):
                 if any(ch.name.startswith(p) for p in glimi_patterns):
                     try:
                         await ch.delete(reason="Glimi 초기화: 채널 정리")
                         log_writer.system(f"Channel deleted: {ch.name}")
-                    except Exception:
-                        pass
+                        deleted_any = True
+                    except Exception as e:
+                        log_writer.system(f"⚠ Channel delete fail: {ch.name} ({type(e).__name__}: {e})")
             for cat in [c for c in guild.categories if c.name.startswith("glimi")]:
                 if len(cat.channels) == 0:
                     try:
@@ -385,7 +389,8 @@ async def ensure_channels(guild: discord.Guild):
                 pass
             # discord.py 내부 캐시가 gateway 이벤트로 갱신되길 잠깐 대기
             # (REST delete 직후 guild.text_channels에 삭제된 채널이 잠시 남아 있는 race 방지)
-            await asyncio.sleep(1.5)
+            if deleted_any:
+                await asyncio.sleep(1.5)
 
         # mgr-dashboard만 생성 — guild.text_channels 캐시 말고 fetch로 실제 상태 확인
         try:
