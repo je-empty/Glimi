@@ -1750,6 +1750,7 @@ async def _cmd_profile_create(report_channel, json_str):
         runtime.refresh_agent("agent-mgr-001")
 
         # dm 채널 자동 생성 (persona만)
+        new_dm_name = None
         if agent_type == "persona" and report_channel.guild:
             dm_name = f"dm-{profile['name']}"
             from src.bot.core import _get_category_for_channel, _ensure_category
@@ -1761,13 +1762,77 @@ async def _cmd_profile_create(report_channel, json_str):
             db.set_channel_participants(dm_name, [profile["id"]])
             CHANNEL_AGENT_MAP[dm_name] = profile["id"]
             AGENT_CHANNEL_MAP[profile["id"]] = dm_name
+            new_dm_name = dm_name
 
         await send_as_agent(report_channel, creator_id, f"프로필 생성 완료: {profile['name']} ({profile['id']})")
         log_writer.system(f"프로필 생성: {profile['name']} ({profile['id']})")
 
+        # 새 친구가 자기 dm 채널에서 자동 인사 — 오너가 들어올 때 침묵 방지
+        if new_dm_name and agent_type == "persona":
+            import asyncio as _aio
+            _aio.create_task(
+                _greet_new_persona(
+                    report_channel.guild, profile["id"], profile["name"], new_dm_name
+                )
+            )
+
     except Exception as e:
         log_writer.system(f"[프로필생성] 실패: {type(e).__name__}: {str(e)[:100]}")
         await send_as_agent(report_channel, creator_id, "프로필 생성에 문제가 있었어... 다시 해볼게")
+
+
+async def _greet_new_persona(guild, agent_id, agent_name, dm_name):
+    """새로 만든 persona 에이전트가 자기 dm 채널에서 오너에게 첫 인사 — 채널만 있고
+    침묵하면 오너가 들어와도 뭘 해야 할지 모름. 생성 직후 자연스럽게 인사 주도."""
+    import asyncio as _aio
+    import re as _re
+    from src.bot.core import _split_for_chat
+    try:
+        await _aio.sleep(3)  # 채널 생성 커밋 + UI 반영 여유
+        ch = discord.utils.get(guild.text_channels, name=dm_name)
+        if not ch:
+            log_writer.system(f"[새친구인사] #{dm_name} 채널 못 찾음 — 스킵")
+            return
+
+        from src.core.profile import get_user_name, get_owner_call_name
+        owner_name = get_user_name() or "user"
+        call = get_owner_call_name() or owner_name
+
+        prompt = (
+            f"[상황] {call}가 방금 하나한테 부탁해서 너를 만들었어. "
+            f"이 채널(#{dm_name})은 너랑 {call} 둘만의 1:1 DM이야. "
+            f"{call}이 여기 처음 들어와서 너랑 만나는 순간.\n"
+            f"[지시] {call}에게 자연스럽게 첫 인사해. "
+            f"네 성격/배경 살리면서 2~4 짧은 메시지로. "
+            f"자기소개 간단히 + 가볍게 한마디 던져 (질문이나 안부 같은). "
+            f"{call}한테 들은 게 있다면 살짝 언급해도 됨.\n"
+            f"[스타일] 카톡처럼. 네 말투로. 로봇 같은 정형화된 인사 금지.\n"
+            f"[금지] <tools> 블록 쓰지 마. 지금은 chat 인사만."
+        )
+
+        loop = _aio.get_event_loop()
+        responses = await loop.run_in_executor(
+            None,
+            lambda: runtime.generate_response(
+                agent_id, dm_name, prompt, log_user_message=False
+            )
+        )
+        cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
+        sent = 0
+        for resp in responses:
+            resp = cmd_pat.sub('', resp).strip()
+            if not resp:
+                continue
+            for part in _split_for_chat(resp):
+                await send_as_agent(ch, agent_id, part)
+                await _aio.sleep(1)
+                sent += 1
+        if sent == 0:
+            log_writer.system(f"⚠ 새친구 {agent_name} dm 인사 0건 — 응답 비어있음")
+        else:
+            log_writer.system(f"새친구 {agent_name}({agent_id}) #{dm_name}에서 {sent}건 인사")
+    except Exception as e:
+        log_writer.system(f"[새친구인사] 실패: {type(e).__name__}: {e}")
 
 
 async def _cmd_profile_delete(report_channel, args_str):

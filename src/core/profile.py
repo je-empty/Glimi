@@ -344,7 +344,8 @@ def _build_pet_name_section(agent_id: str) -> str:
 
 
 def _load_sample_catalog() -> str:
-    """샘플 아바타 카탈로그 로드"""
+    """샘플 아바타 카탈로그 로드. status=='ready'인 항목만 하나에게 노출
+    (placeholder는 이미지 파일 미생성 상태 — 노출 시 없는 파일 추천하는 환각 유발)."""
     import json as _json
     catalog_path = Path(__file__).parent.parent.parent / "assets" / "sample_avatars" / "catalog.json"
     if not catalog_path.exists():
@@ -354,9 +355,17 @@ def _load_sample_catalog() -> str:
             catalog = _json.load(f)
         lines = []
         for item in catalog:
-            tags = ", ".join(item["tags"][:5])
-            lines.append(f"  - {item['file']}: {item['description']} [{tags}]")
-        return "\n".join(lines)
+            # placeholder는 스킵 — 실제 이미지 파일 없음
+            if item.get("status") == "placeholder":
+                continue
+            # 구조화 필드 우선, 없으면 legacy tags 사용
+            gender = item.get("gender", "")
+            age_range = item.get("age_range", "")
+            mbti = "/".join(item.get("mbti_primary", []))
+            vibe = ", ".join(item.get("vibe_tags", [])[:4]) or ", ".join(item.get("tags", [])[:4])
+            meta = " / ".join([x for x in [gender, age_range, mbti] if x])
+            lines.append(f"  - {item['file']} [{meta}]: {item['description']} ({vibe})")
+        return "\n".join(lines) if lines else "(ready 상태 샘플 없음 — placeholder만 존재)"
     except Exception:
         return "(카탈로그 로드 실패)"
 
