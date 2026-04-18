@@ -101,10 +101,32 @@ class OnboardingSupervisor(SceneSupervisor):
 
         has_mbti = bool(user.get("mbti"))
         has_bg = bool(user.get("background"))
-        # 한 필드만 있어도 트리거 — 빠르게 다음 phase로. 부족한 정보는 Phase 2에서 보강.
-        collected = sum([has_mbti, has_bg])
-        if collected >= 1:
-            log_writer.system("[sup:onboarding] 프로필수집 조건 충족 — 강제 트리거")
+
+        # hobby는 personality(JSON) 하위 필드
+        import json as _json
+        pers = user.get("personality")
+        if isinstance(pers, str):
+            try:
+                pers = _json.loads(pers)
+            except Exception:
+                pers = {}
+        pers = pers or {}
+        has_hobby = bool(pers.get("hobby")) or bool(pers.get("keywords"))
+
+        collected = sum([has_mbti, has_bg, has_hobby])
+
+        # 유저 턴 수 — 너무 짧게 몇 번 대화하고 Phase 2로 넘어가지 않도록
+        from src.core.profile import get_user_id
+        mgr_msgs = db.get_recent_messages(MGR_CHANNEL, limit=50)
+        user_turns = sum(1 for m in mgr_msgs if m.get("speaker") == get_user_id())
+
+        # 조건: mbti·직업·취미 중 2개 이상 + 유저 6턴 이상.
+        # 둘 다 만족해야 진짜로 Phase 2 트리거 (조기 점프 방지).
+        if collected >= 2 and user_turns >= 6:
+            log_writer.system(
+                f"[sup:onboarding] 프로필수집 조건 충족 "
+                f"(fields={collected}/3, user_turns={user_turns}) — 강제 트리거"
+            )
             from src.scenes.onboarding.handlers import trigger_phase2
             await trigger_phase2(guild)
             return
