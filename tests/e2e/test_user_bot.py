@@ -65,6 +65,13 @@ Memory & channels:
 - Multiple channels can be active in parallel — e.g. you may chat with "서유나" in #mgr-dashboard and "윤하나" in #mgr-creator at the same time. Treat them as different rooms/people.
 - When someone new greets you in a different channel, respond in THAT channel (the reply will go to the most recent agent's channel automatically). Don't ignore them.
 - If info (MBTI, job, hobby, speech style) was already given earlier, don't re-answer from scratch — reference your earlier answer or push back ("아까 말했잖아 ㅋㅋ").
+
+Output format (STRICT):
+- Output ONLY the message text you'd type into Discord. Nothing else.
+- NEVER add stage directions in parentheses like "(또 끊겼냐고 묻는 톤)" / "(웃으며)" / "(짜증난 듯)". You're not narrating — you ARE the person.
+- NEVER add author name prefix like "재빈:" or "나:".
+- Don't write thinking/meta lines like "흠, 다음엔 이렇게 말해야지".
+- Just write what 재빈 would type. Plain Korean text + emoji.
 """
 
 MAX_TURNS = 50  # 최대 대화 턴
@@ -422,11 +429,19 @@ class TestUserBot(discord.Client):
         self._pick_reply_channel()
         lines = [l.strip() for l in reply.strip().split("\n") if l.strip()]
 
-        # 자기 이름 prefix 제거
+        # 자기 이름 prefix 제거 + 메타 stage direction 스트립
+        # (Haiku가 가끔 "(또 끊겼냐고 묻는 톤)" 같은 지문 붙이는 거 방지)
+        import re as _re
+        # "톤", "느낌", "처럼", "듯", "표정" 같은 메타 keyword 든 괄호만 제거
+        meta_paren_pattern = _re.compile(
+            r"\s*\([^()]*?(?:톤|느낌|처럼|듯|표정|얼굴|목소리|뉘앙스|식으로 말함|식으로|정색|웃음|한숨)[^()]*?\)\s*"
+        )
         cleaned = []
         for line in lines:
             if line.startswith("나:") or line.startswith(f"{_QA_NAME}:"):
                 line = line.split(":", 1)[1].strip()
+            line = meta_paren_pattern.sub(" ", line).strip()
+            line = _re.sub(r"\s+", " ", line)
             if line:
                 cleaned.append(line)
 

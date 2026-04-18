@@ -500,15 +500,32 @@ async def system_log_sync():
     new_count = total - _bot_state._last_log_line_count
     new_lines = log_writer.tail(os.path.join(log_writer.get_log_dir(), "system.log"), new_count)
 
-    # ACTION + 크리티컬 에러만 필터
+    # 에이전트 도구 호출, 프로필/관계 변동, 온보딩 phase, 에러 등 운영 가시성에 필요한 줄 모두 포함
     important = [l for l in new_lines if any(k in l for k in (
-        "🔔 ACTION", "✓ ACTION", "❌", "강제지시", "봇 시작", "봇 종료", "🔧",
+        "[Tool]", "[프로필]", "[관계]", "[채널]", "[감정]",
+        "🔔 ACTION", "✓ ACTION", "❌", "⚠",
+        "강제지시", "봇 시작", "봇 종료", "🔧",
+        "온보딩", "Phase", "sup:onboarding",
+        "Channel created", "Channel deleted",
     ))]
     if important:
-        try:
-            await ch.send("```\n" + "\n".join(important) + "\n```")
-        except Exception:
-            pass
+        # discord 메시지 한도(2000자) 안 넘게 나눠 전송
+        chunk = []
+        chunk_len = 0
+        for line in important:
+            if chunk_len + len(line) + 8 > 1900 and chunk:
+                try:
+                    await ch.send("```\n" + "\n".join(chunk) + "\n```")
+                except Exception:
+                    pass
+                chunk, chunk_len = [], 0
+            chunk.append(line)
+            chunk_len += len(line) + 1
+        if chunk:
+            try:
+                await ch.send("```\n" + "\n".join(chunk) + "\n```")
+            except Exception:
+                pass
 
     _bot_state._last_log_line_count = total
 

@@ -221,8 +221,18 @@ async def _get_plain_webhook(channel: discord.TextChannel) -> discord.Webhook:
 # ── 시스템 로그 ─────────────────────────────────────────
 
 
-# 디코 시스템 로그에 보낼 키워드 (크리티컬만)
-_DISCORD_LOG_KEYWORDS = {"❌", "ACTION", "CMD:", "개발요청", "에러", "크래시", "비정상"}
+# 디코 #mgr-system-log 채널에 노출할 로그 키워드.
+# - 에이전트가 호출하는 모든 도구 ([Tool] / [프로필] / [관계])
+# - 온보딩/Phase 전환
+# - 에러·경고
+_DISCORD_LOG_KEYWORDS = {
+    "❌", "⚠",
+    "[Tool]", "[프로필]", "[관계]", "[채널]", "[감정]",
+    "온보딩", "Phase", "sup:onboarding",
+    "Channel created", "Channel deleted",
+    "ACTION", "CMD:",  # 레거시 호환
+    "개발요청", "에러", "크래시", "비정상",
+}
 
 
 def get_target_guild(bot_ref=None) -> Optional[discord.Guild]:
