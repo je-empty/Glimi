@@ -383,37 +383,48 @@ class TestUserBot(discord.Client):
             return ""
 
     def _pick_reply_channel(self):
-        """가장 최근 미답 에이전트 메시지가 있는 채널을 target_channel로 설정.
+        """답장할 채널 선택 — 'test_user가 가장 오래 침묵한 채널' 우선.
 
-        직관: 사람도 보통 가장 최근에 말 건 사람한테 답함. 옛 stale 채널보다
-        '방금 누가 뭘 물었나' 우선. 여러 채널이 동시에 활발할 때 가장 최근 활동 쪽."""
-        # 채널별 마지막 내 메시지 idx
+        직관: 한 채널에서 활발한 에이전트(예: 유나)랑 핑퐁 치는 사이,
+        다른 채널에 신규 에이전트(예: 하나)가 인사하고 무응답으로 기다리고 있으면
+        외로운 쪽을 먼저 챙기는 게 자연스러움.
+
+        score(채널) = 현재 idx - (마지막 내 발화 idx, 없으면 -1)
+        점수가 클수록 그 채널에서 내가 오래 안 말했다는 의미. 미답 에이전트
+        메시지가 있는 채널 중 점수 최대값 선택."""
         last_user_idx_by_ch: dict[str, int] = {}
         for i, msg in enumerate(self.conversation):
             if msg.get("role") == "user" and msg.get("channel"):
                 last_user_idx_by_ch[msg["channel"]] = i
 
-        # 채널별 가장 최근 미답 에이전트 메시지 idx
-        latest_unanswered: dict[str, int] = {}
+        # 미답 에이전트 메시지가 있는 채널 수집
+        channels_with_unanswered: set[str] = set()
         for i, msg in enumerate(self.conversation):
             if msg.get("role") != "agent":
                 continue
             ch = msg.get("channel")
             if not ch:
                 continue
-            last_user = last_user_idx_by_ch.get(ch, -1)
-            if i > last_user:
-                latest_unanswered[ch] = i  # 시간순이라 덮어쓰면 자동으로 최신
-        if not latest_unanswered:
-            return  # 답할 게 없음 — target_channel 그대로
-        # 가장 최근(idx 가장 큰) 채널 선택
-        target_name = max(latest_unanswered, key=latest_unanswered.get)
+            if i > last_user_idx_by_ch.get(ch, -1):
+                channels_with_unanswered.add(ch)
+        if not channels_with_unanswered:
+            return
+
+        total_msgs = len(self.conversation)
+        # 점수: 내가 마지막 발화 이후 흐른 idx 거리 (0이면 방금 답함, 클수록 오래 침묵)
+        scored: list[tuple[int, str]] = [
+            (total_msgs - last_user_idx_by_ch.get(ch, -1), ch)
+            for ch in channels_with_unanswered
+        ]
+        scored.sort(reverse=True)
+        target_name = scored[0][1]
+
         if self.target_channel and self.target_channel.name != target_name:
             guild = self.guilds[0] if self.guilds else None
             if guild:
                 new_ch = discord.utils.get(guild.text_channels, name=target_name)
                 if new_ch:
-                    print(f"[TestUser] reply 채널 교체: #{self.target_channel.name} → #{target_name} (최신 미답)")
+                    print(f"[TestUser] reply 채널 교체: #{self.target_channel.name} → #{target_name} (silence-priority)")
                     self.target_channel = new_ch
 
     async def _send_reply(self, reply: str):
