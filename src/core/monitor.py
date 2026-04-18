@@ -470,8 +470,9 @@ def _get_agent_gender(agent, profile) -> str:
     rel = (profile or {}).get("relationship_to_owner") or {}
     rtype = (rel.get("type") or "").strip()
     if rtype:
-        female_kw = ["여자친구", "여친", "누나", "언니", "여동생", "엄마", "이모", "딸", "와이프", "아내", "여자", "girlfriend", "sister", "mom", "wife", "daughter"]
-        male_kw = ["남자친구", "남친", "형", "오빠", "남동생", "아빠", "삼촌", "아들", "남편", "남자", "boyfriend", "brother", "dad", "husband", "son"]
+        # 가족 관계 용어는 지원 안 함 — 친구/동료/파트너 범주만.
+        female_kw = ["여자친구", "여친", "와이프", "아내", "여사친", "여자", "girlfriend", "wife"]
+        male_kw = ["남자친구", "남친", "남편", "남사친", "남자", "boyfriend", "husband"]
         for k in female_kw:
             if k in rtype:
                 return "여성"

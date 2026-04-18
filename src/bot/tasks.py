@@ -296,14 +296,14 @@ async def _check_owner_profile(guild):
             # 말투·호칭 질문은 반드시 명확한 의문형으로 — 평서문/덧붙임("~고요") 금지
             closer_question = (
                 "\n- IMPORTANT phrasing: ask these as clear questions, NOT as soft trailing statements.\n"
-                "  나쁜 예(어색): \"오빠라고 불러도 되고요 ㅎㅎ\" (평서형 덧붙임)\n"
-                "  좋은 예(자연): \"오빠라고 불러도 돼요?\" / \"혹시 오빠라고 불러도 괜찮아요?\"\n"
+                "  나쁜 예(어색): \"편하게 불러도 되고요 ㅎㅎ\" (평서형 덧붙임)\n"
+                "  좋은 예(자연): \"뭐라고 부르면 좋을까요?\" / \"편하게 부를 호칭 있으세요?\"\n"
                 "  말 놓기도 마찬가지: \"말 놓아도 될까요?\" / \"편하게 해도 돼요?\""
             )
             honorific_hint = (
                 f"- {name} is {age} years old. {'Older than you — start with formal speech (존댓말).' if older else 'Similar age or unknown — start formal.'}\n"
                 f"- You want to get closer. {'Ask if casual speech is okay. ' if older else ''}"
-                f"{'Ask if you can call them 오빠 (older brother).' if older and gender == '남' else ''}\n"
+                f"- Ask what nickname/호칭 they prefer (e.g. 닉네임/본인이 편한 호칭). DO NOT suggest family terms (오빠/언니/누나/형/동생) — let them choose.\n"
                 f"- Ask their preferred speech style (formal/casual). This is required."
                 f"{closer_question}"
             )
@@ -579,7 +579,7 @@ async def _handle_runtime_error(guild, channel_name: str, e: Exception):
     tb_short = "".join(tb_lines[-3:])[:300]
     error_summary = f"{type(e).__name__}: {str(e)[:100]}"
 
-    # 1) 유나가 오빠한테 보고 (매번)
+    # 1) 유나가 오너한테 보고 (매번)
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if mgr_ch:
         report = (

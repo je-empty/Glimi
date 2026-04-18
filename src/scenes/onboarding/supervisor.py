@@ -271,7 +271,7 @@ class OnboardingFlowSupervisor(Supervisor):
             log_writer.system(f"[sup:onboarding] 하나 판단: {judgment} — 재촉")
             self._mark_nudged()
             await self._nudge_agent(guild, CREATOR_ID, CREATOR_CHANNEL,
-                "아이스브레이킹이 충분했으면 에이전트 생성 얘기 꺼내고 유나 언니한테 보고. "
+                "아이스브레이킹이 충분했으면 에이전트 생성 얘기 꺼내고 유나한테 보고. "
                 "이미 보고했으면 다시 보내지 마."
             )
 

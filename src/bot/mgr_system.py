@@ -883,11 +883,13 @@ async def _run_and_report_yuna(report_ch, ch_name, participant_ids, send_fn, con
             preview = "\n".join(f"  {runtime.get_agent_name(r['speaker'])}: {r['message'][:50]}" for r in recent[-3:])
 
         # 유나에게 보고 + 후속 판단 (강제 CMD는 금지, 대화 트리거는 허용)
+        from src.core.profile import get_owner_call_name as _get_oc
+        oc = _get_oc() or "오너"
         report_prompt = (
             f"{', '.join(names)} 대화 끝났어 (#{ch_name}, {state.turn_count}턴).\n"
             f"마지막 대화:\n{preview}\n\n"
-            f"오빠한테 간략하게 보고해.\n"
-            f"대화 내용에서 누군가가 오빠한테 연락하겠다고 했거나 다른 사람한테 연락하려는 상황이면 "
+            f"{oc}한테 간략하게 보고해.\n"
+            f"대화 내용에서 누군가가 {oc}한테 연락하겠다고 했거나 다른 사람한테 연락하려는 상황이면 "
             f"[CMD:대화시작 ...]으로 이어지게 해줘.\n"
             f"[CMD:강제]는 쓰지 마. 네가 직접 강제 지시하면 안 돼."
         )
@@ -921,11 +923,13 @@ async def yuna_invite_owner(report_channel, args_str, guild):
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     notify_ch = mgr_ch or report_channel
 
+    from src.core.profile import get_owner_call_name as _get_oc
+    oc = _get_oc() or "오너"
     await send_as_agent(notify_ch, MGR_ID,
-        f"오빠, #{ch_name} 에서 얘기 중이야. 와서 같이 얘기해!")
+        f"{oc}, #{ch_name} 에서 얘기 중이야. 와서 같이 얘기해!")
 
     # 해당 채널에도 안내
-    await send_as_agent(target_ch, MGR_ID, "오빠 부를게~")
+    await send_as_agent(target_ch, MGR_ID, f"{oc} 부를게~")
     log.info(f"[유나CMD] 오너 초대: {ch_name}")
 
 
@@ -1672,15 +1676,17 @@ async def check_dev_results():
         os.remove(DEV_RESULT)
 
         # 유나에게 결과 전달 → 유나가 판단해서 보고/재요청
+        from src.core.profile import get_owner_call_name as _get_oc
+        oc = _get_oc() or "오너"
         dev_report = (
             f"[개발 결과 도착]\n"
             f"상태: {status}\n"
             f"요청자: {requested_by}\n"
             f"결과:\n{message[:2000]}\n\n"
             f"위 개발 결과를 보고 판단해:\n"
-            f"1. 성공이면 오빠한테 뭘 고쳤는지 간결하게 보고해\n"
+            f"1. 성공이면 {oc}한테 뭘 고쳤는지 간결하게 보고해\n"
             f"2. 실패했거나 의도대로 안 됐으면 네가 다시 [CMD:개발요청 ...]으로 재요청해 (원래 요청 + 실패 원인 포함)\n"
-            f"3. 네 선에서 판단 불가능한 문제면 오빠한테 상황 설명하고 어떻게 할지 물어봐"
+            f"3. 네 선에서 판단 불가능한 문제면 {oc}한테 상황 설명하고 어떻게 할지 물어봐"
         )
 
         loop = asyncio.get_event_loop()
@@ -2083,10 +2089,12 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
     action_args = parts[1] if len(parts) > 1 else ""
 
     # 공통 판단 지침
+    from src.core.profile import get_owner_call_name as _get_oc
+    oc = _get_oc() or "오너"
     judge_guide = (
         "판단 기준:\n"
-        "- 자연스러운 요청이면 승인하고 오빠한테 간략 보고 (예: '서연이가 소율이한테 DM 보내려고 해서 승인했어')\n"
-        "- 이상하거나 판단 어려우면 거절하지 말고 오빠한테 먼저 물어봐 (예: '오빠 이거 승인할까?')"
+        f"- 자연스러운 요청이면 승인하고 {oc}한테 간략 보고 (예: '서연이가 소율이한테 DM 보내려고 해서 승인했어')\n"
+        f"- 이상하거나 판단 어려우면 거절하지 말고 {oc}한테 먼저 물어봐 (예: '{oc} 이거 승인할까?')"
     )
 
     if action_type == "DM":
