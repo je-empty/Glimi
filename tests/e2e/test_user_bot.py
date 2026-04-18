@@ -383,41 +383,37 @@ class TestUserBot(discord.Client):
             return ""
 
     def _pick_reply_channel(self):
-        """미답 에이전트 메시지가 가장 오래 쌓인 채널을 골라 target_channel 갱신.
+        """가장 최근 미답 에이전트 메시지가 있는 채널을 target_channel로 설정.
 
-        같은 채널에서 유저가 마지막으로 말한 이후 쌓인 에이전트 메시지가 있는
-        채널들 중, 가장 오래된 에이전트 메시지가 있는 채널을 우선. 여러 에이전트/
-        채널이 동시에 말 걸 때 한쪽만 응답하고 다른 쪽 무시되는 문제 방지."""
-        # 채널별로 '마지막 내 메시지 이후 에이전트 메시지가 있는지' 조사
-        # (conversation list는 시간순 append됨)
+        직관: 사람도 보통 가장 최근에 말 건 사람한테 답함. 옛 stale 채널보다
+        '방금 누가 뭘 물었나' 우선. 여러 채널이 동시에 활발할 때 가장 최근 활동 쪽."""
+        # 채널별 마지막 내 메시지 idx
         last_user_idx_by_ch: dict[str, int] = {}
         for i, msg in enumerate(self.conversation):
             if msg.get("role") == "user" and msg.get("channel"):
                 last_user_idx_by_ch[msg["channel"]] = i
 
-        candidates: list[tuple[int, str]] = []  # (first_unreplied_agent_idx, channel)
-        seen_ch = set()
+        # 채널별 가장 최근 미답 에이전트 메시지 idx
+        latest_unanswered: dict[str, int] = {}
         for i, msg in enumerate(self.conversation):
             if msg.get("role") != "agent":
                 continue
             ch = msg.get("channel")
-            if not ch or ch in seen_ch:
+            if not ch:
                 continue
             last_user = last_user_idx_by_ch.get(ch, -1)
             if i > last_user:
-                candidates.append((i, ch))
-                seen_ch.add(ch)
-        if not candidates:
+                latest_unanswered[ch] = i  # 시간순이라 덮어쓰면 자동으로 최신
+        if not latest_unanswered:
             return  # 답할 게 없음 — target_channel 그대로
-        # 가장 오래된 미답 메시지가 있는 채널로 설정
-        candidates.sort()
-        target_name = candidates[0][1]
+        # 가장 최근(idx 가장 큰) 채널 선택
+        target_name = max(latest_unanswered, key=latest_unanswered.get)
         if self.target_channel and self.target_channel.name != target_name:
             guild = self.guilds[0] if self.guilds else None
             if guild:
                 new_ch = discord.utils.get(guild.text_channels, name=target_name)
                 if new_ch:
-                    print(f"[TestUser] reply 채널 교체: #{self.target_channel.name} → #{target_name} (미답 우선)")
+                    print(f"[TestUser] reply 채널 교체: #{self.target_channel.name} → #{target_name} (최신 미답)")
                     self.target_channel = new_ch
 
     async def _send_reply(self, reply: str):
