@@ -1197,15 +1197,6 @@ async def _onboarding_setup_channels(guild):
         log_writer.system(f"❌ Phase 2 중단: {MGR_SYSTEM_LOG} 생성 결과 없음")
         return
 
-    # 새 채널 자체에 간단한 안내 메시지 (오너가 채널 들어왔을 때 뭔지 바로 알 수 있게)
-    try:
-        await log_ch.send(
-            f"📋 시스템 로그 채널\n"
-            f"멤버들 활동·상태 변화·도구 호출 결과가 여기 자동 기록됨."
-        )
-    except Exception as e:
-        log_writer.system(f"⚠ {MGR_SYSTEM_LOG} intro 전송 실패 ({type(e).__name__}: {e})")
-
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if mgr_ch:
         prompt = (
