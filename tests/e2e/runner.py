@@ -262,6 +262,62 @@ def _start_test_user(token: str, turns: int = 50) -> subprocess.Popen:
     return proc
 
 
+def _collect_db_metrics() -> dict:
+    """DB 기반 가시성 지표 수집 — 셀 단위 검증에 사용."""
+    db_path = QA_DIR / "community.db"
+    out = {
+        "msgs_total": 0,
+        "msgs_by_channel": {},
+        "msgs_by_speaker": {},
+        "legacy_cmd_count": 0,
+        "legacy_action_count": 0,
+        "legacy_query_count": 0,
+        "agents_created": [],   # type='persona'
+        "phases_seen": [],
+        "yuna_questions_per_field": {},  # mbti/job/hobby asked count (rough)
+    }
+    if not db_path.exists():
+        return out
+    try:
+        import sqlite3 as _sq
+        c = _sq.connect(str(db_path))
+        out["msgs_total"] = c.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        for ch, cnt in c.execute(
+            "SELECT channel, COUNT(*) FROM conversations GROUP BY channel"
+        ).fetchall():
+            out["msgs_by_channel"][ch] = cnt
+        for sp, cnt in c.execute(
+            "SELECT speaker, COUNT(*) FROM conversations GROUP BY speaker"
+        ).fetchall():
+            out["msgs_by_speaker"][sp or "?"] = cnt
+        out["legacy_cmd_count"] = c.execute(
+            "SELECT COUNT(*) FROM conversations WHERE message LIKE '%[CMD:%'"
+        ).fetchone()[0]
+        out["legacy_action_count"] = c.execute(
+            "SELECT COUNT(*) FROM conversations WHERE message LIKE '%[ACTION:%'"
+        ).fetchone()[0]
+        out["legacy_query_count"] = c.execute(
+            "SELECT COUNT(*) FROM conversations WHERE message LIKE '%[QUERY:%'"
+        ).fetchone()[0]
+        out["agents_created"] = [
+            r[0] for r in c.execute(
+                "SELECT name FROM agents WHERE type='persona'"
+            ).fetchall()
+        ]
+        # Yuna가 mbti/job/hobby 단어 포함 메시지 보낸 횟수 (중복 질문 거친 추정)
+        for kw in ("MBTI", "직업", "취미"):
+            n = c.execute(
+                "SELECT COUNT(*) FROM conversations "
+                "WHERE speaker='agent-mgr-001' AND message LIKE ?",
+                (f"%{kw}%",),
+            ).fetchone()[0]
+            out["yuna_questions_per_field"][kw] = n
+        c.close()
+    except Exception as e:
+        out["db_error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
 def _collect_results(run_id: str, elapsed: float) -> dict:
     """로그 수집 + 결과 판정"""
     result = {
@@ -270,6 +326,7 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
         "elapsed_seconds": round(elapsed, 1),
         "status": "unknown",
         "issues": [],
+        "metrics": {},
     }
 
     # 시스템 로그 읽기
@@ -334,10 +391,53 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
                     result["issues"].append("동시 응답 호출 감지 (race condition)")
                     break
 
-    # 최종 판정
+    # ── DB 기반 세밀 검증 ─────────────────────────────────
+    metrics = _collect_db_metrics()
+    result["metrics"] = metrics
+
+    # 레거시 태그가 DB 대화에 남으면 항상 FAIL 사유
+    legacy_total = (metrics.get("legacy_cmd_count", 0)
+                    + metrics.get("legacy_action_count", 0)
+                    + metrics.get("legacy_query_count", 0))
+    if legacy_total > 0:
+        result["issues"].append(
+            f"레거시 태그가 DB에 노출됨 (CMD={metrics.get('legacy_cmd_count',0)} "
+            f"ACTION={metrics.get('legacy_action_count',0)} "
+            f"QUERY={metrics.get('legacy_query_count',0)})"
+        )
+
+    # mgr-creator 채널이 만들어졌는데 test-user 가 거기서 한 마디도 안 함
+    msgs_by_ch = metrics.get("msgs_by_channel", {})
+    if "mgr-creator" in msgs_by_ch:
+        try:
+            import sqlite3 as _sq
+            c = _sq.connect(str(QA_DIR / "community.db"))
+            tu_in_creator = c.execute(
+                "SELECT COUNT(*) FROM conversations "
+                "WHERE channel='mgr-creator' AND speaker='test-user'"
+            ).fetchone()[0]
+            c.close()
+        except Exception:
+            tu_in_creator = -1
+        if tu_in_creator == 0:
+            result["issues"].append("test-user가 mgr-creator 채널에서 한 번도 발화 안 함")
+
+    # 유나가 같은 분야 질문을 3번 이상 반복
+    for kw, n in metrics.get("yuna_questions_per_field", {}).items():
+        if n >= 3:
+            result["issues"].append(f"유나가 '{kw}' 관련 메시지 {n}회 보냄 (중복 질문 의심)")
+
+    # Phase 2 도달했는데 create_agent_profile 한 번도 안 됨
+    if onboarding_complete is False and "mgr-creator" in msgs_by_ch and not metrics.get("agents_created"):
+        result["issues"].append("Phase 2 진입 후 create_agent_profile 호출 0회")
+
+    # ── 최종 판정 ─────────────────────────────────────────
+    fatal_only = any("FATAL" in i or "레거시" in i for i in result["issues"])
     if not onboarding_complete:
         result["status"] = "FAIL"
         result["issues"].append("온보딩 미완료")
+    elif fatal_only:
+        result["status"] = "FAIL"
     elif result["issues"]:
         result["status"] = "WARN"
     else:
