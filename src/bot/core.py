@@ -369,9 +369,17 @@ async def ensure_channels(guild: discord.Guild):
             # default: clean (명시적 clean flag 있든 없든).
             # existing_glimi 수와 무관하게 pattern 매칭되는 채널은 전부 정리 —
             # glimi-* 카테고리 밖에 orphan 된 mgr-/dm-/group-/internal- 채널까지 커버.
+            # REST API로 실제 guild 상태를 가져와야 함 (gateway cache가 이전 run의 채널을
+            # 누락하면 orphan이 영영 삭제 안 돼 Phase 2가 재사용하는 버그).
             glimi_patterns = ("mgr-", "dm-", "group-", "internal-")
+            try:
+                actual = await guild.fetch_channels()
+                real_text = [c for c in actual if isinstance(c, discord.TextChannel)]
+            except Exception as e:
+                log_writer.system(f"⚠ fetch_channels 실패({type(e).__name__}: {e}) — cache fallback")
+                real_text = list(guild.text_channels)
             deleted_any = False
-            for ch in list(guild.text_channels):
+            for ch in real_text:
                 if any(ch.name.startswith(p) for p in glimi_patterns):
                     try:
                         await ch.delete(reason="Glimi 초기화: 채널 정리")
@@ -379,7 +387,12 @@ async def ensure_channels(guild: discord.Guild):
                         deleted_any = True
                     except Exception as e:
                         log_writer.system(f"⚠ Channel delete fail: {ch.name} ({type(e).__name__}: {e})")
-            for cat in [c for c in guild.categories if c.name.startswith("glimi")]:
+            try:
+                actual_cats = await guild.fetch_channels()
+                cat_list = [c for c in actual_cats if isinstance(c, discord.CategoryChannel) and c.name.startswith("glimi")]
+            except Exception:
+                cat_list = [c for c in guild.categories if c.name.startswith("glimi")]
+            for cat in cat_list:
                 if len(cat.channels) == 0:
                     try:
                         await cat.delete()
