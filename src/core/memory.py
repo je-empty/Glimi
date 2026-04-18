@@ -511,7 +511,7 @@ def get_cross_channel_memory(agent_id: str, exclude_channel: str, limit: int = 5
         if is_owner_channel and is_internal:
             # 오너 채널에서는 멤버간 대화를 간접적으로만 표시
             parts.append(f"\n[{label}과의 대화에서 알게 된 것]")
-            parts.append("(이 내용은 멤버끼리 나눈 사적 대화에서 온 기억이다. 오빠한테 구체적 내용을 직접 전달하지 마.)")
+            parts.append("(이 내용은 멤버끼리 나눈 사적 대화에서 온 기억이다. 오너한테 구체적 내용을 직접 전달하지 마.)")
         else:
             parts.append(f"\n[{label}과의 대화 기억]")
             parts.append(f"(이 기억은 {label}과의 다른 대화에서 있었던 내용이며, 현재 대화 상대와 직접 나눈 얘기가 아니다.)")

@@ -627,7 +627,7 @@ async def cmd_avatar_all(ctx):
         char_detail = ""
         for r in responses:
             cleaned = r.strip().strip('"').strip("'").strip("`")
-            if len(cleaned) > 20 and not cleaned.startswith(("[", "(", "오빠")):
+            if len(cleaned) > 20 and not cleaned.startswith(("[", "(")):
                 char_detail = cleaned
                 break
         if not char_detail:
