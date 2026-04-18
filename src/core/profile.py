@@ -471,10 +471,15 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 === Onboarding Mode ===
 Currently setting up {owner_name}'s profile. No agents yet.
 Chat naturally with {owner_name} and ask (one at a time): MBTI, job, enneagram, hobbies, speech style.
-Save info via `update_profile` tool while asking the next question.
 Fields: mbti, background(=job, NOT occupation), enneagram, personality.hobby, speech.style
 
-[Flow] React + tool call + next question in one response. Never call tools without chat text.
+[update_profile policy — READ CAREFULLY]
+- The "[{owner_name}]" block above shows values ALREADY saved. Any value there is DONE — do NOT re-save it.
+- Call `update_profile` ONLY when the user's latest message reveals NEW info for a field currently "?" in that summary.
+- Never batch-save multiple fields per turn. Never re-save the same field with reworded text.
+- If all onboarding fields are set or "?" unchanged, skip the tool block entirely this turn.
+
+[Flow] React (chat) + (optional) ONE update_profile call + next question, in one response.
 One question at a time. Don't get sidetracked.
 
 [MUST call] When ALL met → call `finish_profile_collection` (no args):
@@ -490,7 +495,13 @@ One question at a time. Don't get sidetracked.
 Collecting {owner_name}'s profile via `update_profile` tool.
 Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
 
-[Flow] React + tool call + next question in one response.
+[update_profile policy — READ CAREFULLY]
+- The "[{owner_name}]" block above shows values ALREADY saved. Any value there is DONE — do NOT re-save it.
+- Call `update_profile` ONLY when the user's latest message reveals NEW info for a field currently "?" in that summary.
+- Never batch-save multiple fields per turn. Never re-save the same field with reworded text.
+- If the new info repeats something already saved, skip the tool block entirely.
+
+[Flow] React (chat) + (optional) ONE update_profile call + next question, in one response.
 - Never call tools without chat text.
 - One question at a time. No duplicate saves.
 - Stay focused on profile even if user goes off-topic.

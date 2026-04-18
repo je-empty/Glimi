@@ -1109,6 +1109,12 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
 
     if field_path in simple_fields:
         conn = db.get_conn()
+        cur = conn.execute(f"SELECT {field_path} FROM users WHERE id = ?", (user_id,)).fetchone()
+        current = cur[0] if cur else None
+        if current == value:
+            conn.close()
+            log_writer.system(f"[프로필] {user_name}.{field_path} 이미 '{value}' — 저장 스킵")
+            return
         conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (value, user_id))
         conn.commit()
         conn.close()
@@ -1129,6 +1135,10 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
                     blob = _json.loads(raw[0]) if isinstance(raw[0], str) else raw[0]
                 except Exception:
                     blob = {}
+            if blob.get(parts[1]) == value:
+                conn.close()
+                log_writer.system(f"[프로필] {user_name}.{field_path} 이미 '{value}' — 저장 스킵")
+                return
             blob[parts[1]] = value
             conn.execute(f"UPDATE users SET {parts[0]} = ? WHERE id = ?", (_json.dumps(blob, ensure_ascii=False), user_id))
         else:
