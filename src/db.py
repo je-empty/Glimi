@@ -48,7 +48,7 @@ def init_db():
             mbti TEXT,
             enneagram TEXT,
             background TEXT,
-            avatar_filename TEXT,
+            profile_image_filename TEXT,
             version INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -683,6 +683,21 @@ def _migrate_schema():
 
     # agents 테이블 프로필 컬럼 추가
     agent_cols = [r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()]
+
+    # 레거시: avatar_filename → profile_image_filename 자동 rename (1회성)
+    if "avatar_filename" in agent_cols and "profile_image_filename" not in agent_cols:
+        try:
+            conn.execute("ALTER TABLE agents RENAME COLUMN avatar_filename TO profile_image_filename")
+            print("[DB] agents.avatar_filename → profile_image_filename rename")
+            agent_cols = [r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()]
+        except sqlite3.OperationalError as e:
+            # SQLite < 3.25 fallback: 새 컬럼 추가 후 복사
+            conn.execute("ALTER TABLE agents ADD COLUMN profile_image_filename TEXT")
+            conn.execute("UPDATE agents SET profile_image_filename = avatar_filename "
+                         "WHERE profile_image_filename IS NULL AND avatar_filename IS NOT NULL")
+            print(f"[DB] avatar_filename rename 실패 → 복사로 대체 ({e})")
+            agent_cols = [r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()]
+
     new_cols = {
         "birth_year": "INTEGER",
         "age": "INTEGER",
@@ -690,7 +705,7 @@ def _migrate_schema():
         "mbti": "TEXT",
         "enneagram": "TEXT",
         "background": "TEXT",
-        "avatar_filename": "TEXT",
+        "profile_image_filename": "TEXT",
         "version": "INTEGER DEFAULT 1",
         "created_at": "DATETIME",
         "name_i18n": "TEXT",
@@ -880,7 +895,7 @@ def get_agent_profile(agent_id: str) -> Optional[dict]:
     }
     # 확장 컬럼
     for col in ("birth_year", "age", "gender", "mbti", "enneagram", "background",
-                "avatar_filename", "version", "created_at"):
+                "profile_image_filename", "version", "created_at"):
         if agent.get(col) is not None:
             profile[col] = agent[col]
     # name_i18n — JSON 문자열을 dict 로 복원
@@ -943,21 +958,24 @@ def save_agent_profile(profile: dict):
     if name_i18n and not isinstance(name_i18n, str):
         name_i18n = json.dumps(name_i18n, ensure_ascii=False)
 
+    # profile_image_filename: 신규 키 우선, 레거시 avatar_filename 폴백
+    profile_image_filename = profile.get("profile_image_filename") or profile.get("avatar_filename")
+
     conn.execute("""
         INSERT INTO agents (id, type, name, name_i18n, birth_year, age, gender, mbti, enneagram,
-                            background, avatar_filename, version, created_at)
+                            background, profile_image_filename, version, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             type=excluded.type, name=excluded.name, name_i18n=excluded.name_i18n,
             birth_year=excluded.birth_year, age=excluded.age, gender=excluded.gender,
             mbti=excluded.mbti, enneagram=excluded.enneagram,
-            background=excluded.background, avatar_filename=excluded.avatar_filename,
+            background=excluded.background, profile_image_filename=excluded.profile_image_filename,
             version=excluded.version
     """, (
         agent_id, profile.get("type", "persona"), profile["name"], name_i18n,
         profile.get("birth_year"), profile.get("age"), profile.get("gender"),
         profile.get("mbti"), profile.get("enneagram"),
-        profile.get("background"), profile.get("avatar_filename"),
+        profile.get("background"), profile_image_filename,
         profile.get("version", 1), profile.get("created_at", datetime.now().isoformat()),
     ))
 

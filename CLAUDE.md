@@ -30,11 +30,12 @@ Glimi/
 │   └── {id}/           ← 커뮤니티 하나
 │       ├── .env        ← DISCORD_BOT_TOKEN
 │       ├── community.db ← SQLite DB
-│       ├── avatars/    ← 아바타 이미지
+│       ├── profile_images/ ← 에이전트 프로필 이미지
 │       └── logs/
 ├── communities.example/ ← 템플릿 (git tracked)
 ├── assets/
-│   └── avatars/        ← 기본 아바타 (init 시 복사)
+│   ├── profile_images/        ← 기본 프로필 이미지 (init 시 복사)
+│   └── sample_profile_images/ ← 하나가 추천할 샘플 프로필 이미지 카탈로그
 ├── dev/
 │   ├── pending.json    ← 개발 요청
 │   └── result.json     ← 개발 결과
@@ -78,7 +79,7 @@ Glimi/
 ## 핵심 모듈 요약
 
 ### discord_bot.py (메인)
-- Webhook으로 에이전트별 아바타/이름 전송
+- Webhook으로 에이전트별 프로필 이미지/이름 전송 (Discord SDK 경계에서만 `avatar` 키워드 사용)
 - `handle_dm`: 1:1 채널 처리 (채널별 asyncio.Lock)
 - `handle_group`: 그룹채팅 (GROUP_PARTICIPANTS로 참여자 관리, 전원 응답)
 - 매니저/Creator 응답에서 `<tools>` 블록 파싱 → `core/tools/dispatcher`가 실행
@@ -101,7 +102,7 @@ Glimi/
 
 ### db.py — 테이블
 **코어:**
-- agents: id, type, name, name_i18n(JSON), status, current_emotion, emotion_intensity, last_active, birth_year, age, gender, mbti, enneagram, background, avatar_filename, version, created_at
+- agents: id, type, name, name_i18n(JSON), status, current_emotion, emotion_intensity, last_active, birth_year, age, gender, mbti, enneagram, background, profile_image_filename, version, created_at
 - relationships: agent_a, agent_b, type, intimacy_score, dynamics (런타임 관계)
 - conversations: channel, speaker, message, timestamp, context_emotion
 - events: event_type, participants, description, impact
@@ -119,7 +120,7 @@ Glimi/
 - users: id, name, birth_year, age, mbti, personality(JSON), appearance(JSON), speech(JSON) 등
 - meta: key, value (active_user_id 등)
 
-**DB 하나 = 커뮤니티 하나.** `communities/{id}/community.db`에 위치. `community.export_community()` / `community.import_community()`로 DB+아바타 통째 이전 가능. `db.export_agents()` / `db.import_agents()`로 에이전트 정의만 추출/이전도 가능.
+**DB 하나 = 커뮤니티 하나.** `communities/{id}/community.db`에 위치. `community.export_community()` / `community.import_community()`로 DB+프로필 이미지 통째 이전 가능. `db.export_agents()` / `db.import_agents()`로 에이전트 정의만 추출/이전도 가능.
 
 ### core/memory.py — 3단계 기억
 - raw: 최근 15개 메시지 그대로 (user prompt에 주입)
@@ -148,7 +149,7 @@ Glimi/
 - 핸들러: `src/bot/mgr_system.py`의 `_h_*` 함수들 (예: `_h_create_room`, `_h_update_profile`)
 - 별칭 해석: 사람 이름 → agent_id 자동 매핑
 - 결과는 자연어 피드백으로 다시 LLM 에 주입 (연쇄 호출 가능)
-- 주요 도구: `create_room`, `start_conversation`, `delete_channel`, `rename_channel`, `set_topic`, `purge_messages`, `restore_discord`, `set_emotion`, `update_profile`, `update_relationship`, `clear_channel`, `clear_conversations`, `reset_agent`, `dev_request`, `list_channels`, `query_log`, `search`, `get_profile`, `get_relationship`, `list_events` 등
+- 주요 도구: `create_room`, `start_conversation`, `delete_channel`, `rename_channel`, `set_topic`, `purge_messages`, `restore_discord`, `set_emotion`, `update_profile`, `update_relationship`, `clear_channel`, `clear_conversations`, `reset_agent`, `dev_request`, `list_channels`, `query_log`, `search`, `get_profile`, `get_relationship`, `list_events`, `set_profile_image` 등
 
 ## 에이전트 ID 체계
 - persona: agent-persona-001, 002, ...

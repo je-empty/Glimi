@@ -259,9 +259,9 @@ MGMT: list[ToolSpec] = [
         destructive=True,
     ),
     ToolSpec(
-        name="apply_avatar",
-        description="생성한 아바타를 에이전트에 적용",
-        params={"name": _str, "avatar_filename": _str},
+        name="set_profile_image",
+        description="샘플 프로필 이미지를 에이전트에 적용",
+        params={"name": _str, "profile_image_filename": _str},
         category="management",
         applies_to=frozenset({"creator"}),
     ),

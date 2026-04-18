@@ -162,8 +162,9 @@ async def _handle_image_action(channel, agent_id: str, action_str: str):
         file_name = f"{base}-full.{ext}"
 
     paths_to_check = [
-        os.path.join(str(community.get_avatars_dir()), file_name),
-        os.path.join(str(community.ASSETS_DIR / "avatars"), file_name),
+        os.path.join(str(community.get_profile_images_dir()), file_name),
+        os.path.join(str(community.ASSETS_DIR / "profile_images"), file_name),
+        os.path.join(str(community.ASSETS_DIR / "sample_profile_images"), file_name),
     ]
 
     image_path = None

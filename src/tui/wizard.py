@@ -2269,11 +2269,14 @@ class ExportImportScreen(Screen):
             db_path = cdir / "community.db"
             if db_path.exists():
                 zf.write(db_path, "community.db")
-            avatars_dir = cdir / "avatars"
-            if avatars_dir.exists():
-                for img in avatars_dir.iterdir():
-                    if img.is_file():
-                        zf.write(img, f"avatars/{img.name}")
+            # 신규/레거시 디렉토리 둘 다 지원
+            for sub in ("profile_images", "avatars"):
+                images_dir = cdir / sub
+                if images_dir.exists():
+                    for img in images_dir.iterdir():
+                        if img.is_file():
+                            zf.write(img, f"profile_images/{img.name}")
+                    break
 
         size_mb = os.path.getsize(out_path) / 1024 / 1024
         names = ", ".join(manifest.get("agent_names", []))
@@ -2304,7 +2307,7 @@ class ExportImportScreen(Screen):
             with zipfile.ZipFile(zip_path, "r") as zf:
                 names = zf.namelist()
                 has_db = "community.db" in names
-                avatars = [n for n in names if n.startswith("avatars/")]
+                avatars = [n for n in names if n.startswith("profile_images/") or n.startswith("avatars/")]
                 manifest = {}
                 if "manifest.json" in names:
                     manifest = json.loads(zf.read("manifest.json"))
@@ -2357,8 +2360,11 @@ class ExportImportScreen(Screen):
             if "community.db" in zf.namelist():
                 zf.extract("community.db", str(cdir))
             for name in zf.namelist():
-                if name.startswith("avatars/"):
+                if name.startswith("profile_images/") or name.startswith("avatars/"):
                     zf.extract(name, str(cdir))
+            # 레거시 avatars/ 디렉토리 자동 이관
+            if (cdir / "avatars").exists() and not (cdir / "profile_images").exists():
+                (cdir / "avatars").rename(cdir / "profile_images")
 
         stats = _get_db_stats(cid) or {}
         self.app.call_from_thread(

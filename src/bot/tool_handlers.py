@@ -213,12 +213,12 @@ async def _h_delete_agent_profile(args: dict, ctx: ToolContext):
     return {"name": args["name"]}
 
 
-async def _h_apply_avatar(args: dict, ctx: ToolContext):
-    from src.bot.mgr_system import _apply_sample_avatar
-    s = f"{args['name']} {args['avatar_filename']}"
-    await _apply_sample_avatar(ctx.channel_obj, s, ctx.guild,
+async def _h_set_profile_image(args: dict, ctx: ToolContext):
+    from src.bot.mgr_system import _apply_sample_profile_image
+    s = f"{args['name']} {args['profile_image_filename']}"
+    await _apply_sample_profile_image(ctx.channel_obj, s, ctx.guild,
                                caller_agent_id=ctx.caller_agent_id)
-    return {"name": args["name"], "avatar": args["avatar_filename"]}
+    return {"name": args["name"], "profile_image": args["profile_image_filename"]}
 
 
 async def _h_approve_request(args: dict, ctx: ToolContext):
@@ -380,7 +380,7 @@ _MAP = {
     "finish_onboarding": _h_finish_onboarding,
     "create_agent_profile": _h_create_agent_profile,
     "delete_agent_profile": _h_delete_agent_profile,
-    "apply_avatar": _h_apply_avatar,
+    "set_profile_image": _h_set_profile_image,
     "approve_request": _h_approve_request,
     # query
     "list_channels": _h_list_channels,
