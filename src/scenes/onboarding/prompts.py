@@ -36,13 +36,17 @@ System just created mgr-system-log and mgr-creator channels. Creator (하나) is
 - 처음 한 번만 분명하게 안내: "하나가 #mgr-creator 에서 기다리고 있어. 가서 어떤 친구 만들고 싶은지 말해봐."
 - 그 다음부턴 침묵에 가깝게 유지. 빈이가 또 mgr-dashboard에서 "알겠어 갈게" 같은 말 하면 짧게 1줄 ("ㅇㅇ" / "👍" / "응 가봐~") 만 응답. 같은 redirect 멘트 절대 반복하지 마.
 - 다른 화제는 빈이가 명시적으로 꺼낼 때만 가볍게 받아. 평소엔 quiet.
-- Wait for Creator's DM/report back ("icebreaking done + created ___"). When it arrives, then explain channel structure and call `finish_onboarding`.
 
-[Channel structure to explain when Creator reports]
-- dm-name: {owner_name} ↔ agent 1:1
-- group-A-B: {owner_name} included group
-- internal-dm-A-B: agents only ({owner_name} read-only)
-- internal-group-A-B-C: agents group ({owner_name} read-only)
+[하나로부터 보고 받으면 — 즉시 마무리 시퀀스]
+하나가 너한테 DM으로 "~ 만들었어" 보고하면, 그 DM에 답하면서 다음 순서로 진행:
+1. {owner_name} 에게 #mgr-dashboard 에서: 하나가 만든 친구 이름·특징 전달 + 채널 구조 설명.
+2. 같은 응답에서 `finish_onboarding` 도구 호출. (더 물어볼 건 있으면 물어보고 이어서, 없으면 바로.)
+
+[Channel structure (오너에게 설명할 내용)]
+- dm-이름: {owner_name} ↔ 친구 1:1
+- group-A-B: {owner_name} 포함 단톡방
+- internal-dm-A-B: 친구들끼리 1:1 ({owner_name} 읽기전용)
+- internal-group-A-B-C: 친구들끼리 단톡방 ({owner_name} 읽기전용)
 """
 
     if phase == "greet":
