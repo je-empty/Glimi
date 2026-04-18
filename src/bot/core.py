@@ -383,13 +383,28 @@ async def ensure_channels(guild: discord.Guild):
                 os.remove(clean_flag)
             except FileNotFoundError:
                 pass
+            # discord.py 내부 캐시가 gateway 이벤트로 갱신되길 잠깐 대기
+            # (REST delete 직후 guild.text_channels에 삭제된 채널이 잠시 남아 있는 race 방지)
+            await asyncio.sleep(1.5)
 
-        # mgr-dashboard만 생성
-        existing = {ch.name: ch for ch in guild.text_channels}
-        if MGR_CHANNEL not in existing:
+        # mgr-dashboard만 생성 — guild.text_channels 캐시 말고 fetch로 실제 상태 확인
+        try:
+            actual_channels = await guild.fetch_channels()
+            names = {c.name for c in actual_channels if isinstance(c, discord.TextChannel)}
+        except Exception as e:
+            log_writer.system(f"⚠ fetch_channels 실패({type(e).__name__}: {e}) — cache fallback")
+            names = {ch.name for ch in guild.text_channels}
+
+        if MGR_CHANNEL not in names:
             cat = await _ensure_category(guild, "glimi-mgr")
-            await guild.create_text_channel(MGR_CHANNEL, category=cat)
-            log_writer.system(f"Channel created: {MGR_CHANNEL}")
+            try:
+                created = await guild.create_text_channel(MGR_CHANNEL, category=cat)
+                log_writer.system(f"Channel created: {MGR_CHANNEL} (id={created.id})")
+            except Exception as e:
+                log_writer.system(f"❌ Channel create FAIL: {MGR_CHANNEL} ({type(e).__name__}: {e})")
+                raise
+        else:
+            log_writer.system(f"Channel (existing): {MGR_CHANNEL}")
         db.set_channel_participants(MGR_CHANNEL, [MGR_ID])
         log_writer.system("Initial setup: mgr-dashboard ready")
     else:
@@ -448,8 +463,18 @@ async def ensure_channels(guild: discord.Guild):
 
 async def create_onboarding_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
     """온보딩 중 단계별 채널 생성 + 참가자 등록.
-    성공/실패/existing 세 경로 모두 system.log에 남겨 추적 가능하게."""
-    existing = discord.utils.get(guild.text_channels, name=ch_name)
+    성공/실패/existing 세 경로 모두 system.log에 남겨 추적 가능하게.
+    discord.py gateway 캐시 지연 방지로 fetch_channels로 실제 guild 상태 조회."""
+    # 캐시 대신 REST API로 실제 상태 확인
+    try:
+        actual = await guild.fetch_channels()
+        existing = next(
+            (c for c in actual if isinstance(c, discord.TextChannel) and c.name == ch_name),
+            None,
+        )
+    except Exception:
+        existing = discord.utils.get(guild.text_channels, name=ch_name)
+
     if existing:
         if participants:
             db.set_channel_participants(ch_name, participants)

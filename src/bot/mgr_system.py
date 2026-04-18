@@ -1193,9 +1193,8 @@ async def _onboarding_setup_channels(guild):
     except Exception as e:
         log_writer.system(f"❌ Phase 2 중단: {MGR_SYSTEM_LOG} 생성 실패 ({type(e).__name__}: {e})")
         return
-    # post-condition: 디스코드 guild에 실제 존재 확인
-    if not discord.utils.get(guild.text_channels, name=MGR_SYSTEM_LOG):
-        log_writer.system(f"❌ Phase 2 중단: {MGR_SYSTEM_LOG}가 guild에 실제 없음 (생성 반환은 됐지만 누락)")
+    if not log_ch:
+        log_writer.system(f"❌ Phase 2 중단: {MGR_SYSTEM_LOG} 생성 결과 없음")
         return
 
     # 새 채널 자체에 간단한 안내 메시지 (오너가 채널 들어왔을 때 뭔지 바로 알 수 있게)
@@ -1242,8 +1241,8 @@ async def _onboarding_setup_channels(guild):
     except Exception as e:
         log_writer.system(f"❌ Phase 2 중단: {CREATOR_CHANNEL} 생성 실패 ({type(e).__name__}: {e})")
         return
-    if not discord.utils.get(guild.text_channels, name=CREATOR_CHANNEL):
-        log_writer.system(f"❌ Phase 2 중단: {CREATOR_CHANNEL}가 guild에 실제 없음")
+    if not creator_ch:
+        log_writer.system(f"❌ Phase 2 중단: {CREATOR_CHANNEL} 생성 결과 없음")
         return
 
     await asyncio.sleep(2)
