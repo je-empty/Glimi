@@ -12,8 +12,9 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# Homebrew bin 경로 보강 (non-interactive SSH 세션에서도 tmux/python 등 발견 가능하도록)
-for p in /opt/homebrew/bin /usr/local/bin; do
+# Homebrew + 사용자 로컬 bin 경로 보강
+# (non-interactive SSH 세션에서도 tmux/python/claude 등 발견 가능하도록)
+for p in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin; do
     [ -d "$p" ] && [[ ":$PATH:" != *":$p:"* ]] && PATH="$p:$PATH"
 done
 export PATH
