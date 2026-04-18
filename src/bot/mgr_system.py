@@ -1187,8 +1187,26 @@ async def _onboarding_setup_channels(guild):
 
     await asyncio.sleep(2)
 
-    # 1. mgr-system-log 생성 + 유나 설명
-    log_ch = await create_onboarding_channel(guild, MGR_SYSTEM_LOG, participants=[MGR_ID])
+    # 1. mgr-system-log 생성 + 유나 설명 (mgr-dashboard에서 설명하고, 새 채널 자체에도 핀 메시지 1건)
+    try:
+        log_ch = await create_onboarding_channel(guild, MGR_SYSTEM_LOG, participants=[MGR_ID])
+    except Exception as e:
+        log_writer.system(f"❌ Phase 2 중단: {MGR_SYSTEM_LOG} 생성 실패 ({type(e).__name__}: {e})")
+        return
+    # post-condition: 디스코드 guild에 실제 존재 확인
+    if not discord.utils.get(guild.text_channels, name=MGR_SYSTEM_LOG):
+        log_writer.system(f"❌ Phase 2 중단: {MGR_SYSTEM_LOG}가 guild에 실제 없음 (생성 반환은 됐지만 누락)")
+        return
+
+    # 새 채널 자체에 간단한 안내 메시지 (오너가 채널 들어왔을 때 뭔지 바로 알 수 있게)
+    try:
+        await log_ch.send(
+            f"📋 시스템 로그 채널\n"
+            f"멤버들 활동·상태 변화·도구 호출 결과가 여기 자동 기록됨."
+        )
+    except Exception as e:
+        log_writer.system(f"⚠ {MGR_SYSTEM_LOG} intro 전송 실패 ({type(e).__name__}: {e})")
+
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if mgr_ch:
         prompt = (
@@ -1199,7 +1217,7 @@ async def _onboarding_setup_channels(guild):
             "그리고 자연스럽게 '이제 새로운 친구를 만들어볼까?' 라고 전환해.\n"
             "곧 크리에이터가 인사할 거라고 말해.\n"
             "[스타일] 카톡처럼 짧게. 자연스러운 너의 말투로.\n"
-            "[금지] [CMD:...], [QUERY:...], [ACTION:...] 태그 사용 금지."
+            "[금지] `<tools>` 블록 쓰지 마 (지금은 안내 텍스트만)."
         )
         loop = asyncio.get_event_loop()
         responses = await loop.run_in_executor(
@@ -1218,8 +1236,15 @@ async def _onboarding_setup_channels(guild):
 
     await asyncio.sleep(3)
 
-    # 2. mgr-creator 생성
-    creator_ch = await create_onboarding_channel(guild, CREATOR_CHANNEL, participants=["agent-creator-001"])
+    # 2. mgr-creator 생성 (mgr-system-log 확정 후에만 진행)
+    try:
+        creator_ch = await create_onboarding_channel(guild, CREATOR_CHANNEL, participants=["agent-creator-001"])
+    except Exception as e:
+        log_writer.system(f"❌ Phase 2 중단: {CREATOR_CHANNEL} 생성 실패 ({type(e).__name__}: {e})")
+        return
+    if not discord.utils.get(guild.text_channels, name=CREATOR_CHANNEL):
+        log_writer.system(f"❌ Phase 2 중단: {CREATOR_CHANNEL}가 guild에 실제 없음")
+        return
 
     await asyncio.sleep(2)
 
@@ -1287,14 +1312,17 @@ async def _onboarding_setup_channels(guild):
     )
     import re as _re
     cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
-    if creator_ch:
-        for resp in responses:
-            resp = cmd_pattern.sub('', resp).strip()
-            if not resp:
-                continue
-            for part in _split_for_chat(resp):
-                await send_as_agent(creator_ch, CREATOR_ID, part)
-                await asyncio.sleep(1)
+    sent_any = False
+    for resp in responses:
+        resp = cmd_pattern.sub('', resp).strip()
+        if not resp:
+            continue
+        for part in _split_for_chat(resp):
+            await send_as_agent(creator_ch, CREATOR_ID, part)
+            sent_any = True
+            await asyncio.sleep(1)
+    if not sent_any:
+        log_writer.system(f"⚠ {CREATOR_CHANNEL}에 인사 메시지 0건 — 생성 응답 비어있음")
 
     # 카테고리 순서 정렬
     from src.core.sync import CATEGORY_ORDER
