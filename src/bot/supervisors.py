@@ -5,7 +5,7 @@ Project Glimi — Supervisor 시스템
 각 Supervisor는 특정 조건을 감시하고, 필요시 에이전트에게 내부 프롬프트를 주입.
 
 씬별 감시자는 `src/scenes/{scene_id}/supervisor.py` 에 정의하고, 여기서 수집한다.
-이 파일은 범용 ChannelConversationSupervisor 등 씬 비의존 감시자만 유지.
+이 파일은 범용 AgentTalkSupervisor 등 씬 비의존 감시자만 유지.
 """
 import asyncio
 import os
@@ -79,9 +79,10 @@ from src.scenes.onboarding.supervisor import OnboardingSupervisor  # noqa: E402
 
 # ── 채널 대화 감시자 ────────────────────────────────────
 
-class ChannelConversationSupervisor(Supervisor):
-    """internal 채널 대화 감시 — running 상태인 채널에서 대화가 멈추면 재촉"""
-    name = "channel-conv"
+class AgentTalkSupervisor(Supervisor):
+    """에이전트간 대화 감시 — internal-dm/group running 채널 대화 멈추면 재촉.
+    on-demand 활성화: running 채널 하나라도 있을 때만 존재 의미가 있음."""
+    name = "agent-talk"
     interval = 15
 
     def should_run(self) -> bool:
@@ -210,7 +211,7 @@ def _build_supervisor_list() -> list[Supervisor]:
         sup = s.supervisor()
         if sup is not None:
             result.append(sup)
-    result.append(ChannelConversationSupervisor())
+    result.append(AgentTalkSupervisor())
     return result
 
 
