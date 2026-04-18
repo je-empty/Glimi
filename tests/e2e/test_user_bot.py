@@ -496,16 +496,22 @@ class TestUserBot(discord.Client):
             print(f"[#{ch_name}] [{_QA_NAME}] {text}")
 
     def _check_onboarding_done(self) -> bool:
-        """온보딩 완료 여부 체크 — 채널 구조 변화로 판단"""
+        """온보딩 완료 여부 체크.
+
+        우선순위: (1) `.onboarding-complete` flag 파일 (finish_onboarding 실행의 직접
+        신호) → 가장 확실. (2) 채널 구조 + 키워드 힌트 (legacy heuristic)."""
+        # (1) 서버 쪽 flag 파일 — finish_onboarding 도구가 set
+        flag_path = os.path.join(self._qa_log_dir(), ".onboarding-complete")
+        if os.path.exists(flag_path):
+            return True
+
+        # (2) 레거시 heuristic (flag 못 찾을 때 fallback)
         if not self.guilds:
             return False
         guild = self.guilds[0]
         ch_names = {ch.name for ch in guild.text_channels}
-        # mgr-creator 채널이 생기면 온보딩 Phase 2 진행 중
-        # 유나가 채널 설명까지 하면 완료
         has_all = "mgr-dashboard" in ch_names and "mgr-creator" in ch_names and "mgr-system-log" in ch_names
         if has_all and self.turn_count > 5:
-            # 마지막 메시지에서 온보딩 완료 힌트 체크
             recent_texts = [m["text"] for m in self.conversation[-5:] if m["role"] == "agent"]
             for text in recent_texts:
                 if any(kw in text for kw in ("완료", "끝", "다 됐", "준비 됐", "시작해", "둘러봐")):
