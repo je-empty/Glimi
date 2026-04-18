@@ -225,13 +225,37 @@ async def _get_plain_webhook(channel: discord.TextChannel) -> discord.Webhook:
 _DISCORD_LOG_KEYWORDS = {"❌", "ACTION", "CMD:", "개발요청", "에러", "크래시", "비정상"}
 
 
+def get_target_guild(bot_ref=None) -> Optional[discord.Guild]:
+    """현재 세션의 타겟 Discord guild 반환.
+
+    DISCORD_GUILD_ID env var 우선 — 세팅되어 있으면 그 guild 만, 못 찾으면 None
+    (dev 서버 같은 엉뚱한 곳으로 쓰는 사고 방지).
+    env 없으면 guilds[0] (단일 서버 운영 시 호환성용)."""
+    b = bot_ref if bot_ref is not None else bot
+    if not b or not b.guilds:
+        return None
+    target_id = os.environ.get("DISCORD_GUILD_ID")
+    if target_id:
+        try:
+            tid = int(target_id)
+        except ValueError:
+            log_writer.system(f"❌ DISCORD_GUILD_ID='{target_id}' 정수 변환 실패 — guild 선택 불가")
+            return None
+        guild = discord.utils.get(b.guilds, id=tid)
+        if not guild:
+            log_writer.system(f"❌ DISCORD_GUILD_ID={tid} 서버가 봇에 없음 — 다른 서버 접근 차단")
+            return None
+        return guild
+    return b.guilds[0]
+
+
 async def send_system_log(msg: str, force: bool = False):
     """시스템 로그를 mgr-system-log 디코 채널에 전송 (크리티컬만)"""
     if not force and not any(kw in msg for kw in _DISCORD_LOG_KEYWORDS):
         return
-    if not bot.guilds:
+    guild = get_target_guild()
+    if not guild:
         return
-    guild = bot.guilds[0]
     ch = discord.utils.get(guild.text_channels, name=MGR_SYSTEM_LOG)
     if ch:
         try:

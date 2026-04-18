@@ -67,15 +67,13 @@ async def on_ready():
         log_writer.system(f"❌ Tool registration failed: {e}")
 
     if bot.guilds:
-        # DISCORD_GUILD_ID가 설정되어 있으면 해당 서버 선택 (멀티서버 지원)
-        target_guild_id = os.environ.get("DISCORD_GUILD_ID")
-        if target_guild_id:
-            guild = discord.utils.get(bot.guilds, id=int(target_guild_id))
-            if not guild:
-                log_writer.system(f"❌ DISCORD_GUILD_ID={target_guild_id} 서버를 찾을 수 없음")
-                guild = bot.guilds[0]
-        else:
-            guild = bot.guilds[0]
+        # DISCORD_GUILD_ID 기준으로 타겟 guild 선택. 미매칭이면 더 진행하지 않고 fail-fast
+        # (다른 서버에 메시지 쓰는 사고 방지)
+        from src.bot.core import get_target_guild
+        guild = get_target_guild()
+        if not guild:
+            log_writer.system("❌ 타겟 guild 확정 불가 — 봇 초기화 중단")
+            return
         log.info(f"서버: {guild.name}")
         log_writer.system(f"Server connected: {guild.name}")
         log_writer.system("Initializing channels...")
@@ -398,10 +396,10 @@ async def alive_heartbeat():
 async def yuna_watcher():
     """5분마다: 활동 감지 + 유나 판단으로 자율 대화 트리거"""
 
-    if not bot.guilds:
+    from src.bot.core import get_target_guild
+    guild = get_target_guild()
+    if not guild:
         return
-
-    guild = bot.guilds[0]
     mgr_channel = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if not mgr_channel:
         return
@@ -487,9 +485,10 @@ def _count_log_lines():
 @tasks.loop(seconds=10)
 async def system_log_sync():
     """시스템 로그 새 줄을 mgr-system-log 디코 채널에 전송"""
-    if not bot.guilds:
+    from src.bot.core import get_target_guild
+    guild = get_target_guild()
+    if not guild:
         return
-    guild = bot.guilds[0]
     ch = discord.utils.get(guild.text_channels, name=MGR_SYSTEM_LOG)
     if not ch:
         return

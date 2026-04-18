@@ -475,9 +475,10 @@ _pending_check: asyncio.Event | None = None
 
 async def _run_checks():
     """활성 감시자 체크 실행"""
-    if not bot.guilds:
+    from src.bot.core import get_target_guild
+    guild = get_target_guild()
+    if not guild:
         return
-    guild = bot.guilds[0]
 
     for sup in list(_active):
         try:

@@ -1827,9 +1827,10 @@ async def check_dev_results():
     if not os.path.exists(DEV_RESULT):
         return
 
-    if not bot.guilds:
+    from src.bot.core import get_target_guild
+    guild = get_target_guild()
+    if not guild:
         return
-    guild = bot.guilds[0]
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if not mgr_ch:
         return
