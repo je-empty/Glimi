@@ -333,15 +333,22 @@ class TestUserBot(discord.Client):
         )
 
         try:
-            result = subprocess.run(
-                [
-                    "claude", "-p", prompt,
-                    "--system-prompt", PERSONA,
-                    "--output-format", "text",
-                    "--model", "claude-haiku-4-5-20251001",
-                ],
-                capture_output=True, text=True, timeout=90,
-                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+            loop = asyncio.get_event_loop()
+            # executor로 위임 — subprocess.run이 event loop를 블록하지 않도록.
+            # (블록되면 생성 중 Creator/다른 에이전트의 on_message가 처리 안 돼서
+            #  target_channel 전환이 밀림)
+            result = await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [
+                        "claude", "-p", prompt,
+                        "--system-prompt", PERSONA,
+                        "--output-format", "text",
+                        "--model", "claude-haiku-4-5-20251001",
+                    ],
+                    capture_output=True, text=True, timeout=90,
+                    env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                ),
             )
             if result.returncode == 0 and result.stdout.strip():
                 out = result.stdout.strip()
@@ -370,6 +377,9 @@ class TestUserBot(discord.Client):
 
     async def _send_reply(self, reply: str):
         """응답을 디스코드에 전송"""
+        # 대기 중인 on_message 태스크(Creator 메시지 등)에 먼저 기회 줘서
+        # target_channel이 최신 상태로 갱신되도록 함
+        await asyncio.sleep(0)
         lines = [l.strip() for l in reply.strip().split("\n") if l.strip()]
 
         # 자기 이름 prefix 제거
