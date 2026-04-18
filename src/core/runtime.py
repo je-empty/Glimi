@@ -491,7 +491,9 @@ class AgentRuntime:
 
         agent_info = self._active_agents[agent_id]
         profile = agent_info["profile"]
-        _limit = 50 if profile.get("type") in ("mgr", "creator") else RAW_WINDOW
+        # raw window는 모든 에이전트 RAW_WINDOW(15)로 통일 — 컨텍스트 폭증 대신
+        # memory.py L1/L2 요약이 그 이전 메시지의 사실을 보존 (구체적 명사/옵션/결정)
+        _limit = RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
         log_writer.mark_thinking(agent_id)
@@ -567,7 +569,9 @@ class AgentRuntime:
         profile = agent_info["profile"]
         if model_override:
             self._model_override = model_override
-        _limit = 50 if profile.get("type") in ("mgr", "creator") else RAW_WINDOW
+        # raw window는 모든 에이전트 RAW_WINDOW(15)로 통일 — 컨텍스트 폭증 대신
+        # memory.py L1/L2 요약이 그 이전 메시지의 사실을 보존 (구체적 명사/옵션/결정)
+        _limit = RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
         log_writer.mark_thinking(agent_id)
@@ -727,7 +731,9 @@ class AgentRuntime:
         agent_info = self._active_agents[agent_id]
         profile = agent_info["profile"]
         name = profile["name"]
-        _limit = 50 if profile.get("type") in ("mgr", "creator") else RAW_WINDOW
+        # raw window는 모든 에이전트 RAW_WINDOW(15)로 통일 — 컨텍스트 폭증 대신
+        # memory.py L1/L2 요약이 그 이전 메시지의 사실을 보존 (구체적 명사/옵션/결정)
+        _limit = RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
         # 오너 메시지 먼저 로깅

@@ -145,16 +145,24 @@ def _try_l1_summarize(agent_id: str, channel: str):
         return
 
     # Claude로 요약 + 타입 분류 (JSON 응답 요청)
+    # 'summary'는 짧은 한 줄이 아닌 '구체적 사실 보존 글머리표'로 — 옵션/질문/결정/이름 등이
+    # 후속 턴에서도 그대로 참조될 수 있도록.
     summary, mem_type = _generate_summary_typed(
         agent_id, msgs_to_summarize, level=1,
         instruction=(
-            "아래 대화를 분석해서 다음을 한 줄 JSON으로 출력해:\n"
-            '{"type":"event|fact|emotion|relationship","summary":"<핵심을 한 문장, 한국어>"}\n'
-            "type 선택 기준:\n"
-            "  event    = 구체적인 사건/행동이 일어남\n"
-            "  fact     = 상대나 자신에 대해 새롭게 알게 된 사실/정보\n"
-            "  emotion  = 강한 감정적 순간 (기쁨/분노/슬픔 등)\n"
-            "  relationship = 관계·친밀도·역학의 변화\n"
+            "아래 대화 5건을 후속 대화에서 참조할 메모로 압축해. "
+            "지난 대화의 디테일을 잃으면 후속 응답이 어색해지므로, "
+            "추상적 요약 X — 구체적 명사·옵션·결정·이름·숫자를 그대로 살려.\n"
+            "출력 형식 (한 줄 JSON):\n"
+            '{"type":"event|fact|emotion|relationship","summary":"- 사실1\\n- 사실2\\n- 사실3"}\n'
+            "summary 작성 규칙:\n"
+            "- 글머리표 2~5개. 각 줄은 한 문장.\n"
+            "- 누가 무엇을 말/결정/제안했는지 명시 (이름·역할·옵션 그대로).\n"
+            "- 답변 미정 / 보류 상태도 명시 ('빈이는 아직 미선택' 등).\n"
+            "- 잡담·인사 같은 무의미한 줄은 스킵.\n"
+            "- 한국어 짧은 구어체.\n"
+            "type 기준:\n"
+            "  event=구체적 사건/행동 / fact=새 정보 / emotion=강한 감정 / relationship=관계 변화\n"
             "JSON만 출력. 다른 텍스트 없이."
         )
     )
@@ -208,7 +216,12 @@ def _try_l2_summarize(agent_id: str, channel: str):
 
     summary = _generate_summary_from_text(
         agent_id, batch_text, level=2,
-        instruction="아래 요약들을 하나의 짧은 단락(2~3문장)으로 통합 요약해. 핵심 사건과 관계 변화 중심으로. 한국어로."
+        instruction=(
+            "아래는 L1 요약(글머리표) 5개야. 이걸 후속 대화에서 참조할 중기 메모로 통합해.\n"
+            "추상화하지 말고 구체적 사실(이름·옵션·결정·미해결 사항)을 그대로 옮겨.\n"
+            "출력 형식: 글머리표 4~7개. 각 줄 한 문장. 한국어 구어체.\n"
+            "잡담은 빼고 의미 있는 사건/결정/관계 변화만."
+        )
     )
 
     if summary:
