@@ -210,7 +210,7 @@ class OnboardingSupervisor(SceneSupervisor):
                 mgr_text = " ".join(m.get("message", "") for m in recent_mgr)
                 yuna_mentioned_friend = any(n in mgr_text for n in persona_names)
                 idle = self._get_idle_seconds(MGR_CHANNEL)
-                if yuna_mentioned_friend and idle > 90:
+                if yuna_mentioned_friend and idle > 45:
                     log_writer.system(
                         "[sup:onboarding] 자동 finish_onboarding — "
                         f"{', '.join(persona_names)} 안내 확인 + idle {int(idle)}초"

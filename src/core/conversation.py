@@ -207,14 +207,20 @@ async def start_conversation(
             TAG_RE = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
             CMD_RE = re.compile(r'\[CMD:((?:[^\[\]]|\[[^\]]*\])*)\]')
             ACTION_RE = re.compile(r'\[ACTION:((?:[^\[\]]|\[[^\]]*\])*)\]')
+            TOOLS_RE = re.compile(r'<tools>.*?</tools>', re.IGNORECASE | re.DOTALL)
             for i, msg in enumerate(responses):
                 if i > 0:
                     await asyncio.sleep(random.uniform(0.5, 1.5))
 
                 cmds = CMD_RE.findall(msg)
                 actions = ACTION_RE.findall(msg)
-                # 모든 태그 제거 후 순수 텍스트만 전송
-                clean = TAG_RE.sub('', msg).strip()
+                # 모든 태그 제거 후 순수 텍스트만 전송 (legacy + <tools> 블록)
+                clean = TAG_RE.sub('', msg)
+                clean = TOOLS_RE.sub('', clean).strip()
+                # 파편이 남은 케이스 (라인 단위로 메시지 분리된 경우 — 위 block DOTALL
+                # 정규식으로 안 걸리는 one-line 잔재)
+                if clean.lower() in ("<tools>", "</tools>") or clean.startswith("<call "):
+                    continue
                 if clean:
                     await send_fn(speaker_id, clean)
 
@@ -242,6 +248,23 @@ async def start_conversation(
                     if guild:
                         for action in actions:
                             _aio.create_task(_forward_action_to_yuna(speaker_id, action.strip(), guild))
+
+            # <tools> 블록에서 파싱된 tool_calls 실행 — runtime에 stash돼 있음
+            # (이전에는 internal-dm 경로에서 이 실행이 빠져서 finish_onboarding 호출
+            #  시도해도 텍스트만 흘러나가고 실제론 아무 일도 안 일어남)
+            from src.bot.mgr_system import parse_and_execute_actions
+            from src.bot.core import get_target_guild as _gt
+            import discord as _disc
+            guild = _gt()
+            if guild:
+                ch_obj = _disc.utils.get(guild.text_channels, name=channel_name)
+                if ch_obj:
+                    try:
+                        await parse_and_execute_actions(
+                            ch_obj, [], guild, caller_agent_id=speaker_id
+                        )
+                    except Exception as e:
+                        print(f"[대화엔진] tool 실행 오류: {e}")
 
             # 턴 기록
             state.record_turn(speaker_id, responses)

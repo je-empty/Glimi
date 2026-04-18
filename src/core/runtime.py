@@ -1084,7 +1084,16 @@ class AgentRuntime:
                         env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
                     )
                     if result.returncode == 0 and result.stdout.strip():
-                        responses = self._parse_response(result.stdout.strip(), agent_name=speaker_name)
+                        # <tools> 블록 먼저 파싱 → tool_calls stash, chat 텍스트만 분리
+                        # (이전에는 이 경로에서 <tools> 파싱이 빠져서 internal-dm에서
+                        # 유나가 finish_onboarding 호출해도 원문이 채팅으로 새고 실행 안 됨)
+                        parsed = parse_tools_in_output(result.stdout.strip())
+                        self._last_tool_calls[speaker_id] = parsed.tool_calls
+                        if parsed.errors:
+                            log_writer.system(
+                                f"[Tools] 파싱 에러 (A2A {speaker_name}): {'; '.join(parsed.errors[:3])}"
+                            )
+                        responses = self._parse_response(parsed.chat, agent_name=speaker_name)
                         for msg in responses:
                             db.log_message(channel, speaker_id, msg)
 

@@ -2,6 +2,9 @@
 
 하나(Creator)가 새 친구 만들 때 먼저 제안할 샘플 프로필 이미지들.
 
+**일관된 아트 스타일 가이드**: [`docs/avatars_format.md`](../../docs/avatars_format.md) —
+모든 `gen_prompt` 는 이 문서 기준. 새 샘플 생성 시 참고.
+
 ## 구조
 
 `catalog.json` — 각 샘플의 메타데이터 + 생성 프롬프트. 이미지 파일은 이 디렉토리에 같은 이름(`.png`)으로.
