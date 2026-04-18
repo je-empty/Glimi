@@ -1,8 +1,9 @@
 """
-OnboardingSupervisor — 온보딩 씬의 phase 전이/재촉 감시자.
+OnboardingFlowSupervisor — 온보딩 씬 phase 전이·재촉·자동 완료 담당.
 
-기존 src/bot/supervisors.py:OnboardingSupervisor 를 scene 폴더로 이전.
-인터페이스는 그대로 (Supervisor 베이스) — bot.supervisors는 이 클래스를 import해서 레지스트리에 추가만.
+- kind: "scene"
+- id: "onboarding.flow"
+- lifetime: scene.is_active()에 따라 pool이 자동 생성·제거.
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ from src.bot import (
     MGR_ID,
 )
 from src.bot.core import send_as_agent, _split_for_chat
-from src.scenes.base import SceneSupervisor
+from src.supervisors.base import Supervisor
 
 
 def _judge_conversation(channel: str, question: str) -> str:
@@ -53,15 +54,22 @@ def _judge_conversation(channel: str, question: str) -> str:
         return "error"
 
 
-class OnboardingSupervisor(SceneSupervisor):
-    """온보딩 전 과정 감시 + 재촉."""
-    name = "onboarding"
-    interval = 30
+class OnboardingFlowSupervisor(Supervisor):
+    """온보딩 씬 전 과정 감시 + 재촉 + 자동 완료. scene-scoped singleton."""
+
+    id = "onboarding.flow"
+    display_name = "온보딩 · 흐름"
+    kind = "scene"
+    interval = 30.0
 
     def __init__(self, scene):
-        super().__init__(scene)
+        super().__init__(scope={"scene_id": scene.id})
+        self.scene = scene
         self._last_nudge_time: float = 0
         self._nudge_cooldown: float = 120
+
+    def should_exist(self) -> bool:
+        return self.scene.is_active()
 
     def _can_nudge(self) -> bool:
         import time
@@ -71,7 +79,10 @@ class OnboardingSupervisor(SceneSupervisor):
         import time
         self._last_nudge_time = time.time()
 
-    async def check(self, guild: discord.Guild):
+    async def check(self, ctx):
+        guild = ctx.get("guild") if isinstance(ctx, dict) else None
+        if guild is None:
+            return
         # 에이전트 추론/전송 중이면 스킵
         CREATOR_ID = "agent-creator-001"
         busy_agents = [MGR_ID, CREATOR_ID]

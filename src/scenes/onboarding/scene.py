@@ -47,16 +47,22 @@ class OnboardingScene(Scene):
         from src import db
         if phase_id in ("channels_setup", "channels_done", "complete"):
             db.set_meta("onboarding_phase", phase_id)
-            return
-        if phase_id == "collect_profile":
+        elif phase_id == "collect_profile":
             db.set_meta("onboarding_phase", "")
             db.set_meta("yuna_greeted", "1")
-            return
-        if phase_id == "greet":
+        elif phase_id == "greet":
             db.set_meta("onboarding_phase", "")
-            # yuna_greeted는 건드리지 않음 (그대로 초기 상태 유지)
-            return
-        raise ValueError(f"unknown onboarding phase: {phase_id}")
+        else:
+            raise ValueError(f"unknown onboarding phase: {phase_id}")
+        # supervisor pool 재동기화 (씬 활성/비활성 변화 감지)
+        try:
+            import asyncio as _aio
+            from src.supervisors.base import pool as _pool
+            loop = _aio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(_pool.sync())
+        except Exception:
+            pass
 
     def is_active(self) -> bool:
         return self.current_phase() != "complete"
@@ -77,9 +83,15 @@ class OnboardingScene(Scene):
 
     # ── 슈퍼바이저 (lazy import로 순환 회피) ────────────
 
+    def supervisors(self) -> list:
+        """이 씬이 가질 supervisor들 (복수). pool이 활성화 시 등록."""
+        from src.scenes.onboarding.supervisor import OnboardingFlowSupervisor
+        return [OnboardingFlowSupervisor(self)]
+
+    # 구버전 호환 (단일 반환)
     def supervisor(self):
-        from src.scenes.onboarding.supervisor import OnboardingSupervisor
-        return OnboardingSupervisor(self)
+        sups = self.supervisors()
+        return sups[0] if sups else None
 
 
 scene = OnboardingScene()

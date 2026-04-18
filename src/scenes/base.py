@@ -46,6 +46,15 @@ class Scene:
     def set_phase(self, phase_id: str):
         from src import db
         db.set_meta(self._meta_key(), phase_id)
+        # scene phase 변화 → supervisor pool 재동기화 (생성/제거)
+        try:
+            import asyncio as _aio
+            from src.supervisors.base import pool as _pool
+            loop = _aio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(_pool.sync())
+        except Exception:
+            pass
 
     def is_active(self) -> bool:
         """씬이 진행 중인지 — 시작됐고 완료 안 된 상태."""

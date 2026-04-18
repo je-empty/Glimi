@@ -1195,97 +1195,74 @@ def get_scenes() -> list[dict]:
 
 
 def get_supervisors() -> list[dict]:
-    """감시자(supervisor) 목록과 상태.
-
-    각 감시자:
-      name, description, active(bool), interval, target_agents(list),
-      recent_logs(list of log lines), last_action_time
-    """
+    """감시자(supervisor) 목록과 상태. 이제는 SupervisorPool에서 직접 읽음."""
     import re as _re
-    import json as _json
 
-    # 감시자 메타데이터 (supervisors.py 코드 기반 하드코딩, 임포트 실패에도 동작)
-    SUPERVISOR_META = [
-        {
-            "name": "onboarding",
-            "class_name": "OnboardingSupervisor",
-            "description": "온보딩 전체 흐름 감시 — 프로필 수집 → 채널 셋업 → 크리에이터 보고 → 완료까지. 멈추면 재촉.",
-            "interval": 30,
-            "icon": "🌱",
-        },
-        {
-            "name": "agent-talk",
-            "class_name": "AgentTalkSupervisor",
-            "description": "에이전트간 대화(internal-dm, internal-group) 감시 — 대화 멈추면 재촉. 활성 running 채널 있을 때만.",
-            "interval": 15,
-            "icon": "💬",
-        },
-    ]
+    try:
+        from src.supervisors.base import pool
+        live_sups = pool.all()
+    except Exception:
+        live_sups = []
 
-    # 활성 여부 판단 (should_run 로직 재현)
-    def _is_active_onboarding() -> bool:
+    # 아이콘 매핑 (id prefix 기준)
+    ICON_BY_PREFIX = {
+        "onboarding": "🌱",
+        "chat": "💬",
+        "orchestrator": "🎼",
+        "health": "❤️",
+    }
+
+    def _icon(sup_id: str) -> str:
+        for prefix, icon in ICON_BY_PREFIX.items():
+            if sup_id.startswith(prefix):
+                return icon
+        return "◆"
+
+    # channel-scoped supervisor의 target 계산 — 해당 채널 참가자
+    def _channel_targets(channel_name: str) -> list[str]:
         try:
-            return db.get_meta("onboarding_phase") != "complete"
-        except Exception:
-            return False
-
-    def _is_active_agent_talk() -> bool:
-        try:
+            import json as _json
             conn = db.get_conn()
             row = conn.execute(
-                "SELECT COUNT(*) as c FROM channels WHERE status='running' AND channel LIKE 'internal-%'"
+                "SELECT participants FROM channels WHERE channel=?", (channel_name,)
             ).fetchone()
             conn.close()
-            return bool(row and row["c"] > 0)
-        except Exception:
-            return False
-
-    # 대상 에이전트 계산 — 비활성 시 빈 리스트 반환 (그래프에서 제외되도록)
-    def _targets_onboarding() -> list[str]:
-        if not _is_active_onboarding():
-            return []
-        return ["agent-mgr-001", "agent-creator-001"]
-
-    def _targets_agent_talk() -> list[str]:
-        # 비활성이면 빈 리스트 (그래프에서 제외)
-        if not _is_active_agent_talk():
-            return []
-        targets = set()
-        try:
-            conn = db.get_conn()
-            for r in conn.execute(
-                "SELECT participants FROM channels WHERE status='running' AND channel LIKE 'internal-%'"
-            ).fetchall():
-                try:
-                    parts = _json.loads(r["participants"] or "[]")
-                    targets.update(parts)
-                except Exception:
-                    pass
-            conn.close()
+            if row and row["participants"]:
+                return _json.loads(row["participants"])
         except Exception:
             pass
-        return sorted(targets)
+        return []
 
-    active_map = {
-        "onboarding": _is_active_onboarding,
-        "agent-talk": _is_active_agent_talk,
-    }
-    target_map = {
-        "onboarding": _targets_onboarding,
-        "agent-talk": _targets_agent_talk,
-    }
+    def _scene_targets(scope: dict) -> list[str]:
+        sid = scope.get("scene_id", "")
+        if sid == "onboarding":
+            return ["agent-mgr-001", "agent-creator-001"]
+        return []
+
+    def _system_targets() -> list[str]:
+        return []   # system supervisor는 target 없음 (전역)
 
     all_logs = get_recent_system_logs(tail_lines=500)
     out = []
-    for meta in SUPERVISOR_META:
-        name = meta["name"]
-        active = active_map.get(name, lambda: False)()
-        targets = target_map.get(name, lambda: [])()
-        # 이 감시자 관련 로그 추출
-        sup_logs = [l for l in all_logs if f"[sup:{name}]" in l or f"[supervisor] 활성화: {name}" in l]
+    for sup in live_sups:
+        name = sup.id
+        # target 결정
+        if sup.kind == "channel":
+            ch = sup.scope.get("channel", "")
+            targets = _channel_targets(ch) if ch else []
+        elif sup.kind == "scene":
+            targets = _scene_targets(sup.scope)
+        else:
+            targets = _system_targets()
+
+        # 로그 추출 (id + 레거시 name 둘 다 매칭)
+        sup_logs = [
+            l for l in all_logs
+            if f"[sup:{name}]" in l or f"[supervisor] 활성화: {name}" in l
+        ]
         sup_logs = sup_logs[-15:]
 
-        # 최근 액션 시각 (로그의 [HH:MM:SS] prefix)
+        # 최근 액션 시각
         last_action = None
         seconds_since = None
         for l in reversed(sup_logs):
@@ -1296,7 +1273,8 @@ def get_supervisors() -> list[dict]:
                     from datetime import datetime, timedelta
                     now = datetime.now()
                     today_action = now.replace(
-                        hour=int(m.group(1)), minute=int(m.group(2)), second=int(m.group(3)), microsecond=0
+                        hour=int(m.group(1)), minute=int(m.group(2)),
+                        second=int(m.group(3)), microsecond=0
                     )
                     if today_action > now:
                         today_action -= timedelta(days=1)
@@ -1305,7 +1283,6 @@ def get_supervisors() -> list[dict]:
                     pass
                 break
 
-        # "재촉" / "강제 지시" / "트리거" 등 개입 액션 감지 — 최근 액션이 이런 종류면 지금 개입 중
         intervening = False
         if sup_logs and seconds_since is not None and seconds_since < 10:
             last_log = sup_logs[-1].lower()
@@ -1314,11 +1291,13 @@ def get_supervisors() -> list[dict]:
 
         out.append({
             "name": name,
-            "class_name": meta["class_name"],
-            "icon": meta["icon"],
-            "description": meta["description"],
-            "interval_sec": meta["interval"],
-            "active": active,
+            "class_name": type(sup).__name__,
+            "kind": sup.kind,
+            "scope": sup.scope,
+            "icon": _icon(name),
+            "description": sup.display_name or name,
+            "interval_sec": sup.interval,
+            "active": True,   # pool에 살아있다 = active
             "target_agents": targets,
             "recent_logs": sup_logs,
             "last_action": last_action,

@@ -127,6 +127,8 @@ async def on_ready():
             system_log_sync.start()
         if not alive_heartbeat.is_running():
             alive_heartbeat.start()
+        if not supervisor_tick.is_running():
+            supervisor_tick.start()
     except Exception as e:
         log_writer.system(f"❌ 태스크 시작 오류: {e}")
 
@@ -388,6 +390,24 @@ async def alive_heartbeat():
         os.utime(path, None)
     except Exception:
         pass
+
+
+# ── Supervisor Pool tick ─────────────────────────────────
+# 매 30초마다 pool.tick() — 각 supervisor의 interval은 내부에서 체크되어
+# 불필요한 check() 는 skip. sync() 도 매 tick 안에서 실행되므로 scene/channel
+# 변화가 늦어도 30초 내 반영.
+
+@tasks.loop(seconds=30)
+async def supervisor_tick():
+    try:
+        from src.bot.core import get_target_guild
+        from src.supervisors.base import pool
+        guild = get_target_guild()
+        if not guild:
+            return
+        await pool.tick(guild)
+    except Exception as e:
+        log_writer.system(f"[supervisor-tick] 오류: {type(e).__name__}: {e}")
 
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────
