@@ -130,9 +130,10 @@ class OnboardingSupervisor(Supervisor):
 
         has_mbti = bool(user.get("mbti"))
         has_bg = bool(user.get("background"))
+        # 한 필드만 있어도 트리거 — 무한히 더 모으려 하기보다 빠르게 다음 phase로 진행.
+        # 부족한 정보는 Phase 2 진행 중에 자연스럽게 보강 가능.
         collected = sum([has_mbti, has_bg])
-
-        if collected >= 2:
+        if collected >= 1:
             log_writer.system("[sup:onboarding] 프로필수집 조건 충족 — 강제 트리거")
             from src.bot.mgr_system import _trigger_onboarding_phase2
             await _trigger_onboarding_phase2(guild)
