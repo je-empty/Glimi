@@ -18,6 +18,19 @@ for p in /opt/homebrew/bin /usr/local/bin; do
 done
 export PATH
 
+# Python 인터프리터 결정 (.venv > python3 > python)
+if [ -x ".venv/bin/python" ]; then
+    PYTHON=".venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON="python"
+else
+    echo "ERROR: python interpreter not found" >&2
+    exit 1
+fi
+export PYTHON
+
 SESSION="Glimi-QA-Runner"
 
 GREEN='\033[0;32m'
@@ -54,7 +67,7 @@ echo ""
 # 파일은 gitignore됨 (개인정보 커밋 방지)
 tmux new-session -d -s "$SESSION" -n runner \
     "set -a; [ -f communities/qa/.env ] && source communities/qa/.env; set +a; \
-     PYTHONUNBUFFERED=1 python -u -m tests.e2e.runner $* 2>&1 | tee tests/e2e/results/latest.log"
+     PYTHONUNBUFFERED=1 $PYTHON -u -m tests.e2e.runner $* 2>&1 | tee tests/e2e/results/latest.log"
 
 echo -e "${GREEN}[$SESSION] 시작됨${NC}"
 echo -e "  실시간 로그: ${CYAN}./scripts/qa.sh attach${NC}"
