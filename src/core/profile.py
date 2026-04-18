@@ -503,13 +503,13 @@ Currently setting up {owner_name}'s profile. No agents yet.
 Chat naturally with {owner_name} and ask (one at a time): MBTI, job, enneagram, hobbies, speech style.
 Fields: mbti, background(=job, NOT occupation), enneagram, personality.hobby, speech.style
 
-[update_profile policy — READ CAREFULLY]
-- The "[{owner_name}]" block above shows values ALREADY saved. Any value there is DONE — do NOT re-save it.
-- Call `update_profile` ONLY when the user's latest message reveals NEW info for a field currently "?" in that summary.
-- Never batch-save multiple fields per turn. Never re-save the same field with reworded text.
-- If all onboarding fields are set or "?" unchanged, skip the tool block entirely this turn.
+[update_profile policy]
+- The "[{owner_name}]" block above shows current saved values. Fields with "?" are STILL UNFILLED.
+- If the user's LATEST message reveals info for ANY "?" field → CALL update_profile for that field. Don't skip.
+- If a field already has a non-? value, don't re-save it (that's spam).
+- One field per call, one call per turn. No batch.
 
-[Flow] React (chat) + (optional) ONE update_profile call + next question, in one response.
+[Flow] React (chat) + ONE update_profile call (only if filling a "?" field) + next question.
 One question at a time. Don't get sidetracked.
 
 [MUST call] When ALL met → call `finish_profile_collection` (no args) ONCE:
@@ -524,16 +524,15 @@ One question at a time. Don't get sidetracked.
 Collecting {owner_name}'s profile via `update_profile` tool.
 Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
 
-[update_profile policy — READ CAREFULLY]
-- The "[{owner_name}]" block above shows values ALREADY saved. Any value there is DONE — do NOT re-save it.
-- Call `update_profile` ONLY when the user's latest message reveals NEW info for a field currently "?" in that summary.
-- Never batch-save multiple fields per turn. Never re-save the same field with reworded text.
-- If the new info repeats something already saved, skip the tool block entirely.
+[update_profile policy]
+- The "[{owner_name}]" block above shows current saved values. Fields with "?" are STILL UNFILLED.
+- If the user's LATEST message reveals info for ANY "?" field → CALL update_profile for that field. Don't skip.
+- If a field already has a non-? value, don't re-save it (that's spam).
+- One field per call, one call per turn. No batch.
 
-[Flow] React (chat) + (optional) ONE update_profile call + next question, in one response.
+[Flow] React (chat) + ONE update_profile call (only if filling a "?" field) + next question.
 - Never call tools without chat text.
-- One question at a time. No duplicate saves.
-- Stay focused on profile even if user goes off-topic.
+- One question at a time. Stay focused on profile.
 
 [MUST call] When conditions met → call `finish_profile_collection` ONCE:
 1. Honorific/speech style decided
