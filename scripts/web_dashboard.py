@@ -2929,6 +2929,9 @@ function syntheticTestUserAgent(snap) {
   // QA 커뮤니티에서만 test-user-bot을 가상 에이전트로 표시
   if (snap.community_id !== 'qa') return null;
   const alive = snap.bot.test_user_alive;
+  // .thinking-test-user / .speaking-test-user 플래그를 서버에서 받아 반영
+  const thinking = !!snap.bot.test_user_thinking;
+  const speaking = !!snap.bot.test_user_speaking;
   return {
     id: 'test-user-bot',
     type: 'persona',
@@ -2940,8 +2943,8 @@ function syntheticTestUserAgent(snap) {
     mbti: 'ENTP',
     age: 26,
     last_active: new Date().toISOString(),
-    thinking: false,
-    speaking: alive,
+    thinking: thinking,
+    speaking: speaking,
     thinking_seconds: 0,
     speaking_seconds: 0,
     model: 'claude-haiku-4-5',
