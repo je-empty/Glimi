@@ -843,6 +843,9 @@ class AgentRuntime:
                 import re as _re
                 _legacy_tag = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
                 line = _legacy_tag.sub('', line)
+                # 프롬프트 example placeholder ({name}, {topic}, {field} 등)가 그대로
+                # 채팅에 새는 거 차단. 영어 lowercase 식별자만 한정해서 한국어/이모지는 안 건드림.
+                line = _re.sub(r'\{[a-z_][a-z0-9_]*\}', '', line)
                 cleaned = " ".join(line.split())
                 if not cleaned:
                     continue
