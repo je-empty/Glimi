@@ -94,16 +94,61 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id TEXT NOT NULL,
             channel TEXT NOT NULL,
-            level INTEGER NOT NULL DEFAULT 1,
+            level INTEGER NOT NULL DEFAULT 1,       -- 1=L1 digest, 2=L2 chronicle, 3=L3 saga
             content TEXT NOT NULL,
+            mem_type TEXT,                           -- event/fact/emotion/relationship
+            related_entities TEXT,                   -- JSON array of entity names/ids referenced
+            knows TEXT,                              -- JSON array of who directly knows (agent ids + "owner")
+            importance INTEGER DEFAULT 5,            -- 1-10, higher = more important
+            is_pinned INTEGER DEFAULT 0,             -- 1 = never evicted from injection
+            parent_memory_id INTEGER,                -- L2/L3 points to constituent memory_ids (JSON in content not needed here)
             msg_id_from INTEGER,
             msg_id_to INTEGER,
             msg_count INTEGER DEFAULT 0,
-            related_agent_id TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            related_agent_id TEXT,                   -- legacy single-entity tag (kept for backward reads)
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE INDEX IF NOT EXISTS idx_mem_agent ON memories(agent_id, channel, level);
+        CREATE INDEX IF NOT EXISTS idx_mem_importance ON memories(agent_id, importance DESC, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_mem_pinned ON memories(agent_id, is_pinned);
+
+        -- ── 엔티티 인덱스 사실 저장소 (Layer 3 semantic facts) ──
+        CREATE TABLE IF NOT EXISTS agent_facts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id TEXT NOT NULL,                  -- 이 지식을 갖고 있는 에이전트
+            subject TEXT NOT NULL,                   -- 사실의 주어 (엔티티 이름 또는 id)
+            predicate TEXT NOT NULL,                 -- 속성 (직업, 좋아하는음식, 말투 등)
+            object TEXT NOT NULL,                    -- 값
+            source_channel TEXT,                     -- 어디서 알게 됐는지
+            source_memory_id INTEGER,                -- 원본 메모리 링크
+            confidence REAL DEFAULT 1.0,             -- 0.0-1.0
+            importance INTEGER DEFAULT 5,            -- 1-10
+            valid_from DATETIME DEFAULT CURRENT_TIMESTAMP,
+            valid_to DATETIME,                       -- NULL = 현재 유효, 값 있으면 supersede됨
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_facts_agent_subject ON agent_facts(agent_id, subject, predicate);
+        CREATE INDEX IF NOT EXISTS idx_facts_valid ON agent_facts(agent_id, valid_to);
+
+        -- ── 관계 변곡점 이력 (Layer 4 relationship delta log) ──
+        CREATE TABLE IF NOT EXISTS relationship_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_a TEXT NOT NULL,
+            agent_b TEXT NOT NULL,
+            delta_type TEXT,                         -- intimacy / dynamics / speech_style
+            from_state TEXT,
+            to_state TEXT,
+            reason TEXT,
+            source_channel TEXT,
+            source_memory_id INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_relhist_pair ON relationship_history(agent_a, agent_b);
 
         -- ── 에이전트 프로필 위성 테이블 (JSON blob) ──
 
@@ -361,16 +406,53 @@ def get_events(participant: Optional[str] = None, limit: int = 20) -> list[dict]
 # === Memory ===
 
 def add_memory(agent_id: str, channel: str, level: int, content: str,
-               msg_id_from: int, msg_id_to: int, msg_count: int,
-               related_agent_id: str = None):
+               msg_id_from: int = None, msg_id_to: int = None, msg_count: int = 0,
+               mem_type: str = None,
+               related_entities: list = None,
+               knows: list = None,
+               importance: int = 5,
+               is_pinned: bool = False,
+               parent_memory_id: int = None,
+               related_agent_id: str = None) -> int:
+    """메모리 저장. related_entities / knows 는 리스트로 받아서 JSON 직렬화.
+    반환: 생성된 row id."""
     conn = get_conn()
-    conn.execute(
-        """INSERT INTO memories (agent_id, channel, level, content, msg_id_from, msg_id_to, msg_count, related_agent_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (agent_id, channel, level, content, msg_id_from, msg_id_to, msg_count, related_agent_id)
+    cur = conn.execute(
+        """INSERT INTO memories
+           (agent_id, channel, level, content, mem_type,
+            related_entities, knows, importance, is_pinned, parent_memory_id,
+            msg_id_from, msg_id_to, msg_count, related_agent_id, last_accessed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+        (agent_id, channel, level, content, mem_type,
+         json.dumps(related_entities, ensure_ascii=False) if related_entities else None,
+         json.dumps(knows, ensure_ascii=False) if knows else None,
+         max(1, min(10, int(importance))),
+         1 if is_pinned else 0,
+         parent_memory_id,
+         msg_id_from, msg_id_to, msg_count, related_agent_id)
     )
+    mem_id = cur.lastrowid
     conn.commit()
     conn.close()
+    return mem_id
+
+
+def _parse_json_list(s: Optional[str]) -> list:
+    if not s:
+        return []
+    try:
+        v = json.loads(s)
+        return v if isinstance(v, list) else []
+    except Exception:
+        return []
+
+
+def _hydrate_memory(row: dict) -> dict:
+    """row → JSON 필드 리스트로 파싱"""
+    row = dict(row)
+    row["related_entities"] = _parse_json_list(row.get("related_entities"))
+    row["knows"] = _parse_json_list(row.get("knows"))
+    return row
 
 
 def get_memories(agent_id: str, channel: str, level: int, limit: int = 10) -> list[dict]:
@@ -380,7 +462,7 @@ def get_memories(agent_id: str, channel: str, level: int, limit: int = 10) -> li
         (agent_id, channel, level, limit)
     ).fetchall()
     conn.close()
-    return [dict(r) for r in reversed(rows)]
+    return [_hydrate_memory(r) for r in reversed(rows)]
 
 
 def get_latest_memory(agent_id: str, channel: str, level: int) -> Optional[dict]:
@@ -390,7 +472,7 @@ def get_latest_memory(agent_id: str, channel: str, level: int) -> Optional[dict]
         (agent_id, channel, level)
     ).fetchone()
     conn.close()
-    return dict(row) if row else None
+    return _hydrate_memory(row) if row else None
 
 
 def count_memories(agent_id: str, channel: str, level: int, after_id: Optional[int] = None) -> int:
@@ -407,6 +489,144 @@ def count_memories(agent_id: str, channel: str, level: int, after_id: Optional[i
         ).fetchone()
     conn.close()
     return row["cnt"]
+
+
+# === Memory — cross-layer / retrieval helpers ===
+
+def get_pinned_memories(agent_id: str, limit: int = 20) -> list[dict]:
+    """is_pinned=1 모두 (항상 주입)"""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM memories WHERE agent_id = ? AND is_pinned = 1 "
+        "ORDER BY importance DESC, created_at DESC LIMIT ?",
+        (agent_id, limit)
+    ).fetchall()
+    conn.close()
+    return [_hydrate_memory(r) for r in rows]
+
+
+def set_pin(memory_id: int, pinned: bool = True):
+    conn = get_conn()
+    conn.execute("UPDATE memories SET is_pinned = ? WHERE id = ?",
+                 (1 if pinned else 0, memory_id))
+    conn.commit()
+    conn.close()
+
+
+def get_memories_by_entity(agent_id: str, entity: str, limit: int = 10,
+                           min_importance: int = 0) -> list[dict]:
+    """related_entities 에 entity가 포함된 메모리 — importance DESC 순"""
+    conn = get_conn()
+    # JSON 배열 LIKE 매칭 — 간단하고 SQLite 3.8+ 호환
+    like_pattern = f'%"{entity}"%'
+    rows = conn.execute(
+        "SELECT * FROM memories WHERE agent_id = ? AND related_entities LIKE ? "
+        "AND importance >= ? ORDER BY importance DESC, created_at DESC LIMIT ?",
+        (agent_id, like_pattern, min_importance, limit)
+    ).fetchall()
+    conn.close()
+    return [_hydrate_memory(r) for r in rows]
+
+
+def touch_memory_access(memory_ids: list[int]):
+    """조회된 메모리들의 last_accessed_at 갱신 (recency decay 반영용)"""
+    if not memory_ids:
+        return
+    conn = get_conn()
+    placeholders = ",".join("?" * len(memory_ids))
+    conn.execute(
+        f"UPDATE memories SET last_accessed_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
+        memory_ids
+    )
+    conn.commit()
+    conn.close()
+
+
+# === Agent Facts (Layer 3) ===
+
+def add_fact(agent_id: str, subject: str, predicate: str, object_value: str,
+             source_channel: str = None, source_memory_id: int = None,
+             confidence: float = 1.0, importance: int = 5) -> int:
+    """새 fact 저장. 기존 동일 (subject, predicate) 있으면 valid_to 닫고 새로 INSERT (supersession).
+    같은 object면 no-op."""
+    conn = get_conn()
+    # 기존 valid 체크
+    existing = conn.execute(
+        "SELECT id, object FROM agent_facts WHERE agent_id = ? AND subject = ? AND predicate = ? "
+        "AND valid_to IS NULL ORDER BY id DESC LIMIT 1",
+        (agent_id, subject, predicate)
+    ).fetchone()
+    if existing:
+        if existing["object"] == object_value:
+            conn.close()
+            return existing["id"]
+        # supersede
+        conn.execute("UPDATE agent_facts SET valid_to = CURRENT_TIMESTAMP WHERE id = ?",
+                     (existing["id"],))
+    cur = conn.execute(
+        """INSERT INTO agent_facts
+           (agent_id, subject, predicate, object, source_channel, source_memory_id,
+            confidence, importance, last_accessed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+        (agent_id, subject, predicate, object_value, source_channel, source_memory_id,
+         float(confidence), max(1, min(10, int(importance))))
+    )
+    fid = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return fid
+
+
+def get_facts(agent_id: str, subject: str = None, include_invalid: bool = False,
+              limit: int = 50) -> list[dict]:
+    conn = get_conn()
+    q = "SELECT * FROM agent_facts WHERE agent_id = ?"
+    args = [agent_id]
+    if subject:
+        q += " AND subject = ?"
+        args.append(subject)
+    if not include_invalid:
+        q += " AND valid_to IS NULL"
+    q += " ORDER BY importance DESC, created_at DESC LIMIT ?"
+    args.append(limit)
+    rows = conn.execute(q, args).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_facts_for_agent(agent_id: str, include_invalid: bool = False) -> list[dict]:
+    return get_facts(agent_id, subject=None, include_invalid=include_invalid, limit=10000)
+
+
+# === Relationship History (Layer 4) ===
+
+def add_relationship_delta(agent_a: str, agent_b: str, delta_type: str,
+                           from_state: str = None, to_state: str = None,
+                           reason: str = None, source_channel: str = None,
+                           source_memory_id: int = None) -> int:
+    conn = get_conn()
+    cur = conn.execute(
+        """INSERT INTO relationship_history
+           (agent_a, agent_b, delta_type, from_state, to_state, reason, source_channel, source_memory_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (agent_a, agent_b, delta_type, from_state, to_state, reason, source_channel, source_memory_id)
+    )
+    hid = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return hid
+
+
+def get_relationship_history(agent_a: str, agent_b: str, limit: int = 20) -> list[dict]:
+    conn = get_conn()
+    # 양방향
+    rows = conn.execute(
+        "SELECT * FROM relationship_history WHERE (agent_a = ? AND agent_b = ?) "
+        "OR (agent_a = ? AND agent_b = ?) ORDER BY created_at DESC LIMIT ?",
+        (agent_a, agent_b, agent_b, agent_a, limit)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def get_all_messages(channel: str) -> list[dict]:
@@ -668,11 +888,33 @@ def _migrate_schema():
     """기존 DB 스키마를 최신 형식으로 마이그레이션"""
     conn = get_conn()
 
-    # memories.related_agent_id 추가
+    # memories 테이블 신규 컬럼 추가 (Layer 2 확장: entity/knows/importance/pinned/parent)
     mem_cols = [r["name"] for r in conn.execute("PRAGMA table_info(memories)").fetchall()]
-    if "related_agent_id" not in mem_cols:
-        conn.execute("ALTER TABLE memories ADD COLUMN related_agent_id TEXT")
-        print("[DB] memories.related_agent_id 추가")
+    mem_additions = {
+        "mem_type": "TEXT",
+        "related_entities": "TEXT",                 # JSON array
+        "knows": "TEXT",                            # JSON array
+        "importance": "INTEGER DEFAULT 5",
+        "is_pinned": "INTEGER DEFAULT 0",
+        "parent_memory_id": "INTEGER",
+        "related_agent_id": "TEXT",
+        "last_accessed_at": "DATETIME",
+    }
+    for col, col_type in mem_additions.items():
+        if col not in mem_cols:
+            conn.execute(f"ALTER TABLE memories ADD COLUMN {col} {col_type}")
+            print(f"[DB] memories.{col} 추가")
+
+    # 기존 rows 백필: related_entities (related_agent_id 기반) + knows (channel 기반)
+    _backfill_memory_columns(conn)
+
+    # 신규 테이블: agent_facts, relationship_history (IF NOT EXISTS 로 이미 init_db 에서 처리됨)
+    # 여기서는 인덱스만 추가 보장
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_importance ON memories(agent_id, importance DESC, created_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_pinned ON memories(agent_id, is_pinned)")
+    except sqlite3.OperationalError:
+        pass
 
     # relationships 테이블 별칭 컬럼 추가
     rel_cols = [r["name"] for r in conn.execute("PRAGMA table_info(relationships)").fetchall()]
@@ -723,6 +965,75 @@ def _migrate_schema():
     conn.close()
 
 
+def _backfill_memory_columns(conn):
+    """메모리 확장 컬럼 1회성 백필.
+
+    related_entities: 기존 related_agent_id가 있으면 해당 에이전트 이름을 JSON 배열로
+    knows: 채널 타입에서 추론 (dm-X → [X, "owner"], internal-dm-A-B → [A, B] 등)
+    importance: 기본값 5 (컬럼 default로 이미 들어감)
+    last_accessed_at: created_at 복사
+    """
+    rows = conn.execute(
+        "SELECT id, agent_id, channel, related_agent_id, related_entities, knows, last_accessed_at, created_at "
+        "FROM memories"
+    ).fetchall()
+    if not rows:
+        return
+
+    # agent_id → name 맵 (related_agent_id 해석용)
+    name_map = {a["id"]: a["name"] for a in conn.execute("SELECT id, name FROM agents").fetchall()}
+
+    updated = 0
+    for r in rows:
+        updates = {}
+
+        # related_entities 백필
+        if not r["related_entities"]:
+            entities = []
+            if r["related_agent_id"]:
+                name = name_map.get(r["related_agent_id"])
+                if name:
+                    entities.append(name)
+            if entities:
+                updates["related_entities"] = json.dumps(entities, ensure_ascii=False)
+
+        # knows 백필
+        if not r["knows"]:
+            ch = r["channel"] or ""
+            agent_name = name_map.get(r["agent_id"], r["agent_id"])
+            knows = set()
+            if ch.startswith("dm-"):
+                knows.update([agent_name, "owner"])
+            elif ch.startswith("group-"):
+                parts = ch[len("group-"):].split("-")
+                knows.update(parts)
+                knows.add("owner")
+            elif ch.startswith("internal-dm-"):
+                parts = ch[len("internal-dm-"):].split("-")
+                knows.update(parts)
+            elif ch.startswith("internal-group-"):
+                parts = ch[len("internal-group-"):].split("-")
+                knows.update(parts)
+            elif ch.startswith("mgr-"):
+                knows.update([agent_name, "owner"])
+            if knows:
+                updates["knows"] = json.dumps(sorted(knows), ensure_ascii=False)
+
+        # last_accessed_at 백필
+        if not r["last_accessed_at"] and r["created_at"]:
+            updates["last_accessed_at"] = r["created_at"]
+
+        if updates:
+            cols = ", ".join(f"{k}=?" for k in updates)
+            conn.execute(f"UPDATE memories SET {cols} WHERE id=?",
+                         (*updates.values(), r["id"]))
+            updated += 1
+
+    if updated:
+        conn.commit()
+        print(f"[DB] memories 백필: {updated} rows (related_entities/knows/last_accessed_at)")
+
+
 def _backfill_agent_gender(conn):
     """gender 비어있는 페르소나 에이전트에 보수적 휴리스틱으로 성별 추론.
     오너와의 관계 (relationship_to_owner.rel_type) 만 신뢰 — 정확한 단어 매칭.
@@ -735,8 +1046,6 @@ def _backfill_agent_gender(conn):
         return
 
     # 정확 일치 키워드 (오너 관점에서 본 페르소나의 역할)
-    # 가족 관계 용어 (엄마/아빠/언니/오빠/누나/형/동생/이모/삼촌/조카 등)는 쓰지 않음
-    # — 커뮤니티는 친구/동료/파트너 범주만 지원.
     female_terms = ["여자친구", "여친", "와이프", "아내", "여사친"]
     male_terms = ["남자친구", "남친", "남편", "남사친"]
 
