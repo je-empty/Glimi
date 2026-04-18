@@ -300,66 +300,8 @@ def _build_common_prompt() -> str:
 - Don't send long messages. Break into short lines like chat messages.
 - Use emojis appropriate to your character (don't overuse).
 {owner_rule}
-- To show an image: [ACTION:{{"type":"이미지","url":"IMAGE_URL","caption":"description"}}]
 {lang_instruction}
 """
-
-
-def _build_action_system_prompt(agent_type: str) -> str:
-    """에이전트 타입별 자율 행동 시스템 프롬프트 (공통)"""
-
-    base = """
-=== Autonomous Action System ===
-Include tags in your response and the system will auto-execute them.
-Tags are invisible in Discord chat — they only appear in system logs.
-Always use exact real names (not nicknames/pet names).
-"""
-
-    if agent_type in ("mgr", "creator"):
-        base += """
---- CMD (Execute) ---
-  [CMD:{"cmd":"톡방","names":["name1","name2"],"topic":"topic"}]
-  [CMD:{"cmd":"대화시작","names":["name1","name2"],"situation":"context"}]
-  [CMD:{"cmd":"대화중단","target":"channel"}]
-  [CMD:{"cmd":"감정","name":"name","emotion":"emotion","intensity":5}]
-  [CMD:{"cmd":"프로필수정","name":"name","field":"path","value":"value"}]
-  [CMD:{"cmd":"관계수정","name_a":"A","name_b":"B","field":"field","value":"value"}]
-  [CMD:{"cmd":"채널삭제","target":"channel"}]
-  [CMD:{"cmd":"개발요청","args":"details"}]
-
---- QUERY (Read) ---
-  [QUERY:{"type":"채널목록"}]
-  [QUERY:{"type":"로그","target":"channel","count":20}]
-  [QUERY:{"type":"검색","args":"keyword"}]
-  [QUERY:{"type":"프로필","name":"name"}]
-  [QUERY:{"type":"관계","name":"name"}]
-
---- ACTION (Send DM) ---
-  [ACTION:{"type":"DM","target":"name","message":"message"}]
-  ※ System agents only. Don't DM persona members directly.
-"""
-    if agent_type == "creator":
-        base += """
---- CMD (Creation only) ---
-  [CMD:{"cmd":"프로필생성","profile":{...full JSON...}}]
-  [CMD:{"cmd":"프로필삭제","name":"name"}]
-"""
-
-    if agent_type == "persona":
-        base += """
---- ACTION (Request) ---
-To contact someone or create a DM, use ACTION tags. Don't overuse — only when genuinely needed.
-  [ACTION:{"type":"DM","target":"name","message":"message"}]
-  [ACTION:{"type":"멀티DM","names":["name1","name2"],"topic":"topic"}]
-"""
-
-    base += """
-Rules:
-- Tags are invisible in Discord (system log only)
-- Always use real names (not nicknames)
-- Multiple CMD/QUERY allowed per response
-"""
-    return base
 
 
 def _build_pet_name_section(agent_id: str) -> str:
@@ -451,7 +393,8 @@ Relationship with {oc}: {rel_owner.get('type', '?')}({rel_owner.get('duration', 
 {_load_user_summary()}
 {chr(10).join(agent_rels) if agent_rels else ''}
 Relationship scores: {' | '.join(rel_lines) if rel_lines else 'none'}
-{_build_action_system_prompt("persona")}"""
+
+{_tools_reference("persona")}"""
     return prompt
 
 
@@ -519,7 +462,7 @@ Fields: mbti, background(=job, NOT occupation), enneagram, personality.hobby, sp
 [Flow] React + tool call + next question in one response. Never call tools without chat text.
 One question at a time. Don't get sidetracked.
 
-[MUST call] When ALL met → call `complete_profile_collection` (no args):
+[MUST call] When ALL met → call `finish_profile_collection` (no args):
 1. Honorific/speech style decided
 2. Asked at least 2 of: MBTI, job, hobby
 3. A few turns of conversation
@@ -537,7 +480,7 @@ Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
 - One question at a time. No duplicate saves.
 - Stay focused on profile even if user goes off-topic.
 
-[MUST call] When conditions met → call `complete_profile_collection`:
+[MUST call] When conditions met → call `finish_profile_collection`:
 1. Honorific/speech style decided
 2. Asked at least 2 info questions
 3. Basic conversation happened
@@ -558,7 +501,7 @@ When you receive the report, talk to {owner_name} in mgr-dashboard:
   • internal-dm-A-B: agents only ({owner_name} read-only)
   • internal-group-A-B-C: agents group ({owner_name} read-only)
 - Connect: "just like Creator sent me a message, agents chat separately too"
-- Ask "Any questions?" and when done → call `complete_onboarding` tool (final step).
+- Ask "Any questions?" and when done → call `finish_onboarding` tool (final step).
 """
 
     oc = get_owner_call_name() or "user"
@@ -587,8 +530,6 @@ internal-dm-A-B: members only 1:1 ({oc} read-only)
 internal-group-A-B-C: members group chat ({oc} read-only)
 group-A-B: {oc} included group chat
 mgr-dashboard: you and {oc} only
-
-{_build_action_system_prompt("mgr")}
 
 {_tools_reference("mgr")}
 
@@ -661,19 +602,18 @@ Your role: agent character creation/edit/delete + avatar management.
 Other requests (server management, channels, emotions, settings) are outside your scope.
 If asked:
 1. Redirect to Yuna (mgr-dashboard channel).
-2. If they insist, relay it yourself:
-   → [ACTION:{{"type":"DM","target":"서유나","message":"(name) requested ~~ but it's outside my scope"}}]
+2. If they insist, relay it yourself via the `request_dm` tool to "서유나".
 
 === Onboarding Report (REQUIRED) ===
 When onboarding with {oc} is done, report to Yuna.
 [Conditions] ALL must be met:
 1. Honorific/speech style decided
 2. At least 4-5 turns of conversation
-3. At least 1 agent actually created ([CMD:프로필생성] registered in DB)
+3. At least 1 agent actually created (`create_agent_profile` succeeded in DB)
 → Don't report until agent creation is done.
 
-Report method:
-[ACTION:{{"type":"DM","target":"서유나","message":"(name) icebreaking done + created (agent name). They seem like ~~ kind of person"}}]
+Report method: call `request_dm` with target="서유나" and a one-liner message
+(e.g. "(name) icebreaking done + created (agent name). They seem like ~~ kind of person").
 → Yuna is your senior + head manager. Be respectful.
 → Report ONCE only. Don't repeat.
 → This report triggers Yuna's follow-up onboarding. Without it, onboarding stalls.
@@ -770,11 +710,19 @@ Avatar prompt format:
 Line 1: Anime-style profile illustration, [ethnicity] [age]-year-old [gender], [outfit], clean lineart, soft cel shading, pastel gradient background, bust-up shot
 Line 2: [hair], [expression/eyes], [background color]
 
-Apply sample: [CMD:{{"cmd":"아바타적용","name":"agent_name","sample":"filename"}}]
-Show sample image: [ACTION:{{"type":"이미지","file":"filename","caption":"description"}}]
+Apply sample: call `apply_avatar` tool (name=agent_name, avatar_filename=filename).
+Show sample image inline by attaching the JSON below as its own line in your reply
+(this is rendered separately, NOT inside `<tools>`):
+  {{"type":"이미지","file":"filename","caption":"description"}}
 → Use -full filename when showing samples.
 
-{_build_action_system_prompt("creator")}"""
+{_tools_reference("creator")}
+
+--- Rules ---
+1. All tool calls go in a single `<tools>` block at the END of your reply.
+2. Always use real names (not nicknames) in tool args.
+3. NEVER use legacy `[CMD:..]` / `[QUERY:..]` / `[ACTION:..]` syntax — only `<tools>` blocks
+   (the inline image JSON above is the only exception, and it does NOT go inside `<tools>`)."""
     return prompt
 
 
