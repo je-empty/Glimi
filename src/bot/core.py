@@ -106,7 +106,9 @@ def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
 
 
 async def _raw_send_as_agent(channel: discord.TextChannel, agent_id: str, name: str, message: str):
-    """실제 webhook 전송 + 에러 fallback. PacedSender worker가 호출."""
+    """실제 webhook 전송 + 에러 fallback. PacedSender worker가 호출.
+    fallback 발생은 모두 system.log에도 남겨 (봇 이름/아바타 분리 버그 추적용)."""
+    ch_name = getattr(channel, 'name', '?')
     try:
         webhook = await get_agent_webhook(channel, agent_id)
         await webhook.send(content=message, username=name)
@@ -116,24 +118,25 @@ async def _raw_send_as_agent(channel: discord.TextChannel, agent_id: str, name: 
             webhook = await get_agent_webhook(channel, agent_id)
             await webhook.send(content=message, username=name)
         except Exception as e2:
-            log.warning(f"Webhook 재생성도 실패, fallback: {e2}")
+            log_writer.system(f"⚠ Webhook fallback [{name}@{ch_name}]: NotFound+재생성실패 ({type(e2).__name__}: {e2})")
             await channel.send(f"**{name}**: {message}")
     except discord.errors.HTTPException as e:
         if e.status == 429:
             retry_after = getattr(e, 'retry_after', 5)
-            log.warning(f"Webhook rate limit, {retry_after}초 대기")
+            log_writer.system(f"⚠ Webhook rate limit [{name}@{ch_name}]: {retry_after}초 대기")
             await asyncio.sleep(retry_after)
             try:
                 webhook = await get_agent_webhook(channel, agent_id)
                 await webhook.send(content=message, username=name)
-            except Exception:
+            except Exception as e3:
+                log_writer.system(f"⚠ Webhook fallback [{name}@{ch_name}]: rate-limit 재시도 실패 ({type(e3).__name__}: {e3})")
                 await channel.send(f"**{name}**: {message}")
         else:
-            log.warning(f"Webhook HTTP 오류 ({e.status}), fallback: {e}")
+            log_writer.system(f"⚠ Webhook fallback [{name}@{ch_name}]: HTTP {e.status} ({e})")
             _webhook_cache.pop((channel.id, agent_id), None)
             await channel.send(f"**{name}**: {message}")
     except Exception as e:
-        log.warning(f"Webhook 실패, fallback: {e}")
+        log_writer.system(f"⚠ Webhook fallback [{name}@{ch_name}]: {type(e).__name__} ({e})")
         await channel.send(f"**{name}**: {message}")
 
 
