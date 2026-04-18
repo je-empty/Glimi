@@ -375,11 +375,51 @@ class TestUserBot(discord.Client):
             print("[TestUser] claude CLI 없음")
             return ""
 
+    def _pick_reply_channel(self):
+        """미답 에이전트 메시지가 가장 오래 쌓인 채널을 골라 target_channel 갱신.
+
+        같은 채널에서 유저가 마지막으로 말한 이후 쌓인 에이전트 메시지가 있는
+        채널들 중, 가장 오래된 에이전트 메시지가 있는 채널을 우선. 여러 에이전트/
+        채널이 동시에 말 걸 때 한쪽만 응답하고 다른 쪽 무시되는 문제 방지."""
+        # 채널별로 '마지막 내 메시지 이후 에이전트 메시지가 있는지' 조사
+        # (conversation list는 시간순 append됨)
+        last_user_idx_by_ch: dict[str, int] = {}
+        for i, msg in enumerate(self.conversation):
+            if msg.get("role") == "user" and msg.get("channel"):
+                last_user_idx_by_ch[msg["channel"]] = i
+
+        candidates: list[tuple[int, str]] = []  # (first_unreplied_agent_idx, channel)
+        seen_ch = set()
+        for i, msg in enumerate(self.conversation):
+            if msg.get("role") != "agent":
+                continue
+            ch = msg.get("channel")
+            if not ch or ch in seen_ch:
+                continue
+            last_user = last_user_idx_by_ch.get(ch, -1)
+            if i > last_user:
+                candidates.append((i, ch))
+                seen_ch.add(ch)
+        if not candidates:
+            return  # 답할 게 없음 — target_channel 그대로
+        # 가장 오래된 미답 메시지가 있는 채널로 설정
+        candidates.sort()
+        target_name = candidates[0][1]
+        if self.target_channel and self.target_channel.name != target_name:
+            guild = self.guilds[0] if self.guilds else None
+            if guild:
+                new_ch = discord.utils.get(guild.text_channels, name=target_name)
+                if new_ch:
+                    print(f"[TestUser] reply 채널 교체: #{self.target_channel.name} → #{target_name} (미답 우선)")
+                    self.target_channel = new_ch
+
     async def _send_reply(self, reply: str):
         """응답을 디스코드에 전송"""
         # 대기 중인 on_message 태스크(Creator 메시지 등)에 먼저 기회 줘서
         # target_channel이 최신 상태로 갱신되도록 함
         await asyncio.sleep(0)
+        # 미답 에이전트 메시지 있는 채널 중 가장 오래된 쪽으로 target_channel 조정
+        self._pick_reply_channel()
         lines = [l.strip() for l in reply.strip().split("\n") if l.strip()]
 
         # 자기 이름 prefix 제거

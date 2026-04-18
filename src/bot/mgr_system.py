@@ -1163,6 +1163,7 @@ async def _trigger_onboarding_phase2(guild):
         log_writer.system(f"[sup:onboarding] 이미 진행/완료 (phase={phase}) — 스킵")
         return
     db.set_meta("onboarding_phase", "channels_setup")
+    runtime.refresh_agent(MGR_ID)  # phase 바뀌었으니 유나 시스템 프롬프트 갱신
     log_writer.system("[sup:onboarding] 트리거됨")
     import asyncio
 
@@ -1325,6 +1326,7 @@ async def _onboarding_setup_channels(guild):
                 pass
 
     db.set_meta("onboarding_phase", "channels_done")
+    runtime.refresh_agent(MGR_ID)  # Phase 2 완료 → 유나 프롬프트 갱신
     log_writer.system("온보딩 Phase 2 완료: 시스템 채널 + 크리에이터 인사 (최종 완료 대기)")
 
 
