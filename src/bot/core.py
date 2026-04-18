@@ -447,18 +447,28 @@ async def ensure_channels(guild: discord.Guild):
 
 
 async def create_onboarding_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
-    """온보딩 중 단계별 채널 생성 + 참가자 등록"""
+    """온보딩 중 단계별 채널 생성 + 참가자 등록.
+    성공/실패/existing 세 경로 모두 system.log에 남겨 추적 가능하게."""
     existing = discord.utils.get(guild.text_channels, name=ch_name)
     if existing:
         if participants:
             db.set_channel_participants(ch_name, participants)
+        log_writer.system(f"온보딩 Channel (existing): {ch_name} (id={existing.id})")
         return existing
     cat_name = _get_category_for_channel(ch_name)
-    category = await _ensure_category(guild, cat_name)
-    ch = await guild.create_text_channel(ch_name, category=category)
+    try:
+        category = await _ensure_category(guild, cat_name)
+    except Exception as e:
+        log_writer.system(f"❌ 온보딩 Category fail: {cat_name} ({type(e).__name__}: {e})")
+        raise
+    try:
+        ch = await guild.create_text_channel(ch_name, category=category)
+    except Exception as e:
+        log_writer.system(f"❌ 온보딩 Channel create fail: {ch_name} ({type(e).__name__}: {e})")
+        raise
     if participants:
         db.set_channel_participants(ch_name, participants)
-    log_writer.system(f"온보딩 Channel created: {ch_name}")
+    log_writer.system(f"온보딩 Channel created: {ch_name} (id={ch.id}, category={cat_name})")
     return ch
 
 
