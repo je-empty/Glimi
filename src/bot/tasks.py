@@ -29,7 +29,7 @@ from src.bot import (
 )
 import src.bot as _bot_state  # for modifying module-level primitives
 from src.bot.core import (
-    send_as_agent, _split_for_chat, ensure_channels, sync_avatars,
+    send_as_agent, _split_for_chat, ensure_channels, sync_profile_images,
 )
 from src.bot.mgr_system import (
     parse_and_execute_actions, check_dev_results, yuna_dev_request,
@@ -78,8 +78,8 @@ async def on_ready():
         log_writer.system(f"Server connected: {guild.name}")
         log_writer.system("Initializing channels...")
         await ensure_channels(guild)
-        log_writer.system("Syncing avatars...")
-        await sync_avatars(guild)
+        log_writer.system("Syncing profile images...")
+        await sync_profile_images(guild)
 
     from src import db as _db
     first_run = not _db.get_meta("yuna_greeted")

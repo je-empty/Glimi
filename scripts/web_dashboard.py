@@ -3919,22 +3919,22 @@ def _serve_avatar(handler, path):
         from src import community as _comm
         from src.core.profile import load_profile
         profile = load_profile(agent_id) or {}
-        fname = profile.get("avatar_filename") or ""
+        fname = profile.get("profile_image_filename") or ""
         target_path = None
         if fname:
             base, ext = os.path.splitext(fname)
             if variant == "full":
                 # full variant 탐색: agent-mgr-001.png → agent-mgr-001-full.png
                 full_fname = f"{base}-full{ext}"
-                target_path = _comm.get_avatar_path(full_fname)
+                target_path = _comm.get_profile_image_path(full_fname)
                 if not target_path:
-                    target_path = _comm.get_avatar_path(fname)
+                    target_path = _comm.get_profile_image_path(fname)
             else:
-                target_path = _comm.get_avatar_path(fname)
+                target_path = _comm.get_profile_image_path(fname)
 
         # 2. agent_id로 직접 스캔
         if not target_path:
-            target_path = _comm.find_avatar(agent_id)
+            target_path = _comm.find_profile_image(agent_id)
 
     if not target_path or not os.path.exists(target_path):
         # placeholder: 빈 PNG 작은 것

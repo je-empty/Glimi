@@ -28,12 +28,16 @@ db_path = demo_dir / "community.db"
 if db_path.exists():
     db_path.unlink()
 
-# 아바타 복사
-demo_avatars = demo_dir / "avatars"
-demo_avatars.mkdir(parents=True, exist_ok=True)
-private_avatars = ROOT / "communities" / "private" / "avatars"
-for src in private_avatars.glob("*.png"):
-    shutil.copy(src, demo_avatars / src.name)
+# 프로필 이미지 복사
+demo_profile_images = demo_dir / "profile_images"
+demo_profile_images.mkdir(parents=True, exist_ok=True)
+# 레거시/신규 경로 둘 다 지원
+for legacy in ("profile_images", "avatars"):
+    src_dir = ROOT / "communities" / "private" / legacy
+    if src_dir.exists():
+        for src in src_dir.glob("*.png"):
+            shutil.copy(src, demo_profile_images / src.name)
+        break
 
 # 로그
 logs_dir = demo_dir / "logs"
@@ -62,7 +66,7 @@ def insert_agent(aid, atype, name, age, gender, mbti, background,
                  current_emotion="평온", intensity=5):
     conn.execute("""
     INSERT INTO agents (id, type, name, status, current_emotion, emotion_intensity,
-                        birth_year, age, gender, mbti, background, avatar_filename, version, created_at)
+                        birth_year, age, gender, mbti, background, profile_image_filename, version, created_at)
     VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     """, (aid, atype, name, current_emotion, intensity,
           2026 - age, age, gender, mbti, background, f"{aid}.png", datetime.now().isoformat()))

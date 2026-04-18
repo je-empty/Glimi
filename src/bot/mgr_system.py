@@ -685,7 +685,7 @@ async def execute_yuna_command(
 
     # ── 샘플 아바타 적용 ──
     elif cmd == "아바타적용":
-        await _apply_sample_avatar(report_channel, args_str, guild)
+        await _apply_sample_profile_image(report_channel, args_str, guild)
 
     # ── ACTION 승인 ──
     elif cmd == "ACTION승인":
@@ -1905,8 +1905,8 @@ async def handle_room_request_detection(
             await asyncio.sleep(0.5)
 
 
-async def _apply_sample_avatar(report_channel, args_str, guild, caller_agent_id: str = ""):
-    """샘플 아바타를 에이전트에 적용"""
+async def _apply_sample_profile_image(report_channel, args_str, guild, caller_agent_id: str = ""):
+    """샘플 프로필 이미지를 에이전트에 적용 (기본 + -full 같이 복사)"""
     import shutil
     parts = args_str.split(None, 1)
     agent_name = _resolve_agent_name(parts[0]) if parts else ""
@@ -1918,7 +1918,7 @@ async def _apply_sample_avatar(report_channel, args_str, guild, caller_agent_id:
             import json as _json
             data = _json.loads(args_str)
             agent_name = _resolve_agent_name(data.get("name", ""))
-            sample_file = data.get("sample", "")
+            sample_file = data.get("sample", "") or data.get("profile_image_filename", "") or data.get("avatar_filename", "")
         except Exception:
             pass
 
@@ -1938,28 +1938,35 @@ async def _apply_sample_avatar(report_channel, args_str, guild, caller_agent_id:
 
     # 샘플 파일 확인
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    sample_path = os.path.join(project_root, "assets", "sample_avatars", sample_file)
+    sample_dir = os.path.join(project_root, "assets", "sample_profile_images")
+    sample_path = os.path.join(sample_dir, sample_file)
     if not os.path.exists(sample_path):
         await send_as_agent(report_channel, MGR_ID, f"샘플 파일 못 찾겠어: {sample_file}")
         return
 
-    # 커뮤니티 아바타 디렉토리에 복사 (agent_id.png)
-    avatar_filename = f"{target['id']}.png"
-    dst = os.path.join(community.get_avatars_dir(), avatar_filename)
+    # 커뮤니티 프로필 이미지 디렉토리에 복사 (agent_id.png + agent_id-full.png)
+    profile_image_filename = f"{target['id']}.png"
+    dst_dir = community.get_profile_images_dir()
+    dst = os.path.join(dst_dir, profile_image_filename)
     shutil.copy2(sample_path, dst)
 
-    # DB에 avatar_filename 업데이트
+    # -full 변형도 같이 복사 (lightbox 용)
+    base, ext = os.path.splitext(sample_file)
+    sample_full_path = os.path.join(sample_dir, f"{base}-full{ext}")
+    if os.path.exists(sample_full_path):
+        dst_full = os.path.join(dst_dir, f"{target['id']}-full.png")
+        shutil.copy2(sample_full_path, dst_full)
+
+    # DB에 profile_image_filename 업데이트
     conn = db.get_conn()
-    conn.execute("UPDATE agents SET avatar_filename=? WHERE id=?", (avatar_filename, target["id"]))
+    conn.execute("UPDATE agents SET profile_image_filename=? WHERE id=?", (profile_image_filename, target["id"]))
     conn.commit()
     conn.close()
 
-    log_writer.system(f"✓ 샘플 아바타 적용: {agent_name} ← {sample_file}")
+    log_writer.system(f"✓ 샘플 프로필 이미지 적용: {agent_name} ← {sample_file}")
     # 확인 메시지는 tool을 호출한 에이전트 (일반적으로 하나=creator)로 보낸다.
-    # 이전엔 persona 대상일 때 MGR_ID로 보내서 mgr-creator 참가자가 아닌 Yuna가
-    # 차단되는 버그 있었음. caller_agent_id를 우선 사용.
     sender_id = caller_agent_id or ("agent-creator-001" if target["type"] == "persona" else target["id"])
-    await send_as_agent(report_channel, sender_id, f"{agent_name} 아바타 적용했어!")
+    await send_as_agent(report_channel, sender_id, f"{agent_name} 프로필 이미지 적용했어!")
 
 
 # ── ACTION 전달 ──────────────────────────────────────────

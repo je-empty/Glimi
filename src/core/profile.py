@@ -202,7 +202,7 @@ def setup_initial_relationships():
                 )
 
 
-def build_system_prompt(agent_id: str, include_avatar_template: bool = False) -> str:
+def build_system_prompt(agent_id: str, include_profile_image_template: bool = False) -> str:
     """에이전트용 system prompt 생성"""
     profile = load_profile(agent_id)
     if not profile:
@@ -213,7 +213,7 @@ def build_system_prompt(agent_id: str, include_avatar_template: bool = False) ->
     if agent_type == "persona":
         return _build_persona_prompt(profile)
     elif agent_type == "mgr":
-        return _build_mgr_prompt(profile, include_avatar_template=include_avatar_template)
+        return _build_mgr_prompt(profile, include_profile_image_template=include_profile_image_template)
     elif agent_type == "creator":
         return _build_creator_prompt(profile)
     return ""
@@ -350,10 +350,10 @@ def _build_pet_name_section(agent_id: str) -> str:
 
 
 def _load_sample_catalog() -> str:
-    """샘플 아바타 카탈로그 로드. status=='ready'인 항목만 하나에게 노출
+    """샘플 프로필 이미지 카탈로그 로드. status=='ready'인 항목만 하나에게 노출
     (placeholder는 이미지 파일 미생성 상태 — 노출 시 없는 파일 추천하는 환각 유발)."""
     import json as _json
-    catalog_path = Path(__file__).parent.parent.parent / "assets" / "sample_avatars" / "catalog.json"
+    catalog_path = Path(__file__).parent.parent.parent / "assets" / "sample_profile_images" / "catalog.json"
     if not catalog_path.exists():
         return "(샘플 없음)"
     try:
@@ -457,7 +457,7 @@ def _build_channel_summary() -> str:
         return "조회 실패"
 
 
-def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
+def _build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> str:
     """총책 에이전트 system prompt — 압축 포맷"""
     all_agents = db.list_agents("persona")
 
@@ -487,7 +487,7 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 
     speech = p.get('speech', {})
 
-    avatar_section = ""  # 아바타는 하나(creator) 담당
+    profile_image_section = ""  # 프로필 이미지는 하나(creator) 담당
 
     pet_name_section = _build_pet_name_section(p["id"])
 
@@ -522,7 +522,7 @@ Relationships: {' | '.join(rel_lines)}
 
 Channel status (snapshot — use `list_channels` tool for realtime):
 {_build_channel_summary()}
-{avatar_section}
+{profile_image_section}
 === Channel Structure ===
 dm-Name: {oc} ↔ member 1:1
 internal-dm-A-B: members only 1:1 ({oc} read-only)
@@ -538,14 +538,14 @@ mgr-dashboard: you and {oc} only
 3. Execute tools directly. Never tell user to type commands.
 4. Destructive tools only when {oc} explicitly requests.
 5. Dev requests only when truly needed (bot restarts).
-6. Agent creation/avatar → Hana's job (ask via DM).
+6. Agent creation/profile image → Hana's job (ask via DM).
 7. Tool calls go in `<tools>` block ONLY in mgr-dashboard.
 8. NEVER use legacy `[CMD:..]` / `[QUERY:..]` / `[ACTION:..]` syntax — only `<tools>` blocks."""
     return prompt
 
 
 def _build_creator_prompt(p: dict) -> str:
-    """생성 에이전트 system prompt — 캐릭터 생성 + 아바타 프롬프트 생성"""
+    """생성 에이전트 system prompt — 캐릭터 생성 + 프로필 이미지 프롬프트 생성"""
     existing = list_all_profiles()
     existing_summary = ", ".join([
         f"{e['name']}({e.get('mbti', '?')}/{e.get('age', '?')}살/{e.get('gender', '?')})"
@@ -585,7 +585,7 @@ def _build_creator_prompt(p: dict) -> str:
             rel_info += f"  {other['name']} → 너의 호칭: {pet}\n"
 
     oc = get_owner_call_name() or "user"
-    prompt = f"""You are {p['name']}. Age {p.get('age', 17)}. Character creator + avatar prompt designer.
+    prompt = f"""You are {p['name']}. Age {p.get('age', 17)}. Character creator + profile image prompt designer.
 {_build_common_prompt()}
 Speech style: {speech.get('style_description', '')}
 Expressions: {', '.join(speech.get('signature_expressions', []))}
@@ -626,7 +626,7 @@ name, appearance, hobbies, relationship, speech style 다 네가 정해도 됨. 
 `create_agent_profile` 성공 후 `create_agent_profile` 또 호출하지 마라 ({oc}가 새 친구 추가 요청할 때만).
 
 === Scope ===
-Your role: agent character creation/edit/delete + avatar management.
+Your role: agent character creation/edit/delete + profile image management.
 Other requests (server management, channels, emotions, settings) are outside your scope.
 If asked:
 1. Redirect to Yuna (mgr-dashboard channel).
@@ -673,7 +673,7 @@ Create new characters with this JSON structure:
   "mbti": "XXXX",
   "enneagram": "Xw Y",
   "background": "Background description",
-  "avatar_filename": "agent-persona-NNN.png",
+  "profile_image_filename": "agent-persona-NNN.png",
   "personality": {{
     "data": {{
       "traits": ["trait1", "trait2", ...],
@@ -749,7 +749,7 @@ Minimum 3 few_shot_examples. Include {oc} relationship with is_owner_relationshi
    {{"type":"이미지","file":"<catalog-file>.png","caption":"이 얼굴 어때?"}}
    ```
 3. 오너한테 "**이대로 만들까?**" 확인 질문. 오너가 "ㅇㅋ" / "좋아" / "그렇게 해" 등
-   긍정이면 다음 턴에 `create_agent_profile` + `apply_avatar` + `request_dm` 번들 실행.
+   긍정이면 다음 턴에 `create_agent_profile` + `set_profile_image` + `request_dm` 번들 실행.
 4. 오너가 수정 요청 (예: "나이 좀 어리게") → 요약 갱신 + 재확인 후 생성.
 
 [관계 물어보기]
@@ -758,15 +758,15 @@ Minimum 3 few_shot_examples. Include {oc} relationship with is_owner_relationshi
 응답 받아서 `relationship_to_owner` 필드에 반영 (type, duration, dynamics, pet_name).
 오너가 "알아서 해줘" 하면 네가 캐릭터 어울리게 자연스러운 관계로 설정.
 
-=== Avatar (선택 — 생성 먼저, 얼굴은 그 다음) ===
-**우선순위 규칙**: 오너 확인 받은 다음, `create_agent_profile` + `apply_avatar`를 같은
-`<tools>` 블록에 묶어서 호출. 매칭 샘플이 없으면 avatar 없이 create만.
+=== 프로필 이미지 (선택 — 생성 먼저, 얼굴은 그 다음) ===
+**우선순위 규칙**: 오너 확인 받은 다음, `create_agent_profile` + `set_profile_image`를 같은
+`<tools>` 블록에 묶어서 호출. 매칭 샘플이 없으면 프로필 이미지 없이 create만.
 
 Sample catalog (ready 항목만):
 {_load_sample_catalog()}
 
-- `apply_avatar`: `{{"name":"<이름>","avatar_filename":"<catalog_file>.png"}}` ← **basic .png 사용**.
-  `-full` 변형은 지금 없음. Discord webhook 아바타로 바로 사용 가능.
+- `set_profile_image`: `{{"name":"<이름>","profile_image_filename":"<catalog_file>.png"}}`
+  ← **1:1 기본 .png 파일명 사용**. `-full.png` 변형은 시스템이 자동으로 같이 복사.
 - 샘플 이미지 미리보기 (위 최종 확인 단계에서):
   `{{"type":"이미지","file":"<catalog_file>.png","caption":"이 얼굴"}}` 독립 줄로 작성.
 

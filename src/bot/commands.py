@@ -24,7 +24,7 @@ from src.bot import (
     _webhook_cache,
 )
 from src.bot.core import (
-    send_as_agent, get_agent_webhook, _get_avatar_bytes, _split_for_chat,
+    send_as_agent, get_agent_webhook, _get_profile_image_bytes, _split_for_chat,
 )
 from src.bot.mgr_system import (
     parse_and_execute_actions, yuna_dev_request,
@@ -549,8 +549,8 @@ async def cmd_set_avatar(ctx, agent_name: str):
 
             profile = load_profile(target["id"])
             if profile:
-                profile["avatar_url"] = avatar_url
-                profile["avatar_filename"] = f"{target['id']}.png"
+                profile["profile_image_url"] = avatar_url
+                profile["profile_image_filename"] = f"{target['id']}.png"
                 from src.core.profile import save_profile
                 save_profile(profile)
 
@@ -585,7 +585,7 @@ async def cmd_avatar_all(ctx):
         profile = load_profile(agent["id"])
         if not profile:
             continue
-        if profile.get("avatar_url"):
+        if profile.get("profile_image_url"):
             await send_as_agent(ctx.channel, hana_id,
                 f"{agent['name']} — 이미 아바타 있어. 스킵")
             continue
@@ -658,7 +658,7 @@ async def cmd_avatar_load(ctx):
     hana_id = "agent-creator-001"
 
     # 이미지 폴더 경로 (커뮤니티 → assets 순서로 탐색)
-    image_dir = str(community.get_avatars_dir())
+    image_dir = str(community.get_profile_images_dir())
 
     if not os.path.exists(image_dir):
         await send_as_agent(ctx.channel, hana_id,
@@ -724,8 +724,8 @@ async def cmd_avatar_load(ctx):
                 # 프로필에 저장
                 profile = load_profile(agent_id)
                 if profile:
-                    profile["avatar_url"] = avatar_url
-                    profile["avatar_filename"] = f"{agent_id}.png"
+                    profile["profile_image_url"] = avatar_url
+                    profile["profile_image_filename"] = f"{agent_id}.png"
                     from src.core.profile import save_profile
                     save_profile(profile)
                     success += 1
@@ -773,7 +773,7 @@ async def cmd_apply_avatars(ctx):
         f"전체 에이전트 아바타를 Webhook에 적용할게. 채널 {len(channels)}개 처리 중..")
 
     for agent in agents:
-        avatar_bytes = _get_avatar_bytes(agent["id"])
+        avatar_bytes = _get_profile_image_bytes(agent["id"])
         if not avatar_bytes:
             skipped += 1
             continue

@@ -22,13 +22,16 @@ from src import db, community
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROFILES_DIR = os.path.join(_PROJECT_ROOT, "profiles")
 IMAGE_DIR = os.path.join(PROFILES_DIR, "agent-profile-image")
-# assets/ 폴백
-ASSETS_AVATAR_DIR = os.path.join(_PROJECT_ROOT, "assets", "avatars")
+# assets/ 폴백 (신규/레거시 둘 다 지원)
+ASSETS_PROFILE_IMAGE_DIRS = [
+    os.path.join(_PROJECT_ROOT, "assets", "profile_images"),
+    os.path.join(_PROJECT_ROOT, "assets", "avatars"),
+]
 
 
-def _find_avatar(agent_id: str) -> str | None:
-    """에이전트 ID에 매칭되는 아바타 파일명 찾기 (레거시 → assets 순서)"""
-    for search_dir in (IMAGE_DIR, ASSETS_AVATAR_DIR):
+def _find_profile_image(agent_id: str) -> str | None:
+    """에이전트 ID에 매칭되는 프로필 이미지 파일명 찾기 (레거시 → assets 순서)"""
+    for search_dir in ([IMAGE_DIR] + ASSETS_PROFILE_IMAGE_DIRS):
         if not os.path.isdir(search_dir):
             continue
         for ext in ("png", "jpg", "jpeg", "webp"):
@@ -52,9 +55,9 @@ def migrate_json_to_db():
             profile = json.load(f)
 
         # 아바타 파일명 매핑
-        avatar = _find_avatar(profile["id"])
+        avatar = _find_profile_image(profile["id"])
         if avatar:
-            profile["avatar_filename"] = avatar
+            profile["profile_image_filename"] = avatar
 
         db.save_agent_profile(profile)
         agent_count += 1
@@ -174,9 +177,9 @@ def upgrade_old_db(old_db_path: str):
             agent_id = profile["id"]
 
             # 아바타 파일명 매핑
-            avatar = _find_avatar(agent_id)
+            avatar = _find_profile_image(agent_id)
             if avatar:
-                profile["avatar_filename"] = avatar
+                profile["profile_image_filename"] = avatar
 
             # 기존 런타임 상태 복원 (emotion, status 등은 기존 DB 값 유지)
             if agent_id in existing_agents:

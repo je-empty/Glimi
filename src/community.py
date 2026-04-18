@@ -1,7 +1,7 @@
 """
 Project Glimi — 커뮤니티 컨텍스트 관리
 
-커뮤니티 = DB 하나 + .env 하나 + 아바타 + 로그
+커뮤니티 = DB 하나 + .env 하나 + 프로필 이미지 + 로그
 communities/ 디렉토리 아래 커뮤니티별 서브디렉토리로 격리.
 
 구조:
@@ -10,7 +10,7 @@ communities/ 디렉토리 아래 커뮤니티별 서브디렉토리로 격리.
   ├── my-server/
   │   ├── .env             ← DISCORD_BOT_TOKEN
   │   ├── community.db     ← SQLite
-  │   ├── avatars/         ← 아바타 이미지
+  │   ├── profile_images/  ← 에이전트 프로필 이미지
   │   └── logs/
   └── another-server/
       └── ...
@@ -115,28 +115,37 @@ def get_log_dir() -> str:
     return str(get_community_dir() / "logs")
 
 
-def get_avatars_dir() -> Path:
-    return get_community_dir() / "avatars"
+def get_profile_images_dir() -> Path:
+    cdir = get_community_dir()
+    new_dir = cdir / "profile_images"
+    # 레거시 avatars/ 디렉토리가 있으면 이관 (1회 자동)
+    legacy = cdir / "avatars"
+    if legacy.exists() and not new_dir.exists():
+        try:
+            legacy.rename(new_dir)
+        except Exception:
+            new_dir.mkdir(exist_ok=True)
+    return new_dir
 
 
-def get_avatar_path(filename: str) -> Optional[str]:
-    """아바타 경로 — 커뮤니티 우선, assets 폴백"""
-    # 1. 커뮤니티별 아바타
-    community_path = get_avatars_dir() / filename
+def get_profile_image_path(filename: str) -> Optional[str]:
+    """프로필 이미지 경로 — 커뮤니티 우선, assets 폴백"""
+    # 1. 커뮤니티별 프로필 이미지
+    community_path = get_profile_images_dir() / filename
     if community_path.exists():
         return str(community_path)
     # 2. 공유 assets 폴백
-    assets_path = ASSETS_DIR / "avatars" / filename
+    assets_path = ASSETS_DIR / "profile_images" / filename
     if assets_path.exists():
         return str(assets_path)
     return None
 
 
-def find_avatar(agent_id: str) -> Optional[str]:
-    """agent_id로 아바타 파일 찾기 (확장자 자동 스캔)"""
+def find_profile_image(agent_id: str) -> Optional[str]:
+    """agent_id로 프로필 이미지 파일 찾기 (확장자 자동 스캔)"""
     for ext in ("png", "jpg", "jpeg", "webp"):
         fname = f"{agent_id}.{ext}"
-        path = get_avatar_path(fname)
+        path = get_profile_image_path(fname)
         if path:
             return path
     return None
@@ -149,7 +158,15 @@ def init_community(community_id: str, copy_assets: bool = True):
     COMMUNITIES_DIR.mkdir(parents=True, exist_ok=True)
     cdir = COMMUNITIES_DIR / community_id
     cdir.mkdir(exist_ok=True)
-    (cdir / "avatars").mkdir(exist_ok=True)
+    # 레거시 avatars/ → profile_images/ 자동 이관
+    legacy = cdir / "avatars"
+    new_dir = cdir / "profile_images"
+    if legacy.exists() and not new_dir.exists():
+        try:
+            legacy.rename(new_dir)
+        except Exception:
+            pass
+    new_dir.mkdir(exist_ok=True)
     (cdir / "logs").mkdir(exist_ok=True)
 
     # .env 템플릿
@@ -166,14 +183,13 @@ def init_community(community_id: str, copy_assets: bool = True):
                 "# DISCORD_OWNER_ID=\n"
             )
 
-    # 기본 아바타 복사
+    # 기본 프로필 이미지 복사
     if copy_assets:
-        src_avatars = ASSETS_DIR / "avatars"
-        if src_avatars.exists():
-            dst_avatars = cdir / "avatars"
-            for img in src_avatars.iterdir():
-                if img.is_file() and not (dst_avatars / img.name).exists():
-                    shutil.copy2(img, dst_avatars / img.name)
+        src_images = ASSETS_DIR / "profile_images"
+        if src_images.exists():
+            for img in src_images.iterdir():
+                if img.is_file() and not (new_dir / img.name).exists():
+                    shutil.copy2(img, new_dir / img.name)
 
     # registry.toml 업데이트
     _ensure_registry(community_id)
@@ -203,7 +219,7 @@ def list_communities() -> list[dict]:
 
 
 def export_community(community_id: str, output_dir: str):
-    """커뮤니티 전체를 디렉토리로 내보내기 (DB + 아바타)"""
+    """커뮤니티 전체를 디렉토리로 내보내기 (DB + 프로필 이미지)"""
     src_dir = COMMUNITIES_DIR / community_id
     if not src_dir.exists():
         print(f"커뮤니티 없음: {community_id}")
@@ -217,13 +233,15 @@ def export_community(community_id: str, output_dir: str):
     if db_src.exists():
         shutil.copy2(db_src, dst / "community.db")
 
-    # 아바타 복사
-    avatars_src = src_dir / "avatars"
-    if avatars_src.exists():
-        avatars_dst = dst / "avatars"
-        if avatars_dst.exists():
-            shutil.rmtree(avatars_dst)
-        shutil.copytree(avatars_src, avatars_dst)
+    # 프로필 이미지 복사 (신규/레거시 둘 다 지원)
+    for sub in ("profile_images", "avatars"):
+        images_src = src_dir / sub
+        if images_src.exists():
+            images_dst = dst / "profile_images"
+            if images_dst.exists():
+                shutil.rmtree(images_dst)
+            shutil.copytree(images_src, images_dst)
+            break
 
     print(f"[Community] export 완료: {community_id} → {output_dir}")
 
@@ -237,18 +255,22 @@ def import_community(input_dir: str, community_id: str):
 
     init_community(community_id, copy_assets=False)
     dst = COMMUNITIES_DIR / community_id
+    dst_images = dst / "profile_images"
+    dst_images.mkdir(exist_ok=True)
 
     # DB 복사
     db_src = src / "community.db"
     if db_src.exists():
         shutil.copy2(db_src, dst / "community.db")
 
-    # 아바타 복사
-    avatars_src = src / "avatars"
-    if avatars_src.exists():
-        for img in avatars_src.iterdir():
-            if img.is_file():
-                shutil.copy2(img, dst / "avatars" / img.name)
+    # 프로필 이미지 복사 (신규/레거시 둘 다 지원)
+    for sub in ("profile_images", "avatars"):
+        images_src = src / sub
+        if images_src.exists():
+            for img in images_src.iterdir():
+                if img.is_file():
+                    shutil.copy2(img, dst_images / img.name)
+            break
 
     print(f"[Community] import 완료: {input_dir} → {community_id}")
 
@@ -290,7 +312,8 @@ def ensure_dirs():
     """현재 커뮤니티의 필수 디렉토리 보장"""
     cdir = get_community_dir()
     cdir.mkdir(parents=True, exist_ok=True)
-    (cdir / "avatars").mkdir(exist_ok=True)
+    # 레거시 이관 겸 신규 생성
+    get_profile_images_dir().mkdir(exist_ok=True)
     (cdir / "logs").mkdir(exist_ok=True)
 
 

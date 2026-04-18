@@ -278,7 +278,7 @@ async def sync_community(
             total_db_to_discord = 0
 
             # 아바타 로드 함수
-            from src.bot.core import _get_avatar_bytes
+            from src.bot.core import _get_profile_image_bytes
 
             for ch_name in list(surviving.keys()):
                 ch = surviving[ch_name]
@@ -388,7 +388,7 @@ async def sync_community(
                             avatar = None
                         elif speaker_id in agents_by_id:
                             display_name = agents_by_id[speaker_id]["name"]
-                            avatar = _get_avatar_bytes(speaker_id)
+                            avatar = _get_profile_image_bytes(speaker_id)
                         else:
                             display_name = speaker_id
                             avatar = None
@@ -533,7 +533,7 @@ async def restore_messages(
             user_name = get_user_name()
 
             # 아바타 로드
-            from src.bot.core import _get_avatar_bytes
+            from src.bot.core import _get_profile_image_bytes
 
             # glimi 채널 매핑
             discord_channels = {}
@@ -591,7 +591,7 @@ async def restore_messages(
                     elif speaker_id in agents:
                         agent = agents[speaker_id]
                         display_name = agent["name"]
-                        avatar = _get_avatar_bytes(speaker_id)
+                        avatar = _get_profile_image_bytes(speaker_id)
                     else:
                         display_name = speaker_id
                         avatar = None

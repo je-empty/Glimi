@@ -29,27 +29,29 @@ from src.core.runtime import runtime
 from src import db, log_writer, community
 
 
-# ── 아바타 ──────────────────────────────────────────────
+# ── 프로필 이미지 ──────────────────────────────────────
 
 
-def _get_avatar_bytes(agent_id: str) -> Optional[bytes]:
-    """아바타 이미지 로드 — 커뮤니티 디렉토리 우선, assets 폴백"""
+def _get_profile_image_bytes(agent_id: str) -> Optional[bytes]:
+    """프로필 이미지 로드 — 커뮤니티 디렉토리 우선, assets 폴백"""
     profile = load_profile(agent_id)
-    fname = (profile or {}).get("avatar_filename")
+    fname = (profile or {}).get("profile_image_filename") or (profile or {}).get("avatar_filename")
 
     # DB에 파일명이 있으면 그걸로 찾기
     if fname:
-        path = community.get_avatar_path(fname)
+        path = community.get_profile_image_path(fname)
         if path:
             with open(path, "rb") as f:
                 return f.read()
 
     # 폴백: agent_id로 파일 스캔
-    path = community.find_avatar(agent_id)
+    path = community.find_profile_image(agent_id)
     if path:
         with open(path, "rb") as f:
             return f.read()
     return None
+
+
 
 
 # ── Webhook 관리 ────────────────────────────────────────
@@ -68,8 +70,8 @@ async def get_agent_webhook(channel: discord.TextChannel, agent_id: str) -> disc
         if wh.name == wh_name:
             _webhook_cache[cache_key] = wh
             return wh
-    avatar_bytes = _get_avatar_bytes(agent_id)
-    wh = await channel.create_webhook(name=wh_name, avatar=avatar_bytes)
+    profile_image_bytes = _get_profile_image_bytes(agent_id)
+    wh = await channel.create_webhook(name=wh_name, avatar=profile_image_bytes)
     _webhook_cache[cache_key] = wh
     return wh
 
@@ -187,23 +189,23 @@ async def send_image_as_agent(channel: discord.TextChannel, agent_id: str, image
             log.warning(f"이미지 fallback도 실패: {e2}")
 
 
-async def update_agent_webhook_avatar(channel: discord.TextChannel, agent_id: str) -> bool:
-    """에이전트 Webhook 아바타 업데이트"""
-    avatar_bytes = _get_avatar_bytes(agent_id)
-    if not avatar_bytes:
+async def update_agent_webhook_profile_image(channel: discord.TextChannel, agent_id: str) -> bool:
+    """에이전트 Webhook 프로필 이미지 업데이트"""
+    profile_image_bytes = _get_profile_image_bytes(agent_id)
+    if not profile_image_bytes:
         return False
     try:
         webhook = await get_agent_webhook(channel, agent_id)
-        await webhook.edit(avatar=avatar_bytes)
+        await webhook.edit(avatar=profile_image_bytes)
         _webhook_cache[(channel.id, agent_id)] = webhook
         return True
     except Exception as e:
-        log.warning(f"Webhook 아바타 업데이트 실패: {e}")
+        log.warning(f"Webhook 프로필 이미지 업데이트 실패: {e}")
         return False
 
 
 async def _get_plain_webhook(channel: discord.TextChannel) -> discord.Webhook:
-    """아바타 없는 일반 Webhook (오너 메시지 전송용)"""
+    """아바타 없는 일반 Webhook (오너 메시지 전송용 — discord API kwarg는 avatar 유지)"""
     wh_name = "glimi-plain"
     cache_key = (channel.id, wh_name)
     if cache_key in _webhook_cache:
@@ -552,11 +554,11 @@ async def create_onboarding_channel(guild: discord.Guild, ch_name: str, particip
     return ch
 
 
-async def sync_avatars(guild: discord.Guild):
-    """glimi 카테고리들 내 모든 Webhook 아바타를 로컬 이미지와 동기화"""
+async def sync_profile_images(guild: discord.Guild):
+    """glimi 카테고리들 내 모든 Webhook 프로필 이미지를 로컬 이미지와 동기화"""
     glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
     if not glimi_categories:
-        log_writer.system("Avatar sync: no glimi categories — skip")
+        log_writer.system("Profile image sync: no glimi categories — skip")
         return
     updated = 0
     total_channels = sum(len(cat.text_channels) for cat in glimi_categories)
@@ -569,17 +571,19 @@ async def sync_avatars(guild: discord.Guild):
                 if not wh.name.startswith("glimi-"):
                     continue
                 agent_id = wh.name.replace("glimi-", "", 1)
-                avatar_bytes = _get_avatar_bytes(agent_id)
-                if not avatar_bytes:
+                profile_image_bytes = _get_profile_image_bytes(agent_id)
+                if not profile_image_bytes:
                     continue
                 try:
-                    await wh.edit(avatar=avatar_bytes)
+                    await wh.edit(avatar=profile_image_bytes)
                     updated += 1
-                    log_writer.system(f"  Webhook 아바타 업데이트: {agent_id} → #{channel.name}")
+                    log_writer.system(f"  Webhook 프로필 이미지 업데이트: {agent_id} → #{channel.name}")
                 except Exception:
                     pass
             log_writer.system(f"Webhook 스캔: #{channel.name} ({scanned}/{total_channels})")
-    log_writer.system(f"Avatar sync done: {updated}개 Webhook updated")
+    log_writer.system(f"Profile image sync done: {updated}개 Webhook updated")
+
+
 
 
 # ── 유틸리티 ────────────────────────────────────────────
