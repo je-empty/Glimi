@@ -158,18 +158,14 @@ async def _h_request_dev_task(args: dict, ctx: ToolContext):
 
 
 async def _h_finish_profile_collection(args: dict, ctx: ToolContext):
-    from src.bot.mgr_system import _trigger_onboarding_phase2
-    await _trigger_onboarding_phase2(ctx.guild)
+    from src.scenes.onboarding.handlers import trigger_phase2
+    await trigger_phase2(ctx.guild)
     return {"phase": "channels_setup"}
 
 
 async def _h_finish_onboarding(args: dict, ctx: ToolContext):
-    from src.core.runtime import runtime
-    from src.bot import MGR_ID
-    db.set_meta("onboarding_phase", "complete")
-    runtime.refresh_agent(MGR_ID)  # phase 바뀌었으니 유나 프롬프트 갱신
-    log_writer.mark_onboarding_complete()
-    log_writer.system("온보딩 최종 완료")
+    from src.scenes.onboarding.handlers import complete_onboarding
+    await complete_onboarding()
     return {"phase": "complete"}
 
 
