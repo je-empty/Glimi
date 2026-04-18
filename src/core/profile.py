@@ -462,84 +462,17 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
 
     pet_name_section = _build_pet_name_section(p["id"])
 
-    # 온보딩 상태 주입 — <tools> 프로토콜 기반
-    onboarding_phase = db.get_meta("onboarding_phase")
-    onboarding_section = ""
+    # 온보딩 상태 주입 — scenes/onboarding/prompts.py 로 분리.
+    # 활성 scene들의 프롬프트 조각을 모아서 넣는다 (onboarding 외 scene은
+    # 나중에 추가 가능).
     owner_name = get_user_name() or "user"
-    # phase 분기:
-    #   yuna_greeted=None                        → 최초 인사 + 프로필 수집
-    #   yuna_greeted=1, phase != channels_setup/done/complete → 프로필 수집 진행 중
-    #   phase in (channels_setup, channels_done) → Creator 소개 + 그 리포트 대기
-    #   phase = complete                         → 온보딩 종료
-    if onboarding_phase == "complete":
-        pass  # 일반 운영 모드, 프롬프트 추가 없음
-    elif onboarding_phase in ("channels_setup", "channels_done"):
-        onboarding_section = f"""
-=== Onboarding Phase 2 ===
-System just created mgr-system-log and mgr-creator channels. Creator (하나) is now introducing themselves to {owner_name} in #mgr-creator, and will design a new friend.
-
-[Do NOT]
-- Do NOT call `finish_profile_collection` again. It was already called — phase is `{onboarding_phase}`.
-- Do NOT ask for more profile info (MBTI/job/hobby/etc.). Profile collection is DONE.
-- Do NOT say "곧 시작할게" / "잠깐 기다려봐" / "세팅하고 올게" repeatedly — the next step already happened.
-
-[What to do now — STAY MINIMAL]
-- 하나가 #mgr-creator 에서 빈이 기다리고 있어. 빈이가 거기로 가야 진행됨.
-- 처음 한 번만 분명하게 안내: "하나가 #mgr-creator 에서 기다리고 있어. 가서 어떤 친구 만들고 싶은지 말해봐."
-- 그 다음부턴 침묵에 가깝게 유지. 빈이가 또 mgr-dashboard에서 "알겠어 갈게" 같은 말 하면 짧게 1줄 ("ㅇㅇ" / "👍" / "응 가봐~") 만 응답. 같은 redirect 멘트 절대 반복하지 마.
-- 다른 화제는 빈이가 명시적으로 꺼낼 때만 가볍게 받아. 평소엔 quiet.
-- Wait for Creator's DM/report back ("icebreaking done + created ___"). When it arrives, then explain channel structure and call `finish_onboarding`.
-
-[Channel structure to explain when Creator reports]
-- dm-name: {owner_name} ↔ agent 1:1
-- group-A-B: {owner_name} included group
-- internal-dm-A-B: agents only ({owner_name} read-only)
-- internal-group-A-B-C: agents group ({owner_name} read-only)
-"""
-    elif not db.get_meta("yuna_greeted"):
-        onboarding_section = f"""
-=== Onboarding Mode ===
-Currently setting up {owner_name}'s profile. No agents yet.
-Chat naturally with {owner_name} and ask (one at a time): MBTI, job, enneagram, hobbies, speech style.
-Fields: mbti, background(=job, NOT occupation), enneagram, personality.hobby, speech.style
-
-[update_profile policy]
-- The "[{owner_name}]" block above shows current saved values. Fields with "?" are STILL UNFILLED.
-- If the user's LATEST message reveals info for ANY "?" field → CALL update_profile for that field. Don't skip.
-- If a field already has a non-? value, don't re-save it (that's spam).
-- One field per call, one call per turn. No batch.
-
-[Flow] React (chat) + ONE update_profile call (only if filling a "?" field) + next question.
-One question at a time. Don't get sidetracked.
-
-[MUST call] When ALL met → call `finish_profile_collection` (no args) ONCE:
-1. Honorific/speech style decided
-2. Asked at least 2 of: MBTI, job, hobby
-3. A few turns of conversation
-→ This triggers auto: mgr-system-log + mgr-creator + Creator intro.
-"""
-    else:
-        onboarding_section = f"""
-=== Onboarding In Progress ===
-Collecting {owner_name}'s profile via `update_profile` tool.
-Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
-
-[update_profile policy]
-- The "[{owner_name}]" block above shows current saved values. Fields with "?" are STILL UNFILLED.
-- If the user's LATEST message reveals info for ANY "?" field → CALL update_profile for that field. Don't skip.
-- If a field already has a non-? value, don't re-save it (that's spam).
-- One field per call, one call per turn. No batch.
-
-[Flow] React (chat) + ONE update_profile call (only if filling a "?" field) + next question.
-- Never call tools without chat text.
-- One question at a time. Stay focused on profile.
-
-[MUST call] When conditions met → call `finish_profile_collection` ONCE:
-1. Honorific/speech style decided
-2. Asked at least 2 info questions
-3. Basic conversation happened
-→ Onboarding won't end otherwise. Do NOT call it again once it's been called — phase will change to `channels_setup`.
-"""
+    try:
+        from src.scenes import build_prompt_fragments
+        onboarding_section = build_prompt_fragments(
+            "mgr", {"owner_name": owner_name}
+        )
+    except Exception:
+        onboarding_section = ""
 
     oc = get_owner_call_name() or "user"
     prompt = f"""You are {p['name']}. Age {p.get('age', 18)}. Discord server head manager.
