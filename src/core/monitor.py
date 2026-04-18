@@ -66,10 +66,24 @@ def get_bot_status() -> dict:
 
     bot_alive 는 현재 active 커뮤니티 기준 — 다른 커뮤니티 봇에 오탐하지 않도록.
     """
+    test_user_alive = _ps_has("tests.e2e.test_user_bot")
+    test_user_thinking = False
+    test_user_speaking = False
+    if test_user_alive:
+        try:
+            import os as _os
+            from src.log_writer import _get_log_dir as _ld
+            d = _ld()
+            test_user_thinking = _os.path.exists(_os.path.join(d, ".thinking-test-user"))
+            test_user_speaking = _os.path.exists(_os.path.join(d, ".speaking-test-user"))
+        except Exception:
+            pass
     return {
         "bot_alive": _bot_alive_for_current_community(),
         "runner_alive": _ps_has("tests.e2e.runner"),
-        "test_user_alive": _ps_has("tests.e2e.test_user_bot"),
+        "test_user_alive": test_user_alive,
+        "test_user_thinking": test_user_thinking,
+        "test_user_speaking": test_user_speaking,
     }
 
 
