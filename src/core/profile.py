@@ -465,8 +465,36 @@ def _build_mgr_prompt(p: dict, include_avatar_template: bool = False) -> str:
     # 온보딩 상태 주입 — <tools> 프로토콜 기반
     onboarding_phase = db.get_meta("onboarding_phase")
     onboarding_section = ""
-    if onboarding_phase != "complete" and not db.get_meta("yuna_greeted"):
-        owner_name = get_user_name() or "user"
+    owner_name = get_user_name() or "user"
+    # phase 분기:
+    #   yuna_greeted=None                        → 최초 인사 + 프로필 수집
+    #   yuna_greeted=1, phase != channels_setup/done/complete → 프로필 수집 진행 중
+    #   phase in (channels_setup, channels_done) → Creator 소개 + 그 리포트 대기
+    #   phase = complete                         → 온보딩 종료
+    if onboarding_phase == "complete":
+        pass  # 일반 운영 모드, 프롬프트 추가 없음
+    elif onboarding_phase in ("channels_setup", "channels_done"):
+        onboarding_section = f"""
+=== Onboarding Phase 2 ===
+System just created mgr-system-log and mgr-creator channels and Creator is introducing themselves to {owner_name}.
+
+[Do NOT]
+- Do NOT call `finish_profile_collection` again. It was already called — phase is `{onboarding_phase}`.
+- Do NOT ask for more profile info (MBTI/job/hobby/etc.). Profile collection is DONE.
+- Do NOT say "곧 시작할게" / "잠깐 기다려봐" repeatedly — the next step already happened.
+
+[What to do now]
+- Briefly chat with {owner_name} in mgr-dashboard (small talk OK). Creator is handling the introduction in #mgr-creator.
+- Wait silently for Creator's DM report ("icebreaking done + created ___").
+- When Creator's report arrives in your DM/mgr-dashboard, THEN explain channel structure and call `finish_onboarding`.
+
+[Channel structure to explain when Creator reports]
+- dm-name: {owner_name} ↔ agent 1:1
+- group-A-B: {owner_name} included group
+- internal-dm-A-B: agents only ({owner_name} read-only)
+- internal-group-A-B-C: agents group ({owner_name} read-only)
+"""
+    elif not db.get_meta("yuna_greeted"):
         onboarding_section = f"""
 === Onboarding Mode ===
 Currently setting up {owner_name}'s profile. No agents yet.
@@ -482,14 +510,13 @@ Fields: mbti, background(=job, NOT occupation), enneagram, personality.hobby, sp
 [Flow] React (chat) + (optional) ONE update_profile call + next question, in one response.
 One question at a time. Don't get sidetracked.
 
-[MUST call] When ALL met → call `finish_profile_collection` (no args):
+[MUST call] When ALL met → call `finish_profile_collection` (no args) ONCE:
 1. Honorific/speech style decided
 2. Asked at least 2 of: MBTI, job, hobby
 3. A few turns of conversation
 → This triggers auto: mgr-system-log + mgr-creator + Creator intro.
 """
-    elif onboarding_phase != "complete":
-        owner_name = get_user_name() or "user"
+    else:
         onboarding_section = f"""
 === Onboarding In Progress ===
 Collecting {owner_name}'s profile via `update_profile` tool.
@@ -506,28 +533,11 @@ Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
 - One question at a time. No duplicate saves.
 - Stay focused on profile even if user goes off-topic.
 
-[MUST call] When conditions met → call `finish_profile_collection`:
+[MUST call] When conditions met → call `finish_profile_collection` ONCE:
 1. Honorific/speech style decided
 2. Asked at least 2 info questions
 3. Basic conversation happened
-→ Onboarding won't end otherwise.
-
-After completion, system auto-creates:
-1. mgr-system-log → you explain this channel
-2. mgr-creator → you introduce Creator
-3. Creator greets directly
-
-=== Creator Report ===
-Creator will report after icebreaking + agent creation.
-When you receive the report, talk to {owner_name} in mgr-dashboard:
-- Mention what Creator told you, naturally
-- Explain channel structure:
-  • dm-name: {owner_name} ↔ agent 1:1
-  • group-A-B: {owner_name} included group
-  • internal-dm-A-B: agents only ({owner_name} read-only)
-  • internal-group-A-B-C: agents group ({owner_name} read-only)
-- Connect: "just like Creator sent me a message, agents chat separately too"
-- Ask "Any questions?" and when done → call `finish_onboarding` tool (final step).
+→ Onboarding won't end otherwise. Do NOT call it again once it's been called — phase will change to `channels_setup`.
 """
 
     oc = get_owner_call_name() or "user"
