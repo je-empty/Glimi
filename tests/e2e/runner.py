@@ -149,9 +149,11 @@ def _init_qa_db():
 
 def _reset_qa():
     """qa 서버 초기화 — DB, 로그 삭제 + 디스코드 채널 정리 플래그"""
-    db_path = QA_DIR / "community.db"
-    if db_path.exists():
-        db_path.unlink()
+    # WAL 모드 사이드카(-shm, -wal)까지 같이 지워야 다음 init_db에서 disk I/O error 안 남
+    for suffix in ("", "-shm", "-wal", "-journal"):
+        p = QA_DIR / f"community.db{suffix}"
+        if p.exists():
+            p.unlink()
 
     logs_dir = QA_DIR / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
