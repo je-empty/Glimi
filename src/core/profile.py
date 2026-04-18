@@ -71,12 +71,17 @@ def load_profile(agent_id: str) -> Optional[dict]:
 
 
 def invalidate_cache(agent_id: str = None):
-    """캐시 무효화 (프로필 수정 시)"""
-    global _user_summary_cache
+    """캐시 무효화 (프로필 수정 시).
+
+    agent_id 주면 해당 에이전트만, 없으면 에이전트 전체 + 유저 프로필 요약 모두 초기화.
+    유저 프로필 캐시(`_user_profile_cache`)도 같이 비워야 `update_profile` 직후
+    mgr/creator 시스템 프롬프트에 갱신된 값이 반영됨."""
+    global _user_summary_cache, _user_profile_cache
     if agent_id:
         _profile_cache.pop(agent_id, None)
     else:
         _profile_cache.clear()
+        _user_profile_cache = None
     _user_summary_cache = None
 
 
@@ -101,7 +106,8 @@ def get_owner_call_name() -> str:
 
 
 def _load_user_summary() -> str:
-    """오너 프로필 요약 (캐시됨)"""
+    """오너 프로필 요약 (캐시됨) — Yuna/Hana system prompt에 삽입되어
+    같은 정보를 반복 질문하지 않도록 함."""
     global _user_summary_cache
     if _user_summary_cache is not None:
         return _user_summary_cache
@@ -117,13 +123,22 @@ def _load_user_summary() -> str:
     s = user.get("speech") or {}
     name = user.get("name", "?")
     age = user.get("age", "?")
+    mbti = user.get("mbti", "") or "?"
+    enneagram = user.get("enneagram", "") or "?"
+    background = user.get("background", "") or d.get("occupation", "") or "?"
+    hobby = p.get("hobby", "") or ", ".join(p.get("likes", []) or []) or "?"
+    speech_style = s.get("style_description", "") or s.get("style", "") or "?"
 
-    _user_summary_cache = (
-        f"[{name}] {name}/{age}살 | {d.get('occupation', '?')} | "
-        f"{a.get('summary', '?')} | {a.get('height', '?')} | "
-        f"성격: {p.get('keywords', '')} | "
-        f"말투: {s.get('style_description', '?')}"
-    )
+    lines = [
+        f"[{name}] age {age} | MBTI: {mbti} | enneagram: {enneagram}",
+        f"  job: {background} | hobby: {hobby}",
+        f"  speech style: {speech_style}",
+    ]
+    appearance_summary = a.get("summary", "")
+    if appearance_summary:
+        lines.append(f"  appearance: {appearance_summary}")
+
+    _user_summary_cache = "\n".join(lines)
     return _user_summary_cache
 
 
