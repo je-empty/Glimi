@@ -32,12 +32,16 @@ else
 fi
 export PYTHON
 
-# macOS Keychain 자동 언락 (non-interactive SSH 세션에서 claude CLI 자격증명 접근용)
-# ~/.config/glimi/keychain-pw 파일이 있으면 그 비번으로 login.keychain-db 해제
+# macOS Keychain 언락 — 부모 + tmux runner shell 양쪽 다 해야 함.
+# 부모만 언락하면 tmux detached session 에서 돌아가는 python subprocess 가 claude CLI
+# 호출 시 keychain 접근 fail ("Not logged in") 발생. 해결: 언락 명령을 tmux 내부로도 전파.
+KEYCHAIN_UNLOCK_PREFIX=""
 if [ "$(uname)" = "Darwin" ] && [ -r "$HOME/.config/glimi/keychain-pw" ]; then
     /usr/bin/security unlock-keychain -p "$(cat "$HOME/.config/glimi/keychain-pw")" \
         "$HOME/Library/Keychains/login.keychain-db" 2>/dev/null \
-        && echo "[qa.sh] login.keychain-db 언락 완료"
+        && echo "[qa.sh] login.keychain-db 언락 (부모)"
+    # tmux runner 안에서도 실행할 명령 (argv 노출 없이 파일에서 비번 읽음)
+    KEYCHAIN_UNLOCK_PREFIX="/usr/bin/security unlock-keychain -p \"\$(cat '$HOME/.config/glimi/keychain-pw')\" '$HOME/Library/Keychains/login.keychain-db' 2>/dev/null && echo '[runner] keychain 언락';"
 fi
 
 SESSION="Glimi-QA-Runner"
@@ -75,7 +79,8 @@ echo ""
 # 로컬 QA 설정(.env)을 tmux 내부 shell에서 source → QA_USER_* 등 페르소나 주입
 # 파일은 gitignore됨 (개인정보 커밋 방지)
 tmux new-session -d -s "$SESSION" -n runner \
-    "set -a; [ -f communities/qa/.env ] && source communities/qa/.env; set +a; \
+    "$KEYCHAIN_UNLOCK_PREFIX \
+     set -a; [ -f communities/qa/.env ] && source communities/qa/.env; set +a; \
      PYTHONUNBUFFERED=1 $PYTHON -u -m tests.e2e.runner $* 2>&1 | tee tests/e2e/results/latest.log"
 
 echo -e "${GREEN}[$SESSION] 시작됨${NC}"
