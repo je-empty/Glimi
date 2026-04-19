@@ -281,20 +281,30 @@ def _run_extraction(agent_id: str, channel: str):
 # Claude CLI 호출
 # ────────────────────────────────────────────────────
 
-def _call_claude(prompt: str, model: str = EXTRACTION_MODEL, timeout: int = 30) -> str:
-    if not CLAUDE_AVAILABLE:
-        return ""
+def _call_claude(prompt: str, model: str = EXTRACTION_MODEL, timeout: int = 30,
+                  system: str = "") -> str:
+    """LLM backend 추상화 경유. SDK 설정 시 prompt caching 활용.
+
+    메모리 추출은 구조화 JSON 응답이므로 system 부분을 caching 에 적합한 형태로 분리.
+    (현재 prompt 통합 구조 유지 위해 system 은 선택적 — 추후 full migration 시 분리).
+    """
     try:
-        result = subprocess.run(
-            ["claude", "-p", prompt,
-             "--output-format", "text", "--model", model],
-            capture_output=True, text=True, timeout=timeout,
-            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+        from src.llm import generate
+        resp = generate(
+            system=system,
+            user=prompt,
+            model=model,
+            agent_type="memory_extract",
+            timeout=timeout,
+            max_tokens=1024,
+            cacheable_system=bool(system),
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+        if resp.text:
+            return resp.text
+        if resp.error:
+            print(f"[Memory] LLM 오류: {resp.error}")
     except Exception as e:
-        print(f"[Memory] Claude 호출 실패: {e}")
+        print(f"[Memory] LLM 호출 실패: {e}")
     return ""
 
 
