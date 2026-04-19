@@ -80,7 +80,22 @@ Output format (STRICT):
 - Just write what 재빈 would type. Plain Korean text + emoji.
 """
 
-MAX_TURNS = 50  # 최대 대화 턴
+MAX_TURNS = 150  # 최대 대화 턴 (튜토리얼 ~20턴 + 도전과제 수행 공간)
+
+# 도전과제 진행 순서 — 유저 agency 기반 (long_relationship 은 시간 기반이라 제외)
+# 각 미션에 해당하는 achievement key + Haiku 에게 줄 행동 힌트.
+_MISSION_ORDER = [
+    ("first_friend_chat",
+     "방금 만든 친구의 DM 채널(#dm-이름)에서 3턴 이상 대화. 간단한 인사/근황/공통 관심사로."),
+    ("three_friends",
+     "유나한테 '새 친구 2명 더 만들어줘' 라고 요청. 대강 분위기만 얘기하면 하나가 만들어줄 거야."),
+    ("group_chat",
+     "유나한테 '친구들이랑 같이 그룹 채팅방 만들어줘' 라고 요청. 그 방에서 5턴 넘게 대화."),
+    ("peek_internal",
+     "유나한테 '친구들끼리 자기들끼리 얘기 좀 하게 해줘' 라고 요청. 유나가 internal-dm 만들고 대화 시작할 거야."),
+    ("agent_auto_chat",
+     "친구들끼리 자율 대화 진행 — 유나한테 '애들끼리 알아서 수다 떨게 두자' 라고 하면 orchestrator 가 진행."),
+]
 IDLE_TIMEOUT = 240  # 봇 응답 대기 타임아웃 (초) — Sonnet 긴 응답 대비
 THINKING_GRACE = 90  # 타임아웃 시점에 봇이 추론 중이면 추가 대기 (초)
 REPLY_DELAY = (2.0, 6.0)  # 응답 딜레이 범위 (자연스럽게)
@@ -105,6 +120,9 @@ class TestUserBot(discord.Client):
         self._done = False
         self._glimi_bot_id: int | None = None
         self._test_start_time: float = 0
+        self._mission_mode_announced: bool = False
+        self._current_mission_cache: dict = {}
+        self._current_mission_cache_at: float = 0
 
     async def on_ready(self):
         print(f"[TestUser] 로그인: {self.user.name} (#{self.user.id})")
@@ -309,11 +327,17 @@ class TestUserBot(discord.Client):
                 delay = random.uniform(*REPLY_DELAY)
                 await asyncio.sleep(delay)
 
-                # 튜토리얼 완료 체크
+                # 튜토리얼 완료 시 "미션 모드" 전환 — 종료 대신 도전과제 진행
                 if self._check_tutorial_done():
-                    print("[TestUser] 튜토리얼 완료 감지 — 테스트 종료")
-                    self._done = True
-                    break
+                    if not self._mission_mode_announced:
+                        print("[TestUser] 튜토리얼 완료 감지 → 미션 모드 진입 (도전과제 진행)")
+                        self._mission_mode_announced = True
+                    # 모든 가능 미션 완료 시 종료
+                    m = self._current_mission()
+                    if m["mode"] == "done":
+                        print("[TestUser] 모든 도전과제 완료 — 테스트 종료")
+                        self._done = True
+                        break
 
             except Exception as e:
                 print(f"[TestUser] 대화 루프 오류: {e}")
@@ -353,7 +377,10 @@ class TestUserBot(discord.Client):
                 last_agent_in_target = f"{msg['name']}: {msg['text']}"
                 break
 
+        mission_header = self._mission_prompt_header()
+
         prompt = (
+            f"{mission_header}"
             f"대화 기록 (각 줄 앞의 [#채널]은 해당 메시지가 나온 채널):\n{context}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"이번 답장은 #{target_ch} 채널로 간다. 오직 그 채널의 사람에게 할 말만 써.\n"
@@ -500,6 +527,66 @@ class TestUserBot(discord.Client):
                 "role": "user", "name": _QA_NAME, "text": text, "channel": ch_name,
             })
             print(f"[#{ch_name}] [{_QA_NAME}] {text}")
+
+    def _current_mission(self) -> dict:
+        """현재 진행할 미션 결정.
+
+        로직:
+          1) 튜토리얼 미완 → "tutorial" (유나 응답만 잘 따라가면 됨 — 기본 PERSONA 프롬프트)
+          2) 튜토리얼 완료 + 도전과제 중 유저 agency 있는 것 순차 진행
+          3) 전부 done → "done" (테스트 종료)
+
+        결과 캐시 5초 — 매 턴 recompute 비싸지 않지만 DB 부담 최소화.
+        """
+        now = time.time()
+        if now - self._current_mission_cache_at < 5 and self._current_mission_cache:
+            return self._current_mission_cache
+
+        result = {"mode": "tutorial", "hint": ""}
+        try:
+            # 테스트 유저는 QA 봇과 같은 DB 를 공유 — src.achievements 직접 import
+            from src.achievements import engine as _eng
+            summary = _eng.dashboard_summary()
+            items = summary.get("items", [])
+            by_key = {i["key"]: i for i in items}
+
+            tut = by_key.get("tutorial_done", {})
+            if tut.get("state") != "done":
+                result = {"mode": "tutorial", "hint": ""}
+            else:
+                # 순차 진행
+                for key, hint in _MISSION_ORDER:
+                    m = by_key.get(key, {})
+                    if m.get("state") != "done":
+                        result = {"mode": key, "hint": hint, "progress": m.get("progress")}
+                        break
+                else:
+                    result = {"mode": "done", "hint": ""}
+        except Exception as e:
+            print(f"[TestUser] mission 조회 실패: {e}")
+
+        self._current_mission_cache = result
+        self._current_mission_cache_at = now
+        return result
+
+    def _mission_prompt_header(self) -> str:
+        """현재 미션을 Haiku 프롬프트 헤더에 주입할 텍스트."""
+        m = self._current_mission()
+        mode = m.get("mode", "tutorial")
+        if mode == "tutorial":
+            return ""  # 기본 PERSONA 만으로 충분
+        if mode == "done":
+            return "[미션] 모든 과제 완료 — 평온하게 수다만 떨어."
+        hint = m.get("hint", "")
+        progress = m.get("progress") or {}
+        prog_str = f" (진척: {progress})" if progress else ""
+        return (
+            f"━━ 현재 미션: {mode}{prog_str} ━━\n"
+            f"목표: {hint}\n"
+            f"자연스럽게 이 목표를 향해 대화 유도해. 강박적으로 한 턴에 처리하려 하지 말고, "
+            f"원래 네 성격 유지하면서 흐름 속에서 꺼내.\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+        )
 
     def _check_tutorial_done(self) -> bool:
         """튜토리얼 완료 여부 체크.
