@@ -73,10 +73,47 @@ class SupervisorPool:
         if not sup.id:
             raise ValueError("Supervisor.id is required")
         self._instances[sup.id] = sup
+        self._dump_snapshot()
         return sup
 
     def unregister(self, sup_id: str) -> Optional[Supervisor]:
-        return self._instances.pop(sup_id, None)
+        removed = self._instances.pop(sup_id, None)
+        if removed is not None:
+            self._dump_snapshot()
+        return removed
+
+    def _dump_snapshot(self):
+        """supervisor 상태를 `communities/{id}/logs/.supervisors.json` 에 기록.
+        대시보드(별도 프로세스) 가 읽어서 UI에 반영하기 위함. 실패해도 무시."""
+        try:
+            import json as _json, os as _os, time as _time
+            from src import db as _db, community as _comm
+            cid = _comm.get_community_id()
+            logs_dir = _os.path.dirname(_db._get_db_path()) + "/logs"
+            _os.makedirs(logs_dir, exist_ok=True)
+            data = {
+                "community_id": cid,
+                "updated_at": _time.time(),
+                "items": [
+                    {
+                        "id": s.id,
+                        "kind": s.kind,
+                        "display_name": getattr(s, "display_name", s.id),
+                        "scope": dict(getattr(s, "scope", {}) or {}),
+                        "active": getattr(s, "should_exist", lambda: True)(),
+                    }
+                    for s in self._instances.values()
+                ],
+            }
+            tmp = _os.path.join(logs_dir, ".supervisors.json.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                _json.dump(data, f, ensure_ascii=False)
+            _os.replace(tmp, _os.path.join(logs_dir, ".supervisors.json"))
+        except Exception as e:
+            try:
+                print(f"[pool] snapshot write fail: {e}")
+            except Exception:
+                pass
 
     def get(self, sup_id: str) -> Optional[Supervisor]:
         return self._instances.get(sup_id)

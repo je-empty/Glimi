@@ -1236,14 +1236,47 @@ def get_scenes() -> list[dict]:
 
 
 def get_supervisors() -> list[dict]:
-    """감시자(supervisor) 목록과 상태. 이제는 SupervisorPool에서 직접 읽음."""
-    import re as _re
+    """감시자(supervisor) 목록과 상태.
 
+    데이터 소스:
+      1) In-process: SupervisorPool 이 있으면 직접 읽음 (봇 프로세스 내부 관측)
+      2) Cross-process: 비어있으면 `communities/{id}/logs/.supervisors.json` 에서 로드
+         (대시보드 처럼 별도 프로세스에서 봇의 pool 상태를 볼 수 있게)
+    """
+    import re as _re
+    import json as _json
+    import os as _os
+
+    class _SupShim:
+        """JSON 에서 로드한 supervisor 의 경량 shim — 기존 객체 인터페이스 유지."""
+        def __init__(self, data: dict):
+            self.id = data.get("id", "?")
+            self.kind = data.get("kind", "system")
+            self.display_name = data.get("display_name", self.id)
+            self.scope = data.get("scope", {}) or {}
+            self.interval = data.get("interval", 0)
+
+    live_sups: list = []
     try:
         from src.supervisors.base import pool
-        live_sups = pool.all()
+        live_sups = list(pool.all())
     except Exception:
         live_sups = []
+
+    if not live_sups:
+        # fallback: file-based snapshot
+        try:
+            from src import db as _db
+            snap_path = _os.path.join(
+                _os.path.dirname(_db._get_db_path()), "logs", ".supervisors.json"
+            )
+            if _os.path.exists(snap_path):
+                with open(snap_path, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+                items = data.get("items", [])
+                live_sups = [_SupShim(it) for it in items if it.get("active", True)]
+        except Exception:
+            pass
 
     # 아이콘 매핑 (id prefix 기준)
     ICON_BY_PREFIX = {
