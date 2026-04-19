@@ -107,6 +107,65 @@ def _days_since(created_at: str) -> float:
     return max(0.0, (datetime.utcnow() - dt).total_seconds() / 86400.0)
 
 
+def _owner_aliases() -> list[str]:
+    """오너 이름 + 별명(nickname) 목록. 엔티티 정규화용 (심재빈/빈이/재빈 → 동일인)."""
+    try:
+        from .profile import get_user_name, get_user_profile
+        aliases: list[str] = []
+        name = (get_user_name() or "").strip()
+        if name:
+            aliases.append(name)
+        try:
+            prof = get_user_profile() or {}
+            pers = prof.get("personality")
+            if isinstance(pers, str):
+                import json as _json
+                try:
+                    pers = _json.loads(pers)
+                except Exception:
+                    pers = {}
+            pers = pers or {}
+            nick = (pers.get("nickname") or "").strip()
+            if nick and nick not in aliases:
+                aliases.append(nick)
+        except Exception:
+            pass
+        return aliases
+    except Exception:
+        return []
+
+
+def _normalize_entity(name: str) -> str:
+    """엔티티 정규화. 오너 alias(빈이, 재빈, 심재빈) → canonical(심재빈)."""
+    if not name:
+        return name
+    s = str(name).strip()
+    aliases = _owner_aliases()
+    if not aliases:
+        return s
+    canonical = aliases[0]
+    if s in aliases:
+        return canonical
+    # "재빈" 같은 줄임형 — canonical 의 뒷부분과 매칭
+    if len(s) >= 2 and canonical.endswith(s):
+        return canonical
+    return s
+
+
+def _normalize_entities(entities: list) -> list:
+    """엔티티 리스트 정규화 + dedup."""
+    if not entities:
+        return []
+    out: list = []
+    seen: set = set()
+    for e in entities:
+        norm = _normalize_entity(str(e))
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+    return out
+
+
 def _channel_knows(channel: str, agent_name: str) -> list[str]:
     """채널명에서 disclosure 범위 (이 대화를 직접 아는 사람) 추정."""
     ch = channel or ""
@@ -365,7 +424,8 @@ def _try_l1_extract(agent_id: str, channel: str):
         level=1,
         content=extracted["summary"],
         mem_type=extracted["type"],
-        related_entities=extracted["entities"],
+        # 엔티티 정규화 — 오너 alias (빈이/재빈) 를 canonical(심재빈) 로 합쳐 중복 저장 방지
+        related_entities=_normalize_entities(extracted["entities"]),
         knows=knows,
         importance=extracted["importance"],
         msg_id_from=msgs[0]["id"],
@@ -378,7 +438,7 @@ def _try_l1_extract(agent_id: str, channel: str):
     for f in extracted.get("facts", []):
         if not isinstance(f, dict):
             continue
-        subject = str(f.get("subject") or "").strip()
+        subject = _normalize_entity(str(f.get("subject") or "").strip())
         predicate = str(f.get("predicate") or "").strip()
         obj = str(f.get("object") or "").strip()
         if not (subject and predicate and obj):
@@ -500,7 +560,7 @@ def _try_l2_rollup(agent_id: str, channel: str):
         agent_id=agent_id, channel=channel, level=2,
         content=summary,
         mem_type=dominant_type,
-        related_entities=sorted(all_entities),
+        related_entities=_normalize_entities(sorted(all_entities)),
         knows=sorted(all_knows) if all_knows else None,
         importance=max_importance or 5,
         parent_memory_id=batch[-1]["id"],
@@ -558,7 +618,7 @@ def _try_l3_rollup(agent_id: str, channel: str):
         agent_id=agent_id, channel=channel, level=3,
         content=summary,
         mem_type=dominant_type,
-        related_entities=sorted(all_entities),
+        related_entities=_normalize_entities(sorted(all_entities)),
         importance=max_importance or 5,
         parent_memory_id=batch[-1]["id"],
         msg_id_from=batch[0]["msg_id_from"],
