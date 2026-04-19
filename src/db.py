@@ -239,6 +239,21 @@ def init_db():
         );
 
         CREATE INDEX IF NOT EXISTS idx_trash_type ON trash(item_type, channel);
+
+        -- ── 도전과제 (유저 진척도 추적) ──
+        -- key 는 src/achievements/definitions.py 에 정의된 식별자와 1:1 매칭.
+        -- state: locked(전제조건 미달) / unlocked(진행 가능) / done(완료)
+        -- progress_data: JSON blob — e.g. {"talked_to": ["은하윤","수민"]} (진행도 추적용)
+        CREATE TABLE IF NOT EXISTS achievements (
+            user_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            state TEXT NOT NULL DEFAULT 'locked',
+            progress_data TEXT,
+            unlocked_at DATETIME,
+            completed_at DATETIME,
+            PRIMARY KEY (user_id, key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ach_user_state ON achievements(user_id, state);
     """)
     conn.commit()
     conn.close()
@@ -333,6 +348,18 @@ def update_intimacy(agent_a: str, agent_b: str, delta: int):
 
 # === Conversation Log ===
 
+#  ── Message event hooks ──
+# 외부 구독자가 메시지 로깅 시점을 훅킹할 수 있는 경량 pub/sub.
+# 주 사용처: achievements 엔진 (진척도 체크). 실패해도 로깅은 계속 진행.
+_message_hooks: list = []
+
+
+def add_message_hook(fn):
+    """log_message 이후에 호출될 콜백 등록. 시그니처: fn(channel, speaker, message)."""
+    if fn not in _message_hooks:
+        _message_hooks.append(fn)
+
+
 def log_message(channel: str, speaker: str, message: str, emotion: str = None):
     conn = get_conn()
     conn.execute(
@@ -347,6 +374,12 @@ def log_message(channel: str, speaker: str, message: str, emotion: str = None):
         )
     conn.commit()
     conn.close()
+    # 훅 실행 — 실패해도 원 로깅 동작엔 영향 없게 감쌈
+    for _hook in _message_hooks:
+        try:
+            _hook(channel, speaker, message)
+        except Exception as _e:
+            print(f"[db.log_message hook] {_hook.__name__}: {_e}")
 
 
 def get_recent_messages(channel: str, limit: int = 20) -> list[dict]:
@@ -1542,3 +1575,122 @@ def trash_empty():
     conn.commit()
     conn.close()
     return count
+
+
+# === Achievements (도전과제 진척도) ===
+
+def get_achievement(user_id: str, key: str) -> Optional[dict]:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT * FROM achievements WHERE user_id = ? AND key = ?",
+        (user_id, key)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_achievements(user_id: str) -> list[dict]:
+    """user 의 모든 도전과제 진척도. locked 포함."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM achievements WHERE user_id = ? ORDER BY "
+        "CASE state WHEN 'done' THEN 2 WHEN 'unlocked' THEN 1 ELSE 3 END, key",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def upsert_achievement(user_id: str, key: str, state: str = None,
+                       progress_data: dict = None,
+                       mark_unlocked: bool = False,
+                       mark_completed: bool = False) -> dict:
+    """도전과제 행 삽입/갱신. state 는 'locked'/'unlocked'/'done' 중 하나.
+    mark_unlocked=True 시 첫 unlock 시점에만 unlocked_at 기록.
+    mark_completed=True 시 첫 완료 시점에만 completed_at 기록 + state='done' 강제."""
+    import json as _json
+    conn = get_conn()
+    existing = conn.execute(
+        "SELECT * FROM achievements WHERE user_id = ? AND key = ?",
+        (user_id, key)
+    ).fetchone()
+
+    if mark_completed:
+        state = "done"
+
+    if existing:
+        new_state = state if state else existing["state"]
+        new_progress = _json.dumps(progress_data, ensure_ascii=False) if progress_data is not None else existing["progress_data"]
+        new_unlocked = existing["unlocked_at"]
+        if mark_unlocked and not new_unlocked:
+            new_unlocked = datetime.now().isoformat()
+        new_completed = existing["completed_at"]
+        if mark_completed and not new_completed:
+            new_completed = datetime.now().isoformat()
+        conn.execute(
+            "UPDATE achievements SET state = ?, progress_data = ?, unlocked_at = ?, completed_at = ? "
+            "WHERE user_id = ? AND key = ?",
+            (new_state, new_progress, new_unlocked, new_completed, user_id, key)
+        )
+    else:
+        now = datetime.now().isoformat()
+        conn.execute(
+            "INSERT INTO achievements (user_id, key, state, progress_data, unlocked_at, completed_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, key, state or "locked",
+             _json.dumps(progress_data, ensure_ascii=False) if progress_data else None,
+             now if mark_unlocked else None,
+             now if mark_completed else None)
+        )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM achievements WHERE user_id = ? AND key = ?",
+        (user_id, key)
+    ).fetchone()
+    conn.close()
+    return dict(row)
+
+
+def count_completed_achievements(user_id: str) -> tuple[int, int]:
+    """(완료 수, 전체 추적 수) — 대시보드 요약용."""
+    conn = get_conn()
+    total = conn.execute(
+        "SELECT COUNT(*) FROM achievements WHERE user_id = ?", (user_id,)
+    ).fetchone()[0]
+    done = conn.execute(
+        "SELECT COUNT(*) FROM achievements WHERE user_id = ? AND state = 'done'", (user_id,)
+    ).fetchone()[0]
+    conn.close()
+    return done, total
+
+
+# === 시간 범위 메시지 조회 (에이전트가 효율적으로 특정 구간만 읽기) ===
+
+def get_messages_in_range(channel: str,
+                           since: Optional[str] = None,
+                           until: Optional[str] = None,
+                           since_minutes: Optional[int] = None,
+                           limit: int = 200) -> list[dict]:
+    """채널의 특정 시간 구간 메시지.
+
+    since, until: ISO datetime string (e.g. "2026-04-20 17:30:00") — 우선
+    since_minutes: 위 둘 다 없을 때 대안 — 지금부터 N분 전까지
+    limit: 최대 반환 수 (프롬프트 토큰 보호)."""
+    conn = get_conn()
+    q = "SELECT * FROM conversations WHERE channel = ?"
+    args: list = [channel]
+    if since_minutes is not None and not since:
+        q += " AND timestamp >= datetime('now', ?)"
+        args.append(f"-{int(since_minutes)} minutes")
+    else:
+        if since:
+            q += " AND timestamp >= ?"
+            args.append(since)
+        if until:
+            q += " AND timestamp <= ?"
+            args.append(until)
+    q += " ORDER BY id ASC LIMIT ?"
+    args.append(limit)
+    rows = conn.execute(q, args).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

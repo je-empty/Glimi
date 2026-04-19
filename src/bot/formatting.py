@@ -49,6 +49,13 @@ _OWNER_PAT = re.compile(r'(?<!\w)@([가-힣a-zA-Z][가-힣a-zA-Z0-9_]{0,15})')
 # 전파되는 경우 Discord UI에 '알 수 없음' 으로 렌더됨. 전송 직전 걸러냄.
 _RAW_CHANNEL_MENTION_PAT = re.compile(r'<#(\d+)>')
 
+# 미치환 f-string / .format 플레이스홀더 leak 탐지.
+# 예: `"{name} 안녕"` 이 substitution 없이 보내진 케이스 → 사용자에게 literal `{name}`
+# 출력돼 tool/prompt 템플릿 내부가 노출됨. 전송 직전 제거 (빈 문자열로 치환).
+_PLACEHOLDER_LEAK_PAT = re.compile(
+    r'\{(?:name|user_name|owner_name|agent_name|speaker_name|listener_name|target|nickname|age|mbti)\}'
+)
+
 
 # ── 개별 변환기 ─────────────────────────────────────────
 
@@ -149,6 +156,10 @@ def format_for_discord(message: str,
             except Exception:
                 return m.group(0)
         out = pattern.sub(_sub, out)
+
+    # 프롬프트 템플릿 leak 방어 — 미치환 `{name}` 같은 플레이스홀더를 제거
+    # (빈 문자열로 치환). 원인은 별도로 고쳐야 하지만, 사용자에게 노출되는 건 방지.
+    out = _PLACEHOLDER_LEAK_PAT.sub("", out)
 
     # 최종 단계: `<#id>` stale/invalid 검증. guild에 실존하는 ID만 남기고
     # 나머지는 평문화해서 Discord UI의 '알 수 없음' 렌더 방지.

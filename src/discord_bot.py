@@ -26,6 +26,10 @@ import src.bot.handlers    # noqa: F401 — on_message
 import src.bot.commands    # noqa: F401 — !commands
 import src.bot.tasks       # noqa: F401 — background tasks + events
 
+# 도전과제 엔진 — db.log_message 훅으로 진척도 자동 추적
+from src.achievements import engine as _ach_engine
+_ach_engine.install()
+
 
 def _kill_existing_bot():
     """같은 커뮤니티의 기존 봇 프로세스 종료"""
