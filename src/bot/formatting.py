@@ -69,6 +69,14 @@ def _build_channel_map(guild: Any) -> dict[str, int]:
 
 
 def _resolve_channel(match: re.Match, ctx: dict) -> str:
+    """`#channel-name` → `<#id>` 변환. guild 에 채널 없으면 평문 `#name` 유지.
+
+    - exact match 우선
+    - 미매칭 시 case-insensitive fuzzy 시도 (에이전트 표기 흔들림 방어)
+    - 최종 실패 시 볼드/브래킷 등 플랫폼-특화 마크업 절대 금지 — 평문 `#name` 그대로.
+      이유: 에이전트 출력은 플랫폼 중립이어야 함. 채널이 곧 생길 수도 있고(타이밍),
+      다른 메신저(Slack/Kakao 등)로 이식 시에도 `#name` 은 보편적으로 통용됨.
+    """
     name = match.group(1)
     ch_map = ctx.get("_channel_map")
     if ch_map is None:
@@ -77,8 +85,13 @@ def _resolve_channel(match: re.Match, ctx: dict) -> str:
     cid = ch_map.get(name)
     if cid:
         return f"<#{cid}>"
-    # 매칭 실패 — 볼드로라도 강조 (평문보다 눈에 띔)
-    return f"**#{name}**"
+    # case-insensitive fuzzy
+    name_lower = name.lower()
+    for existing_name, existing_id in ch_map.items():
+        if existing_name.lower() == name_lower:
+            return f"<#{existing_id}>"
+    # 미매칭 — 평문 `#name` 유지 (볼드/특수 마크업 금지)
+    return f"#{name}"
 
 
 def _resolve_owner(match: re.Match, ctx: dict) -> Optional[str]:
@@ -148,9 +161,9 @@ def format_for_discord(message: str,
                 cid = m.group(1)
                 if cid in valid_ids:
                     return m.group(0)
-                # Invalid/stale ID — 채널명을 모르니 평문 폴백
+                # Invalid/stale ID — 평문 `#name` (또는 이름 모르면 단순 '채널')
                 name = id_to_name.get(cid, "")
-                return f"**#{name}**" if name else "**(채널)**"
+                return f"#{name}" if name else "채널"
             out = _RAW_CHANNEL_MENTION_PAT.sub(_strip_invalid, out)
         except Exception:
             pass
