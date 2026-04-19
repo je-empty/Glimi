@@ -103,15 +103,29 @@ def build_reference(agent_type: str, verbose: bool = True) -> str:
     return "\n".join(parts).rstrip() + "\n"
 
 
+def _required_params_sig(spec: ToolSpec) -> str:
+    """필수 파라미터만 시그니처로 — 에이전트가 호출 실수 안 하도록 최소 정보 유지.
+    optional 은 `get_tool_details` 로 조회. 빈 () 는 표기 생략."""
+    req = [name for name, p in spec.params.items() if p.get("required", False)]
+    if not req:
+        return ""
+    # optional 개수 힌트만 추가
+    opt_count = sum(1 for name, p in spec.params.items() if not p.get("required", False))
+    sig = ", ".join(req)
+    if opt_count:
+        sig += f", …+{opt_count}"
+    return f"({sig})"
+
+
 def build_brief_list(agent_type: str) -> str:
-    """축약 버전 — 기본 주입용. 이름+한줄설명만.
-    파라미터 상세·예제·안전 플래그 다 빠짐. 필요 시 에이전트가 `get_tool_details(name)`
-    호출해서 on-demand 로 확장. 프롬프트 토큰 절약 + 응답 속도 향상.
-    """
+    """축약 버전 — 기본 주입용. 이름 + 필수 파라미터 + 한줄설명.
+    optional 파라미터·예제·타입은 `get_tool_details(name)` 로 on-demand.
+    프롬프트 경량화 + 필수 인자 누락 실수 방지."""
     tools = tools_for_agent(agent_type)
     lines = [
-        "## Available Tools (brief — call `get_tool_details(name)` for params·examples)",
+        "## Available Tools (brief — call `get_tool_details(name)` for optional params·examples)",
         "Usage: `<tools><call id=\"1\" name=\"X\">{json args}</call></tools>` at end of response.",
+        "Required params shown in signature. `…+N` = N more optional params.",
     ]
     by_cat: dict[str, list[ToolSpec]] = {}
     for t in tools:
@@ -122,7 +136,8 @@ def build_brief_list(agent_type: str) -> str:
         lines.append(f"\n### {cat}")
         for t in by_cat[cat]:
             flag = " ⚠" if t.destructive else ""
-            lines.append(f"- `{t.name}`{flag} — {t.description}")
+            sig = _required_params_sig(t)
+            lines.append(f"- `{t.name}{sig}`{flag} — {t.description}")
     return "\n".join(lines)
 
 
