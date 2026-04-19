@@ -104,14 +104,48 @@ def build_reference(agent_type: str, verbose: bool = True) -> str:
 
 
 def build_brief_list(agent_type: str) -> str:
-    """축약 버전 — deferred tool 패턴용. 이름+한줄설명만."""
+    """축약 버전 — 기본 주입용. 이름+한줄설명만.
+    파라미터 상세·예제·안전 플래그 다 빠짐. 필요 시 에이전트가 `get_tool_details(name)`
+    호출해서 on-demand 로 확장. 프롬프트 토큰 절약 + 응답 속도 향상.
+    """
     tools = tools_for_agent(agent_type)
-    lines = ["## Available Tools (brief — call `get_tool_details(name)` for params)"]
+    lines = [
+        "## Available Tools (brief — call `get_tool_details(name)` for params·examples)",
+        "Usage: `<tools><call id=\"1\" name=\"X\">{json args}</call></tools>` at end of response.",
+    ]
     by_cat: dict[str, list[ToolSpec]] = {}
     for t in tools:
         by_cat.setdefault(t.category, []).append(t)
-    for cat, ts in by_cat.items():
+    for cat in ("management", "query", "request"):
+        if cat not in by_cat:
+            continue
         lines.append(f"\n### {cat}")
-        for t in ts:
-            lines.append(f"- `{t.name}` — {t.description}")
+        for t in by_cat[cat]:
+            flag = " ⚠" if t.destructive else ""
+            lines.append(f"- `{t.name}`{flag} — {t.description}")
     return "\n".join(lines)
+
+
+def build_tool_details(tool_name: str) -> str:
+    """특정 도구의 전체 스키마·예제·안전 플래그. get_tool_details 핸들러가 호출."""
+    from .registry import TOOLS
+    spec = TOOLS.get(tool_name)
+    if not spec:
+        return f"(unknown tool: {tool_name})"
+    out = [f"### `{_format_signature(spec)}`", f"Category: {spec.category}  |  applies_to: {', '.join(sorted(spec.applies_to))}"]
+    if spec.destructive:
+        out.append("⚠ destructive — 신중히.")
+    if spec.requires_approval:
+        out.append("⚠ requires approval (보통 persona → mgr 경로).")
+    out.append(f"\n{spec.description}")
+    if spec.params:
+        out.append("\nParams:")
+        for pname, p in spec.params.items():
+            opt = "(optional)" if not p.get("required") else ""
+            desc = p.get("desc", "")
+            out.append(f"  - `{pname}` : {p.get('type', 'any')} {opt}  {desc}")
+    if spec.examples:
+        out.append("\nExamples:")
+        for ex in spec.examples:
+            out.append(f"  {ex}")
+    return "\n".join(out)
