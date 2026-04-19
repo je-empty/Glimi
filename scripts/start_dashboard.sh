@@ -22,6 +22,9 @@ cd "$(dirname "$0")/.."
 
 SESSION="Glimi-Dashboard"
 COMMUNITY="${1:-private}"
+# 모든 인터페이스 바인딩 — LAN (다른 PC/폰) + 외부 포트포워딩 둘 다 접근 가능.
+# 로컬 전용으로 돌리고 싶으면 환경변수 GLIMI_DASHBOARD_HOST=127.0.0.1 로 오버라이드.
+DASHBOARD_HOST="${GLIMI_DASHBOARD_HOST:-0.0.0.0}"
 
 # Homebrew PATH 보강 (non-interactive SSH 대비)
 for p in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin; do
@@ -60,12 +63,18 @@ mkdir -p ~/Library/Logs
 
 # 재시작 루프로 래핑
 tmux new-session -d -s "$SESSION" -n runner \
-    "cd $(pwd); while true; do source .venv/bin/activate 2>/dev/null; python scripts/web_dashboard.py '$COMMUNITY' 2>&1 | tee -a ~/Library/Logs/glimi-dashboard.log; echo '[dashboard] 3초 후 재시작'; sleep 3; done"
+    "cd $(pwd); while true; do source .venv/bin/activate 2>/dev/null; python scripts/web_dashboard.py '$COMMUNITY' --host '$DASHBOARD_HOST' 2>&1 | tee -a ~/Library/Logs/glimi-dashboard.log; echo '[dashboard] 3초 후 재시작'; sleep 3; done"
 
 sleep 3
 if tmux has-session -t "$SESSION" 2>/dev/null; then
-    echo "[$SESSION] 시작 (community=$COMMUNITY)"
-    echo "  URL:  http://127.0.0.1:8765/"
+    echo "[$SESSION] 시작 (community=$COMMUNITY, host=$DASHBOARD_HOST)"
+    echo "  로컬:    http://127.0.0.1:8765/"
+    if [ "$DASHBOARD_HOST" = "0.0.0.0" ]; then
+        # LAN IP 감지 — 내부망 기기에서 접근용
+        LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "")
+        [ -n "$LAN_IP" ] && echo "  LAN:     http://$LAN_IP:8765/"
+        echo "  외부:    포트포워딩된 공용 IP/도메인:8765"
+    fi
     echo "  로그: tail -f ~/Library/Logs/glimi-dashboard.log"
     echo "  붙기: ./scripts/start_dashboard.sh attach"
     echo "  종료: ./scripts/start_dashboard.sh stop"
