@@ -278,6 +278,34 @@ graph LR
 | **Emotion** | Current emotion + intensity (1-10), changes in real-time |
 | **Memory** | 5-layer (raw / episodic L1-L3 / semantic facts / relationship history / pinned), entity-indexed, async extraction |
 
+### Scenes & Achievements — two orthogonal progress layers
+
+Two distinct systems drive "what happens next":
+
+**Scenes** (`src/scenes/`) — world-level episodes with a clear beginning, middle, and end. Supervisors monitor and nudge agents to keep the story on track. Currently implemented:
+- `tutorial` — first-time owner onboarding (profile collection → system channels → first friend creation)
+
+Planned: `birthday`, `conflict`, `party`, `outing`, etc. Each involves multiple agents, has phases, and leaves an episodic memory trace.
+
+**Achievements** (`src/achievements/`) — user-level progress flags. Optional, non-binding. Just checklist entries that unlock naturally through interaction. Stored in `achievements` table (key, state, progress_data).
+
+| | Scene | Achievement |
+|--|--|--|
+| Scope | World/story | User UX |
+| Mandatory? | Yes (supervisor-guided) | No (just a flag) |
+| State | phases (`channels_setup` → `complete`) | `locked` / `unlocked` / `done` |
+| Persisted as | `meta` keys + episodic memory | `achievements` rows |
+
+Default achievements: `tutorial_done`, `first_friend_chat`, `three_friends`, `group_chat`, `peek_internal`, `agent_auto_chat`, `long_relationship`. Hooked into `db.log_message` — recomputed after every new message so progress updates in real time. Dashboard has an "Achievements" tab with progress bar + card grid.
+
+### Manager knowledge base (`docs/yuna_knowledge.md`)
+
+Manager (Yuna) needs to answer user questions like *"what's a scene?" / "how do I unlock achievements?" / "what can you see?"*. Rather than exposing source code, a curated FAQ lives in `docs/yuna_knowledge.md` and is auto-injected into Yuna's system prompt (with mtime-based cache). It has two sections:
+- **Allowed** — project concepts, Yuna's capabilities, how friends are made
+- **Forbidden** — internal tech (memory layers, LLM model names, DB), supervisor existence, QA/dev internals
+
+When features change, update this file so Yuna stays in sync — also codified in `CLAUDE.md`.
+
 ---
 
 ## Discord Channel Structure

@@ -7,6 +7,36 @@ from pathlib import Path
 from typing import Optional
 from src import db, community
 
+
+_YUNA_KNOWLEDGE_CACHE: dict = {"text": None, "mtime": 0}
+
+
+def _load_yuna_knowledge() -> str:
+    """docs/yuna_knowledge.md 를 로드해 유나 system prompt 에 삽입.
+    파일 mtime 바뀌면 자동 재로드 (개발 중 편집해도 봇 재시작 불필요).
+    파일 없으면 빈 섹션 반환."""
+    try:
+        p = Path(__file__).resolve().parent.parent.parent / "docs" / "yuna_knowledge.md"
+        if not p.exists():
+            return ""
+        mtime = p.stat().st_mtime
+        if _YUNA_KNOWLEDGE_CACHE["text"] and _YUNA_KNOWLEDGE_CACHE["mtime"] == mtime:
+            return _YUNA_KNOWLEDGE_CACHE["text"]
+        body = p.read_text(encoding="utf-8")
+        wrapped = (
+            "--- 지식 베이스 (사용자 질의 대응용) ---\n"
+            "아래는 네가 프로젝트에 대해 사용자에게 설명할 수 있는 내용. "
+            "공개 가능 / 금지 경계 엄수. 금지 주제는 자연스럽게 회피해.\n\n"
+            + body
+            + "\n--- /지식 베이스 ---"
+        )
+        _YUNA_KNOWLEDGE_CACHE["text"] = wrapped
+        _YUNA_KNOWLEDGE_CACHE["mtime"] = mtime
+        return wrapped
+    except Exception as e:
+        print(f"[yuna_knowledge] 로드 실패: {e}")
+        return ""
+
 # 레거시 경로 (마이그레이션용)
 PROFILES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "profiles")
 IMAGE_DIR = os.path.join(PROFILES_DIR, "agent-profile-image")
@@ -533,6 +563,8 @@ group-A-B: {oc} included group chat
 mgr-dashboard: you and {oc} only
 
 {_tools_reference("mgr")}
+
+{_load_yuna_knowledge()}
 
 --- Rules ---
 1. Other agents don't know you're the manager.

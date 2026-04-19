@@ -278,6 +278,34 @@ graph LR
 | **Emotion** | 현재 감정 + 강도(1–10), 실시간 변화 |
 | **Memory** | 5 레이어 (원본 / 에피소드 L1-L3 / 의미 사실 / 관계 변곡점 / 고정), 엔티티 인덱싱, 비동기 추출 |
 
+### 씬 & 도전과제 — 서로 다른 진행 레이어 2종
+
+"다음에 뭐가 일어나지?" 를 정의하는 두 개의 독립된 시스템:
+
+**씬(Scenes, `src/scenes/`)** — **세계관 상의 에피소드**. 시작·진행·종료 조건이 명확하고 supervisor 가 흐름을 감시·유도해서 스토리가 끊기지 않게 함. 현재 구현:
+- `tutorial` — 오너 첫 방문 1회 (프로필 수집 → 시스템 채널 세팅 → 첫 친구 생성)
+
+예정: `birthday` (생일 파티), `conflict` (갈등 중재), `party` (단톡방 모임), `outing` (외출) 등. 여러 에이전트 참여 + 시간축 + 종료 조건 + 메모리에 에피소드로 누적.
+
+**도전과제(Achievements, `src/achievements/`)** — **유저 레벨 진척 플래그**. 강제 없음. 대시보드 체크리스트 — 미해결이어도 상관 없음. `achievements` 테이블에 (key, state, progress_data) 저장.
+
+| | 씬 | 도전과제 |
+|--|--|--|
+| 성격 | 세계관 에피소드 | 유저 UX |
+| 강제성 | supervisor 가 유도 (필수) | 선택 (플래그만) |
+| 상태 | phase (`channels_setup` → `complete`) | `locked` / `unlocked` / `done` |
+| 저장 | `meta` + 에피소드 기억 | `achievements` 행 |
+
+기본 과제 7개: `tutorial_done`, `first_friend_chat`, `three_friends`, `group_chat`, `peek_internal`, `agent_auto_chat`, `long_relationship`. `db.log_message` 훅에 등록되어 매 메시지마다 재계산 — 실시간 진행. 대시보드 "Achievements" 탭에서 진척도 바 + 카드 그리드로 확인.
+
+### 유나 지식 베이스 (`docs/yuna_knowledge.md`)
+
+유나(Yuna)가 사용자 질문 (*"씬이 뭐야?" / "도전과제 어떻게 달성?" / "너 어디까지 볼 수 있어?"*) 에 답할 수 있도록 하는 큐레이티드 FAQ. 소스 코드를 직접 참조하는 대신, `docs/yuna_knowledge.md` 가 유나 시스템 프롬프트에 자동 주입 (mtime 캐시 기반). 두 섹션으로 구성:
+- **공개 가능** — 프로젝트 개념, 유나 권한, 친구 만드는 법 등
+- **금지** — 내부 기술(메모리 레이어, 모델명, DB 구조), supervisor 존재, QA/개발 내부 흐름
+
+기능 변경 시 이 파일을 갱신해야 유나가 최신 상태 유지 — `CLAUDE.md` 에도 갱신 규칙 명시.
+
 ---
 
 ## 디스코드 채널 구조
