@@ -38,11 +38,22 @@ AGENT_TASK_MODELS = {
     "creator": "claude-opus-4-6",  # 프로필 JSON 생성은 opus
 }
 
-# 대시보드에서 선택 가능한 모델 카탈로그. Local 모델은 Phase 2 에서 추가.
+# 대시보드에서 선택 가능한 모델 카탈로그.
+# Phase 1: 클라우드(Claude) 모델만. Phase 2 에서 로컬 모델 (ollama/vllm 등) 여러 종 추가.
+# kind: "cloud" | "local" — UI 에서 ☁️/🖥️ 아이콘으로 구분.
+# provider: "claude" | "ollama" | "vllm" | "llamacpp" — 백엔드 선택에도 사용.
 AVAILABLE_MODELS = [
-    {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6", "kind": "claude", "tier": "balanced"},
-    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5", "kind": "claude", "tier": "fast"},
-    {"id": "claude-opus-4-7", "label": "Opus 4.7", "kind": "claude", "tier": "premium"},
+    {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6",
+     "kind": "cloud", "provider": "claude", "tier": "balanced", "icon": "☁️"},
+    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5",
+     "kind": "cloud", "provider": "claude", "tier": "fast", "icon": "☁️"},
+    # Phase 2 로컬 모델 예시 (주석 — 실제 구현 시 해제 + src/llm/local.py 추가):
+    # {"id": "ollama:llama3.3:8b", "label": "Llama 3.3 8B",
+    #  "kind": "local", "provider": "ollama", "tier": "fast", "icon": "🖥️"},
+    # {"id": "ollama:qwen2.5:14b", "label": "Qwen 2.5 14B",
+    #  "kind": "local", "provider": "ollama", "tier": "balanced", "icon": "🖥️"},
+    # {"id": "vllm:mistral-small-3", "label": "Mistral Small 3",
+    #  "kind": "local", "provider": "vllm", "tier": "balanced", "icon": "🖥️"},
 ]
 
 

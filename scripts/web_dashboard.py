@@ -1357,6 +1357,19 @@ function _modelFamilyClass(p) {
   if (s.includes('gemini')) return 'm-gemini';
   return '';
 }
+function _modelKindIcon(modelId) {
+  // 모델 id 로 cloud/local 구분 아이콘 — ☁️/🖥️.
+  if (!modelId) return '';
+  const s = String(modelId).toLowerCase();
+  if (s.startsWith('claude-') || s.startsWith('gpt-') || s.startsWith('gemini-') || s.startsWith('openai')) {
+    return '☁️';
+  }
+  if (s.startsWith('ollama:') || s.startsWith('vllm:') || s.startsWith('llamacpp:') || s.startsWith('local:') || s.includes('llama') || s.includes('qwen') || s.includes('mistral')) {
+    return '🖥️';
+  }
+  return '';
+}
+
 function renderModelChips(d, compact) {
   if (!d || !d.model) return '';
   const raw = String(d.model);
@@ -1367,7 +1380,8 @@ function renderModelChips(d, compact) {
   const chips = parts.map(p => {
     const fam = _modelFamilyClass(p);
     const classes = ['model-tag', provider, fam, override.trim()].filter(Boolean).join(' ');
-    return `<span class="${classes}" title="${esc(title)}">${esc(p)}</span>`;
+    const icon = _modelKindIcon(p);
+    return `<span class="${classes}" title="${esc(title)}">${icon ? icon + ' ' : ''}${esc(p)}</span>`;
   }).join('');
   const suffix = compact
     ? ''
@@ -1830,16 +1844,30 @@ async function openModelPicker(agentId, agentName, currentModel) {
     alert('모델 목록을 가져올 수 없어.');
     return;
   }
-  const lines = models.map(m => {
-    const checked = m.id === currentModel ? 'checked' : '';
-    return `<label style="display:flex;gap:8px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;align-items:center">
-      <input type="radio" name="model-pick" value="${esc(m.id)}" ${checked}>
-      <div style="flex:1">
-        <div style="font-weight:600">${esc(m.label)}</div>
-        <div style="font-size:11px;color:var(--text-dim)">${esc(m.id)} · ${esc(m.tier || '')}</div>
-      </div>
-    </label>`;
+  // kind 별 그룹핑 — 클라우드/로컬 구분
+  const groupOrder = ['cloud', 'local'];
+  const groupLabel = {cloud: '☁️ Cloud', local: '🖥️ Local'};
+  const byGroup = {};
+  models.forEach(m => {
+    const g = m.kind || 'cloud';
+    (byGroup[g] = byGroup[g] || []).push(m);
+  });
+  const sections = groupOrder.filter(g => byGroup[g] && byGroup[g].length).map(g => {
+    const cards = byGroup[g].map(m => {
+      const checked = m.id === currentModel ? 'checked' : '';
+      const icon = m.icon || (m.kind === 'local' ? '🖥️' : '☁️');
+      return `<label style="display:flex;gap:10px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;align-items:center">
+        <input type="radio" name="model-pick" value="${esc(m.id)}" ${checked}>
+        <span style="font-size:18px">${icon}</span>
+        <div style="flex:1">
+          <div style="font-weight:600">${esc(m.label)}</div>
+          <div style="font-size:11px;color:var(--text-dim)">${esc(m.id)} · ${esc(m.provider || '')} · ${esc(m.tier || '')}</div>
+        </div>
+      </label>`;
+    }).join('');
+    return `<div style="margin-bottom:10px"><div style="font-size:11.5px;color:var(--text-dim);margin-bottom:6px;font-weight:600">${groupLabel[g] || g}</div>${cards}</div>`;
   }).join('');
+  const lines = sections;
   const content = `
     <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
       <b>${esc(agentName)}</b> 의 실효 모델을 교체합니다.<br>
