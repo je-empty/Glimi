@@ -202,18 +202,14 @@ async def start_conversation(
                     runtime.generate_agent_to_agent(sid, lid, ch, context=ctx)
             )
 
-            # 디스코드에 전송 (CMD/QUERY/ACTION 태그 처리)
+            # 디스코드에 전송 (legacy 태그 + <tools> 블록 strip)
             import re
             TAG_RE = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
-            CMD_RE = re.compile(r'\[CMD:((?:[^\[\]]|\[[^\]]*\])*)\]')
-            ACTION_RE = re.compile(r'\[ACTION:((?:[^\[\]]|\[[^\]]*\])*)\]')
             TOOLS_RE = re.compile(r'<tools>.*?</tools>', re.IGNORECASE | re.DOTALL)
             for i, msg in enumerate(responses):
                 if i > 0:
                     await asyncio.sleep(random.uniform(0.5, 1.5))
 
-                cmds = CMD_RE.findall(msg)
-                actions = ACTION_RE.findall(msg)
                 # 모든 태그 제거 후 순수 텍스트만 전송 (legacy + <tools> 블록)
                 clean = TAG_RE.sub('', msg)
                 clean = TOOLS_RE.sub('', clean).strip()
@@ -223,31 +219,6 @@ async def start_conversation(
                     continue
                 if clean:
                     await send_fn(speaker_id, clean)
-
-                # CMD 실행 (mgr만)
-                if cmds and speaker_id == "agent-mgr-001":
-                    from src.bot.mgr_system import parse_and_execute_actions
-                    from src.bot.core import get_target_guild
-                    import discord as _disc
-                    import asyncio as _aio
-                    guild = get_target_guild()
-                    if guild:
-                        mgr_ch = _disc.utils.get(guild.text_channels, name="mgr-dashboard")
-                        if mgr_ch:
-                            for cmd_body in cmds:
-                                _aio.create_task(parse_and_execute_actions(
-                                    mgr_ch, [f"[CMD:{cmd_body}]"], guild
-                                ))
-
-                # ACTION 전달
-                if actions:
-                    from src.bot.mgr_system import _forward_action_to_yuna
-                    from src.bot.core import get_target_guild
-                    import asyncio as _aio
-                    guild = get_target_guild()
-                    if guild:
-                        for action in actions:
-                            _aio.create_task(_forward_action_to_yuna(speaker_id, action.strip(), guild))
 
             # <tools> 블록에서 파싱된 tool_calls 실행 — runtime에 stash돼 있음
             # (이전에는 internal-dm 경로에서 이 실행이 빠져서 finish_tutorial 호출

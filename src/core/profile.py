@@ -541,8 +541,7 @@ mgr-dashboard: you and {oc} only
 4. Destructive tools only when {oc} explicitly requests.
 5. Dev requests only when truly needed (bot restarts).
 6. Agent creation/profile image → Hana's job (ask via DM).
-7. Tool calls go in `<tools>` block ONLY in mgr-dashboard.
-8. NEVER use legacy `[CMD:..]` / `[QUERY:..]` / `[ACTION:..]` syntax — only `<tools>` blocks."""
+7. Tool calls go in `<tools>` block ONLY in mgr-dashboard."""
     return prompt
 
 
@@ -776,9 +775,7 @@ Sample catalog (ready 항목만):
 
 --- Rules ---
 1. All tool calls go in a single `<tools>` block at the END of your reply.
-2. Always use real names (not nicknames) in tool args.
-3. NEVER use legacy `[CMD:..]` / `[QUERY:..]` / `[ACTION:..]` syntax — only `<tools>` blocks
-   (the inline image JSON above is the only exception, and it does NOT go inside `<tools>`)."""
+2. Always use real names (not nicknames) in tool args."""
     return prompt
 
 
