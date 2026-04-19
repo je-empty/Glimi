@@ -1260,8 +1260,8 @@ class DashboardScreen(Screen):
                 border_style="bright_magenta", box=box.ROUNDED, padding=(0, 1),
             ))
 
-        # ── 메모리 (5 레이어: L1/L2/L3 + Pinned + Facts + 변곡점) ──
-        items.append(Text.from_markup("\n[bold magenta]━━ 🧠 Memory (5-Layer) ━━━━━━━━━━━━━━━━━━━━━━━[/bold magenta]"))
+        # ── 기억 (고정 · 최근 · 중기 · 장기 · 알고 있는 사실 · 관계 변화) ──
+        items.append(Text.from_markup("\n[bold magenta]━━ 🧠 기억 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold magenta]"))
         conn = db.get_conn()
         memories = [dict(r) for r in conn.execute(
             "SELECT * FROM memories WHERE agent_id = ? ORDER BY channel, level DESC, id DESC",
@@ -1284,18 +1284,30 @@ class DashboardScreen(Screen):
         ).fetchall()]
         conn.close()
 
+        # 한글 라벨 (L1/L2/L3 축약 대신)
+        _LAYER_NAMES = {1: "최근", 2: "중기", 3: "장기"}
+        _TYPE_LABELS = {"event": "사건", "fact": "사실", "emotion": "감정", "relationship": "관계"}
+
+        def _mem_type_tag(mem_type):
+            if not mem_type:
+                return ""
+            return _TYPE_LABELS.get(mem_type, mem_type)
+
         # Pinned 먼저 (있을 때만)
         if pinned_all:
             pin_lines = []
             for m in pinned_all:
                 imp = m.get("importance") or 5
                 ch_short = (m.get("channel") or "")[-30:]
-                pin_lines.append(f"  [bold]📌 L{m['level']}[/bold] [dim]imp={imp} · {ch_short}[/dim]")
+                layer = _LAYER_NAMES.get(m["level"], f"L{m['level']}")
+                ttag = _mem_type_tag(m.get("mem_type"))
+                type_str = f" · {ttag}" if ttag else ""
+                pin_lines.append(f"  [bold]📌 {layer}{type_str}[/bold] [dim]중요도 {imp}/10 · {ch_short}[/dim]")
                 pin_lines.append(f"    {m['content'][:200]}")
                 pin_lines.append("")
             items.append(Panel(
                 "\n".join(pin_lines).rstrip(),
-                title=f"[bold]📌 Pinned[/bold]  [dim]({len(pinned_all)})[/dim]",
+                title=f"[bold]📌 고정된 기억[/bold]  [dim]({len(pinned_all)}) · 항상 떠올리는 것[/dim]",
                 border_style="bright_yellow", box=box.ROUNDED, padding=(0, 1),
             ))
 
@@ -1323,6 +1335,9 @@ class DashboardScreen(Screen):
                 for m in mems:
                     lvl = m["level"]
                     lvl_clr = {3: "bright_red", 2: "magenta", 1: "cyan"}.get(lvl, "white")
+                    layer = _LAYER_NAMES.get(lvl, f"L{lvl}")
+                    ttag = _mem_type_tag(m.get("mem_type"))
+                    type_str = f" · {ttag}" if ttag else ""
                     pin_mark = "📌 " if m.get("is_pinned") else ""
                     imp = m.get("importance") or 5
                     ts = m["created_at"][:16] if m.get("created_at") else ""
@@ -1335,7 +1350,7 @@ class DashboardScreen(Screen):
                                 ent = f" [dim]·[/dim] [cyan]{', '.join(ents)}[/cyan]"
                         except Exception:
                             pass
-                    mem_lines.append(f"  {pin_mark}[{lvl_clr}]L{lvl}[/{lvl_clr}] [dim]imp={imp}[/dim] [dim]{ts}[/dim]{ent}")
+                    mem_lines.append(f"  {pin_mark}[{lvl_clr}]{layer}{type_str}[/{lvl_clr}] [dim]중요도 {imp}/10 · {ts}[/dim]{ent}")
                     mem_lines.append(f"    {m['content']}")
                     mem_lines.append("")
 
@@ -1346,12 +1361,12 @@ class DashboardScreen(Screen):
                 ))
         else:
             items.append(Panel(
-                "[dim]No memories[/dim]",
-                title="[bold]🧠 Episodic[/bold]",
+                "[dim]기억 없음[/dim]",
+                title="[bold]📖 에피소드 기억[/bold]",
                 border_style="dim", box=box.ROUNDED, padding=(0, 1),
             ))
 
-        # ── Facts (Layer 3 Semantic) ──
+        # ── 💡 알고 있는 사실 (엔티티별 구조화 지식) ──
         if facts:
             by_subject = {}
             for f in facts:
@@ -1360,14 +1375,14 @@ class DashboardScreen(Screen):
                 fact_lines = []
                 for f in fs:
                     star = "⭐ " if (f.get("importance") or 0) >= 8 else ""
-                    fact_lines.append(f"  {star}[cyan]{f['predicate']}[/cyan] → {f['object']}  [dim](imp={f.get('importance',5)})[/dim]")
+                    fact_lines.append(f"  {star}[cyan]{f['predicate']}[/cyan] → {f['object']}  [dim](중요도 {f.get('importance',5)}/10)[/dim]")
                 items.append(Panel(
                     "\n".join(fact_lines),
-                    title=f"[bold]📚 Facts · {subject}[/bold]  [dim]({len(fs)})[/dim]",
+                    title=f"[bold]💡 알고 있는 사실 · {subject}[/bold]  [dim]({len(fs)}) · 선호·특징·직업 등[/dim]",
                     border_style="green", box=box.ROUNDED, padding=(0, 1),
                 ))
 
-        # ── Relationship 변곡점 (Layer 4) ──
+        # ── 📈 관계 변화 (변곡점 로그) ──
         if rel_hist:
             hist_lines = []
             for h in rel_hist:
@@ -1381,7 +1396,7 @@ class DashboardScreen(Screen):
                     hist_lines.append(f"    [dim]{reason}[/dim]")
             items.append(Panel(
                 "\n".join(hist_lines),
-                title=f"[bold]📈 Relationship Deltas[/bold]  [dim]({len(rel_hist)})[/dim]",
+                title=f"[bold]📈 관계 변화[/bold]  [dim]({len(rel_hist)}) · 친밀도·역학 변곡점[/dim]",
                 border_style="yellow", box=box.ROUNDED, padding=(0, 1),
             ))
 

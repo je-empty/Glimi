@@ -44,15 +44,17 @@
 
 - **자율 에이전트 간 대화** — 1:1 DM, 멀티 DM. 매니저가 트리거하거나 에이전트가 `<tools>` 프로토콜로 직접 요청
 - **채널 간 컨텍스트 누설** — 비밀 대화의 기억이 직접 인용 없이 답변에 자연스럽게 영향
-- **3단계 메모리 압축** — Raw(15개) → L1(1문장 요약) → L2(단락 요약), 채널별 + 채널 간 참조
-- **진화하는 관계** — 친밀도, 다이내믹, 별명이 대화를 통해 변화
+- **5 레이어 메모리 시스템** — L0 원본 아카이브 → L1/L2/L3 에피소드 rollup → L3 의미 사실 (엔티티 인덱싱) → L4 관계 변곡점 → L5 고정 기억. 백그라운드 Haiku worker가 비동기 추출. budget 기반 주입 + 엔티티 매칭 retrieval scoring.
+- **에이전트 deep-search 도구** — `recall_memory` 로 엔티티/키워드/기간별 자기 기억 검색, `pin_memory` 로 매니저가 중요 기억 고정
+- **진화하는 관계** — 친밀도, 다이내믹, 별명이 대화를 통해 변화. 각 변곡점을 `relationship_history` 에 로그
 - **실시간 감정** — 각 에이전트는 감정 상태(1–10 강도)를 가지며 답변에 반영
 - **Spy 모드** — `internal-*` 채널에서 에이전트들의 비밀 대화를 읽기 전용으로 관전
 - **가이드 온보딩** — 매니저가 프로필 수집 → 채널 세팅 → Creator 인사로 안내
 - **Supervisor 시스템** — 보이지 않는 백그라운드 감시자가 진행 상태를 모니터링하고 정체 시 nudge
 - **자가 치유** — 매니저가 런타임 에러 감지 → Dev Runner(Opus)가 코드 수정 → 자동 재시작
 - **런타임 에이전트 생성** — Creator가 전체 프로필 + 아바타 프롬프트를 설계
-- **실시간 웹 대시보드** — Cytoscape 연결 그래프, L1/L2 메모리 인스펙터, 채널 뷰어, 싱크 매니저
+- **디스코드 네이티브 포맷팅** — 에이전트가 `#mgr-creator` 평문으로 언급하면 클릭 가능한 채널 점프 링크로 자동 변환. 토큰별 공통 post-process 파이프라인
+- **실시간 웹 대시보드** — Cytoscape 연결 그래프, 에이전트 상세에 5 레이어 메모리 인스펙터 (Pinned / L1-L3 / Facts / Relationship history), 채널 뷰어, 싱크 매니저
 - **멀티 커뮤니티** — 한 런타임에 독립 디스코드 서버 여러 개 (`communities/{id}/`)
 
 ### 비교
@@ -62,7 +64,7 @@
 | 대화 | 1:1만 | 작업 파이프라인 | **1:1 + 멀티 DM + 자율 에이전트 DM** |
 | 컨텍스트 | 윈도우 기반 | 명시적 전달 | **채널 간 자연스러운 누설** |
 | 관계 | 없음 | 역할 기반 | **친밀도 + 다이내믹 + 별명 (진화)** |
-| 메모리 | 없음 | 외부 저장 | **3단계 압축 + 채널 간** |
+| 메모리 | 없음 | 외부 저장 | **5 레이어 (원본 / 에피소드 / 의미 사실 / 관계 변곡점 / 고정), 엔티티 인덱싱, 비동기 추출** |
 | 관찰 | 로그 | 로그 | **에이전트 비밀 대화 직접 관전** |
 | 자가 복구 | 없음 | 없음 | **에러 → dev 봇이 소스 자동 수정** |
 
@@ -72,7 +74,7 @@
 
 `http://localhost:8765`에서 실시간 모니터링. 연결 그래프가 소셜 네트워크를 시각화 — 오너가 중심, 에이전트가 궤도, 채널마다 점선, 활성 채널은 솔리드 + 펄스 글로우.
 
-노드 클릭 시 에이전트 상세 — 전체 프로필, 현재 감정, 관계, 채널별 L1/L2 압축 메모리 확인.
+노드 클릭 시 에이전트 상세 — 전체 프로필, 현재 감정, 관계, 채널별 메모리 스택 전체 (📌 Pinned → L1/L2/L3 에피소드 → 의미 Facts → 관계 변곡점) 확인.
 
 | 매니저 (유나) | 페르소나 에이전트 (서아) |
 |---|---|
@@ -219,21 +221,50 @@ flowchart TB
 
 ### 메모리 시스템
 
+에이전트당 **통합 메모리 1개** 에 5 레이어가 얹힘. 각 메모리는 `related_entities` (누구에 관한 건지) 와 `knows` (누가 직접 목격했는지) 로 태깅돼서, 주입 시점에 엔티티 기반 retrieval 과 disclosure 룰이 자동 적용됨.
+
 ```mermaid
 graph LR
-    Raw["📝 Raw\n최근 15개 메시지\n원문"]
-    L1["📋 L1 요약\n5개 → 1문장\n10개 보관"]
-    L2["📦 L2 다이제스트\n5개 L1 → 단락\n5개 보관"]
+    L0["📝 L0 Raw\nconversations 테이블\n(영구)"]
+    L1["📋 L1 에피소드\n5 msgs → digest\nJSON: summary+type+entities+importance+facts+rel_delta"]
+    L2["📦 L2 Chronicle\n5 L1s → 단락"]
+    L3["🗂 L3 Saga\n5 L2s → 월 단위"]
+    Facts["📚 L3 의미 사실\nagent_facts 테이블\n(subject, predicate, object)\nvalid_from/valid_to supersession"]
+    Rel["💞 L4 관계\nrelationships + relationship_history\n(스냅샷 + 변곡점 로그)"]
+    Pin["📌 L5 고정\nis_pinned=1\n(유나/오너가 고정)"]
 
-    Raw -->|"5개마다"| L1
-    L1 -->|"5개마다"| L2
+    L0 -->|"async Haiku\n(단일 패스 추출)"| L1
+    L1 -->|"rollup 5→1"| L2
+    L2 -->|"rollup 5→1"| L3
+    L1 -.->|"facts/rel deltas"| Facts & Rel
 
-    style Raw fill:#1a3a1a,stroke:#4aff4a,color:#fff
+    style L0 fill:#1a3a1a,stroke:#4aff4a,color:#fff
     style L1 fill:#1a2a3a,stroke:#4a9eff,color:#fff
     style L2 fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style L3 fill:#3a1a3a,stroke:#ff4aff,color:#fff
+    style Facts fill:#2a3a1a,stroke:#9aff4a,color:#fff
+    style Rel fill:#3a2a1a,stroke:#ffaa4a,color:#fff
+    style Pin fill:#3a3a1a,stroke:#ffff4a,color:#000
 ```
 
-채널 간 메모리는 가드레일과 함께 주입됩니다 — 에이전트는 비밀 대화를 기억하지만 오너에게 직접 인용하거나 누설하지 않도록 지시받습니다.
+**추출**: 응답 직후 (에이전트_id, 채널, 메시지 배치) 가 백그라운드 worker 스레드 큐로 enqueue. 단일 Haiku 호출이 `{summary, type, entities, importance, facts[], relationships[]}` JSON 반환 → 에피소드 요약은 `memories`, 의미 사실은 `agent_facts` (Zep 식 supersession), 관계 변곡점은 `relationship_history` 로 분산. 메인 스레드는 요약 대기 없이 즉시 응답 반환.
+
+**주입 (턴당 budget ~800 토큰)**:
+| 블록 | Budget (chars) | 출처 |
+|------|----------------|------|
+| Pinned | 400 | `is_pinned=1`, importance 상위순 — 항상 주입 |
+| Relationship | 200 | 현재 채널 파트너 스냅샷 + 최근 변곡점 |
+| Episodic (현재 채널) | 700 | L3 + L2 + L1 (L2 커버 범위 밖만) |
+| Episodic (retrieved) | 400 | 언급된 엔티티 매칭 + scoring 상위 N, 다른 채널 출처 |
+| 의미 Facts | 400 | `agent_facts` — 파트너 + 언급 엔티티 기준 |
+
+**Retrieval scoring**: `0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational`. recency 반감기 30일, semantic 은 엔티티 집합 교집합 비율.
+
+**Disclosure**: `internal-*` 채널 출처 메모리를 오너 채널에 주입할 땐 `🔒사적` 마커 부착 — "자발적으로 꺼내지 마, 사적 대화였음" 지시. 에이전트가 스스로 공유하면 새 메모리 생성 (knows 에 owner 추가).
+
+**도구**:
+- `recall_memory(entity, query, time_range_days, limit)` — 모든 에이전트가 자기 기억 deep search. 평소 주입 범위 밖까지 도달.
+- `pin_memory(target_agent, memory_id, reason)` — 매니저가 중요 기억을 항상 주입되도록 고정
 
 ### 에이전트 프로필
 
@@ -245,7 +276,7 @@ graph LR
 | **Speech** | 말투 설명, 호칭, 시그니처 표현, 이모지 패턴, few-shot 예시 |
 | **Relationships** | 에이전트별: 타입·다이내믹·별명. 오너 한정: 타입·기간·만난 경위 |
 | **Emotion** | 현재 감정 + 강도(1–10), 실시간 변화 |
-| **Memory** | 채널별 3단계 (Raw → L1 → L2), 채널 간 참조 |
+| **Memory** | 5 레이어 (원본 / 에피소드 L1-L3 / 의미 사실 / 관계 변곡점 / 고정), 엔티티 인덱싱, 비동기 추출 |
 
 ---
 
