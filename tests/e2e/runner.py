@@ -245,7 +245,7 @@ def _wait_for_bot_ready(timeout=60) -> bool:
     return False
 
 
-def _start_test_user(token: str, turns: int = 50) -> subprocess.Popen:
+def _start_test_user(token: str, turns: int = 150) -> subprocess.Popen:
     """테스트 유저 봇 시작"""
     proc = subprocess.Popen(
         [
