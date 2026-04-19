@@ -1736,6 +1736,19 @@ document.addEventListener('click', (e) => {
   openImgLightbox(img.src, img.alt || '');
 });
 
+function _fmtMsgTime(iso) {
+  // "2026-04-20 06:34:22" or "2026-04-20T06:34:22" → "04-20 06:34"
+  // 오늘 메시지는 HH:MM, 그 외는 "MM-DD HH:MM" — 가독성·공간 균형.
+  if (!iso) return '';
+  const s = String(iso);
+  if (s.length < 16) return s;
+  const date = s.slice(0, 10);        // YYYY-MM-DD
+  const hhmm = s.slice(11, 16);       // HH:MM
+  const today = new Date().toISOString().slice(0, 10);
+  if (date === today) return hhmm;
+  return `${date.slice(5)} ${hhmm}`;  // MM-DD HH:MM
+}
+
 function renderMessage(m) {
   return `<div class="msg ${roleClass(m)}">
     ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
@@ -1743,7 +1756,7 @@ function renderMessage(m) {
       <div class="head">
         <span class="who">${esc(m.speaker)}</span>
         <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
-        <span class="ts">${esc((m.timestamp||'').slice(11, 19))}</span>
+        <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
       </div>
       <div class="text">${esc(m.message)}</div>
     </div>
@@ -2017,7 +2030,7 @@ function renderMessageWithActions(m, channelName) {
       <div class="head">
         <span class="who">${esc(m.speaker)}</span>
         <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
-        <span class="ts">${esc((m.timestamp||'').slice(11, 19))}</span>
+        <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
       </div>
       <div class="text">${esc(m.message)}</div>
     </div>

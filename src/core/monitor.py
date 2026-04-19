@@ -310,7 +310,14 @@ def get_channels() -> list[dict]:
 # ── 대화 ───────────────────────────────────────────────
 
 def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[dict]:
-    """최근 대화. speaker는 에이전트/유저 이름으로 해석."""
+    """최근 대화. 시간순 ASC (오래된→최신). speaker는 에이전트/유저 이름으로 해석.
+
+    정렬:
+      SQL 에선 `timestamp DESC, id DESC` 로 상위 N 건 추출 (같은 초 타임스탬프
+      ties 는 id DESC 로 깔끔히 정렬) → 최신 N 건을 확보.
+      이후 Python 에서 reverse 해서 ASC(오래된→최신) 로 반환 — 채팅 UI 가 위에서
+      아래로 시간순 읽기에 자연스럽고, slice(-N) 이 최신 N 건을 가져오는 JS 관용 사용.
+    """
     try:
         conn = db.get_conn()
         if channel:
@@ -321,7 +328,7 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
                 "LEFT JOIN agents a ON a.id = c.speaker "
                 "LEFT JOIN users u ON u.id = c.speaker "
                 "WHERE c.channel = ? "
-                "ORDER BY c.timestamp DESC LIMIT ?",
+                "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
                 (channel, limit),
             ).fetchall()
         else:
@@ -331,9 +338,10 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
                 "FROM conversations c "
                 "LEFT JOIN agents a ON a.id = c.speaker "
                 "LEFT JOIN users u ON u.id = c.speaker "
-                "ORDER BY c.timestamp DESC LIMIT ?",
+                "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+        # (기존 output 루프에서 reversed(rows) 로 ASC 변환 — 여기선 그대로 둠)
         total = conn.execute("SELECT COUNT(*) as c FROM conversations").fetchone()["c"]
         conn.close()
     except Exception:
