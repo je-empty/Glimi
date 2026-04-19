@@ -791,6 +791,7 @@ class AgentRuntime:
             # Hard watchdog — Claude CLI가 stdout 안 닫고 hang 시 강제 kill (120s)
             import threading as _threading
             _wd_killed = {"v": False}
+            _intentional_kill = False  # max_messages 초과로 의도적 kill 추적
             def _wd_kill():
                 if process.poll() is None:
                     _wd_killed["v"] = True
@@ -869,6 +870,7 @@ class AgentRuntime:
                 if len(messages) >= max_messages:
                     log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
                     process.kill()
+                    _intentional_kill = True
                     break
 
             try:
@@ -891,7 +893,7 @@ class AgentRuntime:
                 except Exception as e:
                     log_writer.system(f"[Tools] 스트림 파싱 실패: {e}")
 
-            if process.returncode != 0:
+            if process.returncode != 0 and not _intentional_kill:
                 stderr = process.stderr.read() if process.stderr else ""
                 err_detail = stderr[:200] if stderr.strip() else "(stderr empty)"
                 log_writer.system(f"❌ CLI 오류 (exit={process.returncode}): {err_detail}")
