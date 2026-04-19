@@ -210,24 +210,36 @@ class OnboardingFlowSupervisor(Supervisor):
             # 자동 finish_onboarding — LLM이 프롬프트 받고도 finish 호출 안 하는 케이스가
             # 거의 매 사이클 반복. 조건 만족하면 supervisor가 직접 종료시킴.
             #
-            # 조건: hana DM 존재 + persona 1개+ + mgr-dashboard에 새 친구 이름이
-            # 최근 언급됨 (유나가 이미 안내함) + idle 90초+.
+            # 조건: hana 보고 채널 + persona 생성됨 + dm-{persona} 채널 존재
+            # (= hana가 create_agent_profile + request_dm 까지 완료한 신호).
+            # idle 조건 제거 — 오너가 계속 대화해도 온보딩은 완료 가능해야 함.
             from src.bot import MGR_ID
             persona_names = [r[0] for r in db.get_conn().execute(
                 "SELECT name FROM agents WHERE type='persona'"
             ).fetchall()]
             if persona_names:
+                persona_dm_ready = any(
+                    f"dm-{n}" in db_channels for n in persona_names
+                )
                 recent_mgr = db.get_recent_messages(MGR_CHANNEL, limit=15)
                 mgr_text = " ".join(m.get("message", "") for m in recent_mgr)
                 yuna_mentioned_friend = any(n in mgr_text for n in persona_names)
-                idle = self._get_idle_seconds(MGR_CHANNEL)
-                if yuna_mentioned_friend and idle > 45:
+                if persona_dm_ready and yuna_mentioned_friend:
                     log_writer.system(
                         "[sup:onboarding] 자동 finish_onboarding — "
-                        f"{', '.join(persona_names)} 안내 확인 + idle {int(idle)}초"
+                        f"{', '.join(persona_names)} 생성 + DM 채널 완성 확인"
                     )
                     from src.scenes.onboarding.handlers import complete_onboarding
                     await complete_onboarding()
+                    return
+                # DM 까진 왔는데 유나가 mgr-dashboard에 아직 안내를 안 했다 → nudge
+                if persona_dm_ready and not yuna_mentioned_friend and self._can_nudge():
+                    self._mark_nudged()
+                    await self._nudge_yuna(guild,
+                        f"하나가 {', '.join(persona_names)} 프로필 만들었고 "
+                        f"dm 채널까지 열렸어. mgr-dashboard 에서 오너한테 한 줄 소개하고 "
+                        f"바로 finish_onboarding 호출해서 온보딩 마무리하자."
+                    )
                     return
 
             idle = self._get_idle_seconds(MGR_CHANNEL)

@@ -44,6 +44,11 @@ _CHANNEL_PAT = re.compile(r'(?<!\w)#([^\W\d_][\w\-]*)')
 _OWNER_MENTION_ENABLED = False
 _OWNER_PAT = re.compile(r'(?<!\w)@([가-힣a-zA-Z][가-힣a-zA-Z0-9_]{0,15})')
 
+# 이미 <#id> 로 찍힌 mention — guild에서 유효한지 검증하기 위한 패턴.
+# 유나가 raw ID를 직접 내보내거나(환각) 구 세션의 stale ID가 메모리/로그에서
+# 전파되는 경우 Discord UI에 '알 수 없음' 으로 렌더됨. 전송 직전 걸러냄.
+_RAW_CHANNEL_MENTION_PAT = re.compile(r'<#(\d+)>')
+
 
 # ── 개별 변환기 ─────────────────────────────────────────
 
@@ -131,6 +136,24 @@ def format_for_discord(message: str,
             except Exception:
                 return m.group(0)
         out = pattern.sub(_sub, out)
+
+    # 최종 단계: `<#id>` stale/invalid 검증. guild에 실존하는 ID만 남기고
+    # 나머지는 평문화해서 Discord UI의 '알 수 없음' 렌더 방지.
+    if guild is not None:
+        try:
+            valid_ids = {str(getattr(ch, "id", "")) for ch in getattr(guild, "text_channels", [])}
+            valid_ids.discard("")
+            id_to_name = {str(getattr(ch, "id", "")): getattr(ch, "name", "") for ch in getattr(guild, "text_channels", [])}
+            def _strip_invalid(m):
+                cid = m.group(1)
+                if cid in valid_ids:
+                    return m.group(0)
+                # Invalid/stale ID — 채널명을 모르니 평문 폴백
+                name = id_to_name.get(cid, "")
+                return f"**#{name}**" if name else "**(채널)**"
+            out = _RAW_CHANNEL_MENTION_PAT.sub(_strip_invalid, out)
+        except Exception:
+            pass
 
     return out
 

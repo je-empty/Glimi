@@ -505,23 +505,33 @@ class TestUserBot(discord.Client):
         """온보딩 완료 여부 체크.
 
         우선순위: (1) `.onboarding-complete` flag 파일 (finish_onboarding 실행의 직접
-        신호) → 가장 확실. (2) 채널 구조 + 키워드 힌트 (legacy heuristic)."""
+        신호) → 가장 확실. (2) turn 25+ 이후에만 매우 한정된 종결 문구 휴리스틱.
+
+        주의: 과거 휴리스틱이 "프로필 생성 완료" 같은 tool 성공 메시지의 '완료'까지
+        매칭해서 yuna가 finish_onboarding 호출 전 조기종료. 이제 turn 기준 상향 +
+        종결 문구만 인정."""
         # (1) 서버 쪽 flag 파일 — finish_onboarding 도구가 set
         flag_path = os.path.join(self._qa_log_dir(), ".onboarding-complete")
         if os.path.exists(flag_path):
             return True
 
-        # (2) 레거시 heuristic (flag 못 찾을 때 fallback)
-        if not self.guilds:
+        # (2) 긴급 fallback — turn 많이 지나고, 매우 특정한 종결 문구만
+        if not self.guilds or self.turn_count < 25:
             return False
         guild = self.guilds[0]
         ch_names = {ch.name for ch in guild.text_channels}
         has_all = "mgr-dashboard" in ch_names and "mgr-creator" in ch_names and "mgr-system-log" in ch_names
-        if has_all and self.turn_count > 5:
-            recent_texts = [m["text"] for m in self.conversation[-5:] if m["role"] == "agent"]
-            for text in recent_texts:
-                if any(kw in text for kw in ("완료", "끝", "다 됐", "준비 됐", "시작해", "둘러봐")):
-                    return True
+        if not has_all:
+            return False
+        recent_texts = [m["text"] for m in self.conversation[-5:] if m["role"] == "agent"]
+        # tool 성공 '완료' 오탐 방지 — 온보딩 끝날 때만 나올 문구만
+        ending_phrases = (
+            "온보딩 끝", "온보딩 완료", "온보딩 마무리",
+            "다 끝났어", "준비 다 됐어", "이제 준비 끝", "이제 마음껏",
+        )
+        for text in recent_texts:
+            if any(kw in text for kw in ending_phrases):
+                return True
         return False
 
 
