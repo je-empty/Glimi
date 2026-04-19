@@ -1260,14 +1260,44 @@ class DashboardScreen(Screen):
                 border_style="bright_magenta", box=box.ROUNDED, padding=(0, 1),
             ))
 
-        # ── 메모리 (채널별 전체) ──
-        items.append(Text.from_markup("\n[bold magenta]━━ 🧠 Memory ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold magenta]"))
+        # ── 메모리 (5 레이어: L1/L2/L3 + Pinned + Facts + 변곡점) ──
+        items.append(Text.from_markup("\n[bold magenta]━━ 🧠 Memory (5-Layer) ━━━━━━━━━━━━━━━━━━━━━━━[/bold magenta]"))
         conn = db.get_conn()
         memories = [dict(r) for r in conn.execute(
             "SELECT * FROM memories WHERE agent_id = ? ORDER BY channel, level DESC, id DESC",
             (agent_id,)
         ).fetchall()]
+        pinned_all = [dict(r) for r in conn.execute(
+            "SELECT * FROM memories WHERE agent_id = ? AND is_pinned = 1 "
+            "ORDER BY importance DESC, created_at DESC",
+            (agent_id,)
+        ).fetchall()]
+        facts = [dict(r) for r in conn.execute(
+            "SELECT * FROM agent_facts WHERE agent_id=? AND valid_to IS NULL "
+            "ORDER BY importance DESC, created_at DESC",
+            (agent_id,)
+        ).fetchall()]
+        rel_hist = [dict(r) for r in conn.execute(
+            "SELECT * FROM relationship_history WHERE agent_a=? OR agent_b=? "
+            "ORDER BY created_at DESC LIMIT 15",
+            (agent_id, agent_id)
+        ).fetchall()]
         conn.close()
+
+        # Pinned 먼저 (있을 때만)
+        if pinned_all:
+            pin_lines = []
+            for m in pinned_all:
+                imp = m.get("importance") or 5
+                ch_short = (m.get("channel") or "")[-30:]
+                pin_lines.append(f"  [bold]📌 L{m['level']}[/bold] [dim]imp={imp} · {ch_short}[/dim]")
+                pin_lines.append(f"    {m['content'][:200]}")
+                pin_lines.append("")
+            items.append(Panel(
+                "\n".join(pin_lines).rstrip(),
+                title=f"[bold]📌 Pinned[/bold]  [dim]({len(pinned_all)})[/dim]",
+                border_style="bright_yellow", box=box.ROUNDED, padding=(0, 1),
+            ))
 
         if memories:
             mem_by_channel = {}
@@ -1291,9 +1321,21 @@ class DashboardScreen(Screen):
 
                 mem_lines = []
                 for m in mems:
-                    level_tag = f"[magenta]L{m['level']}[/magenta]" if m["level"] == 2 else f"[cyan]L{m['level']}[/cyan]"
+                    lvl = m["level"]
+                    lvl_clr = {3: "bright_red", 2: "magenta", 1: "cyan"}.get(lvl, "white")
+                    pin_mark = "📌 " if m.get("is_pinned") else ""
+                    imp = m.get("importance") or 5
                     ts = m["created_at"][:16] if m.get("created_at") else ""
-                    mem_lines.append(f"  {level_tag} [dim]{ts}[/dim]")
+                    ent = ""
+                    if m.get("related_entities"):
+                        try:
+                            import json as _j
+                            ents = _j.loads(m["related_entities"]) if isinstance(m["related_entities"], str) else m["related_entities"]
+                            if ents:
+                                ent = f" [dim]·[/dim] [cyan]{', '.join(ents)}[/cyan]"
+                        except Exception:
+                            pass
+                    mem_lines.append(f"  {pin_mark}[{lvl_clr}]L{lvl}[/{lvl_clr}] [dim]imp={imp}[/dim] [dim]{ts}[/dim]{ent}")
                     mem_lines.append(f"    {m['content']}")
                     mem_lines.append("")
 
@@ -1305,8 +1347,42 @@ class DashboardScreen(Screen):
         else:
             items.append(Panel(
                 "[dim]No memories[/dim]",
-                title="[bold]🧠 메모리[/bold]",
+                title="[bold]🧠 Episodic[/bold]",
                 border_style="dim", box=box.ROUNDED, padding=(0, 1),
+            ))
+
+        # ── Facts (Layer 3 Semantic) ──
+        if facts:
+            by_subject = {}
+            for f in facts:
+                by_subject.setdefault(f["subject"], []).append(f)
+            for subject, fs in by_subject.items():
+                fact_lines = []
+                for f in fs:
+                    star = "⭐ " if (f.get("importance") or 0) >= 8 else ""
+                    fact_lines.append(f"  {star}[cyan]{f['predicate']}[/cyan] → {f['object']}  [dim](imp={f.get('importance',5)})[/dim]")
+                items.append(Panel(
+                    "\n".join(fact_lines),
+                    title=f"[bold]📚 Facts · {subject}[/bold]  [dim]({len(fs)})[/dim]",
+                    border_style="green", box=box.ROUNDED, padding=(0, 1),
+                ))
+
+        # ── Relationship 변곡점 (Layer 4) ──
+        if rel_hist:
+            hist_lines = []
+            for h in rel_hist:
+                dt = (h.get("delta_type") or "?")
+                fr = h.get("from_state") or "?"
+                to = h.get("to_state") or "?"
+                reason = (h.get("reason") or "")[:60]
+                ts = (h.get("created_at") or "")[:16]
+                hist_lines.append(f"  [yellow]{dt}[/yellow] {fr} → {to}  [dim]{ts}[/dim]")
+                if reason:
+                    hist_lines.append(f"    [dim]{reason}[/dim]")
+            items.append(Panel(
+                "\n".join(hist_lines),
+                title=f"[bold]📈 Relationship Deltas[/bold]  [dim]({len(rel_hist)})[/dim]",
+                border_style="yellow", box=box.ROUNDED, padding=(0, 1),
             ))
 
         # ── 채팅 로그 ──

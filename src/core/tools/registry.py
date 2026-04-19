@@ -277,6 +277,23 @@ MGMT: list[ToolSpec] = [
         category="management",
         applies_to=frozenset({"mgr"}),
     ),
+    # 메모리 관리 (유나/오너)
+    ToolSpec(
+        name="pin_memory",
+        description=(
+            "특정 기억을 고정 (항상 프롬프트 주입). 중요한 결정·감정·사실을 놓치지 않게."
+            " target_agent에 대해 memory_id로 지정."
+        ),
+        params={
+            "target_agent": {"type": "str", "required": True, "desc": "어느 멤버의 기억인지 (이름)"},
+            "memory_id": {"type": "int", "required": True, "desc": "recall_memory로 찾은 id"},
+            "pinned": {"type": "int", "required": False, "desc": "1=고정, 0=해제. 기본 1"},
+            "reason": {"type": "str", "required": False, "desc": "왜 고정하는지 (로그용)"},
+        },
+        category="management",
+        applies_to=frozenset({"mgr"}),
+        examples=['{"target_agent":"서아","memory_id":42,"reason":"어머니 수술 얘기"}'],
+    ),
 ]
 
 
@@ -387,6 +404,26 @@ QUERY: list[ToolSpec] = [
         params={"target": _str},
         category="query",
         applies_to=frozenset({"mgr"}),
+    ),
+    # 메모리 조회 — persona/mgr 모두 사용 (자기 기억 deep search)
+    ToolSpec(
+        name="recall_memory",
+        description=(
+            "자기 기억을 깊이 검색. 평소 주입 범위 밖의 것도 찾음. "
+            "entity (누구 얘기) / query (키워드) / time_range_days 중 하나 이상 지정."
+        ),
+        params={
+            "entity": {"type": "str", "required": False, "desc": "사람 이름 (예: '지우')"},
+            "query": {"type": "str", "required": False, "desc": "키워드 검색"},
+            "time_range_days": {"type": "int", "required": False, "desc": "최근 N일 내"},
+            "limit": {"type": "int", "required": False, "desc": "기본 10, 최대 50"},
+        },
+        category="query",
+        applies_to=frozenset({"persona", "mgr", "creator"}),
+        examples=[
+            '{"entity":"지우","limit":5}',
+            '{"query":"생일","time_range_days":60}',
+        ],
     ),
 ]
 

@@ -522,26 +522,64 @@ def get_agent_detail(agent_id: str) -> dict:
     except Exception:
         pass
 
-    # 메모리 — 채널별로 묶음
+    # 메모리 — 채널별로 묶음 (5 레이어 시스템: L1/L2/L3 + is_pinned + importance + entities)
     memories_by_channel: dict[str, list[dict]] = {}
+    pinned_memories: list[dict] = []
     try:
+        import json as _json
         conn = db.get_conn()
         rows = conn.execute(
             "SELECT * FROM memories WHERE agent_id = ? "
             "ORDER BY channel, level DESC, id DESC",
             (agent_id,),
         ).fetchall()
-        conn.close()
         for m in rows:
             ch = m["channel"] or "general"
-            memories_by_channel.setdefault(ch, []).append({
+            keys = m.keys()
+            def _jparse(v):
+                if not v:
+                    return []
+                try:
+                    x = _json.loads(v)
+                    return x if isinstance(x, list) else []
+                except Exception:
+                    return []
+            entry = {
+                "id": m["id"],
                 "level": m["level"],
                 "content": m["content"],
                 "created_at": m["created_at"] or "",
-                "mem_type": m["mem_type"] if "mem_type" in m.keys() else None,
-            })
-    except Exception:
-        pass
+                "mem_type": m["mem_type"] if "mem_type" in keys else None,
+                "importance": m["importance"] if "importance" in keys else 5,
+                "is_pinned": bool(m["is_pinned"]) if "is_pinned" in keys else False,
+                "related_entities": _jparse(m["related_entities"]) if "related_entities" in keys else [],
+                "knows": _jparse(m["knows"]) if "knows" in keys else [],
+            }
+            memories_by_channel.setdefault(ch, []).append(entry)
+            if entry["is_pinned"]:
+                pinned_memories.append({**entry, "channel": ch})
+
+        # 관계 변곡점 — 양방향
+        rel_hist_rows = conn.execute(
+            "SELECT * FROM relationship_history WHERE agent_a=? OR agent_b=? "
+            "ORDER BY created_at DESC LIMIT 30",
+            (agent_id, agent_id),
+        ).fetchall()
+
+        # agent_facts — 현재 유효한 것만
+        fact_rows = conn.execute(
+            "SELECT * FROM agent_facts WHERE agent_id=? AND valid_to IS NULL "
+            "ORDER BY importance DESC, created_at DESC LIMIT 100",
+            (agent_id,),
+        ).fetchall()
+        conn.close()
+
+        relationship_history = [dict(r) for r in rel_hist_rows]
+        facts = [dict(r) for r in fact_rows]
+    except Exception as e:
+        relationship_history = []
+        facts = []
+        print(f"[Monitor] memory detail 로드 실패: {e}")
 
     # 주 채널 이름
     atype = agent.get("type", "persona")
@@ -582,6 +620,9 @@ def get_agent_detail(agent_id: str) -> dict:
         "last_active": agent.get("last_active", ""),
         "relationships": rels,
         "memories_by_channel": memories_by_channel,
+        "pinned_memories": pinned_memories,
+        "agent_facts": facts,
+        "relationship_history": relationship_history,
         "thinking_logs": thinking_logs,
         "primary_channel": primary,
         "primary_chat": primary_chat,
