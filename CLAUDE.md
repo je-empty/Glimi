@@ -122,12 +122,59 @@ Glimi/
 
 **DB 하나 = 커뮤니티 하나.** `communities/{id}/community.db`에 위치. `community.export_community()` / `community.import_community()`로 DB+프로필 이미지 통째 이전 가능. `db.export_agents()` / `db.import_agents()`로 에이전트 정의만 추출/이전도 가능.
 
-### core/memory.py — 3단계 기억
-- raw: 최근 15개 메시지 그대로 (user prompt에 주입)
-- L1: 15개 메시지 → 1문장 요약 (최근 10개 유지)
-- L2: L1 10개 → 1단락 요약 (최근 5개 유지)
-- `get_memory_context(agent_id, channel)`: 현재 채널 메모리 (상세)
-- `get_cross_channel_memory(agent_id, exclude_channel)`: 다른 채널 기억 (요약만)
+### core/memory.py — 5 레이어 기억 시스템 (진행 중)
+
+**확정 설계 (락인)**: 각 에이전트마다 **통합 메모리 1개** + 엔티티 태그로 "누구에 관한 건지" 관리 (사람처럼). 저장은 영구, 주입만 budget 기반 선별.
+
+**5 레이어:**
+- **Layer 0 — Raw Archive** (영구): `conversations` 테이블, 평소 미주입
+- **Layer 1 — Working Window**: 최근 10-15개 verbatim, 매 턴 주입
+- **Layer 2 — Episodic Chronicle** (영구): L1 (5 msg → 글머리표) → L2 (5 L1 → 단락) → L3 (5 L2 → 월단위). 저장 cap 없음, 주입만 score 기준 top-N
+- **Layer 3 — Semantic Facts** (영구, entity-indexed): `agent_facts` 테이블. (subject, predicate, object) + Zep식 supersession (`valid_to` 닫고 새 row)
+- **Layer 4 — Relationship State**: `relationships` (현재 snapshot) + `relationship_history` (변곡점 delta 영구)
+- **Layer 5 — Pinned Memories**: `memories.is_pinned=1`, 오너/유나가 `pin_memory` 도구로 고정, 항상 주입
+
+**핵심 필드 (memories 테이블):**
+- `related_entities` (JSON) — 이 기억이 누구에 관한 것인지
+- `knows` (JSON) — 이 기억을 직접 아는 사람 배열 (disclosure 제어)
+  - `dm-X` → [X, "owner"] / `internal-dm-A-B` → [A, B]
+- `importance` (1-10) — retrieval 스코어
+- `parent_memory_id` — L2/L3 origin 링크
+
+**Disclosure 룰:**
+- 주입 시 `owner ∉ knows` (internal 출처)인 메모리도 포함하되 "이 내용은 사적 대화 — 자발적으로 꺼내지 마" 마커 부착
+- 에이전트가 자발적으로 공유하면 → 새 메모리 생성 (knows에 owner 추가)
+
+**Cross-channel raw peek (실시간 awareness):**
+- A가 참여 중인 다른 running 채널의 최근 5개 raw를 매 턴 주입
+- 3개 채널 동시 대화 중일 때 A가 internal-dm-A-B 대화를 dm-A에서 자연스럽게 이어갈 수 있음
+
+**Retrieval scoring:**
+```
+score = 0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational
+recency_decay = exp(-days/30)
+```
+
+**주입 Budget (~800 토큰/턴):**
+- Pinned ~100 / Relationship ~50 / Working ~200 / Episodic(현) ~150 /
+  Episodic(retrieved) ~100 / Facts ~100 / Cross-channel peek ~100
+
+**추가 도구:**
+- `recall_memory(query, entity, time_range)` — 에이전트가 직접 deep search
+- `pin_memory(memory_id, reason)` — 오너/유나가 고정
+
+**Async extraction:**
+- 메시지 저장 즉시 반환 → 백그라운드 Haiku worker가 큐 처리
+- 단일 패스 JSON 추출: summary + mem_type + related_entities + importance + facts + relationship_delta
+
+**진행 상황 (2026-04-19 세션):**
+- ✅ DB 스키마 + 마이그레이션 + 헬퍼 (commit `6c7aa1e`)
+- ⏳ 진행 중: memory.py 재작성 (추출 파이프라인 + async worker + retrieval + injection)
+- ⏳ 대기: recall_memory + pin_memory 도구 / TUI + web dashboard 메모리 뷰 / QA 실행
+- **임시 제약**: 남자 샘플 프로필 이미지 없어서 QA bot (심재빈) 은 여자 에이전트만 생성하도록 제한 필요
+
+**레거시 드롭**: private 서버 DB는 사용자가 수동 마이그레이션. 코드는 새 구조로 클린 리셋.
+
 
 ### core/conversation.py
 - `start_conversation`: 에이전트간 자동 대화 (턴 제한, 종료 감지)
