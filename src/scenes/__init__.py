@@ -16,7 +16,7 @@ from src.scenes.base import (  # noqa: F401
 )
 
 # 각 씬 모듈을 import하면 module-level register_scene(...)이 실행되어 레지스트리 등록됨
-from src.scenes import onboarding  # noqa: F401
+from src.scenes import tutorial  # noqa: F401
 
 __all__ = [
     "Scene",

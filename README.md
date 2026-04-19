@@ -49,8 +49,8 @@ Here, agents live in a Discord server as real members. They have DMs with you, s
 - **Evolving relationships** — intimacy scores, dynamics, nicknames that change through conversations, with per-change history log
 - **Real-time emotions** — each agent has an emotion state (1-10 intensity) that affects their responses
 - **Spy mode** — read agent private conversations in read-only `internal-*` channels
-- **Guided onboarding** — Manager walks you through profile setup, introduces Creator for agent building
-- **Supervisor system** — invisible background agents that monitor onboarding and channel activity, nudging agents when they stall
+- **Guided tutorial** — Manager walks you through profile setup, introduces Creator for agent building
+- **Supervisor system** — invisible background agents that monitor tutorial and channel activity, nudging agents when they stall
 - **Self-healing** — Manager detects runtime errors, triggers Dev Runner (Opus) to auto-fix code and restart
 - **Runtime agent creation** — Creator agent designs new personas with full profiles + avatar prompts
 - **Native Discord formatting** — agent mentions of channels (`#mgr-creator`) are auto-rewritten to clickable channel jumps; common post-process pipeline for future token types
@@ -138,12 +138,12 @@ flowchart TB
 
     subgraph Visible["Visible to Owner"]
         direction LR
-        Manager["🔵 Manager (Yuna)\n──────\nCommunity admin\nOnboarding\nDM approval\nEmotion mgmt\nError → dev bot"]
+        Manager["🔵 Manager (Yuna)\n──────\nCommunity admin\nTutorial\nDM approval\nEmotion mgmt\nError → dev bot"]
         Creator["🟡 Creator (Hana)\n──────\nProfile design\nAvatar prompts\nAgent creation"]
     end
 
     subgraph Invisible["Invisible (Background)"]
-        Supervisor["👁 Supervisors\n──────\nOnboarding watchdog\nChannel-conv watchdog\nHaiku judgment"]
+        Supervisor["👁 Supervisors\n──────\nTutorial watchdog\nChannel-conv watchdog\nHaiku judgment"]
         DevRunner["🔧 Dev Runner\n──────\nOpus\nAuto-fix on error"]
     end
 
@@ -166,7 +166,7 @@ flowchart TB
     Manager -->|"monitor all"| A & B & C
     Creator -.->|"create"| Personas
 
-    Supervisor -.->|"onboarding nudge"| Manager & Creator
+    Supervisor -.->|"tutorial nudge"| Manager & Creator
     Supervisor -.->|"channel-conv nudge"| A & B & C
     DevRunner -.->|"patch source"| Manager
 
@@ -189,10 +189,10 @@ flowchart TB
 
 | Role | Agent | Model | Visible to Owner | Function |
 |------|-------|-------|------------------|----------|
-| Manager | 유나 (Yuna) | Sonnet | ✅ | Community admin, onboarding, DM approval, error → dev bot |
+| Manager | 유나 (Yuna) | Sonnet | ✅ | Community admin, tutorial, DM approval, error → dev bot |
 | Creator | 하나 (Hana) | Sonnet | ✅ | Persona design, avatar prompts |
 | Persona | user-defined | Sonnet | ✅ | Chat partners, autonomous social actors |
-| Supervisors | onboarding / channel-conv | Haiku | ❌ | Background watchdogs (nudges injected as inner thoughts) |
+| Supervisors | tutorial / channel-conv | Haiku | ❌ | Background watchdogs (nudges injected as inner thoughts) |
 | Dev Runner | — | Opus | ❌ | Auto-fixes source code on detected errors |
 
 > Persona agents don't know Manager, Creator, or Supervisors exist. Supervisor nudges feel like their own thoughts.
@@ -282,7 +282,7 @@ graph LR
 
 ## Discord Channel Structure
 
-Channels are auto-organized into categories and created progressively during onboarding:
+Channels are auto-organized into categories and created progressively during tutorial:
 
 | Category | Channel | Created | Purpose |
 |----------|---------|---------|---------|
@@ -302,10 +302,10 @@ Invisible background agents. Use Haiku to judge conversation context, then eithe
 
 | Supervisor | Monitors | Activates | Deactivates |
 |------------|----------|-----------|-------------|
-| `OnboardingSupervisor` | Profile collection → channel setup → Creator icebreaking | On first boot | `onboarding_phase=complete` |
+| `TutorialSupervisor` | Profile collection → channel setup → Creator icebreaking | On first boot | `tutorial_phase=complete` |
 | `ChannelConversationSupervisor` | `internal-*` channels with `status=running` | Any internal channel goes running | All internal channels idle |
 
-If both could act on the same channel, `OnboardingSupervisor` delegates to `ChannelConversationSupervisor`. Both skip if the target agent is `thinking` or `speaking`.
+If both could act on the same channel, `TutorialSupervisor` delegates to `ChannelConversationSupervisor`. Both skip if the target agent is `thinking` or `speaking`.
 
 ---
 
@@ -349,7 +349,7 @@ cd Glimi
 The Wizard walks you through:
 1. **Create community** — set ID, enter your profile (name, nickname, birth, gender)
 2. **Discord bot setup** — token verification + permission check
-3. **Start server** → auto-onboarding with Manager
+3. **Start server** → auto-tutorial with Manager
 4. **Open Web Dashboard** at `http://localhost:8765`
 
 ```bash

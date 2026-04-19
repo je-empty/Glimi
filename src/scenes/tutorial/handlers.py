@@ -1,7 +1,7 @@
 """
-Onboarding scene — Phase 2 채널 세팅 액션들.
+Tutorial scene — Phase 2 채널 세팅 액션들.
 
-기존 src/bot/mgr_system.py 의 `_trigger_onboarding_phase2` / `_onboarding_setup_channels`
+기존 src/bot/mgr_system.py 의 `_trigger_tutorial_phase2` / `_tutorial_setup_channels`
 를 scene 폴더로 이전. 호출부는 동일 — import 경로만 바뀜.
 """
 from __future__ import annotations
@@ -15,13 +15,13 @@ import discord
 from src import db, log_writer
 from src.bot import MGR_CHANNEL, MGR_SYSTEM_LOG, CREATOR_CHANNEL, MGR_ID
 from src.bot.core import (
-    create_onboarding_channel,
+    create_tutorial_channel,
     send_as_agent,
     _split_for_chat,
 )
 from src.core.profile import load_profile
 from src.core.runtime import runtime
-from src.scenes.onboarding.scene import scene
+from src.scenes.tutorial.scene import scene
 
 CREATOR_ID = "agent-creator-001"
 
@@ -33,17 +33,17 @@ async def trigger_phase2(guild):
     채널 생성/크리에이터 소개를 비동기 실행."""
     current = scene.current_phase()
     if current in ("channels_setup", "channels_done", "complete"):
-        log_writer.system(f"[sup:onboarding] 이미 진행/완료 (phase={current}) — 스킵")
+        log_writer.system(f"[sup:tutorial] 이미 진행/완료 (phase={current}) — 스킵")
         return
     scene.set_phase("channels_setup")
     runtime.refresh_agent(MGR_ID)  # phase 바뀌었으니 유나 프롬프트 갱신
-    log_writer.system("[sup:onboarding] 트리거됨")
+    log_writer.system("[sup:tutorial] 트리거됨")
 
     async def _safe_setup():
         try:
             await setup_channels(guild)
         except Exception as e:
-            log_writer.system(f"❌ [sup:onboarding] 오류: {type(e).__name__}: {e}")
+            log_writer.system(f"❌ [sup:tutorial] 오류: {type(e).__name__}: {e}")
 
     asyncio.get_event_loop().create_task(_safe_setup())
 
@@ -53,13 +53,13 @@ async def setup_channels(guild):
     current = scene.current_phase()
     if current in ("channels_done", "complete"):
         return
-    log_writer.system("[sup:onboarding] 시작: 채널 생성 + 크리에이터 소개")
+    log_writer.system("[sup:tutorial] 시작: 채널 생성 + 크리에이터 소개")
 
     await asyncio.sleep(2)
 
     # 1. mgr-system-log 생성 + 유나 안내 (mgr-dashboard에서)
     try:
-        log_ch = await create_onboarding_channel(
+        log_ch = await create_tutorial_channel(
             guild, MGR_SYSTEM_LOG, participants=[MGR_ID]
         )
     except Exception as e:
@@ -76,7 +76,7 @@ async def setup_channels(guild):
         # 고정 순서 템플릿 — LLM이 순서 섞거나 채널 설명 혼동하는 것 방지.
         # Yuna가 2건 응답한 것처럼 보이게 카톡 스타일로 나눠 전송.
         prompt = (
-            "[상황] 오너 프로필 수집이 끝났어. 이제 온보딩 다음 단계로 넘어가는 순간.\n"
+            "[상황] 오너 프로필 수집이 끝났어. 이제 튜토리얼 다음 단계로 넘어가는 순간.\n"
             "[지시] 아래 흐름을 순서대로 — 네 말투로 자연스럽게 풀어서 전달:\n"
             f"  1. 방금 #{MGR_SYSTEM_LOG} 채널이 생겼어. 그건 시스템 로그가 올라오는 곳 "
             "(멤버 활동, 상태 변화 등 자동 기록).\n"
@@ -109,7 +109,7 @@ async def setup_channels(guild):
 
     # 2. mgr-creator 생성
     try:
-        creator_ch = await create_onboarding_channel(
+        creator_ch = await create_tutorial_channel(
             guild, CREATOR_CHANNEL, participants=[CREATOR_ID]
         )
     except Exception as e:
@@ -214,13 +214,13 @@ async def setup_channels(guild):
     scene.set_phase("channels_done")
     runtime.refresh_agent(MGR_ID)  # Phase 2 완료 → 유나 프롬프트 갱신
     log_writer.system(
-        "온보딩 Phase 2 완료: 시스템 채널 + 크리에이터 인사 (최종 완료 대기)"
+        "튜토리얼 Phase 2 완료: 시스템 채널 + 크리에이터 인사 (최종 완료 대기)"
     )
 
 
-async def complete_onboarding():
+async def complete_tutorial():
     """최종 완료 — tool handler에서 호출."""
     scene.set_phase("complete")
     runtime.refresh_agent(MGR_ID)
-    log_writer.mark_onboarding_complete()
-    log_writer.system("온보딩 최종 완료")
+    log_writer.mark_tutorial_complete()
+    log_writer.system("튜토리얼 최종 완료")

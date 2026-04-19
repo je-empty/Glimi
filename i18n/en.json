@@ -76,7 +76,7 @@
     "dev_select_server": "Select Server",
     "dev_no_servers": "No servers",
     "dev_tools": "Tools",
-    "dev_reset_onboarding": "Reset Onboarding",
+    "dev_reset_tutorial": "Reset Tutorial",
     "dev_reset_all": "Reset All",
     "dev_reset_clean": "Reset + Clean Discord",
     "dev_quick_dashboard": "Quick Dashboard",
@@ -92,7 +92,7 @@
     "delete_confirm_id": "Confirm delete: type '{id}' to confirm",
     "delete_cancelled": "Cancelled",
     "delete_reset_done": "DB reset + Discord channel deletion scheduled",
-    "delete_reset_next": "Discord channels will be deleted and onboarding restarts on next dashboard entry",
+    "delete_reset_next": "Discord channels will be deleted and tutorial restarts on next dashboard entry",
 
     "placeholder_server_id": "my-server",
     "placeholder_description": "My community",
@@ -110,7 +110,7 @@
     "loading_avatars": "Loading avatars...",
     "loading_agents": "Waking everyone up...",
     "loading_almost": "Almost ready!",
-    "onboarding_prep": "Preparing onboarding... (don't touch Discord)",
+    "tutorial_prep": "Preparing tutorial... (don't touch Discord)",
     "bot_start": "Bot starting",
     "bot_ready": "Bot ready",
     "bot_already_running": "Bot already running — connecting",
@@ -143,15 +143,15 @@
     "error_timeout": "Bot initialization timed out"
   },
 
-  "onboarding": {
+  "tutorial": {
     "profile_check": "Checking owner profile",
-    "prep": "Preparing onboarding",
+    "prep": "Preparing tutorial",
     "yuna_loading": "Bringing Yuna...",
     "yuna_arrived": "Yuna has arrived!",
-    "complete": "Onboarding complete",
+    "complete": "Tutorial complete",
     "phase2_start": "Phase 2: Creating channels + introducing Creator",
     "phase2_done": "Phase 2 complete (waiting for final)",
-    "channel_created": "Onboarding channel created: {name}",
+    "channel_created": "Tutorial channel created: {name}",
     "supervisor_active": "Supervisor activated: {names}"
   }
 }

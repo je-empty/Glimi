@@ -92,7 +92,7 @@ def get_bot_status() -> dict:
 def get_meta_snapshot() -> dict:
     """meta 테이블 주요 키 일괄 조회."""
     out = {
-        "onboarding_phase": "",
+        "tutorial_phase": "",
         "yuna_greeted": "",
         "active_user_id": "",
         "user_name": "",
@@ -661,7 +661,7 @@ def _get_supervisor_detail(sup_name: str) -> dict:
 
     # 친화 표시명 매핑 (class_name 대신) — UI에 깔끔하게 보이도록
     display_name_map = {
-        "onboarding": "Onboarding",
+        "tutorial": "Tutorial",
         "channel-conv": "Channel Conversation",
     }
     friendly_name = display_name_map.get(sup_name, sup_name)
@@ -730,7 +730,7 @@ def _get_test_user_detail() -> dict:
     nickname = _os.environ.get("QA_USER_NICKNAME", "빈이")
     age = _os.environ.get("QA_USER_AGE", "26")
     mbti = "ENTP"
-    background = "QA 자동 테스트용 가상 유저 — 프로젝트를 전혀 모르는 신규 유저로 온보딩 시나리오를 재현함. Claude Haiku 모델로 실시간 응답 생성."
+    background = "QA 자동 테스트용 가상 유저 — 프로젝트를 전혀 모르는 신규 유저로 튜토리얼 시나리오를 재현함. Claude Haiku 모델로 실시간 응답 생성."
 
     # 이 agent가 남긴 메시지 (test-user가 DB에 speaker='test-user'로 log)
     primary_chat = get_recent_messages(limit=20)
@@ -1145,7 +1145,7 @@ def get_scenes() -> list[dict]:
     """커뮤니티의 모든 씬(시나리오) 상태 — active/completed/not_started.
 
     씬 = 시간 제한적 커뮤니티 이벤트. 현재:
-      - onboarding: 신규 오너 가입 시나리오
+      - tutorial: 신규 오너 가입 시나리오
       - auto_conversation: 에이전트간 자동 대화 세션 (채널 status='running')
     향후 추가 가능: birthday, conflict, party 등.
     """
@@ -1153,9 +1153,9 @@ def get_scenes() -> list[dict]:
     from pathlib import Path as _P
     scenes: list[dict] = []
 
-    # ── 1. Onboarding ──────────────────────────────────
+    # ── 1. Tutorial ──────────────────────────────────
     try:
-        phase = db.get_meta("onboarding_phase") or ""
+        phase = db.get_meta("tutorial_phase") or ""
         greeted = db.get_meta("yuna_greeted") or ""
     except Exception:
         phase = ""
@@ -1167,12 +1167,12 @@ def get_scenes() -> list[dict]:
     elif greeted or phase:
         status = "active"
 
-    # 완료 시간 — .onboarding-complete 플래그 파일의 mtime
+    # 완료 시간 — .tutorial-complete 플래그 파일의 mtime
     completed_at = None
     started_at = None
     try:
         log_dir = _P(community.get_log_dir())
-        complete_flag = log_dir / ".onboarding-complete"
+        complete_flag = log_dir / ".tutorial-complete"
         if complete_flag.exists():
             completed_at = datetime.fromtimestamp(complete_flag.stat().st_mtime).isoformat()
         # 시작 시간: yuna_greeted=1 된 시점을 추정 — 유나 첫 메시지 timestamp
@@ -1197,8 +1197,8 @@ def get_scenes() -> list[dict]:
         "complete": "완료됨",
     }
     scenes.append({
-        "id": "onboarding",
-        "name": "Onboarding",
+        "id": "tutorial",
+        "name": "Tutorial",
         "icon": "🌱",
         "description": "신규 오너 가입 — 프로필 수집 → 시스템 채널 → 크리에이터 소개 → 완료",
         "status": status,
@@ -1247,7 +1247,7 @@ def get_supervisors() -> list[dict]:
 
     # 아이콘 매핑 (id prefix 기준)
     ICON_BY_PREFIX = {
-        "onboarding": "🌱",
+        "tutorial": "🌱",
         "chat": "💬",
         "orchestrator": "🎼",
         "health": "❤️",
@@ -1276,7 +1276,7 @@ def get_supervisors() -> list[dict]:
 
     def _scene_targets(scope: dict) -> list[str]:
         sid = scope.get("scene_id", "")
-        if sid == "onboarding":
+        if sid == "tutorial":
             return ["agent-mgr-001", "agent-creator-001"]
         return []
 

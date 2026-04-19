@@ -1635,7 +1635,7 @@ function renderHero(snap) {
   }
 
   const userName = m.user_name || '—';
-  const phase = m.onboarding_phase || '—';
+  const phase = m.tutorial_phase || '—';
   const msgCount = snap.total_messages || 0;
   const cm = snap.community_meta || {};
   const descText = cm.description || cm.name || `${userName}의 커뮤니티`;
@@ -2151,7 +2151,7 @@ async function runServerControl(action) {
 // ==== Supervisors (agent card 포맷으로 재사용) ====
 // name 기반 친화 표시명 매핑
 const SUP_DISPLAY_NAME = {
-  'onboarding': 'Onboarding',
+  'tutorial': 'Tutorial',
   'channel-conv': 'Channel Conversation',
 };
 function supDisplayName(name) {

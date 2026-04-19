@@ -250,7 +250,7 @@ async def start_conversation(
                             _aio.create_task(_forward_action_to_yuna(speaker_id, action.strip(), guild))
 
             # <tools> 블록에서 파싱된 tool_calls 실행 — runtime에 stash돼 있음
-            # (이전에는 internal-dm 경로에서 이 실행이 빠져서 finish_onboarding 호출
+            # (이전에는 internal-dm 경로에서 이 실행이 빠져서 finish_tutorial 호출
             #  시도해도 텍스트만 흘러나가고 실제론 아무 일도 안 일어남)
             from src.bot.mgr_system import parse_and_execute_actions
             from src.bot.core import get_target_guild as _gt

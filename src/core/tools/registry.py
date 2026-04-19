@@ -216,28 +216,28 @@ MGMT: list[ToolSpec] = [
         name="scene_advance",
         description=(
             "씬(scene)의 phase를 다음/지정 단계로 전환. "
-            "온보딩: scene_id='onboarding', phase='channels_setup'|'complete' 등. "
+            "튜토리얼: scene_id='tutorial', phase='channels_setup'|'complete' 등. "
             "새 씬(birthday, outing 등) 추가 시 동일 도구로 phase 제어."
         ),
         params={
-            "scene_id": {"type": "str", "required": True, "desc": "씬 식별자 (예: 'onboarding')"},
+            "scene_id": {"type": "str", "required": True, "desc": "씬 식별자 (예: 'tutorial')"},
             "phase": {"type": "str", "required": True, "desc": "전환할 phase id (예: 'complete')"},
         },
         category="management",
         applies_to=frozenset({"mgr"}),
-        examples=['{"scene_id":"onboarding","phase":"channels_setup"}'],
+        examples=['{"scene_id":"tutorial","phase":"channels_setup"}'],
     ),
     # 구버전 호환 alias — 내부적으로 scene_advance 로 위임 (프롬프트에서 여전히 참조)
     ToolSpec(
         name="finish_profile_collection",
-        description="[deprecated: scene_advance 선호] 온보딩 Phase 1 → 2 트리거 (scene_id=onboarding, phase=channels_setup)",
+        description="[deprecated: scene_advance 선호] 튜토리얼 Phase 1 → 2 트리거 (scene_id=tutorial, phase=channels_setup)",
         params={},
         category="management",
         applies_to=frozenset({"mgr"}),
     ),
     ToolSpec(
-        name="finish_onboarding",
-        description="[deprecated: scene_advance 선호] 온보딩 최종 완료 (scene_id=onboarding, phase=complete)",
+        name="finish_tutorial",
+        description="[deprecated: scene_advance 선호] 튜토리얼 최종 완료 (scene_id=tutorial, phase=complete)",
         params={},
         category="management",
         applies_to=frozenset({"mgr"}),

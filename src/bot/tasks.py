@@ -86,7 +86,7 @@ async def on_ready():
     profiles = list_all_profiles()
 
     if first_run:
-        # 초기: mgr/creator만 활성화 (페르소나는 온보딩 완료 후)
+        # 초기: mgr/creator만 활성화 (페르소나는 튜토리얼 완료 후)
         mgr_profiles = [p for p in profiles if p.get("type") in ("mgr", "creator")]
         log_writer.system(f"Activating agents... (managers {len(mgr_profiles)}명)")
         for i, p in enumerate(mgr_profiles, 1):
@@ -106,14 +106,14 @@ async def on_ready():
     log_writer.mark_bot_ready()
 
     try:
-        # 온보딩 상태 검증 — 채널 기반 안전장치
-        await _verify_onboarding_state(guild)
+        # 튜토리얼 상태 검증 — 채널 기반 안전장치
+        await _verify_tutorial_state(guild)
 
         # 오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
         await _check_owner_profile(guild)
     except Exception as e:
-        log_writer.system(f"❌ 온보딩 오류: {type(e).__name__}: {e}")
-        log.error(f"[Onboarding] {e}", exc_info=True)
+        log_writer.system(f"❌ 튜토리얼 오류: {type(e).__name__}: {e}")
+        log.error(f"[Tutorial] {e}", exc_info=True)
 
     # Supervisor 시스템 시작
     from src.bot.supervisors import start_supervisors
@@ -139,12 +139,12 @@ async def on_ready():
         log.error(f"[Dev] 결과 체크 오류: {e}")
 
 
-async def _verify_onboarding_state(guild):
-    """온보딩 완료 상태 검증 — 채널 기반 안전장치.
+async def _verify_tutorial_state(guild):
+    """튜토리얼 완료 상태 검증 — 채널 기반 안전장치.
     메타 플래그와 실제 채널 상태가 불일치하면 보정."""
     from src import db as _db
 
-    phase = _db.get_meta("onboarding_phase")
+    phase = _db.get_meta("tutorial_phase")
     greeted = _db.get_meta("yuna_greeted")
 
     if not guild:
@@ -167,23 +167,23 @@ async def _verify_onboarding_state(guild):
     if phase == "complete":
         # 이미 완료 — 검증만
         if not all_channels:
-            log_writer.system(f"[온보딩 검증] phase=complete이지만 채널 부족 — 채널 재생성 필요")
+            log_writer.system(f"[튜토리얼 검증] phase=complete이지만 채널 부족 — 채널 재생성 필요")
         return
 
-    # DB에 대화 기록이 있으면 온보딩은 이미 지난 것
+    # DB에 대화 기록이 있으면 튜토리얼은 이미 지난 것
     conn = _db.get_conn()
     has_messages = conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone() is not None
     conn.close()
 
     if has_messages or all_channels:
-        # 대화 기록 또는 채널이 있으면 온보딩 완료로 보정
+        # 대화 기록 또는 채널이 있으면 튜토리얼 완료로 보정
         if phase != "complete":
-            _db.set_meta("onboarding_phase", "complete")
+            _db.set_meta("tutorial_phase", "complete")
             if not greeted:
                 _db.set_meta("yuna_greeted", "1")
-            log_writer.system("[온보딩 검증] 온보딩 완료 보정 (대화 기록/채널 존재)")
+            log_writer.system("[튜토리얼 검증] 튜토리얼 완료 보정 (대화 기록/채널 존재)")
     elif greeted:
-        log_writer.system(f"[온보딩 검증] greeted=1, phase={phase}, 채널: dashboard={has_dashboard} syslog={has_system_log} creator={has_creator}")
+        log_writer.system(f"[튜토리얼 검증] greeted=1, phase={phase}, 채널: dashboard={has_dashboard} syslog={has_system_log} creator={has_creator}")
 
 
 async def _check_owner_profile(guild):
@@ -192,15 +192,15 @@ async def _check_owner_profile(guild):
     from src.core.profile import get_user_name, get_user_id
     import json as _json
 
-    log_writer.system("[Onboarding] Checking owner profile")
+    log_writer.system("[Tutorial] Checking owner profile")
 
     if not guild:
-        log_writer.system("[Onboarding] guild 없음 — 스킵")
+        log_writer.system("[Tutorial] guild 없음 — 스킵")
         return
 
     # 이미 인사했는지 체크
     greeted = db.get_meta("yuna_greeted")
-    log_writer.system(f"[Onboarding] yuna_greeted={greeted}")
+    log_writer.system(f"[Tutorial] yuna_greeted={greeted}")
 
     # 디코 서버 오너 찾기
     owner_member = guild.owner
@@ -210,9 +210,9 @@ async def _check_owner_profile(guild):
                 owner_member = member
                 break
     if not owner_member:
-        log_writer.system("[Onboarding] Owner member not found — skip")
+        log_writer.system("[Tutorial] Owner member not found — skip")
         return
-    log_writer.system(f"[Onboarding] 오너: {owner_member.display_name} (#{owner_member.id})")
+    log_writer.system(f"[Tutorial] 오너: {owner_member.display_name} (#{owner_member.id})")
 
     # 유저 레코드 없으면 디코 정보로 자동 등록, 있으면 디코 ID 업데이트
     discord_id = str(owner_member.id)
@@ -233,11 +233,11 @@ async def _check_owner_profile(guild):
 
     # 유저 정보 로드
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
-    log_writer.system(f"[Onboarding] mgr 채널 검색: '{MGR_CHANNEL}' → {'찾음' if mgr_ch else '없음'}")
+    log_writer.system(f"[Tutorial] mgr 채널 검색: '{MGR_CHANNEL}' → {'찾음' if mgr_ch else '없음'}")
     if not mgr_ch:
         # 채널 목록 로그
         ch_names = [ch.name for ch in guild.text_channels]
-        log_writer.system(f"[Onboarding] 서버 채널 목록: {ch_names[:20]}")
+        log_writer.system(f"[Tutorial] 서버 채널 목록: {ch_names[:20]}")
         return
 
     conn = db.get_conn()
@@ -274,12 +274,12 @@ async def _check_owner_profile(guild):
     first_time = not db.get_meta("yuna_greeted")
 
     if not first_time:
-        # 온보딩 끝난 서버 — 정보 누락은 대화 중에 자연스럽게 물어봄
+        # 튜토리얼 끝난 서버 — 정보 누락은 대화 중에 자연스럽게 물어봄
         return
 
     info = f"이름:{name}, 나이:{age}, 성별:{gender}, 별칭:{nickname}"
-    log_writer.system(t("onboarding.prep"))
-    log_writer.mark_onboarding()
+    log_writer.system(t("tutorial.prep"))
+    log_writer.mark_tutorial()
 
     if first_time:
         missing_str = ', '.join(missing) if missing else ""
@@ -349,12 +349,12 @@ async def _check_owner_profile(guild):
             f"[Info to collect] MBTI, job, hobby — ask at least 2 naturally after community intro. Skip if they don't know.\n"
             f"{'Currently missing: ' + missing_str if missing else ''}\n"
             f"[Profile done] Once name/speech decided + 2+ questions asked → immediately call "
-            f"`finish_profile_collection` tool (use new <tools> block). If not called, onboarding never ends.\n"
+            f"`finish_profile_collection` tool (use new <tools> block). If not called, tutorial never ends.\n"
             f"[Style] Short chat messages, multiple lines. Natural and friendly. No robotic speech. No bullet lists in chat output.\n"
             f"[Tool policy] Only tool allowed in this first greeting is `finish_profile_collection` (after conditions met). No other tool calls."
         )
 
-    log_writer.system(t("onboarding.yuna_loading"))
+    log_writer.system(t("tutorial.yuna_loading"))
     await asyncio.sleep(3)
     loop = asyncio.get_event_loop()
     responses = await loop.run_in_executor(
@@ -363,7 +363,7 @@ async def _check_owner_profile(guild):
             MGR_ID, MGR_CHANNEL, prompt, log_user_message=False
         )
     )
-    log_writer.system(t("onboarding.yuna_arrived"))
+    log_writer.system(t("tutorial.yuna_arrived"))
     import re as _re
     cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
     for resp in responses:
@@ -378,8 +378,8 @@ async def _check_owner_profile(guild):
     if first_time:
         db.set_meta("yuna_greeted", "1")
 
-    log_writer.system("온보딩 완료")
-    log_writer.mark_onboarding_done()
+    log_writer.system("튜토리얼 완료")
+    log_writer.mark_tutorial_done()
 
 
 # ── 봇 alive heartbeat ──────────────────────────────────
@@ -525,12 +525,12 @@ async def system_log_sync():
     new_count = total - _bot_state._last_log_line_count
     new_lines = log_writer.tail(os.path.join(log_writer.get_log_dir(), "system.log"), new_count)
 
-    # 에이전트 도구 호출, 프로필/관계 변동, 온보딩 phase, 에러 등 운영 가시성에 필요한 줄 모두 포함
+    # 에이전트 도구 호출, 프로필/관계 변동, 튜토리얼 phase, 에러 등 운영 가시성에 필요한 줄 모두 포함
     important = [l for l in new_lines if any(k in l for k in (
         "[Tool]", "[프로필]", "[관계]", "[채널]", "[감정]",
         "🔔 ACTION", "✓ ACTION", "❌", "⚠",
         "강제지시", "봇 시작", "봇 종료", "🔧",
-        "온보딩", "Phase", "sup:onboarding",
+        "튜토리얼", "Phase", "sup:tutorial",
         "Channel created", "Channel deleted",
     ))]
     if important:

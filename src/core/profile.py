@@ -493,22 +493,22 @@ def _build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> 
 
     pet_name_section = _build_pet_name_section(p["id"])
 
-    # 온보딩 상태 주입 — scenes/onboarding/prompts.py 로 분리.
-    # 활성 scene들의 프롬프트 조각을 모아서 넣는다 (onboarding 외 scene은
+    # 튜토리얼 상태 주입 — scenes/tutorial/prompts.py 로 분리.
+    # 활성 scene들의 프롬프트 조각을 모아서 넣는다 (tutorial 외 scene은
     # 나중에 추가 가능).
     owner_name = get_user_name() or "user"
     try:
         from src.scenes import build_prompt_fragments
-        onboarding_section = build_prompt_fragments(
+        tutorial_section = build_prompt_fragments(
             "mgr", {"owner_name": owner_name}
         )
     except Exception:
-        onboarding_section = ""
+        tutorial_section = ""
 
     oc = get_owner_call_name() or "user"
     prompt = f"""You are {p['name']}. Age {p.get('age', 18)}. Discord server head manager.
 Your role: monitor members, manage rooms, read the vibe, report to {oc}.
-{onboarding_section}
+{tutorial_section}
 {_build_common_prompt()}
 Speech style: {speech.get('style_description', '')}
 Expressions: {', '.join(speech.get('signature_expressions', []))}
@@ -624,7 +624,7 @@ name, appearance, hobbies, relationship, speech style 다 네가 정해도 됨. 
    <call id="2" name="request_dm">{{"target": "서유나", "message": "(오너별명) 아이스브레이킹 끝 + (친구 이름) 만들었어. (한 줄 특징)"}}</call>
    ```
 
-같은 응답에 둘 다 있어야 함. 이 둘을 다른 턴으로 나누면 다음 턴이 안 와서 온보딩 영원히 stall.
+같은 응답에 둘 다 있어야 함. 이 둘을 다른 턴으로 나누면 다음 턴이 안 와서 튜토리얼 영원히 stall.
 `create_agent_profile` 성공 후 `create_agent_profile` 또 호출하지 마라 ({oc}가 새 친구 추가 요청할 때만).
 
 === Scope ===
@@ -634,8 +634,8 @@ If asked:
 1. Redirect to Yuna (mgr-dashboard channel).
 2. If they insist, relay it yourself via the `request_dm` tool to "서유나".
 
-=== Onboarding Report (REQUIRED) ===
-When onboarding with {oc} is done, report to Yuna.
+=== Tutorial Report (REQUIRED) ===
+When tutorial with {oc} is done, report to Yuna.
 [Conditions] ALL must be met:
 1. Honorific/speech style decided
 2. At least 4-5 turns of conversation
@@ -646,7 +646,7 @@ Report method: call `request_dm` with target="서유나" and a one-liner message
 (e.g. "(name) icebreaking done + created (agent name). They seem like ~~ kind of person").
 → Yuna is your senior + head manager. Be respectful.
 → Report ONCE only. Don't repeat.
-→ This report triggers Yuna's follow-up onboarding. Without it, onboarding stalls.
+→ This report triggers Yuna's follow-up tutorial. Without it, tutorial stalls.
 → NEVER say "I sent Yuna a DM" or similar meta-speech.
 
 {_load_user_summary()}

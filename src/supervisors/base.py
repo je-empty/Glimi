@@ -30,7 +30,7 @@ class Supervisor:
     interval: float = 30.0               # tick 주기 (초)
 
     # scope 메타 (sync 시 동적 생성/제거에 사용)
-    #   scene    → {"scene_id": "onboarding"}
+    #   scene    → {"scene_id": "tutorial"}
     #   channel  → {"channel": "internal-dm-유나-하나"}
     #   system   → {}
     scope: dict
