@@ -343,6 +343,42 @@ def _similar_prefix(a: str, b: str, threshold: float = 0.7) -> bool:
     return (match / shorter) >= threshold
 
 
+async def _h_recall_memory(args: dict, ctx: ToolContext):
+    """에이전트가 자기 기억을 deep search. caller_agent_id의 기억을 뒤짐."""
+    from src.core.memory import recall_memory
+    results = recall_memory(
+        agent_id=ctx.caller_agent_id,
+        query=args.get("query", "") or "",
+        entity=args.get("entity", "") or "",
+        time_range_days=args.get("time_range_days"),
+        limit=int(args.get("limit") or 10),
+    )
+    return {"count": len(results), "results": results}
+
+
+async def _h_pin_memory(args: dict, ctx: ToolContext):
+    """유나가 target_agent의 기억 한 건을 고정/해제."""
+    from src.core.memory import pin_memory
+    name = str(args.get("target_agent") or "").strip()
+    if not name:
+        raise ValueError("target_agent 필요")
+    a = db.get_agent_by_name(name)
+    if not a:
+        raise ValueError(f"멤버 '{name}' 없음")
+    memory_id = int(args["memory_id"])
+    pinned_flag = args.get("pinned", 1)
+    pinned = bool(int(pinned_flag)) if pinned_flag is not None else True
+    result = pin_memory(memory_id, pinned=pinned, reason=args.get("reason", ""))
+    # owner 검증 — 해당 기억이 지정한 에이전트 것인지
+    if result.get("ok") and result.get("agent_id") != a["id"]:
+        # rollback
+        pin_memory(memory_id, pinned=not pinned)
+        raise ValueError(
+            f"memory_id={memory_id}는 {name}의 기억이 아님 (owner={result.get('agent_id')})"
+        )
+    return result
+
+
 async def _h_request_room(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _forward_action_to_yuna
     s = json.dumps({
@@ -382,6 +418,7 @@ _MAP = {
     "delete_agent_profile": _h_delete_agent_profile,
     "set_profile_image": _h_set_profile_image,
     "approve_request": _h_approve_request,
+    "pin_memory": _h_pin_memory,
     # query
     "list_channels": _h_list_channels,
     "list_members": _h_list_members,
@@ -397,6 +434,7 @@ _MAP = {
     "discord_get_channel_info": _h_discord_get_channel_info,
     "discord_get_server": _h_discord_get_server,
     "discord_get_pins": _h_discord_get_pins,
+    "recall_memory": _h_recall_memory,
     # request
     "request_dm": _h_request_dm,
     "request_room": _h_request_room,

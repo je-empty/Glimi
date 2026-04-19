@@ -18,7 +18,7 @@ import os
 from typing import Optional, Callable
 from src import db
 from .profile import load_profile, build_system_prompt, get_user_name, get_user_id, get_user_display_name
-from .memory import check_and_summarize, get_memory_context, get_cross_channel_memory, RAW_WINDOW
+from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
 from .tools import parse_response as parse_tools_in_output, ToolCall
 from src import log_writer
 
@@ -178,27 +178,14 @@ class AgentRuntime:
                 reminder_parts.append(digest)
             _checkpoint("activity_digest")
 
-        # ── 기억 섹션 ──
-        # focus_hint로 최근 대화 + 사용자 메시지 넘겨서 on-demand 필터링
+        # ── 기억 섹션 (5 레이어 통합) ──
+        # user_message + 최근 대화 텍스트를 entity 매칭용 힌트로 넘김
         focus_hint = user_message + "\n" + "\n".join(m.get("message", "") for m in recent[-5:])
-        memory_text = get_memory_context(agent_id, channel)
+        memory_text = get_memory_context(agent_id, channel, user_message=focus_hint)
         _checkpoint("memory_context")
-        cross_memory = get_cross_channel_memory(agent_id, exclude_channel=channel, focus_hint=focus_hint)
-        _checkpoint("cross_channel_memory")
 
-        mem_block = []
-        if memory_text or cross_memory:
-            mem_block.append("━━━ 기억 ━━━")
         if memory_text:
-            mem_block.append(memory_text)
-        if cross_memory:
-            if memory_text:
-                mem_block.append("")
-            mem_block.append(cross_memory)
-        if memory_text or cross_memory:
-            mem_block.append("━━━━━━━━━━━")
-        if mem_block:
-            reminder_parts.append("\n".join(mem_block))
+            reminder_parts.append("━━━ 기억 ━━━\n" + memory_text + "\n━━━━━━━━━━━")
 
         # ── 다른 채널 최근 대화 (요약 없이 직접 주입) ──
         cross_recent = self._get_cross_channel_recent(agent_id, channel)

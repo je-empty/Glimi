@@ -876,6 +876,13 @@ HTML = r"""<!doctype html>
   .mem-item .lvl { font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--accent-2); font-weight: 600; padding-top: 1px; flex-shrink: 0; }
   .mem-item .mcontent { flex: 1; color: var(--text-dim); }
   .mem-item .mts { color: var(--text-faint); font-size: 10px; margin-left: auto; font-family: "JetBrains Mono", monospace; }
+  .mem-item .mem-imp { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: var(--panel-3, #2a2a30); color: var(--text-faint); font-weight: 600; flex-shrink: 0; }
+  .mem-item .mem-pin { flex-shrink: 0; }
+  .mem-item .mem-ents { font-size: 10px; color: var(--accent); }
+  .mem-item .mem-ch { font-size: 10px; color: var(--text-faint); font-family: "JetBrains Mono", monospace; }
+  .mem-lvl-group { margin-bottom: 6px; }
+  .mem-lvl-group .mem-lvl-label { font-size: 10px; color: var(--text-faint); margin-bottom: 3px; padding-left: 4px; }
+  .mem-pinned-block { border-left: 2px solid var(--accent); padding-left: 8px; }
 
   /* ==== Health ==== */
   .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
@@ -1797,14 +1804,74 @@ async function openAgent(id) {
     </div>`;
   }).join('');
 
-  let memHtml = '';
+  // 메모리 렌더 — 5 레이어 시스템 (L1/L2/L3, pinned, importance, entities)
+  const renderMemItem = (m, opts={}) => {
+    const lvl = `L${m.level}${m.mem_type ? '·'+esc(m.mem_type[0].toUpperCase()) : ''}`;
+    const imp = m.importance ? `<span class="mem-imp" title="importance">${m.importance}</span>` : '';
+    const pin = m.is_pinned ? '<span class="mem-pin" title="pinned">📌</span>' : '';
+    const ents = (m.related_entities && m.related_entities.length)
+      ? `<span class="mem-ents">${m.related_entities.map(e=>esc(e)).join('·')}</span>` : '';
+    const ch = opts.showChannel && m.channel ? `<span class="mem-ch">${esc(m.channel)}</span>` : '';
+    return `<div class="mem-item" data-mem-id="${m.id||''}">
+      ${pin}<span class="lvl">${lvl}</span>${imp}
+      <span class="mcontent">${esc(m.content)}</span>
+      ${ents}${ch}
+      <span class="mts">${esc((m.created_at||'').slice(5, 16))}</span>
+    </div>`;
+  };
+
+  // 고정 기억 (pinned_memories) — 맨 위 따로
+  let pinnedHtml = '';
+  if ((d.pinned_memories || []).length) {
+    pinnedHtml = `<div class="mem-block mem-pinned-block">
+      <h5>📌 Pinned <span style="color:var(--text-faint);font-weight:400">(${d.pinned_memories.length})</span></h5>
+      ${d.pinned_memories.map(m => renderMemItem(m, {showChannel: true})).join('')}
+    </div>`;
+  }
+
+  let memHtml = pinnedHtml;
   for (const [ch, mems] of Object.entries(d.memories_by_channel || {})) {
+    const byLevel = {3: [], 2: [], 1: []};
+    mems.forEach(m => { (byLevel[m.level] || byLevel[1]).push(m); });
     memHtml += `<div class="mem-block">
       <h5><span class="ch-icon">${chIcon(ch)}</span> ${esc(ch)} <span style="color:var(--text-faint);font-weight:400">(${mems.length})</span></h5>
-      ${mems.map(m => `<div class="mem-item">
-        <span class="lvl">L${m.level}${m.mem_type ? '·'+esc(m.mem_type[0].toUpperCase()) : ''}</span>
-        <span class="mcontent">${esc(m.content)}</span>
-        <span class="mts">${esc((m.created_at||'').slice(5, 16))}</span>
+      ${[3,2,1].filter(l => byLevel[l].length).map(l =>
+        `<div class="mem-lvl-group"><div class="mem-lvl-label">L${l} · ${byLevel[l].length}</div>${byLevel[l].map(renderMemItem).join('')}</div>`
+      ).join('')}
+    </div>`;
+  }
+
+  // Facts (Layer 3 semantic)
+  let factsHtml = '';
+  if ((d.agent_facts || []).length) {
+    // subject 별로 그룹화
+    const bySubject = {};
+    (d.agent_facts || []).forEach(f => {
+      if (!bySubject[f.subject]) bySubject[f.subject] = [];
+      bySubject[f.subject].push(f);
+    });
+    factsHtml = Object.entries(bySubject).map(([subject, facts]) =>
+      `<div class="mem-block">
+        <h5>📚 ${esc(subject)} <span style="color:var(--text-faint);font-weight:400">(${facts.length})</span></h5>
+        ${facts.map(f => `<div class="mem-item">
+          <span class="lvl">${esc(f.predicate)}</span>
+          <span class="mcontent">${esc(f.object)}</span>
+          ${f.importance >= 8 ? '<span class="mem-pin">⭐</span>' : ''}
+          <span class="mts">${esc((f.created_at||'').slice(5, 16))}</span>
+        </div>`).join('')}
+      </div>`
+    ).join('');
+  }
+
+  // Relationship history (변곡점)
+  let relHistHtml = '';
+  if ((d.relationship_history || []).length) {
+    relHistHtml = `<div class="mem-block">
+      <h5>📈 변곡점 <span style="color:var(--text-faint);font-weight:400">(${d.relationship_history.length})</span></h5>
+      ${d.relationship_history.slice(0,10).map(h => `<div class="mem-item">
+        <span class="lvl">${esc(h.delta_type || '?')}</span>
+        <span class="mcontent">${esc(h.from_state||'?')} → ${esc(h.to_state||'?')}${h.reason ? ' · '+esc(h.reason) : ''}</span>
+        <span class="mts">${esc((h.created_at||'').slice(5, 16))}</span>
       </div>`).join('')}
     </div>`;
   }
@@ -1818,7 +1885,9 @@ async function openAgent(id) {
       <dl class="kv">${profileLines.map(([k,v,raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
     </div>
     ${rels ? `<div class="detail-section"><h4>Relationships · ${d.relationships.length}</h4>${rels}</div>` : ''}
-    ${memHtml ? `<div class="detail-section"><h4>Memory</h4>${memHtml}</div>` : ''}
+    ${memHtml ? `<div class="detail-section"><h4>Memory · 5 Layer</h4>${memHtml}</div>` : ''}
+    ${factsHtml ? `<div class="detail-section"><h4>Facts (L3 Semantic)</h4>${factsHtml}</div>` : ''}
+    ${relHistHtml ? `<div class="detail-section"><h4>Relationship History</h4>${relHistHtml}</div>` : ''}
     ${thinkingLogs ? `<div class="detail-section"><h4>Thinking Logs ${d.thinking ? '<span style="color:var(--thinking)">● LIVE</span>' : ''}</h4>${thinkingLogs}</div>` : ''}
     ${chatHtml ? `<div class="detail-section"><h4>Recent Chat · ${d.primary_channel}</h4>${chatHtml}</div>` : ''}
   `;

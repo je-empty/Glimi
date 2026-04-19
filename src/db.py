@@ -111,8 +111,8 @@ def init_db():
         );
 
         CREATE INDEX IF NOT EXISTS idx_mem_agent ON memories(agent_id, channel, level);
-        CREATE INDEX IF NOT EXISTS idx_mem_importance ON memories(agent_id, importance DESC, created_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_mem_pinned ON memories(agent_id, is_pinned);
+        -- idx_mem_importance / idx_mem_pinned 는 _migrate_schema 에서 생성
+        -- (신규 컬럼 의존이라 기존 DB에서 바로 만들면 NoSuchColumn 에러)
 
         -- ── 엔티티 인덱스 사실 저장소 (Layer 3 semantic facts) ──
         CREATE TABLE IF NOT EXISTS agent_facts (
