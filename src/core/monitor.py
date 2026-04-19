@@ -1248,13 +1248,15 @@ def get_supervisors() -> list[dict]:
     import os as _os
 
     class _SupShim:
-        """JSON 에서 로드한 supervisor 의 경량 shim — 기존 객체 인터페이스 유지."""
-        def __init__(self, data: dict):
+        """JSON 에서 로드했거나 정적 enumerate 한 supervisor 의 경량 shim.
+        _active 로 실제 동작 중 여부 표시 (봇 오프라인 시 False)."""
+        def __init__(self, data: dict, _active: bool = True):
             self.id = data.get("id", "?")
             self.kind = data.get("kind", "system")
             self.display_name = data.get("display_name", self.id)
             self.scope = data.get("scope", {}) or {}
             self.interval = data.get("interval", 0)
+            self._active = _active
 
     live_sups: list = []
     try:
@@ -1263,8 +1265,9 @@ def get_supervisors() -> list[dict]:
     except Exception:
         live_sups = []
 
+    snapshot_loaded = False
     if not live_sups:
-        # fallback: file-based snapshot
+        # fallback: file-based snapshot (봇 프로세스가 최근에 저장한 것)
         try:
             from src import db as _db
             snap_path = _os.path.join(
@@ -1275,8 +1278,70 @@ def get_supervisors() -> list[dict]:
                     data = _json.load(f)
                 items = data.get("items", [])
                 live_sups = [_SupShim(it) for it in items if it.get("active", True)]
+                if live_sups:
+                    snapshot_loaded = True
         except Exception:
             pass
+
+    if not snapshot_loaded and not live_sups:
+        # 오프라인 또는 최초 기동 전: 코드베이스에서 "존재 가능한" supervisor 을
+        # 정적으로 enumerate 해서 대시보드에 offline 상태로 표시.
+        try:
+            expected: list[_SupShim] = []
+            # 1) system 싱글톤 — 항상 후보 (봇 오프라인이면 inactive)
+            expected.append(_SupShim({
+                "id": "orchestrator",
+                "kind": "system",
+                "display_name": "오케스트레이터",
+                "scope": {},
+            }, _active=False))
+            # 2) scene-scoped — 정의된 씬마다 1 개
+            try:
+                from src import scenes as _scenes_pkg
+                import pkgutil as _pkgutil, importlib as _importlib
+                for _, modname, ispkg in _pkgutil.iter_modules(_scenes_pkg.__path__):
+                    if not ispkg or modname == "__pycache__":
+                        continue
+                    try:
+                        sub = _importlib.import_module(f"src.scenes.{modname}")
+                        sc = getattr(sub, "scene", None)
+                        if sc is None:
+                            continue
+                        # scene.supervisors() 는 인스턴스 생성 필요 → 메타만 추출
+                        sup_modname = f"src.scenes.{modname}.supervisor"
+                        try:
+                            sup_mod = _importlib.import_module(sup_modname)
+                            # 클래스명 Convention: {Scope}FlowSupervisor 또는 비슷
+                            for _attr in dir(sup_mod):
+                                cls = getattr(sup_mod, _attr)
+                                if (
+                                    isinstance(cls, type) and _attr.endswith("Supervisor")
+                                    and _attr != "Supervisor"
+                                ):
+                                    expected.append(_SupShim({
+                                        "id": getattr(cls, "id", f"{modname}.flow"),
+                                        "kind": getattr(cls, "kind", "scene"),
+                                        "display_name": getattr(cls, "display_name", f"{modname} · 흐름"),
+                                        "scope": {"scene_id": modname},
+                                    }, _active=False))
+                                    break
+                        except Exception:
+                            pass
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            # 중복 제거 (id 기준)
+            seen = set()
+            dedup: list[_SupShim] = []
+            for s in expected:
+                if s.id in seen:
+                    continue
+                seen.add(s.id)
+                dedup.append(s)
+            live_sups = dedup
+        except Exception:
+            live_sups = []
 
     # 아이콘 매핑 (id prefix 기준)
     ICON_BY_PREFIX = {
@@ -1371,7 +1436,9 @@ def get_supervisors() -> list[dict]:
             "icon": _icon(name),
             "description": sup.display_name or name,
             "interval_sec": sup.interval,
-            "active": True,   # pool에 살아있다 = active
+            # live(봇 프로세스 pool): True / snapshot fallback: True /
+            # offline enumerate: False (shim._active 참조)
+            "active": getattr(sup, "_active", True),
             "target_agents": targets,
             "recent_logs": sup_logs,
             "last_action": last_action,
