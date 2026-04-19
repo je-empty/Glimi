@@ -49,7 +49,7 @@ Glimi/
     ├── core/             ← 에이전트 두뇌
     │   ├── runtime.py    ← Claude CLI 호출 + 응답 생성
     │   ├── profile.py    ← 프로필 관리 + system prompt 빌드
-    │   ├── memory.py     ← 3단계 메모리 (raw→L1→L2)
+    │   ├── memory.py     ← 5 레이어 메모리 (raw→L1/L2/L3 + facts + relationship + pinned)
     │   ├── monitor.py    ← 대시보드용 스냅샷/디테일 API
     │   ├── conversation.py ← 에이전트간 자동 대화
     │   └── tools/        ← <tools> 프로토콜
@@ -62,7 +62,9 @@ Glimi/
     ├── bot/              ← 디스코드 봇 모듈
     │   ├── __init__.py   ← 공유 상태 + Bot 인스턴스
     │   ├── core.py       ← Webhook, 채널 매핑, 유틸리티
+    │   ├── formatting.py ← 에이전트 응답 → 디스코드 네이티브 변환 (#channel → <#id>)
     │   ├── mgr_system.py ← Manager 도구 핸들러 (`<tools>` 실행)
+    │   ├── tool_handlers.py ← 도구 → yuna_* 브릿지 + recall_memory/pin_memory
     │   ├── handlers.py   ← 메시지 처리 (DM/그룹)
     │   ├── commands.py   ← 슬래시 명령어
     │   ├── tasks.py      ← 백그라운드 태스크 + 이벤트
@@ -186,9 +188,29 @@ recency_decay = exp(-days/30)
 - ✅ QA 스모크 통과 (29 메시지 → L1 4건 + facts 5건 자동 추출 확인)
 - ✅ DB 인덱스 버그 fix — `idx_mem_importance` / `idx_mem_pinned` 를 `init_db().executescript`에서 제거하고 `_migrate_schema()` 로만 생성 (신규 컬럼 의존성)
 
+**진행 상황 (2026-04-20 후반 세션):**
+- ✅ 커뮤니티 격리 감사 + fix:
+  - 웹 대시보드 avatar API 가 잘못 모든 community profile_images/ 스캔하던 fallback 제거 (security/privacy 위반)
+  - `_set_active_community` 가 profile 캐시 (`_profile_cache`, `_user_profile_cache`, `_user_summary_cache`) 와 webhook 캐시 invalidate 하도록 수정
+  - 이전: private→qa 전환 시 유나(demo)의 이름이 서유나(qa) 로 캐시 누설
+  - 이후: 각 community 전환 시 모든 캐시 clear → 정확한 이름/프로필 반환
+- ✅ 커뮤니티 격리 검증 테스트 (`tests/unit/test_community_isolation.py` 4 케이스): snapshot / agent_detail / avatar / profile 캐시 — 4 커뮤니티 (demo/dev/private/qa) 전환 교차 테스트 통과
+- ✅ 대시보드 메모리 UI 용어 재설계: "Memory · 5 Layer" / "Facts (L3 Semantic)" / "Relationship History" 별도 섹션 → 하나의 **🧠 기억** 섹션으로 통합. "L1·E" 축약어 폐기, `최근/중기/장기` + `사건/사실/감정/관계` 풀 네이밍 + 아이콘
+- ✅ dashboard state leakage 방지: `_STARTUP_COMMUNITY` 저장 후 `?community=` 없는 요청은 startup default 로 reset
+- ✅ demo 커뮤니티 목업 재구축 (`scripts/seed_demo_mockup.py`):
+  - 에이전트 9명 전원 여자 (도윤→민서, 지호→수연 성별 전환; 샘플 이미지 여자만 있음)
+  - 가족 관계 없음, 친구/동료/파트너 범주만
+  - L1/L2/L3 메모리 + agent_facts 29건 + relationship_history 4건 + pinned 1건
+  - 채널 16개, 대화 141건, 3 라이브 채널
+  - 쇼케이스 URL: `http://localhost:8765/?community=demo`
+- ✅ private DB 마이그레이션 확인: 스키마 최신 + 레거시 241 메모리 중 110건 related_entities 백필 (regex 이름 매칭)
+
 **알려진 이슈 (다음 세션 후보):**
 - test_user_bot 이 mgr-creator 채널로 이동을 감지 못하고 온보딩 완료로 잘못 판단하고 조기 종료. 포맷팅 시스템으로 일부 개선되겠지만 봇 자체 로직 수정 필요.
 - L3 rollup 은 L2 5개 쌓여야 발동 (월 단위 스케일). 단기 테스트에서는 관찰 어려움.
+- 격리 감사에서 발견된 중간 심각도 이슈들 (봇 프로세스 한정, 대시보드엔 영향 없음): `AgentRuntime._pending_tool_results` / `_extract_queue` / supervisor tick 등 global state 가 community 전환 시 이론적으로 leak 가능. 봇은 1 community/process 전제라 실제 영향 없지만 장기적으로 community_id 를 context 로 전파 필요.
+
+**i18n 계획 (보류)**: 외국인 배포 결정 시 영어 wrapper 대신 `src/core/prompts/{ko,en,...}/` 언어별 prompt fragment 분리 + `_get_community_language()` 기반 선택. 영어 wrapper 단독 작업은 해결책의 25%만 된다고 판단.
 
 **레거시 드롭**: private 서버 DB는 다음 봇 시작 시 `init_db()` 의 `_migrate_schema()` 가 자동 마이그레이션. 레거시 코드는 유지 안 함.
 
@@ -207,6 +229,42 @@ recency_decay = exp(-days/30)
 **에이전트 가이드**: `profile.py._build_common_prompt` 에 "Style Guide — 대화 전반" 섹션으로 주입됨. 에이전트는 `#channel` 그대로 쓰도록 학습 (백틱·괄호·볼드 감싸지 말라고 명시).
 
 **테스트**: `python -m tests.unit.test_formatting` (11 케이스).
+
+## 커뮤니티 격리 (multi-community isolation)
+
+**원칙**: `communities/{id}/` 는 완전히 독립. 한 community 의 agent/profile_image/memory/channel 이 다른 community 요청에서 **절대** 노출되면 안 됨.
+
+**전역 state 위험 지점**:
+- `src.community._current_id` (env `GLIMI_COMMUNITY`)
+- `src.db.DB_PATH` cached
+- `src.core.profile._profile_cache` / `_user_profile_cache` / `_user_summary_cache`
+- `src.bot._webhook_cache`
+- `src.core.memory._extract_queue` (background worker)
+- `src.core.runtime.AgentRuntime._active_agents` / `_pending_tool_results`
+
+**웹 대시보드 방어 (`scripts/web_dashboard.py`)**:
+- `_COMMUNITY_LOCK` 로 community 전환 + API 호출 직렬화
+- `_with_community(path, fn)` — `?community=` 명시 시 전환, 없으면 `_STARTUP_COMMUNITY` 로 reset (state leak 방지)
+- `_set_active_community(cid)` — env 설정 + `set_community()` + `DB_PATH=None` + `profile.invalidate_cache()` + `webhook_cache.clear()`
+- **`_serve_avatar` 는 현재 community 디렉터리에서만 이미지 찾음** (cross-community 스캔 금지)
+
+**봇 프로세스 한정**: `run.sh` 는 1 community/process 로만 동작. AgentRuntime / memory worker 등의 global state 는 프로세스 수명 동안 community 고정이라 leak 없음. 그러나 코드 레벨에서 community_id 를 명시적 context 로 전파하는 게 장기적으로 더 안전 (향후 과제).
+
+**검증 테스트**: `python -m tests.unit.test_community_isolation` — 4 case (snapshot/agent/avatar/profile 캐시 invalidation) 전부 통과.
+
+## demo 커뮤니티 쇼케이스 (`scripts/seed_demo_mockup.py`)
+
+`http://localhost:8765/?community=demo` 로 프로젝트 진가 노출하는 목업. 디스코드 채널 없이 **DB 만** 구성 (봇 실행 불필요). 스크립트 실행 시 `communities/demo/community.db` 리셋 + 재시딩.
+
+**구성**:
+- 오너 "빈이" + 에이전트 9명 (유나 mgr, 하나 creator, 페르소나 7 — **전원 여자** · 샘플 이미지 제약)
+- 가족 관계 없음, 친구/동료/파트너만 (여자친구 = 파트너 카테고리로 유지)
+- 5 레이어 메모리 전부 활용: L1/L2/L3 + agent_facts + relationship_history + pinned
+- 채널 16개 (DM + internal-dm + internal-group + mgr + group)
+- 대화 141건, 라이브 채널 3개 (status=running)
+- 드라마틱 서브플롯: 빈이 생일 선물 비밀 (지우·예린 internal), 서아 짝사랑 (internal-dm-서아-하린), 지호 대체된 수연의 회사 정치 (internal-dm-수연-수진), 빈이 리드 기회 검토 등
+
+**재실행 시**: DB 파일 + `-shm`/`-wal` 전부 삭제 → `init_db()` (스키마 마이그레이션) → 시딩. 이후 대시보드에서 즉시 확인 가능.
 
 
 ### core/conversation.py
