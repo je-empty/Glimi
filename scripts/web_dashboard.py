@@ -2422,6 +2422,15 @@ function updateGraphLiveState(snap) {
       if (wasLive !== nowLive) {
         e.toggleClass('live', nowLive);
         liveCountChanged = true;
+        // live → idle 전환 시 애니메이션 inline style 초기화 — 안 하면 마지막 프레임의
+        // width/overlay 가 잔상으로 남아 회색 점선 class style 이 먹히지 않음.
+        if (!nowLive) {
+          e.removeStyle('width');
+          e.removeStyle('overlay-color');
+          e.removeStyle('overlay-opacity');
+          e.removeStyle('overlay-padding');
+          e.removeStyle('opacity');
+        }
       }
     });
     if (SHOW_SUP) {
