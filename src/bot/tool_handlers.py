@@ -296,6 +296,16 @@ async def _h_get_logs(args, ctx):
     return {"result": await _run_query("로그", f"{target} {cnt}", ctx)}
 
 
+async def _h_get_tool_details(args, ctx):
+    from src.core.tools.reference import build_tool_details
+    return {"result": build_tool_details(args["name"])}
+
+
+async def _h_query_knowledge(args, ctx):
+    from src import knowledge as _kb
+    return {"result": _kb.query(args["topic"], ctx.caller_agent_id)}
+
+
 async def _h_search_messages(args, ctx):
     return {"result": await _run_query("검색", args["args"], ctx)}
 
@@ -465,6 +475,8 @@ _MAP = {
     "list_members": _h_list_members,
     "get_logs": _h_get_logs,
     "search_messages": _h_search_messages,
+    "get_tool_details": _h_get_tool_details,
+    "query_knowledge": _h_query_knowledge,
     "get_speaker_history": _h_get_speaker_history,
     "get_profile": _h_get_profile,
     "get_relationships": _h_get_relationships,

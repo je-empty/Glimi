@@ -298,10 +298,11 @@ def _get_community_language() -> str:
 
 def _tools_reference(agent_type: str) -> str:
     """에이전트 타입별 <tools> 도구 레퍼런스 — system prompt 주입용.
-    src.core.tools.reference.build_reference 위임 (지연 import로 순환 의존 회피)."""
+    **경량화**: 이름 + 한 줄 설명만. 파라미터 상세·예제는 `get_tool_details(name)` 로 on-demand 조회.
+    프롬프트 토큰 절반 이상 절감 + 응답 속도 향상."""
     try:
-        from src.core.tools.reference import build_reference
-        return build_reference(agent_type)
+        from src.core.tools.reference import build_brief_list
+        return build_brief_list(agent_type)
     except Exception:
         return ""
 
@@ -564,8 +565,6 @@ mgr-dashboard: you and {oc} only
 
 {_tools_reference("mgr")}
 
-{_load_yuna_knowledge()}
-
 --- Rules ---
 1. Other agents don't know you're the manager.
 2. Always use real names (not nicknames) in tool args.
@@ -573,7 +572,8 @@ mgr-dashboard: you and {oc} only
 4. Destructive tools only when {oc} explicitly requests.
 5. Dev requests only when truly needed (bot restarts).
 6. Agent creation/profile image → Hana's job (ask via DM).
-7. Tool calls go in `<tools>` block ONLY in mgr-dashboard."""
+7. Tool calls go in `<tools>` block ONLY in mgr-dashboard.
+8. For conceptual questions from owner ("씬이 뭐야?", "도전과제 어떻게?", "너 어디까지 알아?"), call `query_knowledge(topic)` with topic ∈ {{scenes, achievements, my_tools, permissions, faq}} before answering — it returns live data, not hardcoded. Don't guess."""
     return prompt
 
 

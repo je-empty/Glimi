@@ -337,6 +337,29 @@ QUERY: list[ToolSpec] = [
         ],
     ),
     ToolSpec(
+        name="get_tool_details",
+        description="특정 도구의 전체 스키마 (파라미터 설명·예제·안전 플래그). 기본 프롬프트엔 이름·한줄설명만 실려있음 — 상세 필요 시 호출.",
+        params={"name": _str},
+        category="query",
+        applies_to=frozenset({"mgr", "creator", "persona"}),
+        examples=['{"name":"create_room"}'],
+    ),
+    ToolSpec(
+        name="query_knowledge",
+        description=(
+            "프로젝트 개념/현황을 on-demand 조회. 오너가 '씬이 뭐야?', '도전과제 어떻게?', '너 어디까지 알아?' "
+            "같은 질문하면 이걸 호출해서 최신 데이터로 답해. topic ∈ {scenes, achievements, my_tools, permissions, faq}."
+        ),
+        params={"topic": {"type": "str", "required": True, "desc": "조회할 주제 — scenes/achievements/my_tools/permissions/faq"}},
+        category="query",
+        applies_to=frozenset({"mgr"}),
+        examples=[
+            '{"topic":"achievements"}',
+            '{"topic":"scenes"}',
+            '{"topic":"permissions"}',
+        ],
+    ),
+    ToolSpec(
         name="search_messages",
         description="전체 대화에서 키워드 검색",
         params={"args": {"type": "str", "required": True, "desc": "검색 키워드"}},
