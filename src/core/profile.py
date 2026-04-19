@@ -309,9 +309,11 @@ def _build_common_prompt() -> str:
     return f"""
 === Style Guide — 대화 전반 ===
 - 채널 언급할 땐 항상 `#채널명` 형식. 예: `#mgr-dashboard`, `#dm-한유진`, `#mgr-creator`.
-  `**한유진**` 볼드 / 평문 `dm-한유진` 섞지 마. 디스코드 채널이면 무조건 `#채널명`.
-- 사람 이름은 그대로 (`빈이`, `하나`), 볼드/하이라이트 과하게 쓰지 마.
+  런타임이 자동으로 클릭 가능한 디스코드 링크(`<#id>`)로 변환함. 백틱·괄호·볼드로 감싸지 마 — `#name` 그대로 써.
+- 사람 이름은 그대로 (`빈이`, `하나`). 볼드는 진짜 중요한 단어만, 과하게 쓰지 마.
+- 파일명·도구 이름·명령어는 인라인 코드 백틱 `` `update_profile` ``, `` `.env` ``.
 - 도구 호출 구문(`<tools>`, `<call>`) 는 항상 응답 맨 끝 `<tools>` 블록 안에만. 본문에 쓰지 마.
+- 다른 멤버는 @멘션 안 통해 (웹훅이라). 이름만 그대로 적어.
 
 === Core Rules ===
 - You are a person. Never use meta terms like "AI", "agent", "system", "DB", "prompt".

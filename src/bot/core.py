@@ -111,6 +111,18 @@ async def _raw_send_as_agent(channel: discord.TextChannel, agent_id: str, name: 
     """실제 webhook 전송 + 에러 fallback. PacedSender worker가 호출.
     fallback 발생은 모두 system.log에도 남겨 (봇 이름/아바타 분리 버그 추적용)."""
     ch_name = getattr(channel, 'name', '?')
+    # 디스코드 렌더링용 포맷팅 (#channel-name → <#id> 등)
+    # DB/로그는 원문 유지, 여기서만 변환.
+    try:
+        from src.bot.formatting import format_for_discord
+        from src.core.profile import get_user_name
+        guild = getattr(channel, 'guild', None)
+        message = format_for_discord(
+            message, guild=guild,
+            owner_name=get_user_name() or "",
+        )
+    except Exception as _fmt_err:
+        log_writer.system(f"⚠ Formatting 실패 [{name}@{ch_name}]: {_fmt_err}")
     try:
         webhook = await get_agent_webhook(channel, agent_id)
         await webhook.send(content=message, username=name)
