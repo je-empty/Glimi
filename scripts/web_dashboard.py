@@ -1823,6 +1823,64 @@ document.getElementById('detail-backdrop').addEventListener('click', (e) => {
   if (e.target.id === 'detail-backdrop') closeModal();
 });
 
+async function openModelPicker(agentId, agentName, currentModel) {
+  const catalog = await j('/api/models');
+  const models = (catalog && catalog.items) || [];
+  if (!models.length) {
+    alert('모델 목록을 가져올 수 없어.');
+    return;
+  }
+  const lines = models.map(m => {
+    const checked = m.id === currentModel ? 'checked' : '';
+    return `<label style="display:flex;gap:8px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;align-items:center">
+      <input type="radio" name="model-pick" value="${esc(m.id)}" ${checked}>
+      <div style="flex:1">
+        <div style="font-weight:600">${esc(m.label)}</div>
+        <div style="font-size:11px;color:var(--text-dim)">${esc(m.id)} · ${esc(m.tier || '')}</div>
+      </div>
+    </label>`;
+  }).join('');
+  const content = `
+    <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+      <b>${esc(agentName)}</b> 의 실효 모델을 교체합니다.<br>
+      대화 이력·메모리는 DB 기반이라 자동 보존됩니다. 다음 턴부터 반영 (재시작 불필요).
+    </div>
+    <form id="model-pick-form">${lines}</form>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+      <button class="act-btn" onclick="event.stopPropagation(); resetAgentModel('${esc(agentId)}')">기본값으로 (Override 해제)</button>
+      <button class="act-btn primary" onclick="event.stopPropagation(); applyAgentModel('${esc(agentId)}')">적용</button>
+    </div>
+  `;
+  openModal('◆', `모델 선택 — ${esc(agentName)}`, content);
+}
+
+async function applyAgentModel(agentId) {
+  const form = document.getElementById('model-pick-form');
+  if (!form) return;
+  const picked = form.querySelector('input[name="model-pick"]:checked');
+  if (!picked) { alert('모델 선택 필요'); return; }
+  const r = await postJson(q('/api/action/set_agent_model'), {agent_id: agentId, model: picked.value});
+  if (r && r.ok) {
+    closeModal();
+    toast(`모델 변경 완료: ${picked.value}`, 'ok');
+    // agent 모달 재오픈해서 반영 확인
+    setTimeout(() => openAgent(agentId), 400);
+  } else {
+    toast(`실패: ${r?.error || '알 수 없음'}`, 'err');
+  }
+}
+
+async function resetAgentModel(agentId) {
+  const r = await postJson(q('/api/action/set_agent_model'), {agent_id: agentId, model: ''});
+  if (r && r.ok) {
+    closeModal();
+    toast('Override 해제됨 (type 기본값 사용)', 'ok');
+    setTimeout(() => openAgent(agentId), 400);
+  } else {
+    toast(`실패: ${r?.error || '알 수 없음'}`, 'err');
+  }
+}
+
 async function openAgent(id) {
   const d = await j(q(`/api/agent?id=${encodeURIComponent(id)}`));
   if (!d || d.error) { openModal('⚠', 'Error', `<div class="empty">${esc(d?.error || 'failed to load')}</div>`); return; }
@@ -1864,7 +1922,11 @@ async function openAgent(id) {
     statusHtml = `<span style="color:var(--text-dim)">○ ${esc(d.status)}</span>`;
   }
   profileLines.push(['Status', statusHtml, true]);
-  if (d.model) profileLines.push(['Model', renderModelChips(d), true]);
+  if (d.model) {
+    const modelHtml = renderModelChips(d) +
+      `<button class="act-btn small" style="margin-left:8px" onclick="event.stopPropagation(); openModelPicker('${esc(d.id)}','${esc(d.name)}','${esc(d.model || '')}')">변경</button>`;
+    profileLines.push(['Model', modelHtml, true]);
+  }
   if (d.relationship_to_owner?.type) {
     const r = d.relationship_to_owner;
     profileLines.push(['Owner', `${r.type}${r.pet_name ? ' (' + r.pet_name + ')' : ''}${r.duration ? ' · ' + r.duration : ''}`]);
@@ -4181,6 +4243,37 @@ def api_action_restart_server(body: dict, community_id: str) -> dict:
     return {"ok": r1.get("ok") and r2.get("ok"), "stop": r1, "start": r2}
 
 
+def api_action_set_agent_model(body: dict, community_id: str) -> dict:
+    """에이전트 model override 설정/해제.
+
+    POST body: {"agent_id": "agent-persona-001", "model": "claude-haiku-4-5-20251001"}
+               {"agent_id": "...", "model": ""}  → override 해제 (type 기본값 사용)
+
+    효과: 봇 런타임이 매 호출마다 DB 를 조회하므로 **재시작 불필요 — 다음 턴부터 반영**.
+    컨텍스트 연속성은 대화 이력·메모리가 DB 기반이라 자동 보존.
+    """
+    from src import db as _db
+    aid = (body.get("agent_id") or "").strip()
+    model = (body.get("model") or "").strip()
+    if not aid:
+        return {"ok": False, "error": "agent_id required"}
+    # 화이트리스트 검증 (Phase 1: Claude 모델만; 로컬은 추후)
+    try:
+        from src.core.runtime import AVAILABLE_MODELS
+        valid_ids = {m["id"] for m in AVAILABLE_MODELS}
+    except Exception:
+        valid_ids = set()
+    if model and valid_ids and model not in valid_ids:
+        return {"ok": False, "error": f"unknown model: {model}"}
+    try:
+        ok = _db.set_agent_model_override(aid, model)
+        if not ok:
+            return {"ok": False, "error": "agent not found"}
+        return {"ok": True, "agent_id": aid, "model": model or "(default)"}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
 def _serve_avatar(handler, path):
     """에이전트 아바타 이미지 서빙."""
     cid = _read_community(path)
@@ -4302,6 +4395,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json(api_i18n(self.path))
             elif p == "/api/achievements":
                 self._json(api_achievements(self.path))
+            elif p == "/api/models":
+                # 사용 가능 모델 카탈로그 — 대시보드 dropdown 소스
+                try:
+                    from src.core.runtime import AVAILABLE_MODELS
+                    self._json({"items": AVAILABLE_MODELS})
+                except Exception as e:
+                    self._json({"error": str(e), "items": []})
             elif p == "/api/avatar":
                 _serve_avatar(self, self.path)
             elif p == "/logo":
@@ -4340,6 +4440,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "/api/action/stop_server": api_action_stop_server,
             "/api/action/start_server": api_action_start_server,
             "/api/action/restart_server": api_action_restart_server,
+            "/api/action/set_agent_model": api_action_set_agent_model,
         }
         handler = mutations.get(p)
         if handler is None:

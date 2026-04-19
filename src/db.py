@@ -274,6 +274,61 @@ def register_agent(agent_id: str, agent_type: str, name: str):
     conn.close()
 
 
+def get_agent_model_override(agent_id: str) -> Optional[str]:
+    """에이전트 model override — agent_config.config_json['model'].
+    대시보드에서 모델 전환 시 저장되고, runtime 이 호출 때마다 조회 → 동적 전환."""
+    import json as _json
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT config_json FROM agent_config WHERE agent_id = ?", (agent_id,)
+    ).fetchone()
+    conn.close()
+    if not row or not row["config_json"]:
+        return None
+    try:
+        cfg = _json.loads(row["config_json"])
+        if isinstance(cfg, dict):
+            m = cfg.get("model")
+            return m if m else None
+    except Exception:
+        pass
+    return None
+
+
+def set_agent_model_override(agent_id: str, model: Optional[str]) -> bool:
+    """model override 저장/해제. 빈 값이면 config 에서 'model' 키 제거.
+    existing config_json 의 다른 키는 보존."""
+    import json as _json
+    conn = get_conn()
+    exists = conn.execute("SELECT 1 FROM agents WHERE id = ?", (agent_id,)).fetchone()
+    if not exists:
+        conn.close()
+        return False
+    row = conn.execute(
+        "SELECT config_json FROM agent_config WHERE agent_id = ?", (agent_id,)
+    ).fetchone()
+    cfg: dict = {}
+    if row and row["config_json"]:
+        try:
+            cfg = _json.loads(row["config_json"]) or {}
+            if not isinstance(cfg, dict):
+                cfg = {}
+        except Exception:
+            cfg = {}
+    val = (model or "").strip()
+    if val:
+        cfg["model"] = val
+    else:
+        cfg.pop("model", None)
+    conn.execute(
+        "INSERT OR REPLACE INTO agent_config (agent_id, config_json) VALUES (?, ?)",
+        (agent_id, _json.dumps(cfg, ensure_ascii=False)),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
 def get_agent(agent_id: str) -> Optional[dict]:
     conn = get_conn()
     row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
@@ -984,6 +1039,9 @@ def _migrate_schema():
         "version": "INTEGER DEFAULT 1",
         "created_at": "DATETIME",
         "name_i18n": "TEXT",
+        # 개별 에이전트 모델 override — 값 있으면 AGENT_MODELS[type] 대신 사용.
+        # 대시보드에서 per-agent 모델 전환 (소넷/하이쿠/오퍼스/로컬) 가능하게 함.
+        "model_override": "TEXT",
     }
     for col, col_type in new_cols.items():
         if col not in agent_cols:

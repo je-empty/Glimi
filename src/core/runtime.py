@@ -37,6 +37,26 @@ AGENT_MODELS = {
 AGENT_TASK_MODELS = {
     "creator": "claude-opus-4-6",  # 프로필 JSON 생성은 opus
 }
+
+# 대시보드에서 선택 가능한 모델 카탈로그. Local 모델은 Phase 2 에서 추가.
+AVAILABLE_MODELS = [
+    {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6", "kind": "claude", "tier": "balanced"},
+    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5", "kind": "claude", "tier": "fast"},
+    {"id": "claude-opus-4-7", "label": "Opus 4.7", "kind": "claude", "tier": "premium"},
+]
+
+
+def _resolve_agent_model(agent_id: str, agent_type: str) -> str:
+    """실효 모델 결정 — DB override 우선, 없으면 AGENT_MODELS[type] 기본값.
+    매 호출마다 조회 → 대시보드에서 변경 시 즉시 반영 (재시작 불필요).
+    컨텍스트 연속성: 대화 이력·메모리는 DB 기반이라 모델 바뀌어도 그대로 이어감."""
+    try:
+        override = db.get_agent_model_override(agent_id)
+        if override:
+            return override
+    except Exception:
+        pass
+    return AGENT_MODELS.get(agent_type, "claude-sonnet-4-6")
 OPUS_MODEL = "claude-opus-4-6"
 
 
@@ -258,7 +278,7 @@ class AgentRuntime:
             full_prompt = context + f"{name}: {user_message}"
 
         system_prompt = agent_info["system_prompt"]
-        model = AGENT_MODELS.get(agent_info["profile"].get("type", "persona"), "claude-sonnet-4-6")
+        model = _resolve_agent_model(agent_id, agent_info["profile"].get("type", "persona"))
 
         return full_prompt, system_prompt, model
 
@@ -502,7 +522,7 @@ class AgentRuntime:
             context = self._build_context(agent_info, channel, recent, user_message=user_message)
             full_prompt = context + "(자연스럽게 먼저 말 걸어)"
 
-            model = AGENT_MODELS.get(profile.get("type", "persona"), "claude-sonnet-4-6")
+            model = _resolve_agent_model(agent_id, profile.get("type", "persona"))
 
             result = subprocess.run(
                 [
@@ -1059,7 +1079,7 @@ class AgentRuntime:
             full_prompt = base_context + f"{listener_name}과(와)의 대화를 이어가.{role_guard}"
 
         speaker_type = speaker_info["profile"].get("type", "persona")
-        model = AGENT_MODELS.get(speaker_type, "claude-sonnet-4-6")
+        model = _resolve_agent_model(speaker_id, speaker_type)
 
         log_writer.mark_thinking(speaker_id)
         try:
