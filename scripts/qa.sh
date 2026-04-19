@@ -79,7 +79,8 @@ echo ""
 # 로컬 QA 설정(.env)을 tmux 내부 shell에서 source → QA_USER_* 등 페르소나 주입
 # 파일은 gitignore됨 (개인정보 커밋 방지)
 tmux new-session -d -s "$SESSION" -n runner \
-    "$KEYCHAIN_UNLOCK_PREFIX \
+    "ulimit -n 4096 2>/dev/null; \
+     $KEYCHAIN_UNLOCK_PREFIX \
      set -a; [ -f communities/qa/.env ] && source communities/qa/.env; set +a; \
      PYTHONUNBUFFERED=1 $PYTHON -u -m tests.e2e.runner $* 2>&1 | tee tests/e2e/results/latest.log"
 

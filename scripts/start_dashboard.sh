@@ -20,6 +20,10 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# macOS 기본 ulimit -n 이 256 으로 낮아서 장시간 구동 시 EMFILE (Too many open files).
+# SQLite 커넥션 사이클 + 주기적 API 호출로 일시적 FD 사용량이 증가.
+ulimit -n 4096 2>/dev/null || true
+
 SESSION="Glimi-Dashboard"
 COMMUNITY="${1:-private}"
 # 모든 인터페이스 바인딩 — LAN (다른 PC/폰) + 외부 포트포워딩 둘 다 접근 가능.
@@ -62,8 +66,9 @@ fi
 mkdir -p ~/Library/Logs
 
 # 재시작 루프로 래핑
+# ulimit 을 tmux 명령 안에 두어야 함 — tmux server 가 parent shell ulimit 상속 안 함.
 tmux new-session -d -s "$SESSION" -n runner \
-    "cd $(pwd); while true; do source .venv/bin/activate 2>/dev/null; python scripts/web_dashboard.py '$COMMUNITY' --host '$DASHBOARD_HOST' 2>&1 | tee -a ~/Library/Logs/glimi-dashboard.log; echo '[dashboard] 3초 후 재시작'; sleep 3; done"
+    "ulimit -n 4096 2>/dev/null; cd $(pwd); while true; do source .venv/bin/activate 2>/dev/null; python scripts/web_dashboard.py '$COMMUNITY' --host '$DASHBOARD_HOST' 2>&1 | tee -a ~/Library/Logs/glimi-dashboard.log; echo '[dashboard] 3초 후 재시작'; sleep 3; done"
 
 sleep 3
 if tmux has-session -t "$SESSION" 2>/dev/null; then
