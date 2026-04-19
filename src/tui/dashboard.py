@@ -543,11 +543,11 @@ class DashboardScreen(Screen):
 
     @work(thread=True)
     def _wait_bot_ready(self):
-        """봇 초기화 + 온보딩 대기 → 단계별 문구 변경 → 완료 시 로딩 해제"""
+        """봇 초기화 + 튜토리얼 대기 → 단계별 문구 변경 → 완료 시 로딩 해제"""
         import time as _time
         log_path = os.path.join(log_writer.get_log_dir(), "system.log")
         seen_lines = 0
-        phase = "discord"  # discord → onboarding → done
+        phase = "discord"  # discord → tutorial → done
 
         # 봇이 아직 시작도 안 했으면 잠깐 대기
         _time.sleep(1)
@@ -582,9 +582,9 @@ class DashboardScreen(Screen):
 
             _time.sleep(0.5)
 
-            # 시스템 로그 실시간 표시 (온보딩 단계에서는 숨김)
-            is_onboarding = phase in ("onboarding", "wait_onboarding")
-            if self._init_loading and os.path.exists(log_path) and not is_onboarding:
+            # 시스템 로그 실시간 표시 (튜토리얼 단계에서는 숨김)
+            is_tutorial = phase in ("tutorial", "wait_tutorial")
+            if self._init_loading and os.path.exists(log_path) and not is_tutorial:
                 try:
                     lines = log_writer.tail(log_path, 30)
                     for line in lines[seen_lines:]:
@@ -607,32 +607,32 @@ class DashboardScreen(Screen):
 
             # 단계 전환
             if phase == "discord" and log_writer.is_bot_ready():
-                if log_writer.is_onboarding():
-                    phase = "onboarding"
+                if log_writer.is_tutorial():
+                    phase = "tutorial"
                     self.app.call_from_thread(
                         self._init_loading.update_message,
-                        t("dashboard.onboarding_prep")
+                        t("dashboard.tutorial_prep")
                     )
-                elif log_writer.is_onboarding_done():
+                elif log_writer.is_tutorial_done():
                     break
                 else:
-                    # bot ready + onboarding 안 시작 → 3초 대기 후 탈출
-                    phase = "wait_onboarding"
+                    # bot ready + tutorial 안 시작 → 3초 대기 후 탈출
+                    phase = "wait_tutorial"
                     _wait_count = 0
 
-            elif phase == "wait_onboarding":
+            elif phase == "wait_tutorial":
                 _wait_count += 1
-                if log_writer.is_onboarding():
-                    phase = "onboarding"
+                if log_writer.is_tutorial():
+                    phase = "tutorial"
                     self.app.call_from_thread(
                         self._init_loading.update_message,
-                        t("dashboard.onboarding_prep")
+                        t("dashboard.tutorial_prep")
                     )
-                elif log_writer.is_onboarding_done() or _wait_count > 6:
-                    break  # 3초(6 * 0.5) 대기 후 온보딩 없으면 진행
+                elif log_writer.is_tutorial_done() or _wait_count > 6:
+                    break  # 3초(6 * 0.5) 대기 후 튜토리얼 없으면 진행
 
-            elif phase == "onboarding":
-                if log_writer.is_onboarding_done():
+            elif phase == "tutorial":
+                if log_writer.is_tutorial_done():
                     break
 
             if self._bot_proc is None:

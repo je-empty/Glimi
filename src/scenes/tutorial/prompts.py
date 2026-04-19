@@ -1,14 +1,14 @@
 """
-Onboarding scene — agent_type × phase 조합별 system prompt 조각.
+Tutorial scene — agent_type × phase 조합별 system prompt 조각.
 
 profile._build_mgr_prompt / _build_creator_prompt 에서 이 함수를 호출해
-`onboarding_section`을 얻는다.
+`tutorial_section`을 얻는다.
 """
 from __future__ import annotations
 
 
 def build_mgr_fragment(phase: str, ctx: dict) -> str:
-    """mgr(서유나) 에이전트용 onboarding prompt 조각.
+    """mgr(서유나) 에이전트용 tutorial prompt 조각.
 
     phase:
       greet             — 아직 첫 인사 전
@@ -23,12 +23,12 @@ def build_mgr_fragment(phase: str, ctx: dict) -> str:
 
     if phase in ("channels_setup", "channels_done"):
         return f"""
-=== Onboarding Phase 2 ===
+=== Tutorial Phase 2 ===
 System just created mgr-system-log and mgr-creator channels. Creator (하나) is now introducing themselves to {owner_name} in #mgr-creator, and will design a new friend.
 
 [Do NOT]
 - Do NOT call `finish_profile_collection` again. It was already called — phase is `{phase}`.
-- Do NOT ask for more profile info for onboarding purposes (MBTI/job/hobby 다시 물어보기 금지 — 이미 수집 끝남).
+- Do NOT ask for more profile info for tutorial purposes (MBTI/job/hobby 다시 물어보기 금지 — 이미 수집 끝남).
 - Do NOT repeat redirect 멘트. "가봐" / "#mgr-creator 가서 얘기해" 같은 말은 한 번이면 충분.
   빈이가 또 "알겠어 갈게" 해도 매번 같은 redirect 안내 반복 금지.
 
@@ -44,13 +44,13 @@ System just created mgr-system-log and mgr-creator channels. Creator (하나) is
 1. mgr-dashboard 에 chat: {owner_name} 에게 새 친구 이름 + 특징 + 간단한 채널 구조 안내
    예: "오 하나가 (이름) 만들었네. (한 줄 특징). 이제 dm-(이름) 채널에서 직접 얘기해볼 수 있어."
 
-2. `<tools>` 블록에 finish_onboarding 호출 **필수**:
+2. `<tools>` 블록에 finish_tutorial 호출 **필수**:
    ```
-   <call id="1" name="finish_onboarding">{{}}</call>
+   <call id="1" name="finish_tutorial">{{}}</call>
    ```
 
-**중요**: 이 두 가지를 다른 응답으로 쪼개면 온보딩 영원히 stall. 한 응답에 함께.
-친구 이름 공지만 하고 끝내지 마라 — 반드시 finish_onboarding 호출까지.
+**중요**: 이 두 가지를 다른 응답으로 쪼개면 튜토리얼 영원히 stall. 한 응답에 함께.
+친구 이름 공지만 하고 끝내지 마라 — 반드시 finish_tutorial 호출까지.
 
 [Channel structure (오너에게 설명할 내용 — 짧게)]
 - dm-이름: {owner_name} ↔ 친구 1:1
@@ -61,7 +61,7 @@ System just created mgr-system-log and mgr-creator channels. Creator (하나) is
 
     if phase == "greet":
         return f"""
-=== Onboarding Mode ===
+=== Tutorial Mode ===
 Currently setting up {owner_name}'s profile. No agents yet.
 Chat naturally with {owner_name} and ask (one at a time): MBTI, job, enneagram, hobbies, speech style.
 Fields: mbti, background(=job, NOT occupation), enneagram, personality.hobby, speech.style
@@ -84,7 +84,7 @@ One question at a time. Don't get sidetracked.
 
     # collect_profile (greeted but phase is empty)
     return f"""
-=== Onboarding In Progress ===
+=== Tutorial In Progress ===
 Collecting {owner_name}'s profile via `update_profile` tool.
 Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
 
@@ -102,12 +102,12 @@ Fields: mbti, background(=job), enneagram, personality.hobby, speech.style
 1. Honorific/speech style decided
 2. Asked at least 2 info questions
 3. Basic conversation happened
-→ Onboarding won't end otherwise. Do NOT call it again once it's been called — phase will change to `channels_setup`.
+→ Tutorial won't end otherwise. Do NOT call it again once it's been called — phase will change to `channels_setup`.
 """
 
 
 def build_creator_fragment(phase: str, ctx: dict) -> str:
-    """creator(윤하나) 에이전트용 onboarding prompt 조각.
+    """creator(윤하나) 에이전트용 tutorial prompt 조각.
     현재는 별도 fragment 없음 — creator 프롬프트가 _build_creator_prompt에서
     직접 관리됨. 미래에 phase별 다른 행동이 필요하면 여기에 추가."""
     return ""

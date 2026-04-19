@@ -1,8 +1,8 @@
 """
-OnboardingFlowSupervisor — 온보딩 씬 phase 전이·재촉·자동 완료 담당.
+TutorialFlowSupervisor — 튜토리얼 씬 phase 전이·재촉·자동 완료 담당.
 
 - kind: "scene"
-- id: "onboarding.flow"
+- id: "tutorial.flow"
 - lifetime: scene.is_active()에 따라 pool이 자동 생성·제거.
 """
 from __future__ import annotations
@@ -54,11 +54,11 @@ def _judge_conversation(channel: str, question: str) -> str:
         return "error"
 
 
-class OnboardingFlowSupervisor(Supervisor):
-    """온보딩 씬 전 과정 감시 + 재촉 + 자동 완료. scene-scoped singleton."""
+class TutorialFlowSupervisor(Supervisor):
+    """튜토리얼 씬 전 과정 감시 + 재촉 + 자동 완료. scene-scoped singleton."""
 
-    id = "onboarding.flow"
-    display_name = "온보딩 · 흐름"
+    id = "tutorial.flow"
+    display_name = "튜토리얼 · 흐름"
     kind = "scene"
     interval = 30.0
 
@@ -135,10 +135,10 @@ class OnboardingFlowSupervisor(Supervisor):
         # 둘 다 만족해야 진짜로 Phase 2 트리거 (조기 점프 방지).
         if collected >= 2 and user_turns >= 6:
             log_writer.system(
-                f"[sup:onboarding] 프로필수집 조건 충족 "
+                f"[sup:tutorial] 프로필수집 조건 충족 "
                 f"(fields={collected}/3, user_turns={user_turns}) — 강제 트리거"
             )
-            from src.scenes.onboarding.handlers import trigger_phase2
+            from src.scenes.tutorial.handlers import trigger_phase2
             await trigger_phase2(guild)
             return
 
@@ -162,14 +162,14 @@ class OnboardingFlowSupervisor(Supervisor):
         ))
 
         if judgment in ("미응답", "no_response", "unanswered"):
-            log_writer.system(f"[sup:onboarding] 판단: {judgment} — 유나 응답 유도")
+            log_writer.system(f"[sup:tutorial] 판단: {judgment} — 유나 응답 유도")
             self._mark_nudged()
             await self._nudge_yuna(guild,
                 "유저가 방금 뭔가 말했는데 아직 반응을 안 한 것 같다. "
                 "자연스럽게 대답해주자."
             )
         elif judgment in ("잡담", "chatting"):
-            log_writer.system(f"[sup:onboarding] 판단: {judgment} — 유나 복귀 유도")
+            log_writer.system(f"[sup:tutorial] 판단: {judgment} — 유나 복귀 유도")
             self._mark_nudged()
             await self._nudge_yuna(guild,
                 "잡담이 길어진 것 같다. "
@@ -207,12 +207,12 @@ class OnboardingFlowSupervisor(Supervisor):
         )
 
         if has_report:
-            # 자동 finish_onboarding — LLM이 프롬프트 받고도 finish 호출 안 하는 케이스가
+            # 자동 finish_tutorial — LLM이 프롬프트 받고도 finish 호출 안 하는 케이스가
             # 거의 매 사이클 반복. 조건 만족하면 supervisor가 직접 종료시킴.
             #
             # 조건: hana 보고 채널 + persona 생성됨 + dm-{persona} 채널 존재
             # (= hana가 create_agent_profile + request_dm 까지 완료한 신호).
-            # idle 조건 제거 — 오너가 계속 대화해도 온보딩은 완료 가능해야 함.
+            # idle 조건 제거 — 오너가 계속 대화해도 튜토리얼은 완료 가능해야 함.
             from src.bot import MGR_ID
             persona_names = [r[0] for r in db.get_conn().execute(
                 "SELECT name FROM agents WHERE type='persona'"
@@ -226,11 +226,11 @@ class OnboardingFlowSupervisor(Supervisor):
                 yuna_mentioned_friend = any(n in mgr_text for n in persona_names)
                 if persona_dm_ready and yuna_mentioned_friend:
                     log_writer.system(
-                        "[sup:onboarding] 자동 finish_onboarding — "
+                        "[sup:tutorial] 자동 finish_tutorial — "
                         f"{', '.join(persona_names)} 생성 + DM 채널 완성 확인"
                     )
-                    from src.scenes.onboarding.handlers import complete_onboarding
-                    await complete_onboarding()
+                    from src.scenes.tutorial.handlers import complete_tutorial
+                    await complete_tutorial()
                     return
                 # DM 까진 왔는데 유나가 mgr-dashboard에 아직 안내를 안 했다 → nudge
                 if persona_dm_ready and not yuna_mentioned_friend and self._can_nudge():
@@ -238,7 +238,7 @@ class OnboardingFlowSupervisor(Supervisor):
                     await self._nudge_yuna(guild,
                         f"하나가 {', '.join(persona_names)} 프로필 만들었고 "
                         f"dm 채널까지 열렸어. mgr-dashboard 에서 오너한테 한 줄 소개하고 "
-                        f"바로 finish_onboarding 호출해서 온보딩 마무리하자."
+                        f"바로 finish_tutorial 호출해서 튜토리얼 마무리하자."
                     )
                     return
 
@@ -247,7 +247,7 @@ class OnboardingFlowSupervisor(Supervisor):
                 self._mark_nudged()
                 await self._nudge_yuna(guild,
                     "하나한테 보고 받은 걸 전달해야겠다. "
-                    "채널 구조도 설명해주고 온보딩 마무리하자."
+                    "채널 구조도 설명해주고 튜토리얼 마무리하자."
                 )
             return
 
@@ -280,7 +280,7 @@ class OnboardingFlowSupervisor(Supervisor):
         ))
 
         if judgment in ("충분", "enough", "done") and self._can_nudge():
-            log_writer.system(f"[sup:onboarding] 하나 판단: {judgment} — 재촉")
+            log_writer.system(f"[sup:tutorial] 하나 판단: {judgment} — 재촉")
             self._mark_nudged()
             await self._nudge_agent(guild, CREATOR_ID, CREATOR_CHANNEL,
                 "아이스브레이킹이 충분했으면 에이전트 생성 얘기 꺼내고 유나한테 보고. "
@@ -300,7 +300,7 @@ class OnboardingFlowSupervisor(Supervisor):
             return 999
 
     async def _nudge_yuna(self, guild, system_msg: str):
-        log_writer.system(f"[sup:onboarding] 유나 재촉")
+        log_writer.system(f"[sup:tutorial] 유나 재촉")
         mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
         if not mgr_ch:
             return

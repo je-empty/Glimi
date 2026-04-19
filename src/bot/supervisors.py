@@ -5,7 +5,7 @@ Project Glimi — Supervisor 모듈 shim
 - src/supervisors/base.py       : Supervisor 베이스 + SupervisorPool (singleton `pool`)
 - src/supervisors/chat.py       : ChatSupervisor (channel, 1:1 per running)
 - src/supervisors/orchestrator.py : OrchestratorSupervisor (system, singleton)
-- src/scenes/<scene_id>/supervisor.py : scene-scoped (예: OnboardingFlowSupervisor)
+- src/scenes/<scene_id>/supervisor.py : scene-scoped (예: TutorialFlowSupervisor)
 
 이 파일은 기존 호출부(start_supervisors, notify_idle, _run_checks)가
 계속 동작하도록 얇은 wrapper만 제공.
@@ -15,7 +15,7 @@ import asyncio
 from src import db, log_writer
 from src.bot import MGR_CHANNEL, CREATOR_CHANNEL
 # 씬 모듈 import해서 레지스트리에 등록되게 함 (부작용)
-from src.scenes.onboarding import scene as _onboarding_scene  # noqa: F401
+from src.scenes.tutorial import scene as _tutorial_scene  # noqa: F401
 
 
 

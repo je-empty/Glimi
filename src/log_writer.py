@@ -158,44 +158,44 @@ def is_bot_ready() -> bool:
     return os.path.exists(os.path.join(_get_log_dir(), ".bot-ready"))
 
 
-def mark_onboarding():
+def mark_tutorial():
     try:
-        open(os.path.join(_get_log_dir(), ".onboarding"), "w").close()
+        open(os.path.join(_get_log_dir(), ".tutorial"), "w").close()
     except OSError:
         pass
 
 
-def mark_onboarding_done():
+def mark_tutorial_done():
     """유나 첫 인사 완료 시점 마킹 (대시보드용 '봇 준비 완료' 시그널).
-    실제 온보딩 전체 완료는 mark_onboarding_complete()를 사용."""
+    실제 튜토리얼 전체 완료는 mark_tutorial_complete()를 사용."""
     try:
-        os.remove(os.path.join(_get_log_dir(), ".onboarding"))
+        os.remove(os.path.join(_get_log_dir(), ".tutorial"))
     except FileNotFoundError:
         pass
     try:
-        open(os.path.join(_get_log_dir(), ".onboarding-done"), "w").close()
+        open(os.path.join(_get_log_dir(), ".tutorial-done"), "w").close()
     except OSError:
         pass
 
 
-def mark_onboarding_complete():
-    """온보딩 전체 완료 마킹 — phase == 'complete'로 전환될 때만 호출."""
+def mark_tutorial_complete():
+    """튜토리얼 전체 완료 마킹 — phase == 'complete'로 전환될 때만 호출."""
     try:
-        open(os.path.join(_get_log_dir(), ".onboarding-complete"), "w").close()
+        open(os.path.join(_get_log_dir(), ".tutorial-complete"), "w").close()
     except OSError:
         pass
 
 
-def is_onboarding() -> bool:
-    return os.path.exists(os.path.join(_get_log_dir(), ".onboarding"))
+def is_tutorial() -> bool:
+    return os.path.exists(os.path.join(_get_log_dir(), ".tutorial"))
 
 
-def is_onboarding_done() -> bool:
-    return os.path.exists(os.path.join(_get_log_dir(), ".onboarding-done"))
+def is_tutorial_done() -> bool:
+    return os.path.exists(os.path.join(_get_log_dir(), ".tutorial-done"))
 
 
-def is_onboarding_complete() -> bool:
-    return os.path.exists(os.path.join(_get_log_dir(), ".onboarding-complete"))
+def is_tutorial_complete() -> bool:
+    return os.path.exists(os.path.join(_get_log_dir(), ".tutorial-complete"))
 
 
 def mark_dev_active():
@@ -236,7 +236,7 @@ def clear_flags():
     if not os.path.exists(log_dir):
         return
     for name in os.listdir(log_dir):
-        if name.startswith(".thinking-") or name.startswith(".speaking-") or name in (".dev-active", ".bot-ready", ".onboarding", ".onboarding-done", ".onboarding-complete"):
+        if name.startswith(".thinking-") or name.startswith(".speaking-") or name in (".dev-active", ".bot-ready", ".tutorial", ".tutorial-done", ".tutorial-complete"):
             try:
                 os.remove(os.path.join(log_dir, name))
             except FileNotFoundError:

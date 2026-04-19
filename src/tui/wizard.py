@@ -2050,7 +2050,7 @@ class DevServerScreen(Screen):
 
     def on_mount(self):
         menu = self.query_one("#dev-srv-menu", OptionList)
-        menu.add_option(Option(f"  {t('wizard.dev_reset_onboarding')}", id="reset_onboarding"))
+        menu.add_option(Option(f"  {t('wizard.dev_reset_tutorial')}", id="reset_tutorial"))
         menu.add_option(Option(f"  {t('wizard.dev_reset_all')}", id="reset_db"))
         menu.add_option(Option(f"  {t('wizard.dev_reset_clean')}", id="reset_clean"))
         menu.add_option(None)
@@ -2061,8 +2061,8 @@ class DevServerScreen(Screen):
     @on(OptionList.OptionSelected, "#dev-srv-menu")
     def on_select(self, event: OptionList.OptionSelected):
         oid = event.option_id
-        if oid == "reset_onboarding":
-            self._reset_onboarding()
+        if oid == "reset_tutorial":
+            self._reset_tutorial()
         elif oid == "reset_db":
             self._reset_db()
         elif oid == "reset_clean":
@@ -2072,17 +2072,17 @@ class DevServerScreen(Screen):
         elif oid == "delete":
             self._delete_server()
 
-    def _reset_onboarding(self):
-        """온보딩 플래그만 초기화 — 대화 기록/채널은 유지"""
+    def _reset_tutorial(self):
+        """튜토리얼 플래그만 초기화 — 대화 기록/채널은 유지"""
         old = os.environ.get("GLIMI_COMMUNITY", "")
         os.environ["GLIMI_COMMUNITY"] = self._cid
         community.set_community(self._cid)
 
         from src import db as _db
         _db.init_db()
-        # 온보딩 관련 메타 삭제
+        # 튜토리얼 관련 메타 삭제
         conn = _db.get_conn()
-        for key in ("yuna_greeted", "onboarding_phase"):
+        for key in ("yuna_greeted", "tutorial_phase"):
             conn.execute("DELETE FROM meta WHERE key=?", (key,))
         # channels 상태 리셋
         conn.execute("UPDATE channels SET status='idle', current_turn=0")
@@ -2094,10 +2094,10 @@ class DevServerScreen(Screen):
             community.set_community(old)
 
         self.query_one("#dev-srv-result", Static).update(
-            "[green]Onboarding reset complete[/green]\n"
-            "yuna_greeted, onboarding_phase 삭제됨\n"
+            "[green]Tutorial reset complete[/green]\n"
+            "yuna_greeted, tutorial_phase 삭제됨\n"
             "Conversation history/channels preserved\n"
-            "[dim]Onboarding will restart on dashboard entry[/dim]"
+            "[dim]Tutorial will restart on dashboard entry[/dim]"
         )
 
     def _reset_db(self):

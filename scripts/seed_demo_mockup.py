@@ -88,7 +88,7 @@ def insert_agent(aid, atype, name, age, gender, mbti, background,
 insert_agent("agent-mgr-001", "mgr", "유나", 24, "여자", "ENFJ",
              "Glimi 커뮤니티 매니저. 친근하고 정리 잘하는 누나 같은 존재.")
 insert_agent("agent-creator-001", "creator", "하나", 22, "여자", "INFP",
-             "신규 멤버 온보딩 + 페르소나 디자이너. 다정하고 창의적.")
+             "신규 멤버 튜토리얼 + 페르소나 디자이너. 다정하고 창의적.")
 
 
 # ── 3. 페르소나 7명 (친구/동료/파트너 — 가족 X) ─────────

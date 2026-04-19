@@ -49,7 +49,7 @@
 - **진화하는 관계** — 친밀도, 다이내믹, 별명이 대화를 통해 변화. 각 변곡점을 `relationship_history` 에 로그
 - **실시간 감정** — 각 에이전트는 감정 상태(1–10 강도)를 가지며 답변에 반영
 - **Spy 모드** — `internal-*` 채널에서 에이전트들의 비밀 대화를 읽기 전용으로 관전
-- **가이드 온보딩** — 매니저가 프로필 수집 → 채널 세팅 → Creator 인사로 안내
+- **가이드 튜토리얼** — 매니저가 프로필 수집 → 채널 세팅 → Creator 인사로 안내
 - **Supervisor 시스템** — 보이지 않는 백그라운드 감시자가 진행 상태를 모니터링하고 정체 시 nudge
 - **자가 치유** — 매니저가 런타임 에러 감지 → Dev Runner(Opus)가 코드 수정 → 자동 재시작
 - **런타임 에이전트 생성** — Creator가 전체 프로필 + 아바타 프롬프트를 설계
@@ -138,12 +138,12 @@ flowchart TB
 
     subgraph Visible["오너에게 보임"]
         direction LR
-        Manager["🔵 매니저 (유나)\n──────\n커뮤니티 관리\n온보딩\nDM 승인\n감정 관리\n에러 → dev 봇"]
+        Manager["🔵 매니저 (유나)\n──────\n커뮤니티 관리\n튜토리얼\nDM 승인\n감정 관리\n에러 → dev 봇"]
         Creator["🟡 Creator (하나)\n──────\n프로필 설계\n아바타 프롬프트\n에이전트 생성"]
     end
 
     subgraph Invisible["보이지 않음 (백그라운드)"]
-        Supervisor["👁 Supervisors\n──────\n온보딩 감시\n채널대화 감시\nHaiku 판단"]
+        Supervisor["👁 Supervisors\n──────\n튜토리얼 감시\n채널대화 감시\nHaiku 판단"]
         DevRunner["🔧 Dev Runner\n──────\nOpus\n에러 시 자동 수정"]
     end
 
@@ -166,7 +166,7 @@ flowchart TB
     Manager -->|"전체 감시"| A & B & C
     Creator -.->|"생성"| Personas
 
-    Supervisor -.->|"온보딩 nudge"| Manager & Creator
+    Supervisor -.->|"튜토리얼 nudge"| Manager & Creator
     Supervisor -.->|"채널대화 nudge"| A & B & C
     DevRunner -.->|"소스 패치"| Manager
 
@@ -189,10 +189,10 @@ flowchart TB
 
 | 역할 | 에이전트 | 모델 | 오너 인지 | 기능 |
 |------|---------|------|----------|------|
-| Manager | 유나 | Sonnet | ✅ | 커뮤니티 관리, 온보딩, DM 승인, 에러 → dev 봇 |
+| Manager | 유나 | Sonnet | ✅ | 커뮤니티 관리, 튜토리얼, DM 승인, 에러 → dev 봇 |
 | Creator | 하나 | Sonnet | ✅ | 페르소나 설계, 아바타 프롬프트 |
 | Persona | 사용자 정의 | Sonnet | ✅ | 대화 상대, 자율 사회적 액터 |
-| Supervisors | onboarding / channel-conv | Haiku | ❌ | 백그라운드 감시 (nudge가 본인 생각처럼 주입됨) |
+| Supervisors | tutorial / channel-conv | Haiku | ❌ | 백그라운드 감시 (nudge가 본인 생각처럼 주입됨) |
 | Dev Runner | — | Opus | ❌ | 감지된 에러에 대한 소스 코드 자동 수정 |
 
 > 페르소나 에이전트들은 매니저, Creator, Supervisors의 존재를 모릅니다. Supervisor의 nudge는 본인의 내면 생각처럼 느껴집니다.
@@ -282,7 +282,7 @@ graph LR
 
 ## 디스코드 채널 구조
 
-채널은 카테고리로 자동 정리되며 온보딩 진행에 따라 점진적으로 생성됩니다:
+채널은 카테고리로 자동 정리되며 튜토리얼 진행에 따라 점진적으로 생성됩니다:
 
 | 카테고리 | 채널 | 생성 시점 | 용도 |
 |----------|------|----------|------|
@@ -302,10 +302,10 @@ graph LR
 
 | Supervisor | 감시 대상 | 활성화 | 비활성화 |
 |------------|----------|--------|---------|
-| `OnboardingSupervisor` | 프로필 수집 → 채널 세팅 → Creator 아이스브레이킹 | 첫 부팅 | `onboarding_phase=complete` |
+| `TutorialSupervisor` | 프로필 수집 → 채널 세팅 → Creator 아이스브레이킹 | 첫 부팅 | `tutorial_phase=complete` |
 | `ChannelConversationSupervisor` | `internal-*` 채널 중 `status=running` | 어떤 internal 채널이든 running | 모든 internal 채널 idle |
 
-같은 채널에 대해 둘 다 동작 가능할 때는 `OnboardingSupervisor`가 `ChannelConversationSupervisor`에 위임. 대상 에이전트가 `thinking` / `speaking` 상태면 둘 다 스킵.
+같은 채널에 대해 둘 다 동작 가능할 때는 `TutorialSupervisor`가 `ChannelConversationSupervisor`에 위임. 대상 에이전트가 `thinking` / `speaking` 상태면 둘 다 스킵.
 
 ---
 
@@ -349,7 +349,7 @@ cd Glimi
 Wizard가 안내합니다:
 1. **커뮤니티 생성** — ID 설정, 프로필 입력 (이름·별명·생년·성별)
 2. **디스코드 봇 세팅** — 토큰 검증 + 권한 체크
-3. **서버 시작** → 매니저와 자동 온보딩
+3. **서버 시작** → 매니저와 자동 튜토리얼
 4. **웹 대시보드 열기** → `http://localhost:8765`
 
 ```bash

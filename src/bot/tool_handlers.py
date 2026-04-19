@@ -169,14 +169,14 @@ async def _h_scene_advance(args: dict, ctx: ToolContext):
         return {"ok": False, "reason": f"unknown scene: {scene_id}"}
 
     # 씬별 특수 핸들러 위임 (채널 생성 등 side-effect 포함 단계)
-    if scene_id == "onboarding":
+    if scene_id == "tutorial":
         if phase == "channels_setup":
-            from src.scenes.onboarding.handlers import trigger_phase2
+            from src.scenes.tutorial.handlers import trigger_phase2
             await trigger_phase2(ctx.guild)
             return {"scene_id": scene_id, "phase": "channels_setup"}
         if phase == "complete":
-            from src.scenes.onboarding.handlers import complete_onboarding
-            await complete_onboarding()
+            from src.scenes.tutorial.handlers import complete_tutorial
+            await complete_tutorial()
             return {"scene_id": scene_id, "phase": "complete"}
 
     # 기본: 씬 phase만 업데이트 (side-effect 없는 단순 전환)
@@ -190,14 +190,14 @@ async def _h_scene_advance(args: dict, ctx: ToolContext):
 async def _h_finish_profile_collection(args: dict, ctx: ToolContext):
     # alias → scene_advance 위임
     return await _h_scene_advance(
-        {"scene_id": "onboarding", "phase": "channels_setup"}, ctx
+        {"scene_id": "tutorial", "phase": "channels_setup"}, ctx
     )
 
 
-async def _h_finish_onboarding(args: dict, ctx: ToolContext):
+async def _h_finish_tutorial(args: dict, ctx: ToolContext):
     # alias → scene_advance 위임
     return await _h_scene_advance(
-        {"scene_id": "onboarding", "phase": "complete"}, ctx
+        {"scene_id": "tutorial", "phase": "complete"}, ctx
     )
 
 
@@ -306,7 +306,7 @@ async def _h_request_dm(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _forward_action_to_yuna
     target = args["target"]
     # 중복 호출 차단 — 같은 caller가 같은 target에게 한 번 보낸 보고를 또 보내는 경우
-    # (하나가 온보딩 리포트를 중복 전송해서 내부-dm이 어지러워지는 사례 방지).
+    # (하나가 튜토리얼 리포트를 중복 전송해서 내부-dm이 어지러워지는 사례 방지).
     # 메시지 내용이 완전 다르면 허용 (caller가 의도적으로 후속 메시지 보낼 수 있음)이라
     # 직전 1건만 비교. meta key에 저장하고 helper에서 체크.
     dedup_key = f"request_dm:last:{ctx.caller_agent_id}:{target}"
@@ -413,7 +413,7 @@ _MAP = {
     "request_dev_task": _h_request_dev_task,
     "scene_advance": _h_scene_advance,
     "finish_profile_collection": _h_finish_profile_collection,
-    "finish_onboarding": _h_finish_onboarding,
+    "finish_tutorial": _h_finish_tutorial,
     "create_agent_profile": _h_create_agent_profile,
     "delete_agent_profile": _h_delete_agent_profile,
     "set_profile_image": _h_set_profile_image,

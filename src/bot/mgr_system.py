@@ -709,13 +709,13 @@ async def execute_yuna_command(
 
     # ── 프로필 수집 완료 → Phase 2 (채널 생성 + 하나 소개) ──
     elif cmd == "프로필수집완료":
-        from src.scenes.onboarding.handlers import trigger_phase2
+        from src.scenes.tutorial.handlers import trigger_phase2
         await trigger_phase2(guild)
 
-    # ── 온보딩 최종 완료 (유나가 채널 설명 + 하나 보고 수신까지 마침) ──
-    elif cmd == "온보딩완료":
-        from src.scenes.onboarding.handlers import complete_onboarding
-        await complete_onboarding()
+    # ── 튜토리얼 최종 완료 (유나가 채널 설명 + 하나 보고 수신까지 마침) ──
+    elif cmd == "튜토리얼완료":
+        from src.scenes.tutorial.handlers import complete_tutorial
+        await complete_tutorial()
 
     else:
         log.warning(f"[유나CMD] 알 수 없는 명령: {cmd}")

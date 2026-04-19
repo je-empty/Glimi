@@ -1,5 +1,5 @@
 """
-Scene base classes — self-contained 이벤트/미션/온보딩 모듈 단위.
+Scene base classes — self-contained 이벤트/미션/튜토리얼 모듈 단위.
 
 각 Scene은:
 - id (unique), description, phase 목록 정의
@@ -11,8 +11,8 @@ Scene base classes — self-contained 이벤트/미션/온보딩 모듈 단위.
 DB에 phase 저장: key = `scene:{id}:phase`, value = phase_id 또는 "complete".
 빈 값은 아직 시작 전 (greet 대기 상태).
 
-기존 hardcoded 코드(온보딩)를 점진적으로 여기로 옮긴다. 레거시 meta 키
-(`onboarding_phase` 등)는 호환성 유지 위해 scene 내부에서 둘 다 읽고/쓴다.
+기존 hardcoded 코드(튜토리얼)를 점진적으로 여기로 옮긴다. 레거시 meta 키
+(`tutorial_phase` 등)는 호환성 유지 위해 scene 내부에서 둘 다 읽고/쓴다.
 """
 from __future__ import annotations
 
@@ -140,7 +140,7 @@ def active_scenes() -> list[Scene]:
 def build_prompt_fragments(agent_type: str, ctx: dict) -> str:
     """활성 모든 씬의 프롬프트 조각을 합쳐서 반환.
     시작 전 씬도 (current_phase == "") 조각을 내보낼 수 있도록 한다
-    (예: 온보딩 최초 진입 시 yuna_greeted 체크용)."""
+    (예: 튜토리얼 최초 진입 시 yuna_greeted 체크용)."""
     parts = []
     for scene in _REGISTRY.values():
         phase = scene.current_phase()

@@ -76,7 +76,7 @@
     "dev_select_server": "서버 선택",
     "dev_no_servers": "서버 없음",
     "dev_tools": "도구",
-    "dev_reset_onboarding": "온보딩 초기화",
+    "dev_reset_tutorial": "튜토리얼 초기화",
     "dev_reset_all": "DB 전체 초기화",
     "dev_reset_clean": "DB + 디코 채널 전부 삭제",
     "dev_quick_dashboard": "바로 대시보드",
@@ -92,7 +92,7 @@
     "delete_confirm_id": "삭제 확인: '{id}' 입력",
     "delete_cancelled": "취소됨",
     "delete_reset_done": "DB 전체 초기화 + 디코 채널 삭제 예약 완료",
-    "delete_reset_next": "다음 대시보드 진입 시 디스코드 채널이 삭제되고 온보딩이 재시작됩니다",
+    "delete_reset_next": "다음 대시보드 진입 시 디스코드 채널이 삭제되고 튜토리얼이 재시작됩니다",
 
     "placeholder_server_id": "my-server",
     "placeholder_description": "나만의 커뮤니티",
@@ -110,7 +110,7 @@
     "loading_avatars": "아바타 불러오는 중...",
     "loading_agents": "친구들 깨우는 중...",
     "loading_almost": "거의 다 됐어요!",
-    "onboarding_prep": "온보딩 준비 중... (디스코드를 건드리지 마세요)",
+    "tutorial_prep": "튜토리얼 준비 중... (디스코드를 건드리지 마세요)",
     "bot_start": "봇 시작",
     "bot_ready": "봇 준비 완료",
     "bot_already_running": "봇 이미 실행 중 — 연결",
@@ -143,15 +143,15 @@
     "error_timeout": "봇 초기화 타임아웃"
   },
 
-  "onboarding": {
+  "tutorial": {
     "profile_check": "오너 프로필 체크 시작",
-    "prep": "온보딩 준비",
+    "prep": "튜토리얼 준비",
     "yuna_loading": "유나 불러오는 중...",
     "yuna_arrived": "유나가 도착했어요!",
-    "complete": "온보딩 완료",
+    "complete": "튜토리얼 완료",
     "phase2_start": "채널 생성 + 크리에이터 소개",
     "phase2_done": "시스템 채널 + 크리에이터 인사 완료 (최종 완료 대기)",
-    "channel_created": "온보딩 채널 생성: {name}",
+    "channel_created": "튜토리얼 채널 생성: {name}",
     "supervisor_active": "감시자 활성화: {names}"
   }
 }

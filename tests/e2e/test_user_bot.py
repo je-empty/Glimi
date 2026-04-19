@@ -132,7 +132,7 @@ class TestUserBot(discord.Client):
                 print(f"[TestUser] Glimi 봇 발견: {member.name} (#{member.id})")
                 break
 
-        # mgr-dashboard 채널 찾기 (온보딩 시작 채널)
+        # mgr-dashboard 채널 찾기 (튜토리얼 시작 채널)
         await self._wait_for_channel(guild)
 
     async def _wait_for_channel(self, guild: discord.Guild):
@@ -309,9 +309,9 @@ class TestUserBot(discord.Client):
                 delay = random.uniform(*REPLY_DELAY)
                 await asyncio.sleep(delay)
 
-                # 온보딩 완료 체크
-                if self._check_onboarding_done():
-                    print("[TestUser] 온보딩 완료 감지 — 테스트 종료")
+                # 튜토리얼 완료 체크
+                if self._check_tutorial_done():
+                    print("[TestUser] 튜토리얼 완료 감지 — 테스트 종료")
                     self._done = True
                     break
 
@@ -501,17 +501,17 @@ class TestUserBot(discord.Client):
             })
             print(f"[#{ch_name}] [{_QA_NAME}] {text}")
 
-    def _check_onboarding_done(self) -> bool:
-        """온보딩 완료 여부 체크.
+    def _check_tutorial_done(self) -> bool:
+        """튜토리얼 완료 여부 체크.
 
-        우선순위: (1) `.onboarding-complete` flag 파일 (finish_onboarding 실행의 직접
+        우선순위: (1) `.tutorial-complete` flag 파일 (finish_tutorial 실행의 직접
         신호) → 가장 확실. (2) turn 25+ 이후에만 매우 한정된 종결 문구 휴리스틱.
 
         주의: 과거 휴리스틱이 "프로필 생성 완료" 같은 tool 성공 메시지의 '완료'까지
-        매칭해서 yuna가 finish_onboarding 호출 전 조기종료. 이제 turn 기준 상향 +
+        매칭해서 yuna가 finish_tutorial 호출 전 조기종료. 이제 turn 기준 상향 +
         종결 문구만 인정."""
-        # (1) 서버 쪽 flag 파일 — finish_onboarding 도구가 set
-        flag_path = os.path.join(self._qa_log_dir(), ".onboarding-complete")
+        # (1) 서버 쪽 flag 파일 — finish_tutorial 도구가 set
+        flag_path = os.path.join(self._qa_log_dir(), ".tutorial-complete")
         if os.path.exists(flag_path):
             return True
 
@@ -524,9 +524,9 @@ class TestUserBot(discord.Client):
         if not has_all:
             return False
         recent_texts = [m["text"] for m in self.conversation[-5:] if m["role"] == "agent"]
-        # tool 성공 '완료' 오탐 방지 — 온보딩 끝날 때만 나올 문구만
+        # tool 성공 '완료' 오탐 방지 — 튜토리얼 끝날 때만 나올 문구만
         ending_phrases = (
-            "온보딩 끝", "온보딩 완료", "온보딩 마무리",
+            "튜토리얼 끝", "튜토리얼 완료", "튜토리얼 마무리",
             "다 끝났어", "준비 다 됐어", "이제 준비 끝", "이제 마음껏",
         )
         for text in recent_texts:

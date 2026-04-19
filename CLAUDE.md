@@ -206,7 +206,7 @@ recency_decay = exp(-days/30)
 - ✅ private DB 마이그레이션 확인: 스키마 최신 + 레거시 241 메모리 중 110건 related_entities 백필 (regex 이름 매칭)
 
 **알려진 이슈 (다음 세션 후보):**
-- test_user_bot 이 mgr-creator 채널로 이동을 감지 못하고 온보딩 완료로 잘못 판단하고 조기 종료. 포맷팅 시스템으로 일부 개선되겠지만 봇 자체 로직 수정 필요.
+- test_user_bot 이 mgr-creator 채널로 이동을 감지 못하고 튜토리얼 완료로 잘못 판단하고 조기 종료. 포맷팅 시스템으로 일부 개선되겠지만 봇 자체 로직 수정 필요.
 - L3 rollup 은 L2 5개 쌓여야 발동 (월 단위 스케일). 단기 테스트에서는 관찰 어려움.
 - 격리 감사에서 발견된 중간 심각도 이슈들 (봇 프로세스 한정, 대시보드엔 영향 없음): `AgentRuntime._pending_tool_results` / `_extract_queue` / supervisor tick 등 global state 가 community 전환 시 이론적으로 leak 가능. 봇은 1 community/process 전제라 실제 영향 없지만 장기적으로 community_id 를 context 로 전파 필요.
 
@@ -323,7 +323,7 @@ recency_decay = exp(-days/30)
 - display (KR): `범주 · 서브` 스타일
 
 예시:
-- `OnboardingFlowSupervisor` id=`onboarding.flow` label=`온보딩 · 흐름` kind=scene
+- `TutorialFlowSupervisor` id=`tutorial.flow` label=`튜토리얼 · 흐름` kind=scene
 - `ChatSupervisor` id=`chat:internal-dm-유나-하나` label=`대화 · 유나·하나` kind=channel
 - `OrchestratorSupervisor` id=`orchestrator` label=`오케스트레이터` kind=system
 
@@ -344,7 +344,7 @@ recency_decay = exp(-days/30)
 **tick 격리**: 각 supervisor `check()` 호출을 try/except 로 감싸서 1개 실패가 전체 영향 X.
 
 ### 현재 구현된 Supervisors
-- **OnboardingFlowSupervisor** (scene) — `src/scenes/onboarding/supervisor.py`: 온보딩 phase 전이·재촉·auto-finish
+- **TutorialFlowSupervisor** (scene) — `src/scenes/tutorial/supervisor.py`: 튜토리얼 phase 전이·재촉·auto-finish
 - **ChatSupervisor** (channel, per-instance) — `src/supervisors/chat.py`: running internal-* 채널별 stall 감지·재촉
 - **OrchestratorSupervisor** (system) — `src/supervisors/orchestrator.py`: 에이전트 페어 스캔 → 자연스러운 대화 시작 결정 (유나가 직접 하지 않음)
 
@@ -416,9 +416,9 @@ tests/e2e/
 
 ### 동작
 1. `qa` 커뮤니티 자동 생성/초기화 (DB + 유저 프로필 + `.clean-channels` 플래그)
-2. Glimi 봇 시작 → 기존 디스코드 채널 삭제 → 온보딩 시작
+2. Glimi 봇 시작 → 기존 디스코드 채널 삭제 → 튜토리얼 시작
 3. 테스트 유저 봇 시작 → 신규 유저처럼 자연스럽게 대화
-4. 온보딩 완료 or 타임아웃
+4. 튜토리얼 완료 or 타임아웃
 5. 로그 수집 → 자동 판정 (프로필 중복, race condition, 태그 노출 등)
 
 ### 필요 설정

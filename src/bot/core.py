@@ -237,12 +237,12 @@ async def _get_plain_webhook(channel: discord.TextChannel) -> discord.Webhook:
 
 # 디코 #mgr-system-log 채널에 노출할 로그 키워드.
 # - 에이전트가 호출하는 모든 도구 ([Tool] / [프로필] / [관계])
-# - 온보딩/Phase 전환
+# - 튜토리얼/Phase 전환
 # - 에러·경고
 _DISCORD_LOG_KEYWORDS = {
     "❌", "⚠",
     "[Tool]", "[프로필]", "[관계]", "[채널]", "[감정]",
-    "온보딩", "Phase", "sup:onboarding",
+    "튜토리얼", "Phase", "sup:tutorial",
     "Channel created", "Channel deleted",
     "ACTION", "CMD:",  # 레거시 호환
     "개발요청", "에러", "크래시", "비정상",
@@ -364,7 +364,7 @@ def _infer_channel_participants(ch_name: str, _db) -> list[str]:
 async def ensure_channels(guild: discord.Guild):
     """채널 초기화. 첫 실행이면 mgr-dashboard만, 이후에는 전체 채널 보장."""
     from src import db as _db
-    onboarding_done = _db.get_meta("onboarding_phase") == "complete"
+    tutorial_done = _db.get_meta("tutorial_phase") == "complete"
     greeted = _db.get_meta("yuna_greeted")
 
     # DB에 대화 기록이 있으면 절대 첫 실행이 아님
@@ -372,7 +372,7 @@ async def ensure_channels(guild: discord.Guild):
     has_messages = conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone() is not None
     conn.close()
 
-    first_run = not greeted and not has_messages and not onboarding_done
+    first_run = not greeted and not has_messages and not tutorial_done
 
     # 기존 glimi 채널 존재 여부 체크
     existing_glimi = []
@@ -396,12 +396,12 @@ async def ensure_channels(guild: discord.Guild):
         #   .keep-channels 있음 → 유지 (레거시/운영 재시작 대비, 명시적 opt-in)
         #   그 외 (clean 플래그 있든 없든) → 전부 삭제 (default-to-clean)
         # 이전 auto-skip 분기는 제거 — DB 리셋 후 봇 재시작할 때 불필요하게
-        # yuna_greeted=1 / phase=complete 자동 세팅해서 온보딩을 영구 스킵시키는
+        # yuna_greeted=1 / phase=complete 자동 세팅해서 튜토리얼을 영구 스킵시키는
         # 치명적 버그였음.
         if existing_glimi and should_keep:
-            log_writer.system(f"[초기화] .keep-channels 있음 → 기존 {len(existing_glimi)}개 채널 유지 + 온보딩 스킵")
+            log_writer.system(f"[초기화] .keep-channels 있음 → 기존 {len(existing_glimi)}개 채널 유지 + 튜토리얼 스킵")
             _db.set_meta("yuna_greeted", "1")
-            _db.set_meta("onboarding_phase", "complete")
+            _db.set_meta("tutorial_phase", "complete")
             for ch in existing_glimi:
                 if not _db.get_channel_participants(ch.name):
                     parts = _infer_channel_participants(ch.name, _db)
@@ -530,8 +530,8 @@ async def ensure_channels(guild: discord.Guild):
     log_writer.system("Categories sorted")
 
 
-async def create_onboarding_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
-    """온보딩 중 단계별 채널 생성 + 참가자 등록.
+async def create_tutorial_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
+    """튜토리얼 중 단계별 채널 생성 + 참가자 등록.
     성공/실패/existing 세 경로 모두 system.log에 남겨 추적 가능하게.
     discord.py gateway 캐시 지연 방지로 fetch_channels로 실제 guild 상태 조회."""
     # 캐시 대신 REST API로 실제 상태 확인
@@ -547,22 +547,22 @@ async def create_onboarding_channel(guild: discord.Guild, ch_name: str, particip
     if existing:
         if participants:
             db.set_channel_participants(ch_name, participants)
-        log_writer.system(f"온보딩 Channel (existing): {ch_name} (id={existing.id})")
+        log_writer.system(f"튜토리얼 Channel (existing): {ch_name} (id={existing.id})")
         return existing
     cat_name = _get_category_for_channel(ch_name)
     try:
         category = await _ensure_category(guild, cat_name)
     except Exception as e:
-        log_writer.system(f"❌ 온보딩 Category fail: {cat_name} ({type(e).__name__}: {e})")
+        log_writer.system(f"❌ 튜토리얼 Category fail: {cat_name} ({type(e).__name__}: {e})")
         raise
     try:
         ch = await guild.create_text_channel(ch_name, category=category)
     except Exception as e:
-        log_writer.system(f"❌ 온보딩 Channel create fail: {ch_name} ({type(e).__name__}: {e})")
+        log_writer.system(f"❌ 튜토리얼 Channel create fail: {ch_name} ({type(e).__name__}: {e})")
         raise
     if participants:
         db.set_channel_participants(ch_name, participants)
-    log_writer.system(f"온보딩 Channel created: {ch_name} (id={ch.id}, category={cat_name})")
+    log_writer.system(f"튜토리얼 Channel created: {ch_name} (id={ch.id}, category={cat_name})")
     return ch
 
 

@@ -1,10 +1,10 @@
 """
-Glimi E2E Test Runner — 온보딩 자동 테스트
+Glimi E2E Test Runner — 튜토리얼 자동 테스트
 
 1. qa 서버 자동 생성/초기화 (커뮤니티 + DB + 유저 프로필)
 2. Glimi 봇 시작
 3. 테스트 유저 봇 시작
-4. 온보딩 완료 또는 타임아웃 대기
+4. 튜토리얼 완료 또는 타임아웃 대기
 5. 로그 수집 + 결과 판정
 
 사용법:
@@ -37,8 +37,8 @@ TEST_USER = {
     "age": int(os.environ.get("QA_USER_AGE", "26")),
     "birth_year": int(os.environ.get("QA_USER_BIRTH_YEAR", "2001")),
     "gender": os.environ.get("QA_USER_GENDER", "남"),
-    "mbti": "",  # 온보딩에서 수집되도록 비움
-    "background": "",  # 온보딩에서 수집되도록 비움
+    "mbti": "",  # 튜토리얼에서 수집되도록 비움
+    "background": "",  # 튜토리얼에서 수집되도록 비움
 }
 
 
@@ -346,10 +346,10 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
         if err_text.strip():
             result["issues"].append(f"런타임 에러 발생: {err_text[:200]}")
 
-    # 온보딩 완료 여부 — `.onboarding-complete` (phase==complete 시점에만 set)
-    # cf. `.onboarding-done`은 "유나 첫 인사 완료" 용도 (대시보드 호환)
-    onboarding_complete = (QA_DIR / "logs" / ".onboarding-complete").exists()
-    result["onboarding_done"] = onboarding_complete
+    # 튜토리얼 완료 여부 — `.tutorial-complete` (phase==complete 시점에만 set)
+    # cf. `.tutorial-done`은 "유나 첫 인사 완료" 용도 (대시보드 호환)
+    tutorial_complete = (QA_DIR / "logs" / ".tutorial-complete").exists()
+    result["tutorial_done"] = tutorial_complete
 
     # 로그 기반 판정
     if log_text:
@@ -431,14 +431,14 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
             result["issues"].append(f"유나 '{kw}' 질문 {n}회 (중복 질문 의심)")
 
     # Phase 2 도달했는데 create_agent_profile 한 번도 안 됨
-    if onboarding_complete is False and "mgr-creator" in msgs_by_ch and not metrics.get("agents_created"):
+    if tutorial_complete is False and "mgr-creator" in msgs_by_ch and not metrics.get("agents_created"):
         result["issues"].append("Phase 2 진입 후 create_agent_profile 호출 0회")
 
     # ── 최종 판정 ─────────────────────────────────────────
     fatal_only = any("FATAL" in i or "레거시" in i for i in result["issues"])
-    if not onboarding_complete:
+    if not tutorial_complete:
         result["status"] = "FAIL"
-        result["issues"].append("온보딩 미완료")
+        result["issues"].append("튜토리얼 미완료")
     elif fatal_only:
         result["status"] = "FAIL"
     elif result["issues"]:
@@ -501,7 +501,7 @@ def run_single_test(bot_token: str, test_token: str, run_id: str) -> dict:
         _kill_proc(glimi_proc)
         return {"run_id": run_id, "status": "ERROR", "issues": ["Glimi 봇 준비 타임아웃"]}
 
-    # 4. 유나 인사 대기 (온보딩 시작 시 유나가 먼저 메시지 보냄)
+    # 4. 유나 인사 대기 (튜토리얼 시작 시 유나가 먼저 메시지 보냄)
     time.sleep(15)
 
     # 5. 테스트 유저 봇 시작
@@ -539,7 +539,7 @@ def run_single_test(bot_token: str, test_token: str, run_id: str) -> dict:
         for issue in result["issues"]:
             print(f"  - {issue}")
     print(f"  소요시간: {elapsed:.0f}초")
-    print(f"  온보딩: {'완료' if result.get('onboarding_done') else '미완료'}")
+    print(f"  튜토리얼: {'완료' if result.get('tutorial_done') else '미완료'}")
 
     return result
 
