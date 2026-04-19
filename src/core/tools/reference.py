@@ -126,6 +126,8 @@ def build_brief_list(agent_type: str) -> str:
         "## Available Tools (brief — call `get_tool_details(name)` for optional params·examples)",
         "Usage: `<tools><call id=\"1\" name=\"X\">{json args}</call></tools>` at end of response.",
         "Required params shown in signature. `…+N` = N more optional params.",
+        "**JSON 안에 코멘트/설명 섞지 마라.** `<call>` body 는 순수 JSON object 만 — `{\"k\":\"v\"}` 그게 끝.",
+        "긴 설명은 `<call>` 밖 chat 텍스트에, JSON 내부에 넣지 말 것.",
     ]
     by_cat: dict[str, list[ToolSpec]] = {}
     for t in tools:

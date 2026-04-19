@@ -82,9 +82,27 @@ def parse_response(text: str) -> ParsedResponse:
             errors.append(f"<call> without name attribute: {body[:60]}")
             continue
 
-        # JSON 파싱 — 빈 body는 {} 로 처리 (params=[] 도구용)
+        # JSON 파싱 — 빈 body는 {} 로 처리 (params=[] 도구용).
+        # 방어: LLM 이 JSON 뒤에 코멘트/설명을 붙이는 실수 ("Extra data" 에러) 흔함.
+        # JSONDecoder.raw_decode 로 유효한 JSON 부분만 추출 후 나머지 drop.
         try:
-            args = json.loads(body) if body else {}
+            if body:
+                try:
+                    args = json.loads(body)
+                except json.JSONDecodeError as _e:
+                    # 앞에서부터 유효한 JSON object 만 잘라서 재시도
+                    try:
+                        decoder = json.JSONDecoder()
+                        args, _end = decoder.raw_decode(body.lstrip())
+                        leftover = body.lstrip()[_end:].strip()
+                        if leftover:
+                            errors.append(
+                                f"call '{name}' trailing text after JSON discarded: {leftover[:40]}"
+                            )
+                    except Exception:
+                        raise _e
+            else:
+                args = {}
             if not isinstance(args, dict):
                 errors.append(f"call '{name}' args not object: {body[:60]}")
                 continue
