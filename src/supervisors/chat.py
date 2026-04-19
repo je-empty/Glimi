@@ -19,7 +19,7 @@ from src.supervisors.base import Supervisor
 
 
 def _judge_channel_conv(channel: str, question: str) -> str:
-    """짧은 맥락 판단. haiku 호출."""
+    """짧은 맥락 판단 — LLM 추상화 경유 (Haiku)."""
     recent = db.get_recent_messages(channel, limit=10)
     if not recent:
         return "no_data"
@@ -29,17 +29,19 @@ def _judge_channel_conv(channel: str, question: str) -> str:
         speaker = "유저" if r["speaker"] == get_user_id() else r["speaker"]
         lines.append(f"{speaker}: {r['message']}")
     conversation = "\n".join(lines[-8:])
-    prompt = f"대화 기록:\n{conversation}\n\n질문: {question}\n한 단어로만 답해."
-    try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--output-format", "text",
-             "--model", "claude-haiku-4-5-20251001"],
-            capture_output=True, text=True, timeout=15,
-            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-        )
-        return result.stdout.strip().lower() if result.returncode == 0 else "error"
-    except Exception:
+    from src.llm import generate
+    resp = generate(
+        system="너는 대화 분석가. 질문에 한 단어로만 답해.",
+        user=f"대화 기록:\n{conversation}\n\n질문: {question}",
+        model="claude-haiku-4-5-20251001",
+        agent_type="supervisor_judge",
+        timeout=15,
+        max_tokens=32,
+        cacheable_system=True,
+    )
+    if resp.error:
         return "error"
+    return (resp.text or "").strip().lower() or "error"
 
 
 class ChatSupervisor(Supervisor):
