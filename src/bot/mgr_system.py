@@ -1098,6 +1098,38 @@ async def yuna_edit_profile(report_channel, args_str):
         log_writer.system(f"[프로필] 수정 실패: {field_path} 경로 오류 ({str(e)[:40]})")
 
 
+def _values_equivalent(a: str, b: str) -> bool:
+    """두 값이 의미상 같은지. 중복 프로필 수정 필터.
+
+    룰:
+      1) exact match → True
+      2) 한쪽이 비어있으면 False (새 값은 저장)
+      3) 토큰 기반: subset(신값 ⊆ 현재값) → True — 정보 손실 방지
+      4) jaccard ≥ 0.6 → True — 단순 재서술
+
+    예: 현재 '게임, 영화 감상' + 신 '게임, 영화' → subset True → skip
+        현재 '게임, 영화' + 신 '게임, 영화 감상' → jaccard 2/3=0.67 ≥ 0.6 True → skip
+        (둘 다 skip — hobby 같은 필드의 미세 재조정 루프 방지)"""
+    if a is None or b is None:
+        return a == b
+    a_str, b_str = str(a).strip(), str(b).strip()
+    if a_str == b_str:
+        return True
+    if not a_str or not b_str:
+        return False
+    import re as _re2
+    atoks = {t for t in _re2.split(r'[,\s/·]+', a_str.lower()) if t}
+    btoks = {t for t in _re2.split(r'[,\s/·]+', b_str.lower()) if t}
+    if not atoks or not btoks:
+        return False
+    # 신값(b)이 현재값(a)의 subset → 정보 줄어듬 스킵
+    if btoks.issubset(atoks):
+        return True
+    inter = atoks & btoks
+    union = atoks | btoks
+    return (len(inter) / len(union)) >= 0.6
+
+
 async def _edit_user_profile(report_channel, user: dict, field_path: str, value: str):
     """유저(오너) 프로필 필드 수정"""
     import json as _json
@@ -1115,9 +1147,9 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
         conn = db.get_conn()
         cur = conn.execute(f"SELECT {field_path} FROM users WHERE id = ?", (user_id,)).fetchone()
         current = cur[0] if cur else None
-        if current == value:
+        if _values_equivalent(current, value):
             conn.close()
-            log_writer.system(f"[프로필] {user_name}.{field_path} 이미 '{value}' — 저장 스킵")
+            log_writer.system(f"[프로필] {user_name}.{field_path} 이미 '{current}' ≈ '{value}' — 저장 스킵")
             return
         conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (value, user_id))
         conn.commit()
@@ -1139,9 +1171,9 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
                     blob = _json.loads(raw[0]) if isinstance(raw[0], str) else raw[0]
                 except Exception:
                     blob = {}
-            if blob.get(parts[1]) == value:
+            if _values_equivalent(blob.get(parts[1]), value):
                 conn.close()
-                log_writer.system(f"[프로필] {user_name}.{field_path} 이미 '{value}' — 저장 스킵")
+                log_writer.system(f"[프로필] {user_name}.{field_path} 이미 '{blob.get(parts[1])}' ≈ '{value}' — 저장 스킵")
                 return
             blob[parts[1]] = value
             conn.execute(f"UPDATE users SET {parts[0]} = ? WHERE id = ?", (_json.dumps(blob, ensure_ascii=False), user_id))
