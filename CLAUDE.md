@@ -167,13 +167,46 @@ recency_decay = exp(-days/30)
 - 메시지 저장 즉시 반환 → 백그라운드 Haiku worker가 큐 처리
 - 단일 패스 JSON 추출: summary + mem_type + related_entities + importance + facts + relationship_delta
 
-**진행 상황 (2026-04-19 세션):**
+**진행 상황 (2026-04-20 세션 완료):**
 - ✅ DB 스키마 + 마이그레이션 + 헬퍼 (commit `6c7aa1e`)
-- ⏳ 진행 중: memory.py 재작성 (추출 파이프라인 + async worker + retrieval + injection)
-- ⏳ 대기: recall_memory + pin_memory 도구 / TUI + web dashboard 메모리 뷰 / QA 실행
-- **임시 제약**: 남자 샘플 프로필 이미지 없어서 QA bot (심재빈) 은 여자 에이전트만 생성하도록 제한 필요
+- ✅ memory.py 5 레이어 재작성 완료:
+  - async Haiku worker (`enqueue_extraction`, 데몬 스레드, 큐 기반)
+  - 단일 패스 JSON 추출 (`_single_pass_extract`) — summary + type + entities + importance + facts[] + relationships[]
+  - L2/L3 rollup (`_try_l2_rollup`, `_try_l3_rollup`) — 5→1 압축
+  - budget 기반 주입 (`get_memory_context`) — Pinned / Relationship / Episodic(current) / Episodic(retrieved) / Facts
+  - retrieval scoring (entity overlap + importance + recency + relational)
+  - disclosure 마커 (internal-* → owner 채널 주입 시 🔒사적 부착)
+  - `recall_memory` + `pin_memory` API
+- ✅ recall_memory / pin_memory 도구 (registry + handler + applies_to 설정)
+- ✅ 대시보드 메모리 뷰 확장:
+  - `monitor.get_agent_detail()` → `pinned_memories`, `agent_facts`, `relationship_history` 필드 추가
+  - 웹 대시보드: 📌 Pinned 블록 + Facts (subject별 그룹) + Relationship History + CSS (importance/entities/pinned 뱃지)
+  - TUI 대시보드: `📌 Pinned` / `📚 Facts · subject` / `📈 Relationship Deltas` 패널 + 레벨별 색상 코딩
+- ✅ QA bot 여자 에이전트만 요청 제약 (`tests/e2e/test_user_bot.py` persona에 Character creation constraint 섹션)
+- ✅ QA 스모크 통과 (29 메시지 → L1 4건 + facts 5건 자동 추출 확인)
+- ✅ DB 인덱스 버그 fix — `idx_mem_importance` / `idx_mem_pinned` 를 `init_db().executescript`에서 제거하고 `_migrate_schema()` 로만 생성 (신규 컬럼 의존성)
 
-**레거시 드롭**: private 서버 DB는 사용자가 수동 마이그레이션. 코드는 새 구조로 클린 리셋.
+**알려진 이슈 (다음 세션 후보):**
+- test_user_bot 이 mgr-creator 채널로 이동을 감지 못하고 온보딩 완료로 잘못 판단하고 조기 종료. 포맷팅 시스템으로 일부 개선되겠지만 봇 자체 로직 수정 필요.
+- L3 rollup 은 L2 5개 쌓여야 발동 (월 단위 스케일). 단기 테스트에서는 관찰 어려움.
+
+**레거시 드롭**: private 서버 DB는 다음 봇 시작 시 `init_db()` 의 `_migrate_schema()` 가 자동 마이그레이션. 레거시 코드는 유지 안 함.
+
+## 메시지 포맷팅 시스템 (`src/bot/formatting.py`)
+
+에이전트 응답의 평문 토큰을 디스코드 네이티브 렌더링으로 변환. **저장/로그/DB 는 원문 유지**, 디스코드 전송 직전에만 (`_raw_send_as_agent`) 변환.
+
+**현재 규칙**:
+- `#channel-name` → `<#channel_id>` (클릭 가능한 채널 mention). guild 에서 채널명을 못 찾으면 `**#name**` 볼드 폴백.
+- `@owner-name` → `<@owner_id>` (오너만. 에이전트는 웹훅이라 mention 불가 — 이름만 그대로).
+
+**규칙 확장**: `src/bot/formatting.py` 의 `_RULES` 테이블에 `(pattern, resolver)` 추가. resolver 는 match 객체 + ctx dict 받아서 치환 문자열 (또는 None = 변환 안 함) 반환.
+
+**한글 채널명 지원**: regex 는 Python 3 기본 유니코드 `\w` 사용 — `#dm-서유나`, `#internal-dm-서유나-한유진` 전부 매칭.
+
+**에이전트 가이드**: `profile.py._build_common_prompt` 에 "Style Guide — 대화 전반" 섹션으로 주입됨. 에이전트는 `#channel` 그대로 쓰도록 학습 (백틱·괄호·볼드 감싸지 말라고 명시).
+
+**테스트**: `python -m tests.unit.test_formatting` (11 케이스).
 
 
 ### core/conversation.py
