@@ -303,6 +303,57 @@ recency_decay = exp(-days/30)
 - mgr-creator: 에이전트 생성 채널 (`glimi-mgr`)
 - mgr-system-log: 시스템 로그/도구 호출 기록 (`glimi-mgr`)
 
+## Scene 시스템 (`src/scenes/`)
+
+**Scene = 세계관 상의 에피소드**. 시작·진행·종료 조건이 명확한 스토리 단위. 강제성 있음 — 진행 중엔 supervisor 가 흐름 감시·복원.
+
+**현재 구현된 씬**:
+- `tutorial` (`src/scenes/tutorial/`) — 오너 첫 방문 1회성. phase: `greet` → `collect_profile` → `channels_setup` → `channels_done` → `complete`. 완료 시 `meta.tutorial_phase = "complete"` + `logs/.tutorial-complete` 플래그.
+
+**앞으로 추가 예정**:
+- `birthday` — 멤버 생일 이벤트
+- `conflict` — 멤버간 갈등 중재
+- `party` — 단톡방 모임
+- `outing` — 외출/여행 시나리오
+- 공통 특성: 여러 에이전트 참여 + 시간축 + 엔딩 조건 + 메모리에 에피소드로 누적
+
+**구조**:
+- `Scene` base (`src/scenes/base.py`) — phase 관리, set_phase 훅, pool 트리거
+- 씬별 `scene.py` (싱글톤) + `supervisor.py` (scene-scoped) + `handlers.py` (phase 전환 액션) + `prompts.py` (phase×agent_type 프롬프트 조각)
+
+## Achievement 시스템 (`src/achievements/`)
+
+**Achievement = 유저 UX 진척도 플래그**. Scene 과 **완전히 별개 레이어**:
+| | Scene | Achievement |
+|--|--|--|
+| 성격 | 세계관 에피소드 | 유저 가이드 |
+| 강제성 | supervisor 가 유도 (필수) | 선택적 — 미해결 OK |
+| 저장 | meta / flag / memory | `achievements` 테이블 |
+| 끝 | phase=complete | state=done |
+
+**테이블** (`db.py`): `achievements(user_id, key, state, progress_data, unlocked_at, completed_at)`. state: `locked` / `unlocked` / `done`.
+
+**이벤트 훅**: `db.add_message_hook(engine._on_message)` — 메시지 로깅 시마다 `engine.recompute_all()` 호출로 자동 갱신 (엔진 내부에서 done 은 스킵해서 비용 낮음).
+
+**기본 과제 7개** (`src/achievements/definitions.py`): 튜토리얼 수료 / 첫 대화 / 세 명의 친구 / 단톡방 체험 / 훔쳐보는 재미 / 자율 사교 / 지속되는 관계.
+
+**대시보드**: `/api/achievements` 엔드포인트 + "Achievements" 탭 (진척도 바 + 카드 그리드).
+
+## 유나 지식 베이스 (`docs/yuna_knowledge.md`)
+
+유나(mgr)가 **"씬이 뭐야?" / "도전과제 어떻게 달성?" / "너 어디까지 볼 수 있어?"** 같은 사용자 질문에 답할 수 있도록 하는 공개 FAQ. `_build_mgr_prompt` 가 이 파일을 system prompt 에 자동 로드 (`_load_yuna_knowledge`, mtime 캐시).
+
+**파일 구조**:
+- 공개 가능 섹션 — 프로젝트 개요, 씬, 도전과제, 유나 권한, 친구 만드는 법 등
+- 금지 섹션 — 내부 기술(메모리 레이어, LLM 모델명, DB 구조), supervisor 존재, QA/개발 내부 흐름
+- 회피 예시 — 금지 주제 물어봤을 때 자연스러운 deflection 문구
+
+**갱신 원칙** (중요):
+- 씬·도전과제 추가/변경 시 **반드시 이 파일 갱신**
+- 새 내부 기술 도입 시 "금지" 섹션에 추가
+- 유나 도구 변경 시 "내 권한" 업데이트
+- 소스코드 직접 참조는 금지 — 추상화 유지 + 노출 방지
+
 ## Supervisor 시스템 (`src/supervisors/`, `src/scenes/*/supervisor.py`)
 
 ### 정의
