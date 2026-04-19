@@ -4,7 +4,6 @@ Project Glimi — Bot 공유 상태 및 인스턴스
 모든 bot 하위 모듈이 공유하는 상태, 상수, bot 인스턴스.
 """
 import os
-import re
 import logging
 import asyncio
 
@@ -48,13 +47,6 @@ MGR_CHANNEL = "mgr-dashboard"
 MGR_SYSTEM_LOG = "mgr-system-log"
 CREATOR_CHANNEL = "mgr-creator"
 MGR_ID = "agent-mgr-001"
-
-# ── CMD/QUERY 패턴 ──────────────────────────────────
-
-CMD_PATTERN = re.compile(r'\[CMD:((?:[^\[\]]|\[[^\]]*\])*)\]')
-QUERY_PATTERN = re.compile(r'\[QUERY:((?:[^\[\]]|\[[^\]]*\])*)\]')
-ACTION_PATTERN = re.compile(r'\[ACTION:((?:[^\[\]]|\[[^\]]*\])*)\]')
-MAX_QUERY_DEPTH = 3
 
 # ── 채널 매핑 (공유 상태) ──────────────────────────────
 

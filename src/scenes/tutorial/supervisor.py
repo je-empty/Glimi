@@ -331,17 +331,9 @@ class TutorialFlowSupervisor(Supervisor):
                     agent_id, ch_name, instruction
                 )
             )
-            cmd_pat = _re.compile(r'\[CMD:((?:[^\[\]]|\[[^\]]*\])*)\]')
-            query_pat = _re.compile(r'\[QUERY:((?:[^\[\]]|\[[^\]]*\])*)\]')
             all_tag_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
             sent_count = 0
             for resp in responses:
-                if agent_id == MGR_ID and (cmd_pat.search(resp) or query_pat.search(resp)):
-                    from src.bot.mgr_system import parse_and_execute_actions
-                    guild_ref = channel.guild
-                    if guild_ref:
-                        await parse_and_execute_actions(channel, [resp], guild_ref)
-
                 clean = all_tag_pat.sub('', resp).strip()
                 if clean and clean != "..." and clean != "(무시)":
                     for part in _split_for_chat(clean):

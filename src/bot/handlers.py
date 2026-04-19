@@ -11,7 +11,6 @@ from src.core.profile import load_profile, get_user_name, get_user_id
 from src.core.runtime import runtime
 from src.bot import (
     bot, log,
-    CMD_PATTERN, QUERY_PATTERN, ACTION_PATTERN,
     CHANNEL_AGENT_MAP, GROUP_PARTICIPANTS,
     _processed_messages, _get_channel_lock, _get_agent_lock,
 )
@@ -189,36 +188,6 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
     # "~에게 DM 보냈어"
     text = re.sub(r'.{1,10}에게\s*(DM|메시지|dm)\s*(보냈|전달|전송).{0,10}', '', text).strip()
     return text
-
-
-def _is_tag_complete(text):
-    """CMD/QUERY/ACTION 태그가 완전히 닫혀있는지 — JSON 깊이 체크"""
-    for prefix in ("[CMD:", "[QUERY:", "[ACTION:"):
-        idx = text.find(prefix)
-        if idx < 0:
-            continue
-        depth = 0
-        started_json = False
-        for i in range(idx + len(prefix), len(text)):
-            c = text[i]
-            if c == '{':
-                depth += 1
-                started_json = True
-            elif c == '}':
-                depth -= 1
-            elif c == ']' and depth <= 0:
-                return True
-        if started_json and depth > 0:
-            return False
-        if ']' in text[idx:]:
-            return True
-    return False
-
-
-def _has_open_tag(text):
-    if "[CMD:" not in text and "[QUERY:" not in text and "[ACTION:" not in text:
-        return False
-    return not _is_tag_complete(text)
 
 
 async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):

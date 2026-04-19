@@ -826,11 +826,7 @@ class AgentRuntime:
 
                 # [MSG] 태그 처리
                 line = line.replace("[MSG]", "")
-                # 레거시 [CMD:..]/[QUERY:..]/[ACTION:..] 태그 strip — defense in depth
-                # (모델이 옛 형식 잔재로 출력해도 디스코드/DB로 안 새도록)
                 import re as _re
-                _legacy_tag = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
-                line = _legacy_tag.sub('', line)
                 # 프롬프트 example placeholder ({name}, {topic}, {field} 등)가 그대로
                 # 채팅에 새는 거 차단. 영어 lowercase 식별자만 한정해서 한국어/이모지는 안 건드림.
                 line = _re.sub(r'\{[a-z_][a-z0-9_]*\}', '', line)

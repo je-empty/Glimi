@@ -19,7 +19,6 @@ from src.core.conversation import (
 )
 from src.bot import (
     bot, log, MGR_CHANNEL, MGR_ID,
-    CMD_PATTERN, QUERY_PATTERN, ACTION_PATTERN,
     CHANNEL_AGENT_MAP, AGENT_CHANNEL_MAP, GROUP_PARTICIPANTS,
     _webhook_cache,
 )
@@ -1060,16 +1059,7 @@ async def cmd_force(ctx, *, message: str):
             await asyncio.sleep(0.8)
             async with ctx.typing():
                 await asyncio.sleep(0.5)
-        # ACTION 태그 처리
-        if ACTION_PATTERN.search(msg):
-            actions = ACTION_PATTERN.findall(msg)
-            clean_text = ACTION_PATTERN.sub('', msg).strip()
-            if clean_text:
-                await send_as_agent(ctx.channel, agent_id, clean_text)
-            for action in actions:
-                await _forward_action_to_yuna(agent_id, action.strip(), ctx.guild)
-        else:
-            await send_as_agent(ctx.channel, agent_id, msg)
+        await send_as_agent(ctx.channel, agent_id, msg)
 
 
 # ── 유나 제안 시스템 ─────────────────────────────────

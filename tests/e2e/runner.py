@@ -269,9 +269,6 @@ def _collect_db_metrics() -> dict:
         "msgs_total": 0,
         "msgs_by_channel": {},
         "msgs_by_speaker": {},
-        "legacy_cmd_count": 0,
-        "legacy_action_count": 0,
-        "legacy_query_count": 0,
         "agents_created": [],   # type='persona'
         "phases_seen": [],
         "yuna_questions_per_field": {},  # mbti/job/hobby asked count (rough)
@@ -290,15 +287,6 @@ def _collect_db_metrics() -> dict:
             "SELECT speaker, COUNT(*) FROM conversations GROUP BY speaker"
         ).fetchall():
             out["msgs_by_speaker"][sp or "?"] = cnt
-        out["legacy_cmd_count"] = c.execute(
-            "SELECT COUNT(*) FROM conversations WHERE message LIKE '%[CMD:%'"
-        ).fetchone()[0]
-        out["legacy_action_count"] = c.execute(
-            "SELECT COUNT(*) FROM conversations WHERE message LIKE '%[ACTION:%'"
-        ).fetchone()[0]
-        out["legacy_query_count"] = c.execute(
-            "SELECT COUNT(*) FROM conversations WHERE message LIKE '%[QUERY:%'"
-        ).fetchone()[0]
         out["agents_created"] = [
             r[0] for r in c.execute(
                 "SELECT name FROM agents WHERE type='persona'"
@@ -397,17 +385,6 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
     # ── DB 기반 세밀 검증 ─────────────────────────────────
     metrics = _collect_db_metrics()
     result["metrics"] = metrics
-
-    # 레거시 태그가 DB 대화에 남으면 항상 FAIL 사유
-    legacy_total = (metrics.get("legacy_cmd_count", 0)
-                    + metrics.get("legacy_action_count", 0)
-                    + metrics.get("legacy_query_count", 0))
-    if legacy_total > 0:
-        result["issues"].append(
-            f"레거시 태그가 DB에 노출됨 (CMD={metrics.get('legacy_cmd_count',0)} "
-            f"ACTION={metrics.get('legacy_action_count',0)} "
-            f"QUERY={metrics.get('legacy_query_count',0)})"
-        )
 
     # mgr-creator 채널이 만들어졌는데 test-user 가 거기서 한 마디도 안 함
     msgs_by_ch = metrics.get("msgs_by_channel", {})

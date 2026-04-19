@@ -26,7 +26,6 @@ from src.core.conversation import (
 )
 from src.bot import (
     bot, log, MGR_CHANNEL, MGR_SYSTEM_LOG, CREATOR_CHANNEL, MGR_ID,
-    CMD_PATTERN, QUERY_PATTERN, ACTION_PATTERN, MAX_QUERY_DEPTH,
     CHANNEL_AGENT_MAP, AGENT_CHANNEL_MAP, GROUP_PARTICIPANTS,
     _webhook_cache, DEV_DIR, DEV_PENDING, DEV_RESULT,
     DAILY_SOCIAL_LIMIT,
@@ -455,71 +454,6 @@ async def execute_yuna_query(query_str: str, guild: discord.Guild = None) -> str
         return f"[조회결과] 알 수 없는 쿼리: {cmd}"
 
 
-async def _yuna_followup_with_data(
-    report_channel: discord.TextChannel,
-    data_text: str,
-    guild: discord.Guild,
-    depth: int = 0,
-) -> list[str]:
-    """조회 결과를 유나에게 전달 → 분석 응답 받기 (재귀 가능)"""
-    if depth >= MAX_QUERY_DEPTH:
-        log.warning("[유나QUERY] 최대 깊이 도달")
-        return []
-
-    followup_prompt = (
-        f"아래는 네가 요청한 조회 결과야. 분석해서 보고해.\n\n"
-        f"{data_text}\n\n"
-        f"추가 조회가 필요하면 [QUERY:...] 태그를 다시 써도 돼."
-    )
-
-    loop = asyncio.get_event_loop()
-    responses = await loop.run_in_executor(
-        None,
-        lambda: runtime.generate_response(
-            MGR_ID, "mgr-dashboard", followup_prompt, log_user_message=False
-        )
-    )
-
-    # 재귀: 후속 응답에도 CMD/QUERY가 있을 수 있음
-    cleaned = []
-    more_queries = []
-
-    for resp in responses:
-        # CMD 실행
-        cmds = CMD_PATTERN.findall(resp)
-        for cmd_str in cmds:
-            try:
-                await execute_yuna_command(report_channel, cmd_str.strip(), guild)
-            except Exception as e:
-                log.error(f"[유나CMD] followup 실행 실패: {cmd_str} → {e}")
-
-        # QUERY 수집
-        queries = QUERY_PATTERN.findall(resp)
-        for q_str in queries:
-            result = await execute_yuna_query(q_str.strip(), guild)
-            if result:
-                more_queries.append(result)
-
-        # 태그 제거된 텍스트
-        clean_text = CMD_PATTERN.sub('', resp)
-        clean_text = QUERY_PATTERN.sub('', clean_text).strip()
-        if clean_text:
-            cleaned.append(clean_text)
-
-    # 추가 쿼리가 있으면 재귀
-    if more_queries:
-        deeper = await _yuna_followup_with_data(
-            report_channel, "\n\n".join(more_queries), guild, depth + 1
-        )
-        if deeper:
-            cleaned.extend(deeper)
-
-    return cleaned
-
-
-# ── CMD 실행 ─────────────────────────────────────────────
-
-
 def _resolve_agent_name(name_or_alias: str) -> str:
     """이름, 별칭, ID → 실제 에이전트 이름으로 변환"""
     if not name_or_alias:
@@ -557,168 +491,6 @@ def _resolve_agent_name(name_or_alias: str) -> str:
             return a["name"]
 
     return name_or_alias  # 해석 불가 → 원본 반환
-
-
-def _parse_cmd_json(cmd_str: str) -> tuple[str, str]:
-    """CMD 문자열 파싱 — JSON 또는 레거시 스페이스 구분 모두 지원.
-    Returns: (cmd, args_str) — 기존 execute_yuna_command 호환 형식
-    """
-    cmd_str = cmd_str.strip()
-
-    # JSON 형식 시도
-    if cmd_str.startswith("{"):
-        try:
-            import json as _json
-            data = _json.loads(cmd_str)
-            cmd = data.get("cmd", data.get("type", ""))
-
-            # 이름 필드들 해석
-            for key in ("name", "target", "이름"):
-                if key in data and isinstance(data[key], str):
-                    data[key] = _resolve_agent_name(data[key])
-            if "names" in data and isinstance(data["names"], list):
-                data["names"] = [_resolve_agent_name(n) for n in data["names"]]
-
-            # cmd별 args_str 생성 (기존 형식 호환)
-            if cmd == "톡방":
-                names = " ".join(data.get("names", []))
-                topic = data.get("topic", "")
-                return cmd, f"{names} {topic}".strip()
-            elif cmd == "대화시작":
-                names = " ".join(data.get("names", []))
-                situation = data.get("situation", data.get("context", ""))
-                return cmd, f"{names} {situation}".strip()
-            elif cmd == "감정":
-                return cmd, f"{data.get('name', '')} {data.get('emotion', '')} {data.get('intensity', 5)}"
-            elif cmd == "프로필수정":
-                return cmd, f"{data.get('name', '')} {data.get('field', '')} {data.get('value', '')}"
-            elif cmd == "관계수정":
-                return cmd, f"{data.get('name_a', '')} {data.get('name_b', '')} {data.get('field', '')} {data.get('value', '')}"
-            elif cmd == "프로필생성":
-                return cmd, _json.dumps(data.get("profile", data), ensure_ascii=False)
-            else:
-                # 기타 — args를 스페이스로 join
-                args = data.get("args", data.get("target", data.get("name", "")))
-                if isinstance(args, list):
-                    return cmd, " ".join(str(a) for a in args)
-                return cmd, str(args)
-        except (ValueError, KeyError):
-            pass  # JSON 파싱 실패 → 레거시 폴백
-
-    # 레거시 스페이스 구분
-    parts = cmd_str.split(None, 1)
-    cmd = parts[0]
-    args_str = parts[1] if len(parts) > 1 else ""
-
-    # 레거시에서도 이름 해석 (첫 번째 인자가 이름인 CMD들)
-    name_cmds = {"감정", "프로필수정", "채널삭제", "채널초기화", "에이전트초기화", "오너초대", "강제"}
-    if cmd in name_cmds and args_str:
-        name_parts = args_str.split(None, 1)
-        resolved = _resolve_agent_name(name_parts[0])
-        args_str = f"{resolved} {name_parts[1]}" if len(name_parts) > 1 else resolved
-
-    return cmd, args_str
-
-
-async def execute_yuna_command(
-    report_channel: discord.TextChannel,
-    cmd_str: str,
-    guild: discord.Guild,
-):
-    """유나의 CMD 태그 하나를 실행"""
-    cmd, args_str = _parse_cmd_json(cmd_str)
-
-    log.info(f"[유나CMD] 실행: {cmd} {args_str}")
-
-    # ── 톡방/대화 관리 ──
-    if cmd == "톡방":
-        await yuna_create_room(report_channel, args_str, guild)
-    elif cmd == "대화시작":
-        await yuna_start_conversation(report_channel, args_str, guild)
-    elif cmd == "오너초대":
-        await yuna_invite_owner(report_channel, args_str, guild)
-    elif cmd == "감정":
-        await yuna_change_emotion(report_channel, args_str)
-    elif cmd == "대화중단":
-        ch_name = args_str.strip()
-        if ch_name == "전체":
-            active = list_active_conversations()
-            count = 0
-            for conv in active:
-                stop_conversation(conv["channel"])
-                count += 1
-            await send_as_agent(report_channel, MGR_ID, f"전체 대화 {count}건 중단했어")
-        elif stop_conversation(ch_name):
-            await send_as_agent(report_channel, MGR_ID, f"#{ch_name} 대화 중단했어")
-        else:
-            await send_as_agent(report_channel, MGR_ID, f"#{ch_name}에 진행 중인 대화 없어")
-
-    # ── 디스코드 채널 관리 ──
-    elif cmd == "채널삭제":
-        await yuna_delete_channel(report_channel, args_str, guild)
-    elif cmd == "채널이름변경":
-        await yuna_rename_channel(report_channel, args_str, guild)
-    elif cmd == "채널토픽":
-        await yuna_set_channel_topic(report_channel, args_str, guild)
-
-    # ── 프로필/관계 관리 ──
-    elif cmd == "프로필수정":
-        await yuna_edit_profile(report_channel, args_str)
-    elif cmd == "관계수정":
-        await yuna_edit_relationship(report_channel, args_str)
-
-    # ── DB 정리 ──
-    elif cmd == "채널초기화":
-        await yuna_wipe_channel(report_channel, args_str, guild)
-    elif cmd == "대화삭제":
-        await yuna_delete_messages(report_channel, args_str)
-    elif cmd == "에이전트초기화":
-        await yuna_wipe_agent(report_channel, args_str)
-
-    # ── 디스코드 메시지 관리 ──
-    elif cmd == "메시지청소":
-        await yuna_purge_messages(report_channel, args_str, guild)
-
-    # ── 디코 복구 ──
-    elif cmd == "디코복구":
-        await yuna_restore_discord(report_channel, args_str, guild)
-
-    # ── 샘플 아바타 적용 ──
-    elif cmd == "아바타적용":
-        await _apply_sample_profile_image(report_channel, args_str, guild)
-
-    # ── ACTION 승인 ──
-    elif cmd == "ACTION승인":
-        await yuna_approve_action(report_channel, args_str, guild)
-
-    # ── 강제 지시 (유나가 에이전트에게) ──
-    elif cmd == "강제":
-        await yuna_force_agent(report_channel, args_str, guild)
-
-    # ── 개발 요청 ──
-    elif cmd == "개발요청":
-        await yuna_dev_request(report_channel, args_str, "유나")
-
-    # ── 프로필 파일 관리 (하나 전용) ──
-    elif cmd == "프로필생성":
-        await _cmd_profile_create(report_channel, args_str)
-    elif cmd == "프로필삭제":
-        await _cmd_profile_delete(report_channel, args_str)
-    elif cmd == "멤버목록":
-        pass  # QUERY로 처리됨
-
-    # ── 프로필 수집 완료 → Phase 2 (채널 생성 + 하나 소개) ──
-    elif cmd == "프로필수집완료":
-        from src.scenes.tutorial.handlers import trigger_phase2
-        await trigger_phase2(guild)
-
-    # ── 튜토리얼 최종 완료 (유나가 채널 설명 + 하나 보고 수신까지 마침) ──
-    elif cmd == "튜토리얼완료":
-        from src.scenes.tutorial.handlers import complete_tutorial
-        await complete_tutorial()
-
-    else:
-        log.warning(f"[유나CMD] 알 수 없는 명령: {cmd}")
 
 
 # ── 톡방/대화 관리 ───────────────────────────────────────
@@ -1624,18 +1396,10 @@ async def yuna_force_agent(report_channel, args_str, guild):
         lambda: runtime.generate_response_force(agent_id, ch_name, instruction)
     )
 
-    # 해당 채널에 에이전트 응답 전송 (ACTION 태그 처리 포함)
+    # 해당 채널에 에이전트 응답 전송
     if guild:
         for resp in responses:
-            if ACTION_PATTERN.search(resp):
-                actions = ACTION_PATTERN.findall(resp)
-                clean_text = ACTION_PATTERN.sub('', resp).strip()
-                if clean_text:
-                    await send_as_agent(target_ch, agent_id, clean_text)
-                for action in actions:
-                    await _forward_action_to_yuna(agent_id, action.strip(), guild)
-            else:
-                await send_as_agent(target_ch, agent_id, resp)
+            await send_as_agent(target_ch, agent_id, resp)
             await asyncio.sleep(0.5)
 
     await send_as_agent(report_channel, MGR_ID,

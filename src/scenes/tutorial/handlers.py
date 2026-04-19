@@ -25,8 +25,6 @@ from src.scenes.tutorial.scene import scene
 
 CREATOR_ID = "agent-creator-001"
 
-_CMD_TAG_STRIP = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
-
 
 async def trigger_phase2(guild):
     """Phase 2 트리거 — scene의 phase를 channels_setup으로 전환하고
@@ -98,7 +96,7 @@ async def setup_channels(guild):
             ),
         )
         for resp in responses:
-            resp = _CMD_TAG_STRIP.sub('', resp).strip()
+            resp = resp.strip()
             if not resp:
                 continue
             for part in _split_for_chat(resp):
@@ -178,8 +176,7 @@ async def setup_channels(guild):
         f"{'너보다 연상이니까 존댓말로 시작.' if older else '나이 비슷하거나 모르니까 일단 존댓말.'}\n"
         f"- 질문 한 번에 하나씩.\n"
         f"- 너의 나이는 굳이 말하지 마.\n"
-        f"[스타일] 카톡처럼 짧은 메시지 여러 개로. 자연스럽고 친근하게. 로봇 같은 정형화된 말투 금지.\n"
-        f"[금지] [CMD:...], [QUERY:...], [ACTION:...] 태그 사용 금지."
+        f"[스타일] 카톡처럼 짧은 메시지 여러 개로. 자연스럽고 친근하게. 로봇 같은 정형화된 말투 금지."
     )
 
     loop = asyncio.get_event_loop()
@@ -191,7 +188,7 @@ async def setup_channels(guild):
     )
     sent_any = False
     for resp in responses:
-        resp = _CMD_TAG_STRIP.sub('', resp).strip()
+        resp = resp.strip()
         if not resp:
             continue
         for part in _split_for_chat(resp):
