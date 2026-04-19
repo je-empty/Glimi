@@ -973,6 +973,49 @@ HTML = r"""<!doctype html>
   .toast.ok { border-color: var(--ok); color: var(--ok); }
   @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
+  /* ==== Achievements ==== */
+  .ach-header {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 22px; margin-bottom: 16px;
+  }
+  .ach-title { font-size: 18px; font-weight: 700; color: var(--text); }
+  .ach-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .ach-progress-wrap { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .ach-progress-bar {
+    flex: 1; height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden;
+  }
+  .ach-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 60%, var(--accent)));
+    transition: width 0.4s ease;
+  }
+  .ach-progress-text { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--text-dim); }
+  .ach-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+  }
+  .ach-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 11px;
+    padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start;
+    transition: all 0.15s;
+  }
+  .ach-card:hover { border-color: var(--accent); }
+  .ach-card.locked { opacity: 0.42; filter: grayscale(0.5); }
+  .ach-card.done { background: color-mix(in srgb, var(--ok) 6%, var(--panel)); border-color: color-mix(in srgb, var(--ok) 30%, var(--border)); }
+  .ach-icon { font-size: 28px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+  .ach-body { flex: 1; min-width: 0; }
+  .ach-name { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .ach-desc { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
+  .ach-progress-chip {
+    display: inline-block; margin-top: 6px; font-size: 10.5px;
+    background: var(--panel-2); border-radius: 4px; padding: 2px 6px;
+    font-family: "JetBrains Mono", monospace; color: var(--text-dim);
+  }
+  .ach-card.done .ach-progress-chip { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .ach-card.done::after {
+    content: '✓'; color: var(--ok); font-weight: 700; font-size: 18px; align-self: center;
+    margin-left: 8px;
+  }
+
   /* Responsive */
   @media (max-width: 900px) {
     .overview-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1012,6 +1055,7 @@ HTML = r"""<!doctype html>
     <button data-tab="channels">Channels <span class="count" id="tc-channels">0</span></button>
     <button data-tab="messages">Messages <span class="count" id="tc-messages">0</span></button>
     <button data-tab="scenes">Scenes <span class="count" id="tc-scenes">0</span></button>
+    <button data-tab="achievements">Achievements <span class="count" id="tc-achievements">—</span></button>
     <button data-tab="events">Events <span class="count" id="tc-events">0</span></button>
     <button data-tab="supervisors" class="sup-tab">Supervisors <span class="count" id="tc-supervisors">0</span></button>
     <button data-tab="health">Health</button>
@@ -1055,6 +1099,17 @@ HTML = r"""<!doctype html>
     <div class="view" id="view-messages"><div class="msg-list" id="messages-full"></div></div>
 
     <div class="view" id="view-scenes"><div id="scenes-full"></div></div>
+    <div class="view" id="view-achievements">
+      <div class="ach-header">
+        <div class="ach-title">도전과제</div>
+        <div class="ach-sub">유저 진척도 — 선택적 가이드. 강제 아님.</div>
+        <div class="ach-progress-wrap">
+          <div class="ach-progress-bar"><div class="ach-progress-fill" id="ach-fill" style="width:0%"></div></div>
+          <div class="ach-progress-text" id="ach-pct">0 / 0</div>
+        </div>
+      </div>
+      <div class="ach-grid" id="ach-grid"></div>
+    </div>
     <div class="view" id="view-events"><div class="event-list" id="events-full"></div></div>
 
     <div class="view" id="view-health"><div class="health-grid" id="health-full"></div></div>
@@ -1516,6 +1571,9 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'achievements') {
+      loadAchievements();
+    }
   });
 });
 
@@ -3024,6 +3082,56 @@ function renderScenes(scenes) {
   ].join('');
 }
 
+// ==== Achievements ====
+function renderAchievements(data) {
+  const items = (data && data.items) || [];
+  if (!items.length) {
+    document.getElementById('ach-grid').innerHTML = '<div class="empty">도전과제 정보 없음</div>';
+    document.getElementById('ach-fill').style.width = '0%';
+    document.getElementById('ach-pct').textContent = '0 / 0';
+    const tc = document.getElementById('tc-achievements');
+    if (tc) tc.textContent = '—';
+    return;
+  }
+  const done = data.done || 0;
+  const total = data.total || items.length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('ach-fill').style.width = pct + '%';
+  document.getElementById('ach-pct').textContent = `${done} / ${total} (${pct}%)`;
+  const tc = document.getElementById('tc-achievements');
+  if (tc) tc.textContent = `${done}/${total}`;
+
+  const fmtProgress = (p) => {
+    if (!p || typeof p !== 'object') return '';
+    if (p.msgs != null && p.need != null) return `${p.msgs} / ${p.need}`;
+    if (p.talked_to && p.need) return `${p.talked_to.length} / ${p.need}`;
+    if (p.talked_to) return p.talked_to.slice(0, 5).join(', ') + (p.talked_to.length > 5 ? ` +${p.talked_to.length - 5}` : '');
+    if (p.channels) return p.channels.slice(0, 3).join(', ');
+    if (p.channel) return esc(p.channel);
+    if (p.days != null) return `${p.days}일`;
+    if (p.friend) return esc(p.friend);
+    return '';
+  };
+
+  document.getElementById('ach-grid').innerHTML = items.map(it => {
+    const st = it.state || 'locked';
+    const progChip = fmtProgress(it.progress);
+    return `<div class="ach-card ${st}">
+      <div class="ach-icon">${it.icon || '🏅'}</div>
+      <div class="ach-body">
+        <div class="ach-name">${esc(it.title)}</div>
+        <div class="ach-desc">${esc(it.description)}</div>
+        ${progChip ? `<div class="ach-progress-chip">${progChip}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadAchievements() {
+  const data = await j(q('/api/achievements'));
+  if (data) renderAchievements(data);
+}
+
 function syntheticTestUserAgent(snap) {
   // QA 커뮤니티에서만 test-user-bot을 가상 에이전트로 표시
   if (snap.community_id !== 'qa') return null;
@@ -3521,6 +3629,8 @@ document.addEventListener('keydown', e => {
 })();
 setInterval(tick, 1500);
 setInterval(loadCommunities, 5000);  // 커뮤니티 running 상태 5초마다 갱신
+setInterval(loadAchievements, 10000);  // 도전과제 진척도 10초마다 갱신 (탭 카운트 포함)
+loadAchievements();  // 최초 1회
 </script>
 </body></html>
 """
@@ -3681,6 +3791,33 @@ def _serve_logo(handler):
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)
+
+
+def api_achievements(path: str) -> dict:
+    """현재 커뮤니티의 도전과제 진척도.
+
+    query params:
+      ?community=<id>  특정 커뮤니티 (없으면 startup default)
+      ?recompute=1     즉시 재계산 후 반환
+    """
+    from urllib.parse import parse_qs, urlparse as _u
+    q = parse_qs(_u(path).query)
+    cid = _read_community(path)
+    if cid:
+        from src import community as _comm
+        try:
+            _comm.set_community(cid)
+        except Exception:
+            pass
+    try:
+        from src.achievements import engine as _eng
+        if q.get("recompute", ["0"])[0] in ("1", "true", "yes"):
+            _eng.recompute_all()
+        return _eng.dashboard_summary()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "items": [], "done": 0, "total": 0}
 
 
 def api_i18n(path: str) -> dict:
@@ -4141,6 +4278,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json(api_communities())
             elif p == "/api/i18n":
                 self._json(api_i18n(self.path))
+            elif p == "/api/achievements":
+                self._json(api_achievements(self.path))
             elif p == "/api/avatar":
                 _serve_avatar(self, self.path)
             elif p == "/logo":

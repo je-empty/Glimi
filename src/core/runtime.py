@@ -1045,10 +1045,18 @@ class AgentRuntime:
         # _build_context 재활용 (speaker 기준 메모리)
         base_context = self._build_context(speaker_info, channel, recent, user_message=context)
 
+        # 엄격한 role guard — 과거 하나가 유나 역할까지 같이 생성하는 버그 방지.
+        # 모델이 내부적으로 "speaker→listener→speaker→..." 대화 전체를 시뮬레이션하려 하는 경향.
+        role_guard = (
+            f"\n[역할 엄수] 너는 {speaker_name} 한 사람. "
+            f"{listener_name} 의 대사/답변은 절대 쓰지 마. 내가 한 턴 말하면 끝, "
+            f"상대 반응은 상대가 알아서 함.\n"
+            f"[출력] 한 번에 카톡 1~4개 짧은 메시지만. 긴 독백이나 양쪽 대화 시뮬레이션 금지."
+        )
         if context:
-            full_prompt = base_context + f"상황: {context}\n{listener_name}과(와)의 대화를 이어가."
+            full_prompt = base_context + f"상황: {context}\n{listener_name}과(와)의 대화를 이어가.{role_guard}"
         else:
-            full_prompt = base_context + f"{listener_name}과(와)의 대화를 이어가."
+            full_prompt = base_context + f"{listener_name}과(와)의 대화를 이어가.{role_guard}"
 
         speaker_type = speaker_info["profile"].get("type", "persona")
         model = AGENT_MODELS.get(speaker_type, "claude-sonnet-4-6")
@@ -1071,7 +1079,7 @@ class AgentRuntime:
                     if result.returncode == 0 and result.stdout.strip():
                         # <tools> 블록 먼저 파싱 → tool_calls stash, chat 텍스트만 분리
                         # (이전에는 이 경로에서 <tools> 파싱이 빠져서 internal-dm에서
-                        # 유나가 finish_tutorial 호출해도 원문이 채팅으로 새고 실행 안 됨)
+                        # 유나가 finish_onboarding 호출해도 원문이 채팅으로 새고 실행 안 됨)
                         parsed = parse_tools_in_output(result.stdout.strip())
                         self._last_tool_calls[speaker_id] = parsed.tool_calls
                         if parsed.errors:
@@ -1079,6 +1087,25 @@ class AgentRuntime:
                                 f"[Tools] 파싱 에러 (A2A {speaker_name}): {'; '.join(parsed.errors[:3])}"
                             )
                         responses = self._parse_response(parsed.chat, agent_name=speaker_name)
+                        # 역할 leak 방어 — listener 이름으로 시작하거나 "답장 시뮬레이션" 패턴 차단
+                        import re as _role_re
+                        _leak_patterns = [
+                            rf"^\s*{_role_re.escape(listener_name)}\s*[:：]",  # "유나: ..." 형태
+                            rf"^\s*\[?\s*{_role_re.escape(listener_name)}\s*\]?",  # "[유나] ..."
+                        ]
+                        cleaned = []
+                        dropped = 0
+                        for msg in responses:
+                            leaked = any(_role_re.match(p, msg) for p in _leak_patterns)
+                            if leaked:
+                                dropped += 1
+                                continue
+                            cleaned.append(msg)
+                        if dropped:
+                            log_writer.system(
+                                f"[A2A] {speaker_name} 응답에서 {listener_name} 역할 leak {dropped}건 제거"
+                            )
+                        responses = cleaned
                         for msg in responses:
                             db.log_message(channel, speaker_id, msg)
 

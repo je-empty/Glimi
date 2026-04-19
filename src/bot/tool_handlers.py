@@ -251,8 +251,49 @@ async def _h_list_members(args, ctx):
 
 
 async def _h_get_logs(args, ctx):
+    # 시간 범위 파라미터가 있으면 db 레벨에서 직접 조회 (컨텍스트 절약).
+    # 없으면 레거시 execute_yuna_query("로그", ...) 경로 (최근 N건).
+    target = args["target"]
+    since_min = args.get("since_minutes")
+    from_time = args.get("from_time")
+    to_time = args.get("to_time")
+    limit = args.get("limit", 200)
+
+    if since_min or from_time or to_time:
+        from src import db as _db
+        rows = _db.get_messages_in_range(
+            channel=target,
+            since=from_time or None,
+            until=to_time or None,
+            since_minutes=since_min,
+            limit=int(limit) if limit else 200,
+        )
+        if not rows:
+            return {"result": f"[{target}] 해당 범위 메시지 없음"}
+        # 채널명: 타임 hh:mm speaker: msg 형태 압축
+        from src.core.profile import get_user_id, get_user_name
+        from src.core.runtime import runtime as _rt
+        uid = get_user_id()
+        lines = []
+        for r in rows:
+            ts = r.get("timestamp", "")
+            hhmm = ts[11:16] if len(ts) >= 16 else ts
+            sp = r.get("speaker", "?")
+            name = get_user_name() if sp == uid else _rt.get_agent_name(sp)
+            msg = (r.get("message") or "").replace("\n", " ")
+            if len(msg) > 200:
+                msg = msg[:200] + "…"
+            lines.append(f"{hhmm} {name}: {msg}")
+        header = f"[{target} {len(rows)}건"
+        if since_min:
+            header += f", 최근 {since_min}분"
+        elif from_time or to_time:
+            header += f", {from_time or '처음'} ~ {to_time or '지금'}"
+        header += "]"
+        return {"result": header + "\n" + "\n".join(lines)}
+
     cnt = args.get("count", 20)
-    return {"result": await _run_query("로그", f"{args['target']} {cnt}", ctx)}
+    return {"result": await _run_query("로그", f"{target} {cnt}", ctx)}
 
 
 async def _h_search_messages(args, ctx):

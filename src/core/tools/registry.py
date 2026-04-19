@@ -316,13 +316,25 @@ QUERY: list[ToolSpec] = [
     ),
     ToolSpec(
         name="get_logs",
-        description="채널 최근 대화 로그",
+        description=(
+            "채널 대화 로그 조회. 시간 범위 지정으로 최근 N분/특정 구간만 뽑을 수 있어 "
+            "불필요한 컨텍스트 낭비 방지."
+        ),
         params={
             "target": _str,
-            "count": {"type": "int", "required": False, "desc": "기본 20"},
+            "count": {"type": "int", "required": False, "desc": "최근 N건 (기본 20) — since/from/to 없을 때만 적용"},
+            "since_minutes": {"type": "int", "required": False, "desc": "지금부터 N분 전까지 전부"},
+            "from_time": {"type": "str", "required": False, "desc": "시작 시각 ISO (예: '2026-04-20 17:30:00')"},
+            "to_time": {"type": "str", "required": False, "desc": "종료 시각 ISO — from_time 과 함께"},
+            "limit": {"type": "int", "required": False, "desc": "최대 반환 수 (시간 범위 조회 시 토큰 보호, 기본 200)"},
         },
         category="query",
         applies_to=frozenset({"mgr", "creator", "persona"}),
+        examples=[
+            '{"target":"mgr-creator","count":10}',
+            '{"target":"mgr-creator","since_minutes":5}',
+            '{"target":"dm-수민","from_time":"2026-04-20 17:00","to_time":"2026-04-20 17:30"}',
+        ],
     ),
     ToolSpec(
         name="search_messages",
