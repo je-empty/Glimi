@@ -3556,6 +3556,22 @@ def _set_active_community(cid: Optional[str]):
         _db.DB_PATH = None
     except Exception:
         pass
+    # 프로필/유저 캐시 무효화 — 캐시 키가 community-scoped 가 아니라
+    # 전환 시 이전 커뮤니티 데이터가 반환되는 누설 버그 방지
+    # (_profile_cache, _user_profile_cache, _user_summary_cache 전부 clear)
+    try:
+        from src.core.profile import invalidate_cache as _inv_profile
+        _inv_profile()
+    except Exception:
+        pass
+    # Webhook 캐시는 봇 프로세스 전용이라 dashboard 에선 영향 없지만,
+    # 혹시 모를 상황 대비해 방어적으로 clear.
+    try:
+        import src.bot as _bot
+        if hasattr(_bot, "_webhook_cache"):
+            _bot._webhook_cache.clear()
+    except Exception:
+        pass
 
 
 def _with_community(path: str, fn):
@@ -4036,41 +4052,13 @@ def _serve_avatar(handler, path):
             else:
                 target_path = _comm.get_profile_image_path(fname)
 
-        # 2. agent_id로 직접 스캔
+        # 2. agent_id로 직접 스캔 (현재 community 내부에서만)
         if not target_path:
             target_path = _comm.find_profile_image(agent_id)
 
-        # 3. 마지막 fallback — 모든 커뮤니티 profile_images/ 를 스캔
-        # (community state leakage / mismatch 에도 이미지 보이도록)
-        if not target_path or not os.path.exists(target_path):
-            try:
-                from pathlib import Path as _P
-                candidates = []
-                if fname:
-                    base, ext = os.path.splitext(fname)
-                    candidates.extend([
-                        fname,
-                        f"{base}-full{ext}" if variant == "full" else fname,
-                    ])
-                candidates.append(f"{agent_id}.png")
-                if variant == "full":
-                    candidates.insert(0, f"{agent_id}-full.png")
-                communities_root = _P(_comm.COMMUNITIES_DIR)
-                for comm_dir in communities_root.iterdir():
-                    if not comm_dir.is_dir() or comm_dir.name.startswith('.'):
-                        continue
-                    pimg = comm_dir / "profile_images"
-                    if not pimg.exists():
-                        continue
-                    for cand in candidates:
-                        p = pimg / cand
-                        if p.exists():
-                            target_path = str(p)
-                            break
-                    if target_path:
-                        break
-            except Exception:
-                pass
+        # ⚠ 다른 community 의 profile_images/ 는 절대 스캔하지 않음.
+        # 커뮤니티 격리가 깨지면 A 서버 에이전트가 B 서버에 노출될 수 있음.
+        # state leakage 문제는 _STARTUP_COMMUNITY reset 으로만 해결.
 
     if not target_path or not os.path.exists(target_path):
         # placeholder: 빈 PNG 작은 것
