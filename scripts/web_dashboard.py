@@ -880,9 +880,16 @@ HTML = r"""<!doctype html>
   .mem-item .mem-pin { flex-shrink: 0; }
   .mem-item .mem-ents { font-size: 10px; color: var(--accent); }
   .mem-item .mem-ch { font-size: 10px; color: var(--text-faint); font-family: "JetBrains Mono", monospace; }
-  .mem-lvl-group { margin-bottom: 6px; }
-  .mem-lvl-group .mem-lvl-label { font-size: 10px; color: var(--text-faint); margin-bottom: 3px; padding-left: 4px; }
+  .mem-lvl-group { margin-bottom: 8px; }
+  .mem-lvl-group .mem-lvl-label { font-size: 11px; color: var(--text); font-weight: 600; margin: 4px 0 4px; padding: 3px 6px; background: var(--panel-3, #1e1e26); border-radius: 4px; display: inline-block; }
   .mem-pinned-block { border-left: 2px solid var(--accent); padding-left: 8px; }
+  .mem-count { color: var(--text-faint); font-weight: 400; font-size: 11px; margin-left: 4px; }
+  .mem-sub { color: var(--text-faint); font-weight: 400; font-size: 10px; margin-left: 6px; font-style: italic; }
+  .mem-item .mem-type-badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--panel-3, #252530); color: var(--text-dim); flex-shrink: 0; font-weight: 500; }
+  .mem-item .mem-predicate { font-size: 11px; color: var(--accent-2); font-weight: 600; flex-shrink: 0; padding-top: 1px; }
+  .mem-facts-group { border-left: 2px solid var(--accent-2, #4aff9a); padding-left: 8px; }
+  .mem-subject-block { margin-top: 6px; margin-bottom: 4px; }
+  .mem-subject-block .mem-subject-label { font-size: 11px; color: var(--text); font-weight: 600; margin: 4px 0 3px; padding: 2px 6px; background: var(--panel-3, #1e1e26); border-radius: 3px; display: inline-block; }
 
   /* ==== Health ==== */
   .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
@@ -1804,72 +1811,97 @@ async function openAgent(id) {
     </div>`;
   }).join('');
 
-  // 메모리 렌더 — 5 레이어 시스템 (L1/L2/L3, pinned, importance, entities)
+  // 메모리 렌더 — 모든 레이어를 하나의 "기억" 섹션으로 통합
+  // type → 한글 라벨 + 아이콘 (기존 L1·E 같은 축약어는 축출)
+  const TYPE_LABEL = {
+    event: {label: '사건', icon: '🎬'},
+    fact: {label: '사실', icon: '💡'},
+    emotion: {label: '감정', icon: '💓'},
+    relationship: {label: '관계', icon: '🤝'},
+  };
   const renderMemItem = (m, opts={}) => {
-    const lvl = `L${m.level}${m.mem_type ? '·'+esc(m.mem_type[0].toUpperCase()) : ''}`;
-    const imp = m.importance ? `<span class="mem-imp" title="importance">${m.importance}</span>` : '';
-    const pin = m.is_pinned ? '<span class="mem-pin" title="pinned">📌</span>' : '';
+    const t = m.mem_type ? TYPE_LABEL[m.mem_type] : null;
+    const typeBadge = t ? `<span class="mem-type-badge" title="유형">${t.icon} ${t.label}</span>` : '';
+    const imp = m.importance ? `<span class="mem-imp" title="중요도 ${m.importance}/10">${m.importance}</span>` : '';
+    const pin = m.is_pinned ? '<span class="mem-pin" title="고정됨">📌</span>' : '';
     const ents = (m.related_entities && m.related_entities.length)
-      ? `<span class="mem-ents">${m.related_entities.map(e=>esc(e)).join('·')}</span>` : '';
+      ? `<span class="mem-ents" title="관련 대상">${m.related_entities.map(e=>esc(e)).join(' · ')}</span>` : '';
     const ch = opts.showChannel && m.channel ? `<span class="mem-ch">${esc(m.channel)}</span>` : '';
     return `<div class="mem-item" data-mem-id="${m.id||''}">
-      ${pin}<span class="lvl">${lvl}</span>${imp}
+      ${pin}${typeBadge}${imp}
       <span class="mcontent">${esc(m.content)}</span>
       ${ents}${ch}
       <span class="mts">${esc((m.created_at||'').slice(5, 16))}</span>
     </div>`;
   };
 
-  // 고정 기억 (pinned_memories) — 맨 위 따로
-  let pinnedHtml = '';
+  // 레이어별 라벨 (L1/L2/L3 대신 풀 네이밍)
+  const LAYER_LABEL = {
+    1: {name: '최근', icon: '📖', desc: '최근 몇 분~몇 시간 요약'},
+    2: {name: '중기', icon: '📚', desc: '하루 분량 묶음 요약'},
+    3: {name: '장기', icon: '🗂', desc: '주/월 단위 큰 흐름'},
+  };
+
+  let memHtml = '';
+
+  // 1) 📌 고정된 기억 (Pinned) — 항상 떠올리는 것
   if ((d.pinned_memories || []).length) {
-    pinnedHtml = `<div class="mem-block mem-pinned-block">
-      <h5>📌 Pinned <span style="color:var(--text-faint);font-weight:400">(${d.pinned_memories.length})</span></h5>
+    memHtml += `<div class="mem-block mem-pinned-block">
+      <h5>📌 고정된 기억 <span class="mem-count">(${d.pinned_memories.length})</span>
+        <span class="mem-sub">항상 떠올리는 기억</span></h5>
       ${d.pinned_memories.map(m => renderMemItem(m, {showChannel: true})).join('')}
     </div>`;
   }
 
-  let memHtml = pinnedHtml;
+  // 2) 채널별 에피소드 기억 (최근 → 중기 → 장기)
   for (const [ch, mems] of Object.entries(d.memories_by_channel || {})) {
     const byLevel = {3: [], 2: [], 1: []};
     mems.forEach(m => { (byLevel[m.level] || byLevel[1]).push(m); });
+    const anyLevels = [3,2,1].filter(l => byLevel[l].length);
+    if (!anyLevels.length) continue;
     memHtml += `<div class="mem-block">
-      <h5><span class="ch-icon">${chIcon(ch)}</span> ${esc(ch)} <span style="color:var(--text-faint);font-weight:400">(${mems.length})</span></h5>
-      ${[3,2,1].filter(l => byLevel[l].length).map(l =>
-        `<div class="mem-lvl-group"><div class="mem-lvl-label">L${l} · ${byLevel[l].length}</div>${byLevel[l].map(renderMemItem).join('')}</div>`
-      ).join('')}
+      <h5><span class="ch-icon">${chIcon(ch)}</span> ${esc(ch)} <span class="mem-count">(${mems.length})</span></h5>
+      ${anyLevels.map(l => {
+        const L = LAYER_LABEL[l];
+        return `<div class="mem-lvl-group">
+          <div class="mem-lvl-label" title="${L.desc}">${L.icon} ${L.name} <span class="mem-count">(${byLevel[l].length})</span></div>
+          ${byLevel[l].map(renderMemItem).join('')}
+        </div>`;
+      }).join('')}
     </div>`;
   }
 
-  // Facts (Layer 3 semantic)
-  let factsHtml = '';
+  // 3) 💡 알고 있는 사실 (agent_facts) — 엔티티별 구조화 지식
   if ((d.agent_facts || []).length) {
-    // subject 별로 그룹화
     const bySubject = {};
     (d.agent_facts || []).forEach(f => {
       if (!bySubject[f.subject]) bySubject[f.subject] = [];
       bySubject[f.subject].push(f);
     });
-    factsHtml = Object.entries(bySubject).map(([subject, facts]) =>
-      `<div class="mem-block">
-        <h5>📚 ${esc(subject)} <span style="color:var(--text-faint);font-weight:400">(${facts.length})</span></h5>
+    memHtml += `<div class="mem-block mem-facts-group">
+      <h5>💡 알고 있는 사실 <span class="mem-count">(${d.agent_facts.length})</span>
+        <span class="mem-sub">대상별 구조화된 지식 (선호·특징·직업 등)</span></h5>`;
+    memHtml += Object.entries(bySubject).map(([subject, facts]) =>
+      `<div class="mem-subject-block">
+        <div class="mem-subject-label">${esc(subject)} <span class="mem-count">(${facts.length})</span></div>
         ${facts.map(f => `<div class="mem-item">
-          <span class="lvl">${esc(f.predicate)}</span>
+          <span class="mem-predicate">${esc(f.predicate)}</span>
           <span class="mcontent">${esc(f.object)}</span>
-          ${f.importance >= 8 ? '<span class="mem-pin">⭐</span>' : ''}
+          ${f.importance >= 8 ? '<span class="mem-pin" title="중요">⭐</span>' : ''}
           <span class="mts">${esc((f.created_at||'').slice(5, 16))}</span>
         </div>`).join('')}
       </div>`
     ).join('');
+    memHtml += '</div>';
   }
 
-  // Relationship history (변곡점)
-  let relHistHtml = '';
+  // 4) 📈 관계 변화 (relationship_history) — 친밀도/역학 변곡점
   if ((d.relationship_history || []).length) {
-    relHistHtml = `<div class="mem-block">
-      <h5>📈 변곡점 <span style="color:var(--text-faint);font-weight:400">(${d.relationship_history.length})</span></h5>
+    memHtml += `<div class="mem-block">
+      <h5>📈 관계 변화 <span class="mem-count">(${d.relationship_history.length})</span>
+        <span class="mem-sub">친밀도·역학의 변곡점 기록</span></h5>
       ${d.relationship_history.slice(0,10).map(h => `<div class="mem-item">
-        <span class="lvl">${esc(h.delta_type || '?')}</span>
+        <span class="mem-predicate">${esc(h.delta_type || '?')}</span>
         <span class="mcontent">${esc(h.from_state||'?')} → ${esc(h.to_state||'?')}${h.reason ? ' · '+esc(h.reason) : ''}</span>
         <span class="mts">${esc((h.created_at||'').slice(5, 16))}</span>
       </div>`).join('')}
@@ -1885,9 +1917,7 @@ async function openAgent(id) {
       <dl class="kv">${profileLines.map(([k,v,raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
     </div>
     ${rels ? `<div class="detail-section"><h4>Relationships · ${d.relationships.length}</h4>${rels}</div>` : ''}
-    ${memHtml ? `<div class="detail-section"><h4>Memory · 5 Layer</h4>${memHtml}</div>` : ''}
-    ${factsHtml ? `<div class="detail-section"><h4>Facts (L3 Semantic)</h4>${factsHtml}</div>` : ''}
-    ${relHistHtml ? `<div class="detail-section"><h4>Relationship History</h4>${relHistHtml}</div>` : ''}
+    ${memHtml ? `<div class="detail-section"><h4>🧠 기억</h4>${memHtml}</div>` : ''}
     ${thinkingLogs ? `<div class="detail-section"><h4>Thinking Logs ${d.thinking ? '<span style="color:var(--thinking)">● LIVE</span>' : ''}</h4>${thinkingLogs}</div>` : ''}
     ${chatHtml ? `<div class="detail-section"><h4>Recent Chat · ${d.primary_channel}</h4>${chatHtml}</div>` : ''}
   `;
@@ -3504,6 +3534,10 @@ import threading
 # 모든 커뮤니티-의존 핸들러를 이 lock으로 직렬화.
 _COMMUNITY_LOCK = threading.Lock()
 
+# startup 시점에 resolve된 community — 이후 ?community= 없는 요청의 기본값
+# (전역 _current_id leakage 로 한 번 qa 등으로 스위치되면 default로 못 돌아가는 버그 방지)
+_STARTUP_COMMUNITY: Optional[str] = None
+
 
 def _read_community(path: str) -> Optional[str]:
     q = parse_qs(urlparse(path).query)
@@ -3526,8 +3560,9 @@ def _set_active_community(cid: Optional[str]):
 
 def _with_community(path: str, fn):
     """URL ?community= 파라미터로 커뮤니티 전환 후 fn 호출.
-    전역 상태 변경을 lock으로 직렬화 → race condition 방지."""
-    cid = _read_community(path)
+    전역 상태 변경을 lock으로 직렬화 → race condition 방지.
+    ?community= 명시 안 되면 startup community 로 reset (state leakage 방지)."""
+    cid = _read_community(path) or _STARTUP_COMMUNITY
     with _COMMUNITY_LOCK:
         if cid:
             _set_active_community(cid)
@@ -4005,6 +4040,38 @@ def _serve_avatar(handler, path):
         if not target_path:
             target_path = _comm.find_profile_image(agent_id)
 
+        # 3. 마지막 fallback — 모든 커뮤니티 profile_images/ 를 스캔
+        # (community state leakage / mismatch 에도 이미지 보이도록)
+        if not target_path or not os.path.exists(target_path):
+            try:
+                from pathlib import Path as _P
+                candidates = []
+                if fname:
+                    base, ext = os.path.splitext(fname)
+                    candidates.extend([
+                        fname,
+                        f"{base}-full{ext}" if variant == "full" else fname,
+                    ])
+                candidates.append(f"{agent_id}.png")
+                if variant == "full":
+                    candidates.insert(0, f"{agent_id}-full.png")
+                communities_root = _P(_comm.COMMUNITIES_DIR)
+                for comm_dir in communities_root.iterdir():
+                    if not comm_dir.is_dir() or comm_dir.name.startswith('.'):
+                        continue
+                    pimg = comm_dir / "profile_images"
+                    if not pimg.exists():
+                        continue
+                    for cand in candidates:
+                        p = pimg / cand
+                        if p.exists():
+                            target_path = str(p)
+                            break
+                    if target_path:
+                        break
+            except Exception:
+                pass
+
     if not target_path or not os.path.exists(target_path):
         # placeholder: 빈 PNG 작은 것
         placeholder = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xcf\xc0\x00\x00\x00\x03\x00\x01\x08\x00\x01\x10t\x08\xd7\x00\x00\x00\x00IEND\xaeB`\x82"
@@ -4163,6 +4230,9 @@ def main():
 
     from src import community as _comm
     cid = _comm.get_community_id()
+    # startup community 저장 — ?community= 없는 요청의 기본값 (state leakage 방지)
+    global _STARTUP_COMMUNITY
+    _STARTUP_COMMUNITY = cid
     print(f"[web-dashboard] http://{args.host}:{args.port}  (community={cid})")
     with ReusableServer((args.host, args.port), Handler) as srv:
         srv.serve_forever()
