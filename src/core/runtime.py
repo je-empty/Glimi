@@ -1181,6 +1181,13 @@ class AgentRuntime:
                                 f"[A2A] {speaker_name} 응답에서 {listener_name} 역할 leak {dropped}건 제거"
                             )
                         responses = cleaned
+                        # 괄호 독백 필터 — handle_dm 에만 있던 "(무시)/(일상)/(조용히)" drop 을 A2A 경로에도 적용.
+                        # QA 회귀: internal-dm-윤하나-서유나 에서 유나가 "(이미 인사 다 끝났으니 조용히)" 독백 저장.
+                        import re as _mre
+                        _mono_pat = _mre.compile(
+                            r'^\s*[\*_`]*\(\s*(무시|별거|별 거|일상|넘어|응답\s*안|특이사항|조용히|이미|마무리)[^)]*\)[\*_`]*\s*$',
+                        )
+                        responses = [m for m in responses if not _mono_pat.match(m)]
                         for msg in responses:
                             db.log_message(channel, speaker_id, msg)
 
