@@ -172,7 +172,25 @@ class TestUserBot(discord.Client):
         await self.close()
 
     async def _wait_for_first_message(self):
-        """유나의 첫 인사를 기다림"""
+        """유나의 첫 인사를 기다림. 이미 튜토리얼 완료된 resume 모드면 skip."""
+        # Resume 감지: DB meta.tutorial_phase == 'complete' 면 새 인사 안 옴 → 스킵
+        try:
+            import sqlite3
+            db_path = os.path.join(self._qa_log_dir(), "..", "community.db")
+            db_path = os.path.abspath(db_path)
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                row = conn.execute(
+                    "SELECT value FROM meta WHERE key='tutorial_phase'"
+                ).fetchone()
+                conn.close()
+                if row and row[0] == "complete":
+                    print("[TestUser] resume 감지 — 튜토리얼 이미 완료, 첫 인사 대기 스킵")
+                    await asyncio.sleep(random.uniform(2.0, 4.0))
+                    return
+        except Exception as e:
+            print(f"[TestUser] resume 체크 실패 (건너뜀): {e}")
+
         print("[TestUser] 유나 첫 인사 대기 중...")
         self.waiting_for_response = True
         self._response_event.clear()
