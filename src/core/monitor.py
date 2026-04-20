@@ -772,7 +772,7 @@ def _get_test_user_detail() -> dict:
         "thinking_logs": thinking_logs,
         "primary_channel": "mgr-dashboard",
         "primary_chat": primary_chat,
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-haiku-4-5",
         "provider": "claude",
         "model_override": True,
         "synthetic": True,

@@ -45,7 +45,7 @@ AGENT_TASK_MODELS = {
 AVAILABLE_MODELS = [
     {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6",
      "kind": "cloud", "provider": "claude", "tier": "balanced", "icon": "☁️"},
-    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5",
+    {"id": "claude-haiku-4-5", "label": "Haiku 4.5",
      "kind": "cloud", "provider": "claude", "tier": "fast", "icon": "☁️"},
     # Phase 2 로컬 모델 예시 (주석 — 실제 구현 시 해제 + src/llm/local.py 추가):
     # {"id": "ollama:llama3.3:8b", "label": "Llama 3.3 8B",
@@ -309,7 +309,7 @@ class AgentRuntime:
             result = subprocess.run(
                 ["claude", "-p",
                  f"아래 대화를 3~4문장으로 요약해. 누가 뭘 요청했고 어디까지 진행됐는지 핵심만:\n\n{conversation}",
-                 "--output-format", "text", "--model", "claude-haiku-4-5-20251001"],
+                 "--output-format", "text", "--model", "claude-haiku-4-5"],
                 capture_output=True, text=True, timeout=15,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
