@@ -33,7 +33,7 @@ def _judge_channel_conv(channel: str, question: str) -> str:
     resp = generate(
         system="너는 대화 분석가. 질문에 한 단어로만 답해.",
         user=f"대화 기록:\n{conversation}\n\n질문: {question}",
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-4-5",
         agent_type="supervisor_judge",
         timeout=15,
         max_tokens=32,

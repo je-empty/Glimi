@@ -1951,8 +1951,15 @@ async function openAgent(id) {
   }
   profileLines.push(['Status', statusHtml, true]);
   if (d.model) {
-    const modelHtml = renderModelChips(d) +
-      `<button class="act-btn small" style="margin-left:8px" onclick="event.stopPropagation(); openModelPicker('${esc(d.id)}','${esc(d.name)}','${esc(d.model || '')}')">변경</button>`;
+    // 모델 선택 버튼은 페르소나만 허용.
+    // mgr(유나)·creator(하나): tool chain 안정성 + 튜토리얼 흐름 보장 위해 Sonnet 고정.
+    // supervisor: 판단=Haiku + 주입=Sonnet 이원화 (선택 개념 부적합).
+    const canPickModel = d.type === 'persona';
+    const modelHtml = renderModelChips(d) + (
+      canPickModel
+        ? `<button class="act-btn small" style="margin-left:8px" onclick="event.stopPropagation(); openModelPicker('${esc(d.id)}','${esc(d.name)}','${esc(d.model || '')}')">변경</button>`
+        : `<small style="margin-left:8px;color:var(--text-faint)">(고정)</small>`
+    );
     profileLines.push(['Model', modelHtml, true]);
   }
   if (d.relationship_to_owner?.type) {
@@ -4272,20 +4279,32 @@ def api_action_restart_server(body: dict, community_id: str) -> dict:
 
 
 def api_action_set_agent_model(body: dict, community_id: str) -> dict:
-    """에이전트 model override 설정/해제.
+    """에이전트 model override 설정/해제. **페르소나만 허용**.
+
+    mgr/creator: tool chain 안정성 + 튜토리얼 흐름 보장 위해 Sonnet 고정.
+    supervisor: Haiku(judge) + Sonnet(inject) 이원화 구조 (단일 선택 개념 부적합).
 
     POST body: {"agent_id": "agent-persona-001", "model": "claude-haiku-4-5-20251001"}
                {"agent_id": "...", "model": ""}  → override 해제 (type 기본값 사용)
 
-    효과: 봇 런타임이 매 호출마다 DB 를 조회하므로 **재시작 불필요 — 다음 턴부터 반영**.
-    컨텍스트 연속성은 대화 이력·메모리가 DB 기반이라 자동 보존.
+    봇 런타임이 매 호출마다 DB 를 조회하므로 재시작 불필요 — 다음 턴부터 반영.
     """
     from src import db as _db
     aid = (body.get("agent_id") or "").strip()
     model = (body.get("model") or "").strip()
     if not aid:
         return {"ok": False, "error": "agent_id required"}
-    # 화이트리스트 검증 (Phase 1: Claude 모델만; 로컬은 추후)
+    # 에이전트 type 검증 — persona 만 허용
+    try:
+        agent = _db.get_agent(aid)
+        if not agent:
+            return {"ok": False, "error": "agent not found"}
+        if agent.get("type") != "persona":
+            return {"ok": False,
+                    "error": f"model override not allowed for type={agent.get('type')} (persona only)"}
+    except Exception as e:
+        return {"ok": False, "error": f"agent lookup failed: {e}"}
+    # 화이트리스트 검증
     try:
         from src.core.runtime import AVAILABLE_MODELS
         valid_ids = {m["id"] for m in AVAILABLE_MODELS}
@@ -4296,7 +4315,7 @@ def api_action_set_agent_model(body: dict, community_id: str) -> dict:
     try:
         ok = _db.set_agent_model_override(aid, model)
         if not ok:
-            return {"ok": False, "error": "agent not found"}
+            return {"ok": False, "error": "set override failed"}
         return {"ok": True, "agent_id": aid, "model": model or "(default)"}
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}

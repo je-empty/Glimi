@@ -48,7 +48,7 @@ VERY_STALE_DAYS = 7
 
 MEMORY_TYPES = ("event", "fact", "emotion", "relationship")
 
-EXTRACTION_MODEL = "claude-haiku-4-5-20251001"
+EXTRACTION_MODEL = "claude-haiku-4-5"
 CLAUDE_AVAILABLE = shutil.which("claude") is not None
 
 # Injection budgets (문자 길이 기준, 대략 4자 = 1 토큰)
