@@ -888,6 +888,12 @@ class AgentRuntime:
                 if not cleaned:
                     continue
 
+                # Safety net — <tools>/<call> 이 in_tools 감지 뚫고 여기 도달하면 drop.
+                # (e.g. 전체 응답이 <tools>...</tools> 한 줄로 시작했는데 in_tools 트랜지션이 안 먹은 경우)
+                if "<tools>" in cleaned.lower() or "<call" in cleaned.lower() or "</tools>" in cleaned.lower():
+                    log_writer.system(f"[Tools] ⚠ stream leak 차단 ({name}): {cleaned[:60]}")
+                    continue
+
                 # 실시간 중복 체크 (exact match)
                 key = _normalize(cleaned)
                 if key and key in seen:
@@ -997,6 +1003,10 @@ class AgentRuntime:
                     '":"' in cleaned or 'target_id' in cleaned or
                     'relationship_templates' in cleaned or
                     'is_owner_relationship' in cleaned):
+                continue
+            # <tools> 블록 누출 방어 — _parse_response 는 non-streaming 경로에서도 쓰여서
+            # 원문에 <tools> 가 남아있으면 drop (tools 는 parse_tools_in_output 이 따로 처리)
+            if "<tools>" in cleaned.lower() or "<call " in cleaned.lower() or "</tools>" in cleaned.lower():
                 continue
             messages.append(cleaned)
 

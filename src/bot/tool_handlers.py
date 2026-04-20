@@ -203,15 +203,32 @@ async def _h_finish_tutorial(args: dict, ctx: ToolContext):
 
 async def _h_create_agent_profile(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _cmd_profile_create
-    await _cmd_profile_create(ctx.channel_obj, args["args"])
-    # 이벤트 로그 — 새 멤버 합류
+    # 중복 생성 체크 — LLM 에게 확실한 시그널 돌려줘서 tool chain 멈추게 함.
+    # 이전엔 Creator 가 한 턴에 중복 create (같은 persona 두 번 생성 + "만들었어" 보고 2번 +
+    # 이미지 preview 재전송) 사례. DB/Discord side-effect 다 일어나서 UX 혼란.
     try:
         import json as _j
         raw = args.get("args", "")
         payload = _j.loads(raw) if isinstance(raw, str) else raw
-        new_name = (payload or {}).get("name") or "새친구"
-        db.log_event("멤버합류", ["owner", new_name],
-                     f"{new_name} 합류 (MBTI: {(payload or {}).get('mbti', '?')}, "
+        new_name = (payload or {}).get("name")
+    except Exception:
+        payload, new_name = None, None
+    if new_name:
+        existing = db.get_agent_by_name(new_name)
+        if existing and existing.get("type") == "persona":
+            log_writer.system(
+                f"[create_agent_profile] duplicate '{new_name}' — skip "
+                f"(existing id={existing['id']})"
+            )
+            # LLM 이 이 결과 보고 "아 이미 있네" 인식 → 후속 request_dm / 이미지 preview 안 함
+            return {"accepted": False, "reason": "already_exists",
+                    "existing_id": existing["id"], "name": new_name}
+
+    await _cmd_profile_create(ctx.channel_obj, args["args"])
+    # 이벤트 로그 — 새 멤버 합류
+    try:
+        db.log_event("멤버합류", ["owner", new_name or "새친구"],
+                     f"{new_name or '새친구'} 합류 (MBTI: {(payload or {}).get('mbti', '?')}, "
                      f"관계: {((payload or {}).get('relationship_to_owner') or {}).get('type', '?')})",
                      impact="긍정")
     except Exception:
@@ -227,6 +244,16 @@ async def _h_delete_agent_profile(args: dict, ctx: ToolContext):
 
 async def _h_set_profile_image(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _apply_sample_profile_image
+    # 중복 방지 — 이미 같은 이미지로 지정된 persona 에 다시 set 호출되면 skip.
+    # 이전엔 Creator 가 같은 persona 를 2번 생성 시도 → 두 번째에 set_profile_image 도
+    # 다시 호출 → 유저 채널에 "이 얼굴로 맞춰뒀어" 이미지 preview 재전송 회귀.
+    target_agent = db.get_agent_by_name(args["name"])
+    if target_agent and target_agent.get("profile_image_filename") == args["profile_image_filename"]:
+        log_writer.system(
+            f"[set_profile_image] skip — {args['name']} 이미 {args['profile_image_filename']} 적용됨"
+        )
+        return {"name": args["name"], "profile_image": args["profile_image_filename"],
+                "skipped": True, "reason": "already_set"}
     s = f"{args['name']} {args['profile_image_filename']}"
     await _apply_sample_profile_image(ctx.channel_obj, s, ctx.guild,
                                caller_agent_id=ctx.caller_agent_id)

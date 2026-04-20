@@ -161,6 +161,26 @@ def _normalize_entity(name: str) -> str:
     return s
 
 
+_META_SUBJECT_PAT = _re.compile(
+    r'^(신규\s*에이전트|새_?에이전트|새_?친구|새\s*친구|에이전트|페르소나|봇|시스템|'
+    r'캐릭터|멤버|신규\s*멤버|새\s*멤버|친구\s*\d*|사람|user|agent|member|bot|character)$',
+    _re.IGNORECASE,
+)
+
+
+def _is_meta_subject(s: str) -> bool:
+    """사람 이름 아닌 일반화된 메타 단어인가? (fact subject 부적절)"""
+    if not s or not s.strip():
+        return True
+    s = s.strip()
+    if _META_SUBJECT_PAT.match(s):
+        return True
+    # 너무 짧거나 (1자), 숫자로만 된 것
+    if len(s) == 1 or s.isdigit():
+        return True
+    return False
+
+
 def _normalize_entities(entities: list) -> list:
     """엔티티 리스트 정규화 + dedup."""
     if not entities:
@@ -461,6 +481,10 @@ def _try_l1_extract(agent_id: str, channel: str):
         predicate = str(f.get("predicate") or "").strip()
         obj = str(f.get("object") or "").strip()
         if not (subject and predicate and obj):
+            continue
+        # 메타 용어 subject 차단 — Haiku 가 "신규에이전트/새친구/캐릭터" 같은 일반화된 가짜 엔티티로
+        # fact 뽑는 케이스 (실제 사람 이름이 아님). 정상 persona/user 이름만 허용.
+        if _is_meta_subject(subject):
             continue
         try:
             f_imp = max(1, min(10, int(f.get("importance", 5))))

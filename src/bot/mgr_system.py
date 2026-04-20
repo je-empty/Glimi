@@ -1550,6 +1550,18 @@ async def _cmd_profile_create(report_channel, json_str):
             await send_as_agent(report_channel, creator_id, "프로필에 id랑 name은 필수야")
             return
 
+        # 중복 생성 차단 — 같은 이름의 persona 이미 있으면 skip.
+        # 이전엔 Creator 가 tool chain 속에서 같은 친구를 2번 생성 → 덮어쓰기 → dm 첫 인사 재트리거
+        # → 유저에게 "얘가 왜 또 인사해?" (QA #5 회귀: 송지안 00:24 + 00:27 두 번 create).
+        existing = db.get_agent_by_name(profile["name"])
+        if existing and existing.get("id") != profile["id"] and existing.get("type") == "persona":
+            log_writer.system(
+                f"[create_agent_profile] 중복 skip: '{profile['name']}' 이미 존재 "
+                f"(id={existing['id']})"
+            )
+            # Creator 에게 조용히 skip 사실만 알림 (유저 채널엔 메시지 X)
+            return
+
         from src.core.profile import save_profile
         save_profile(profile)
 

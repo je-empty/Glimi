@@ -563,16 +563,27 @@ async def ensure_channels(guild: discord.Guild):
         else:
             log_writer.system("All channels exist")
 
-    # 카테고리 순서 정렬
+    # 카테고리 순서 정렬 — glimi-* 를 먼저(위), 나머지(기본 "채팅 채널", "음성 채널" 등)는 아래로.
     from src.core.sync import CATEGORY_ORDER
-    for i, cat_name in enumerate(CATEGORY_ORDER):
+    pos = 0
+    for cat_name in CATEGORY_ORDER:
         cat = discord.utils.get(guild.categories, name=cat_name)
         if cat:
             try:
-                await cat.edit(position=i)
+                await cat.edit(position=pos)
+                pos += 1
             except Exception:
                 pass
-    log_writer.system("Categories sorted")
+    # 나머지 (discord 기본 + 사용자 생성 기타) 는 glimi-* 뒤로
+    for cat in guild.categories:
+        if cat.name in CATEGORY_ORDER:
+            continue
+        try:
+            await cat.edit(position=pos)
+            pos += 1
+        except Exception:
+            pass
+    log_writer.system("Categories sorted (glimi-* 위, 나머지 아래)")
 
 
 async def create_tutorial_channel(guild: discord.Guild, ch_name: str, participants: list[str] = None) -> discord.TextChannel:
