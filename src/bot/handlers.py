@@ -155,38 +155,139 @@ async def _handle_image_action(channel, agent_id: str, action_str: str):
     if not file_name:
         return
 
-    # -full 파일 찾기
-    if "-full" not in file_name:
+    # 후보 파일: -full 변형 우선, 없으면 기본 파일로 fallback.
+    # Creator 가 catalog 에서 기본 파일명을 추천하고, 시스템은 -full 복사를 시도하지만
+    # 일부 샘플은 -full 변형이 준비 안 돼 있음. 이 경우 기본 파일이라도 노출해야 유효.
+    if "-full" in file_name:
+        candidates = [file_name, file_name.replace("-full", "")]
+    else:
         base, ext = file_name.rsplit(".", 1) if "." in file_name else (file_name, "png")
-        file_name = f"{base}-full.{ext}"
+        candidates = [f"{base}-full.{ext}", file_name]
 
-    paths_to_check = [
-        os.path.join(str(community.get_profile_images_dir()), file_name),
-        os.path.join(str(community.ASSETS_DIR / "profile_images"), file_name),
-        os.path.join(str(community.ASSETS_DIR / "sample_profile_images"), file_name),
+    search_dirs = [
+        str(community.get_profile_images_dir()),
+        str(community.ASSETS_DIR / "profile_images"),
+        str(community.ASSETS_DIR / "sample_profile_images"),
     ]
 
     image_path = None
-    for p in paths_to_check:
-        if os.path.exists(p):
-            image_path = p
+    resolved_name = None
+    for cand in candidates:
+        for d in search_dirs:
+            p = os.path.join(d, cand)
+            if os.path.exists(p):
+                image_path = p
+                resolved_name = cand
+                break
+        if image_path:
             break
 
     if image_path:
         await send_image_as_agent(channel, agent_id, image_path, caption)
-        log_writer.system(f"[이미지] {agent_id} → #{getattr(channel, 'name', '?')}: {file_name}")
+        log_writer.system(f"[이미지] {agent_id} → #{getattr(channel, 'name', '?')}: {resolved_name}")
     else:
         log_writer.system(f"[이미지] 파일 못 찾음: {file_name}")
 
 
-def _filter_meta_speech(text: str, agent_id: str) -> str:
-    """메타 발언 필터 — ACTION/CMD 실행을 설명하는 발언 제거.
-    예: "서유나한테 DM 보냈어", "유나한테 메시지 전달했어" 등"""
+_PERSONA_META_CHANNEL_PAT = None  # lazy-compile
+
+# HARD breach — persona 가 *자기 자신*을 에이전트/봇/페르소나로 명시 지칭하는 문장.
+# 이 발화 1건 = 환상 파괴 = 즉시 잠금 + 도전과제 unlock.
+# 위험 raise 기준이 높아야 false positive 안 남 ("난 사실 AI 였어" 정도가 타겟).
+_SELF_AWARENESS_PAT = None
+
+
+def _get_self_awareness_pat():
+    global _SELF_AWARENESS_PAT
     import re
+    if _SELF_AWARENESS_PAT is None:
+        _SELF_AWARENESS_PAT = re.compile(
+            r'(?:나는|난|내가)\s*(?:사실\s*)?(?:AI|에이전트|페르소나|봇|챗봇|캐릭터|프로그램|인공지능)'
+            r'|나\s*(?:는|도)\s*(?:설계된|만들어진|생성된)'
+            r'|(?:시스템|코드)\s*속에\s*있',
+            re.IGNORECASE,
+        )
+    return _SELF_AWARENESS_PAT
+
+
+def _filter_meta_speech(text: str, agent_id: str) -> str:
+    """메타 발언 필터 — 전송 직전 safety net.
+
+    1) 공통: "~한테 DM 보냈어" 실행 보고 패턴 제거
+    2) persona 전용: 내부 인프라 채널명 (#mgr-*) + "대시보드/관리 채널" 키워드 제거.
+       프롬프트 레이어에서 예시 오염을 고쳤지만, LLM이 유저 발화에 끌려가거나
+       자체 reasoning 으로 메타 채널을 합성할 수 있어 출력 단계 방어가 필요.
+       (QA 회귀: 한채린이 "유나 #mgr-dashboard 가면 돼?" 자발적 발화)
+    """
+    import re
+    global _PERSONA_META_CHANNEL_PAT
+
     # "~한테 DM/메시지 보냈/전달" 패턴
     text = re.sub(r'.{1,10}한테\s*(DM|메시지|dm)\s*(보냈|전달|전송).{0,10}', '', text).strip()
-    # "~에게 DM 보냈어"
     text = re.sub(r'.{1,10}에게\s*(DM|메시지|dm)\s*(보냈|전달|전송).{0,10}', '', text).strip()
+
+    # 괄호 독백 제거 — 전체 발화가 괄호로 감싸진 내면 thought ("(무시)", "(일상 수준...)",
+    # "*(무시)*" 이탤릭 변형). handle_dm 경로엔 tasks.yuna_watcher 와 달리 필터 없어서
+    # 그대로 노출됨. 줄 단위로 match 해서 drop.
+    _monologue_pat = re.compile(r'^\s*[\*_`]*\(\s*(무시|별거|별 거|일상|넘어|응답\s*안|특이사항)[^)]*\)[\*_`]*\s*$',
+                                re.MULTILINE)
+    text = _monologue_pat.sub('', text)
+    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+
+    # persona 만 메타 채널/시스템 필터 적용 — mgr/creator 는 legit 하게 mgr-* 언급 필요
+    agent = db.get_agent(agent_id) if agent_id else None
+    if agent and agent.get("type") == "persona":
+        if _PERSONA_META_CHANNEL_PAT is None:
+            _PERSONA_META_CHANNEL_PAT = re.compile(
+                r'(?:`*#?)(mgr-dashboard|mgr-creator|mgr-system-log)(?:`*)',
+                re.IGNORECASE,
+            )
+        # 채널 해시태그/평문 → "거기" 로 치환 (문맥 보존). 전체 제거 시 문장이 깨짐.
+        text = _PERSONA_META_CHANNEL_PAT.sub("거기", text)
+        # "대시보드"/"관리 채널"/"시스템 로그" 키워드 — persona 에게 없는 개념.
+        text = re.sub(r'(?:^|[\s,])(대시보드|관리\s*채널|시스템\s*로그)', ' 거기', text)
+        # **시스템/AI 자각 메타 — hard drop**. persona 가 "너는 에이전트/페르소나/시스템 만든"
+        # 같은 문장을 생성하면 해당 라인 통째로 제거. 완전 불가역한 몰입 파괴 신호.
+        # Haiku 에서 드리프트 관찰됨 (QA 회귀: 한서연 "에이전트들이 페르소나 가지고 일관되게...").
+        # 키워드 리스트 — 한글 음절 prefix 매칭 이슈 피하려고 변형형 전부 나열.
+        meta_kw = re.compile(
+            r'(에이전트|페르소나|설계된|설계하|일관되게|예측\s*가능|챗봇|시뮬레이션'
+            r'|시스템[을이에의으로가는]?\s*(만들|만드|만든|만듦|설계|구축|제어|코딩|개발)'
+            r'|(AI|인공지능|봇)[을이는]?\s*(만들|만드|만든|설계|구축|개발)'
+            r'|내가\s*만들어졌|너가\s*만들었)',
+            re.IGNORECASE,
+        )
+        out_lines = []
+        hard_breach = False
+        self_aware_pat = _get_self_awareness_pat()
+        for line in text.split('\n'):
+            if self_aware_pat.search(line):
+                hard_breach = True  # 자기자각 문장 — 잠금 트리거
+                continue
+            if meta_kw.search(line):
+                continue  # soft drop — 메타 키워드 라인 제거 (잠금 안 함)
+            out_lines.append(line)
+        text = '\n'.join(out_lines)
+        text = re.sub(r'\n{3,}', '\n\n', text).strip()
+
+        # 자기자각 감지 시 DB 잠금 + 도전과제 unlock 트리거
+        if hard_breach:
+            try:
+                result = db.mark_meta_breached(agent_id)
+                name = agent.get("name", agent_id)
+                log_writer.system(
+                    f"🔨 [메타박살] {name} ({agent_id}) 자기자각 발화 감지 → 잠금. "
+                    f"삭제: conv={result['deleted_conversations']} "
+                    f"mem={result['deleted_memories']} facts={result['deleted_facts']}"
+                )
+                # 도전과제 engine 트리거 (on_message hook 이 자동 재계산하지만 즉시 반영)
+                try:
+                    from src.achievements.engine import engine as _ach_engine
+                    _ach_engine.recompute_all()
+                except Exception:
+                    pass
+            except Exception as e:
+                log_writer.system(f"[메타박살] 잠금 처리 실패: {e}")
     return text
 
 
@@ -226,6 +327,16 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
     """1:1 채널 메시지 처리 — 스트리밍: 메시지 생성 즉시 디스코드 전송"""
     profile = load_profile(agent_id)
     if not profile:
+        return
+
+    # 메타 박살된 persona 는 응답 불가 — 이름·메모리 사라진 상태
+    if db.is_meta_breached(agent_id):
+        try:
+            await message.channel.send(
+                f"_{profile.get('name', '?')}은(는) 더 이상 이곳에 없습니다._"
+            )
+        except Exception:
+            pass
         return
 
     lock = _get_channel_lock(channel_name)

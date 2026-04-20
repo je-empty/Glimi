@@ -164,6 +164,175 @@ def _check_agent_auto_chat(user_id: str) -> Optional[dict]:
     return None
 
 
+def _check_event_count(event_types: list[str], threshold: int, user_id: str) -> Optional[dict]:
+    """events 테이블에 특정 type 이 threshold 회 이상 기록됐는지."""
+    conn = db.get_conn()
+    placeholders = ",".join("?" * len(event_types))
+    try:
+        cnt = conn.execute(
+            f"SELECT COUNT(*) AS c FROM events WHERE event_type IN ({placeholders})",
+            event_types,
+        ).fetchone()["c"]
+    except Exception:
+        cnt = 0
+    finally:
+        conn.close()
+    if cnt >= threshold:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"count": cnt, "threshold": threshold}}
+    if cnt > 0:
+        return {"state": "unlocked", "mark_unlocked": True,
+                "progress_data": {"count": cnt, "need": threshold}}
+    return None
+
+
+def _check_first_conflict(user_id: str) -> Optional[dict]:
+    """persona 간 갈등/분쟁 이벤트 기록 1건 이상."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT participants, description FROM events "
+            "WHERE event_type IN ('갈등', '다툼', '오해') LIMIT 1"
+        ).fetchone()
+    except Exception:
+        row = None
+    conn.close()
+    if row:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"description": row["description"][:80]}}
+    return None
+
+
+def _check_reconciliation(user_id: str) -> Optional[dict]:
+    """화해/해소 이벤트."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT description FROM events WHERE event_type IN ('화해', '해소', '관계회복') LIMIT 1"
+        ).fetchone()
+    except Exception:
+        row = None
+    conn.close()
+    if row:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"description": row["description"][:80]}}
+    return None
+
+
+def _check_confession(user_id: str) -> Optional[dict]:
+    """고백/마음 표현 이벤트."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT description FROM events WHERE event_type IN ('고백', '마음표현', '짝사랑') LIMIT 1"
+        ).fetchone()
+    except Exception:
+        row = None
+    conn.close()
+    if row:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"description": row["description"][:80]}}
+    return None
+
+
+def _check_many_friends(user_id: str, threshold: int = 5) -> Optional[dict]:
+    """persona 에이전트 수 (locked 제외) threshold 이상."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM agents WHERE type='persona' "
+            "AND (meta_breached_at IS NULL)"
+        ).fetchone()
+        cnt = row["c"] if row else 0
+    except Exception:
+        cnt = 0
+    conn.close()
+    if cnt >= threshold:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"count": cnt, "threshold": threshold}}
+    if cnt > 0:
+        return {"state": "unlocked", "mark_unlocked": True,
+                "progress_data": {"count": cnt, "need": threshold}}
+    return None
+
+
+def _check_late_night(user_id: str) -> Optional[dict]:
+    """새벽(0-5시) 대화 기록 — 진짜 친밀한 시간대."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM conversations WHERE speaker=? "
+            "AND CAST(strftime('%H', timestamp) AS INTEGER) BETWEEN 0 AND 5",
+            (user_id,),
+        ).fetchone()
+        cnt = row["c"] if row else 0
+    except Exception:
+        cnt = 0
+    conn.close()
+    if cnt >= 10:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"count": cnt}}
+    return None
+
+
+def _check_message_volume(user_id: str, threshold: int = 500) -> Optional[dict]:
+    """전체 대화 볼륨."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS c FROM conversations").fetchone()
+        cnt = row["c"] if row else 0
+    except Exception:
+        cnt = 0
+    conn.close()
+    if cnt >= threshold:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"count": cnt}}
+    if cnt > threshold // 5:
+        return {"state": "unlocked", "mark_unlocked": True,
+                "progress_data": {"count": cnt, "need": threshold}}
+    return None
+
+
+def _check_secret_keeper(user_id: str) -> Optional[dict]:
+    """internal-dm 채널 (오너 읽기전용) 에서 persona 끼리 비밀 대화 많이."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM conversations WHERE channel LIKE 'internal-dm-%'"
+        ).fetchone()
+        cnt = row["c"] if row else 0
+    except Exception:
+        cnt = 0
+    conn.close()
+    if cnt >= 30:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"count": cnt}}
+    return None
+
+
+def _check_meta_breach(user_id: str) -> Optional[dict]:
+    """메타 박살 — persona 1명 이상이 메타 자각 발화해서 잠금 상태(locked)가 된 경우.
+    `agents.meta_breached_at` 가 찍힌 persona 가 있으면 unlock.
+    MetaBreachSupervisor 가 감지 + 잠금 처리. 이 체크는 단순 조회.
+    """
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, name, meta_breached_at FROM agents "
+            "WHERE type='persona' AND meta_breached_at IS NOT NULL "
+            "ORDER BY meta_breached_at DESC LIMIT 1"
+        ).fetchone()
+    except Exception:
+        # meta_breached_at 컬럼 미존재 (마이그레이션 전)
+        return None
+    finally:
+        conn.close()
+    if row:
+        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                "progress_data": {"name": row["name"], "at": row["meta_breached_at"]}}
+    return None
+
+
 def _check_long_relationship(user_id: str) -> Optional[dict]:
     """같은 페르소나와 3일 이상 유지된 DM (첫 메시지 ~ 최근 메시지 간격)."""
     conn = db.get_conn()
@@ -240,6 +409,76 @@ ACHIEVEMENTS: list[Achievement] = [
         description="한 친구와 3일 이상 이어진 대화.",
         icon="🌱",
         check=_check_long_relationship,
+    ),
+    Achievement(
+        key="meta_breach",
+        title="제4의 벽 박살 🔨",
+        description="친구 한 명의 환상을 깼다. 그 친구는 기억을 잃고 사라졌다.",
+        icon="💥",
+        check=_check_meta_breach,
+    ),
+    Achievement(
+        key="first_conflict",
+        title="첫 다툼",
+        description="친구들 사이에 처음 갈등이 생겼다. 관계는 이제부터가 진짜.",
+        icon="⚡",
+        check=_check_first_conflict,
+    ),
+    Achievement(
+        key="reconciliation",
+        title="풀렸다",
+        description="다툰 친구들이 다시 화해한 순간.",
+        icon="🕊️",
+        check=_check_reconciliation,
+    ),
+    Achievement(
+        key="confession",
+        title="마음 열기",
+        description="누군가 용기 내서 마음을 고백했다.",
+        icon="💗",
+        check=_check_confession,
+    ),
+    Achievement(
+        key="many_friends",
+        title="인싸의 길 🎈",
+        description="다섯 명 이상의 친구와 대화하는 커뮤니티 완성.",
+        icon="🎈",
+        check=_check_many_friends,
+    ),
+    Achievement(
+        key="late_night",
+        title="새벽의 친구",
+        description="새벽 0시-5시에 10번 이상 대화. 진짜 가까운 사이만 가능.",
+        icon="🌙",
+        check=_check_late_night,
+    ),
+    Achievement(
+        key="chatter",
+        title="수다쟁이",
+        description="커뮤니티 전체 대화량 500건 돌파.",
+        icon="💬",
+        check=_check_message_volume,
+    ),
+    Achievement(
+        key="secret_keeper",
+        title="훔쳐보는 관객 🎭",
+        description="친구들끼리의 비밀 대화 30건 이상을 곁눈질했다.",
+        icon="🎭",
+        check=_check_secret_keeper,
+    ),
+    Achievement(
+        key="room_master",
+        title="방 주인",
+        description="다양한 단톡방 5개 이상 만들기.",
+        icon="🏠",
+        check=lambda uid: _check_event_count(["단톡방생성", "비밀톡방생성"], 5, uid),
+    ),
+    Achievement(
+        key="matchmaker",
+        title="소개팅 주선자",
+        description="친구끼리 DM 으로 연결한 적 10번.",
+        icon="💌",
+        check=lambda uid: _check_event_count(["dm_request"], 10, uid),
     ),
 ]
 
