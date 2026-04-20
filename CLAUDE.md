@@ -452,9 +452,15 @@ python -m src.community init my-server  # 새 커뮤니티 초기화
 ```
 
 ## QA 자동 테스트
+
+**자율 수행 절차**: `docs/qa_playbook.md` — 유저가 "QA 진행해" 하면 이 문서 따라 자율 사이클 (실행 → 모니터 → 분석 → 수정 → 재실행).
+**토큰 누적 기록**: `tests/e2e/results/token_usage.md` — 매 런의 델타 append.
+
 ```bash
 python -m tests.e2e.runner              # 1회 실행
 python -m tests.e2e.runner --runs 3     # 3회 반복
+./scripts/qa.sh                         # tmux 세션으로 백그라운드 실행 (권장)
+./scripts/qa.sh stop                    # 중단
 ```
 
 ### 구조

@@ -2,10 +2,14 @@
 # Glimi QA Runner — tmux 세션으로 E2E 자동 테스트 실행
 #
 # 사용:
-#   ./scripts/qa.sh            ← 1회 실행
-#   ./scripts/qa.sh --runs 3   ← 3회 반복
-#   ./scripts/qa.sh attach     ← 실행 중인 세션에 붙기
-#   ./scripts/qa.sh stop       ← 세션 종료
+#   ./scripts/qa.sh                         ← 초기화 후 1회 실행 (튜토리얼부터)
+#   ./scripts/qa.sh --resume                ← 이전 DB/채널 유지하고 이어서 (튜토리얼 스킵)
+#   ./scripts/qa.sh --resume --seed-prompt "지시"  ← test_user 첫 발화에 지시 주입
+#   ./scripts/qa.sh --runs 3                ← 3회 반복
+#   ./scripts/qa.sh attach                  ← 실행 중인 세션에 붙기
+#   ./scripts/qa.sh stop                    ← 세션 종료
+#
+# 추가 args 는 전부 tests/e2e/runner.py 로 pass-through.
 #
 # 세션 이름: Glimi-QA-Runner
 
