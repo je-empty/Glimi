@@ -45,7 +45,7 @@ AGENT_TASK_MODELS = {
 AVAILABLE_MODELS = [
     {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6",
      "kind": "cloud", "provider": "claude", "tier": "balanced", "icon": "☁️"},
-    {"id": "claude-haiku-4-5", "label": "Haiku 4.5",
+    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5",
      "kind": "cloud", "provider": "claude", "tier": "fast", "icon": "☁️"},
     # Phase 2 로컬 모델 예시 (주석 — 실제 구현 시 해제 + src/llm/local.py 추가):
     # {"id": "ollama:llama3.3:8b", "label": "Llama 3.3 8B",
@@ -309,7 +309,7 @@ class AgentRuntime:
             result = subprocess.run(
                 ["claude", "-p",
                  f"아래 대화를 3~4문장으로 요약해. 누가 뭘 요청했고 어디까지 진행됐는지 핵심만:\n\n{conversation}",
-                 "--output-format", "text", "--model", "claude-haiku-4-5"],
+                 "--output-format", "text", "--model", "claude-haiku-4-5-20251001"],
                 capture_output=True, text=True, timeout=15,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
@@ -794,11 +794,14 @@ class AgentRuntime:
         tool_buffer: list[str] = []  # <tools> 블록 누적 (chat 스트림에서 제외)
         in_tools = False
 
-        # 에이전트 타입별 최대 응답 수 제한
+        # 에이전트 타입별 최대 응답 수 제한.
+        # creator(하나) 는 confirm 카드 (이름/나이/성별/MBTI/성격/배경/말투/관계 7-8줄)
+        # + <tools> 블록까지 내보내려면 한도가 넉넉해야 함. 10 에선 tool 블록이 잘려서
+        # create_agent_profile 호출 자체가 불발되는 회귀 발생.
         MAX_STREAMING_MESSAGES = {
             "persona": 10,
             "mgr": 15,
-            "creator": 10,
+            "creator": 20,
         }
         agent_type = profile.get("type", "persona")
         max_messages = MAX_STREAMING_MESSAGES.get(agent_type, 10)

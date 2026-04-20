@@ -107,10 +107,55 @@ def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
     return True  # 알 수 없는 채널은 허용
 
 
+# 중복 메시지 발신 방지 — 최근 5초 내 같은 채널·에이전트·content 조합 기록.
+# 과거 회귀: yuna_watcher 와 handle_dm 이 겹치면서 같은 4줄 응답이 통째로 2번 전송된 사례.
+_RECENT_SENDS: dict = {}  # key=(channel_id, agent_id, content) → timestamp
+_DEDUP_WINDOW_SEC = 5.0
+
+
+def _dedup_and_record(channel_id: int, agent_id: str, message: str) -> bool:
+    """True 반환 시 중복 (전송 skip). False 면 처음 보내는 것 (기록 + 허용)."""
+    import time as _t
+    now = _t.time()
+    key = (channel_id, agent_id, message.strip())
+    # 오래된 항목 정리 (간단 GC — 매번 돌지만 dict 작음)
+    cutoff = now - _DEDUP_WINDOW_SEC * 2
+    for k, ts in list(_RECENT_SENDS.items()):
+        if ts < cutoff:
+            _RECENT_SENDS.pop(k, None)
+    prev = _RECENT_SENDS.get(key)
+    if prev is not None and (now - prev) < _DEDUP_WINDOW_SEC:
+        return True
+    _RECENT_SENDS[key] = now
+    return False
+
+
+_MD_FENCE_RE = re.compile(r'^\s*(?:```|~~~)\s*\w*\s*$')
+
+
+def _clean_for_chat(message: str) -> str:
+    """전송 직전 정제 — 단독 마크다운 코드 펜스 (```·~~~) 제거 + 양끝 공백 trim.
+    하나가 이미지 JSON 을 ``` 로 감싸다 실패한 파편이 raw 채팅으로 노출되는 케이스 방어."""
+    if not message:
+        return message
+    lines = message.split('\n')
+    cleaned = [l for l in lines if not _MD_FENCE_RE.match(l)]
+    out = '\n'.join(cleaned).strip()
+    return out
+
+
 async def _raw_send_as_agent(channel: discord.TextChannel, agent_id: str, name: str, message: str):
     """실제 webhook 전송 + 에러 fallback. PacedSender worker가 호출.
     fallback 발생은 모두 system.log에도 남겨 (봇 이름/아바타 분리 버그 추적용)."""
     ch_name = getattr(channel, 'name', '?')
+    # 마크다운 펜스 제거 (이미지 JSON 실패 부산물 등)
+    message = _clean_for_chat(message)
+    if not message:
+        return
+    # 중복 dedup — 같은 채널/에이전트/content 가 5초 내 재전송되면 skip
+    if _dedup_and_record(getattr(channel, 'id', 0), agent_id, message):
+        log_writer.system(f"[dedup] {name}@{ch_name}: 5초 내 동일 메시지 중복 skip")
+        return
     # 디스코드 렌더링용 포맷팅 (#channel-name → <#id> 등)
     # DB/로그는 원문 유지, 여기서만 변환.
     try:
