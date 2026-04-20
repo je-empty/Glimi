@@ -378,7 +378,7 @@ async def _check_owner_profile(guild):
     if first_time:
         db.set_meta("yuna_greeted", "1")
 
-    log_writer.system("튜토리얼 완료")
+    log_writer.system("유나 첫 인사 완료")  # scene=tutorial complete 아님 (그건 finish_tutorial tool 시)
     log_writer.mark_tutorial_done()
 
 
@@ -417,9 +417,9 @@ async def supervisor_tick():
 
 # ── 유나 자율 감시 + 소셜 펄스 ─────────────────────────
 
-@tasks.loop(minutes=5)
+@tasks.loop(minutes=12)
 async def yuna_watcher():
-    """5분마다: 활동 감지 + 유나 판단으로 자율 대화 트리거"""
+    """12분 간격 (이전 5분 → 너무 자주 보고해서 공해). 활동 감지 + 유나 판단으로 자율 대화 트리거"""
 
     from src.bot.core import get_target_guild
     guild = get_target_guild()
@@ -463,9 +463,13 @@ async def yuna_watcher():
     notify = "\n".join(new_events)
     notify_prompt = (
         f"[자동알림] 최근 활동:\n{notify}\n\n"
-        f"이건 참고용이야. 대부분은 무시해도 돼.\n"
-        f"정말 특이하거나 이상한 대화가 있을 때만 {get_user_name()}한테 말 걸어.\n"
-        f"일상적인 대화면 아무것도 하지 마. 응답하지 마."
+        f"이건 참고용이야. **대부분 무시하고 빈 응답으로 넘어가는 게 기본**.\n"
+        f"보고 기준(아래 중 하나 이상 해당 시에만 {get_user_name()}한테 1~2줄 짧게 말 걸기):\n"
+        f"  1) 멤버끼리 갈등·오해·상처받는 기색\n"
+        f"  2) {get_user_name()} 직접 언급된 특이한 화제\n"
+        f"  3) 메타 용어 누출 의심 (persona 가 AI/시스템/캐릭터 식 발언)\n"
+        f"  4) 프로필 수정 필요한 새 정보 ({get_user_name()} 가 언급한 취향/상황)\n"
+        f"**일상 잡담·근황 공유·게임 얘기·과제 얘기 → 응답 금지**. 그냥 빈 응답으로 끝내."
     )
 
     try:

@@ -246,7 +246,8 @@ async def cmd_create_agent(ctx, *, concept: str):
 
         # 채널 생성
         guild = ctx.guild
-        category = discord.utils.get(guild.categories, name="glimi")
+        from src.bot.core import _get_category_for_channel, _ensure_category
+        category = await _ensure_category(guild, _get_category_for_channel(ch_name))
         if category and not discord.utils.get(guild.text_channels, name=ch_name):
             await guild.create_text_channel(ch_name, category=category)
 
@@ -842,7 +843,8 @@ async def cmd_create_room(ctx, *args):
 
     # 채널 생성
     guild = ctx.guild
-    category = discord.utils.get(guild.categories, name="glimi")
+    from src.bot.core import _get_category_for_channel, _ensure_category
+    category = await _ensure_category(guild, _get_category_for_channel(ch_name))
     existing = discord.utils.get(guild.text_channels, name=ch_name)
 
     if existing:
@@ -930,7 +932,8 @@ async def cmd_start_convo(ctx, *args):
     # 대화할 채널 찾기 또는 생성
     ch_name = f"internal-{'-'.join(names)}"
     guild = ctx.guild
-    category = discord.utils.get(guild.categories, name="glimi")
+    from src.bot.core import _get_category_for_channel, _ensure_category
+    category = await _ensure_category(guild, _get_category_for_channel(ch_name))
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
 
     if not target_ch:

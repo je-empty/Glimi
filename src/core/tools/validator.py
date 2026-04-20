@@ -54,6 +54,25 @@ def validate_args(spec: ToolSpec, args: dict) -> dict[str, Any]:
         value = args[param_name]
         checker = _TYPE_CHECKERS.get(param_type, _TYPE_CHECKERS["any"])
         if not checker(value):
+            # LLM 이 str 파라미터에 int/float/bool 을 넣는 경우가 빈번 (예: age=25, value=1).
+            # 엄격히 reject 하면 프로필 수정 같은 기본 플로우가 실패 → 자동 str 변환.
+            # list[str] 에 대해서도 단일 str 은 [str] 로 승격해서 호출자 의도 보존.
+            coerced = None
+            if param_type == "str" and isinstance(value, (int, float, bool)):
+                coerced = str(value)
+            elif param_type == "str" and isinstance(value, (dict, list)):
+                # LLM 이 JSON 문자열 대신 raw object 로 보내는 케이스 (예: create_agent_profile
+                # 의 args 는 JSON 문자열 기대지만 dict 로 들어옴). json.dumps 로 직렬화.
+                import json as _json
+                try:
+                    coerced = _json.dumps(value, ensure_ascii=False)
+                except Exception:
+                    pass
+            elif param_type == "list[str]" and isinstance(value, str):
+                coerced = [value]
+            if coerced is not None:
+                normalized[param_name] = coerced
+                continue
             raise ValidationError(
                 spec.name,
                 f"field '{param_name}' expects {param_type}, got {type(value).__name__}"
