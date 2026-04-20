@@ -480,7 +480,13 @@ async def yuna_watcher():
             responses = await parse_and_execute_actions(mgr_channel, responses, guild)
         for resp in responses:
             # 빈 응답("...", 공백 등)은 유나가 안 보내기로 한 것
-            if not resp or resp.strip() in ("", "...", "(무시)"):
+            stripped = resp.strip() if resp else ""
+            if not stripped:
+                continue
+            # "(무시)", "(일상적인 대화)", "(별도 개입 없음)" 등 내부 회피 응답 필터.
+            # 괄호로 시작·끝나는 단일 독백이면 유저에게 노출 금지.
+            if (stripped.startswith("(") and stripped.endswith(")") and "\n" not in stripped) or \
+               stripped in ("", "...", "(무시)"):
                 continue
             for part in _split_for_chat(resp):
                 await send_as_agent(mgr_channel, MGR_ID, part)

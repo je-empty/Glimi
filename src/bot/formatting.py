@@ -185,13 +185,15 @@ def format_for_discord(message: str,
 # ── 에이전트 프롬프트에 주입할 가이드 ──────────────────
 
 FORMATTING_GUIDE = """\
-[Formatting rules — Discord rendering]
-- Other channels: write as plain `#channel-name` (e.g. `#mgr-creator`).
-  The runtime auto-converts to clickable Discord channel links. Don't use ``` backticks ```, don't quote, don't wrap in brackets.
-- Emphasis: use `**bold**` for important words. Use sparingly.
-- Code / commands / filenames: wrap in single backticks like ``update_profile`` or ``.env``.
-- Don't use `@mention` for other members — they're webhooks (mentions don't work).
-  Just write their name as-is.
+[Formatting rules — Discord rendering — 반드시 준수]
+- 채널 언급은 **항상 `#` 접두사 필수**. 예: `#mgr-creator`, `#dm-이수아`, `#mgr-dashboard`.
+  평문 `mgr-creator` 나 `dm-이수아` 처럼 `#` 빼면 클릭 링크 안 되고 그냥 텍스트로 뜸.
+  예외 없음 — 채널명 나올 때마다 앞에 `#` 붙이기.
+- 여러 채널 나열할 때도 각각에: `#mgr-creator, #mgr-dashboard, #mgr-system-log` 이런 식.
+- 런타임이 자동으로 `<#id>` 클릭 링크로 변환. 백틱·따옴표·대괄호 감싸지 말 것.
+- 강조: `**볼드**` 는 진짜 중요한 단어에만 드물게.
+- 코드/파일명만 백틱: `update_profile`, `.env`.
+- `@name` 멘션 쓰지 마 — 친구들은 웹훅이라 멘션 작동 안 함. 그냥 이름 그대로.
 """
 
 
