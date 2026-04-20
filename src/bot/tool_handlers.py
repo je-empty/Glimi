@@ -204,6 +204,18 @@ async def _h_finish_tutorial(args: dict, ctx: ToolContext):
 async def _h_create_agent_profile(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _cmd_profile_create
     await _cmd_profile_create(ctx.channel_obj, args["args"])
+    # 이벤트 로그 — 새 멤버 합류
+    try:
+        import json as _j
+        raw = args.get("args", "")
+        payload = _j.loads(raw) if isinstance(raw, str) else raw
+        new_name = (payload or {}).get("name") or "새친구"
+        db.log_event("멤버합류", ["owner", new_name],
+                     f"{new_name} 합류 (MBTI: {(payload or {}).get('mbti', '?')}, "
+                     f"관계: {((payload or {}).get('relationship_to_owner') or {}).get('type', '?')})",
+                     impact="긍정")
+    except Exception:
+        pass
     return {"accepted": True}
 
 
@@ -377,6 +389,13 @@ async def _h_request_dm(args: dict, ctx: ToolContext):
         "message": cur_msg,
     }, ensure_ascii=False)
     await _forward_action_to_yuna(ctx.caller_agent_id, s, ctx.guild)
+    # 이벤트 로그 — 누가 누구한테 DM 요청
+    try:
+        db.log_event("dm_request", [ctx.caller_agent_id, target],
+                     f"{ctx.caller_agent_id}가 {target}한테 DM 요청: {cur_msg[:60]}",
+                     impact="중립")
+    except Exception:
+        pass
     return {"forwarded_to": target}
 
 

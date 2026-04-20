@@ -336,6 +336,74 @@ def get_agent(agent_id: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def mark_meta_breached(agent_id: str) -> dict:
+    """persona 가 메타 자각 발화 → 잠금. 메모리 + 대화 기록 백업 후 삭제.
+    리턴: {deleted_convs, deleted_memories, deleted_facts, channel}."""
+    from datetime import datetime as _dt
+    conn = get_conn()
+    now = _dt.now().isoformat()
+    # status 는 CHECK constraint 때문에 'inactive' 사용 (locked 추가는 스키마 변경 필요).
+    # 메타 판정은 meta_breached_at 존재 여부로.
+    conn.execute(
+        "UPDATE agents SET meta_breached_at = ?, status = 'inactive' WHERE id = ?",
+        (now, agent_id),
+    )
+    # 이 에이전트가 참여한 채널 — dm/internal-dm-* 삭제 대상
+    chans = [r["channel"] for r in conn.execute(
+        "SELECT DISTINCT channel FROM conversations WHERE speaker = ?", (agent_id,)
+    ).fetchall()]
+    # 대화 기록은 trash 테이블에 백업 (roll-back 가능성)
+    if chans:
+        try:
+            for ch in chans:
+                conn.execute(
+                    "INSERT INTO trash(item_type, original_table, channel, data) "
+                    "SELECT 'meta_breach_conv', 'conversations', ?, json_group_array(json_object("
+                    " 'speaker', speaker, 'message', message, 'timestamp', timestamp))"
+                    " FROM conversations WHERE channel = ?",
+                    (ch, ch),
+                )
+        except Exception:
+            pass
+    del_convs = 0
+    if chans:
+        cur = conn.execute(
+            "DELETE FROM conversations WHERE channel IN (" + ",".join("?"*len(chans)) + ")",
+            chans,
+        )
+        del_convs = cur.rowcount
+    # 메모리 / facts / relationship history 삭제
+    cur_m = conn.execute("DELETE FROM memories WHERE agent_id = ?", (agent_id,))
+    del_mem = cur_m.rowcount
+    cur_f = conn.execute("DELETE FROM agent_facts WHERE agent_id = ?", (agent_id,))
+    del_facts = cur_f.rowcount
+    conn.execute(
+        "DELETE FROM relationship_history WHERE agent_a = ? OR agent_b = ?",
+        (agent_id, agent_id),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "deleted_conversations": del_convs,
+        "deleted_memories": del_mem,
+        "deleted_facts": del_facts,
+        "channels": chans,
+    }
+
+
+def is_meta_breached(agent_id: str) -> bool:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT meta_breached_at FROM agents WHERE id = ?", (agent_id,)
+        ).fetchone()
+    except Exception:
+        return False
+    finally:
+        conn.close()
+    return bool(row and row["meta_breached_at"])
+
+
 def update_emotion(agent_id: str, emotion: str, intensity: int):
     conn = get_conn()
     conn.execute(
@@ -1042,6 +1110,9 @@ def _migrate_schema():
         # 개별 에이전트 모델 override — 값 있으면 AGENT_MODELS[type] 대신 사용.
         # 대시보드에서 per-agent 모델 전환 (소넷/하이쿠/오퍼스/로컬) 가능하게 함.
         "model_override": "TEXT",
+        # 메타 박살 타임스탬프 — 이 값 not null 이면 persona 가 자기 자각 발화한 것.
+        # 대화 잠금 + 메모리·대화 기록 삭제됨 (MetaBreachSupervisor 가 세팅).
+        "meta_breached_at": "DATETIME",
     }
     for col, col_type in new_cols.items():
         if col not in agent_cols:

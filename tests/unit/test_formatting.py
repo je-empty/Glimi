@@ -27,7 +27,7 @@ def _run():
         ("#mgr-creator 가서 얘기해봐", "<#1111> 가서 얘기해봐"),
         ("#dm-서유나 가자", "<#3333> 가자"),
         ("#internal-dm-서유나-한유진 여기서", "<#4444> 여기서"),
-        ("#없는채널", "**#없는채널**"),
+        ("#없는채널", "#없는채널"),
         ("단어중간말#mgr-creator", "단어중간말#mgr-creator"),
         ("띄어쓰기 #mgr-creator!", "띄어쓰기 <#1111>!"),
         ("코드 `#mgr-creator` 는 그대로", "코드 `<#1111>` 는 그대로"),
@@ -54,9 +54,9 @@ def _run():
 
 
 def test_no_guild_passes_through():
-    """guild 없으면 `#` 뒤 텍스트를 볼드 폴백."""
+    """guild 없거나 매칭 실패면 `#name` 평문 유지 (포터빌리티)."""
     out = format_for_discord("#mgr-creator 가자", guild=None)
-    assert out == "**#mgr-creator** 가자", out
+    assert out == "#mgr-creator 가자", out
 
 
 def test_empty_is_noop():

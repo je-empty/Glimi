@@ -528,7 +528,8 @@ async def yuna_create_room(report_channel, args_str, guild):
         dm_name = f"dm-{participants[0]['name']}"
         dm_ch = discord.utils.get(guild.text_channels, name=dm_name)
         if not dm_ch:
-            category = discord.utils.get(guild.categories, name="glimi")
+            from src.bot.core import _get_category_for_channel, _ensure_category
+            category = await _ensure_category(guild, _get_category_for_channel(dm_name))
             dm_ch = await guild.create_text_channel(dm_name, category=category or guild.text_channels[0].category)
             CHANNEL_AGENT_MAP[dm_name] = participants[0]["id"]
             AGENT_CHANNEL_MAP[participants[0]["id"]] = dm_name
@@ -559,10 +560,16 @@ async def yuna_create_room(report_channel, args_str, guild):
         existing = discord.utils.get(guild.text_channels, name=ch_name)
 
     if existing:
-        await send_as_agent(report_channel, MGR_ID, f"이미 있어: #{ch_name}")
+        # 유저에게 메시지 X (chain 반복 시 spam 됨). 시스템 로그만.
+        log_writer.system(f"[create_room] 이미 존재: #{ch_name} (skip)")
         return
 
-    category = discord.utils.get(guild.categories, name="glimi")
+    # (existing 없을 때만 여기로 내려와서 생성 + 이벤트 로그)
+
+    # 카테고리 매핑: group-* → glimi-group, internal-* → glimi-internal-* 등.
+    # 이전엔 "glimi" 로 하드코딩돼서 모든 그룹/내부 채널이 같은 기본 카테고리로 들어가는 회귀.
+    from src.bot.core import _get_category_for_channel, _ensure_category
+    category = await _ensure_category(guild, _get_category_for_channel(ch_name))
     new_ch = await guild.create_text_channel(
         ch_name, category=category or guild.text_channels[0].category
     )
@@ -574,6 +581,16 @@ async def yuna_create_room(report_channel, args_str, guild):
 
     await send_as_agent(report_channel, MGR_ID, f"톡방 만들었어: #{ch_name}")
     log.info(f"[유나CMD] 톡방 생성: {ch_name}")
+    # 이벤트 로그 — 채널 생성 (참여자 이름 목록)
+    try:
+        kind = "단톡방생성" if has_owner else ("비밀톡방생성" if prefix.startswith("internal-") else "톡방생성")
+        participant_names = ["owner" if has_owner else None] + [p["name"] for p in participants]
+        participant_names = [x for x in participant_names if x]
+        db.log_event(kind, participant_names,
+                     f"#{ch_name} 생성" + (f" (주제: {topic})" if topic else ""),
+                     impact="긍정")
+    except Exception:
+        pass
 
     # internal 채널이면 자동으로 대화 시작
     if ch_name.startswith("internal-"):
@@ -615,7 +632,8 @@ async def yuna_start_conversation(report_channel, args_str, guild):
     prefix = "internal-dm" if len(participants) == 2 else "internal-group"
     ch_name = f"{prefix}-{'-'.join(names)}"
 
-    category = discord.utils.get(guild.categories, name="glimi")
+    from src.bot.core import _get_category_for_channel, _ensure_category
+    category = await _ensure_category(guild, _get_category_for_channel(ch_name))
     # 기존 채널 검색 (이름 순서 반대도 체크)
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
     if not target_ch and len(names) == 2:
@@ -1566,7 +1584,7 @@ async def _cmd_profile_create(report_channel, json_str):
             AGENT_CHANNEL_MAP[profile["id"]] = dm_name
             new_dm_name = dm_name
 
-        await send_as_agent(report_channel, creator_id, f"프로필 생성 완료: {profile['name']} ({profile['id']})")
+        # agent_id 는 시스템 로그에만. 유저 채널엔 이름만 (internal ID 노출 시 몰입 깨짐).
         log_writer.system(f"프로필 생성: {profile['name']} ({profile['id']})")
 
         # 새 친구가 자기 dm 채널에서 자동 인사 — 오너가 들어올 때 침묵 방지
