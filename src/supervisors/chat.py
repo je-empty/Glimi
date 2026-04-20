@@ -134,7 +134,8 @@ class ChatSupervisor(Supervisor):
             if ch:
                 await self._inject_and_send(
                     target_id, ch,
-                    "대화가 좀 멈춘 것 같다. 상대가 말을 기다리는 것 같으니 자연스럽게 이어가자."
+                    # 1인칭 self-talk — persona 가 지시문으로 오해하지 않도록.
+                    "아 맞다 뭔가 얘기하려 했었는데."
                 )
 
     def _pick_nudge_target(self, participants: list[str]) -> str | None:

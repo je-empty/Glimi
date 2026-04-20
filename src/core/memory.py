@@ -107,8 +107,14 @@ def _days_since(created_at: str) -> float:
     return max(0.0, (datetime.utcnow() - dt).total_seconds() / 86400.0)
 
 
+_OWNER_ROLE_TERMS = ("오너", "owner", "user", "유저", "사용자", "서버 주인")
+
+
 def _owner_aliases() -> list[str]:
-    """오너 이름 + 별명(nickname) 목록. 엔티티 정규화용 (심재빈/빈이/재빈 → 동일인)."""
+    """오너 canonical name + 별명(nickname) + 역할어(오너/owner/user/유저) 목록.
+    엔티티 정규화용. 예: 심재빈/빈이/재빈/오너/user → 심재빈 으로 통일.
+    이유: 유저가 nickname 바꾸거나 LLM이 '오너' 라는 역할어로 엔티티 저장 시 헷갈림 방지.
+    """
     try:
         from .profile import get_user_name, get_user_profile
         aliases: list[str] = []
@@ -130,9 +136,12 @@ def _owner_aliases() -> list[str]:
                 aliases.append(nick)
         except Exception:
             pass
+        for role in _OWNER_ROLE_TERMS:
+            if role not in aliases:
+                aliases.append(role)
         return aliases
     except Exception:
-        return []
+        return list(_OWNER_ROLE_TERMS)
 
 
 def _normalize_entity(name: str) -> str:
@@ -540,7 +549,10 @@ def _try_l2_rollup(agent_id: str, channel: str):
 
     if len(rows) < L2_BATCH_SIZE:
         return
-    batch = [dict(r) for r in rows[:L2_BATCH_SIZE]]
+    # raw SQL 로 읽으면 related_entities/knows 가 JSON 문자열인 채 옴 — `for e in str` 이
+    # 글자 단위 iterate 되어 entity 가 ["[", "]", "한", "지", ...] 로 깨지는 버그 방지.
+    # db._hydrate_memory 로 JSON 파싱해서 list 로 정규화.
+    batch = [db._hydrate_memory(r) for r in rows[:L2_BATCH_SIZE]]
     batch_text = "\n".join(f"- {m['content']}" for m in batch)
 
     summary = _rollup_summarize(batch_text, level=2)
@@ -602,7 +614,7 @@ def _try_l3_rollup(agent_id: str, channel: str):
 
     if len(rows) < L3_BATCH_SIZE:
         return
-    batch = [dict(r) for r in rows[:L3_BATCH_SIZE]]
+    batch = [db._hydrate_memory(r) for r in rows[:L3_BATCH_SIZE]]  # JSON 파싱 (entity 글자깨짐 방지)
     batch_text = "\n\n".join(f"[L2 {i+1}]\n{m['content']}" for i, m in enumerate(batch))
 
     summary = _rollup_summarize(batch_text, level=3)
