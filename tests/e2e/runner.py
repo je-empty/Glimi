@@ -245,14 +245,19 @@ def _wait_for_bot_ready(timeout=60) -> bool:
     return False
 
 
-def _start_test_user(token: str, turns: int = 150) -> subprocess.Popen:
-    """테스트 유저 봇 시작"""
+def _start_test_user(token: str, turns: int = 150, seed_prompt: str = "") -> subprocess.Popen:
+    """테스트 유저 봇 시작.
+    seed_prompt: 비어있지 않으면 test_user 의 초기 응답에 해당 지시 주입 —
+    QA resume 시 "채린이한테 대시보드 바로잡기" 같은 시나리오 지시용."""
+    cmd = [
+        sys.executable, "-m", "tests.e2e.test_user_bot",
+        "--token", token,
+        "--turns", str(turns),
+    ]
+    if seed_prompt:
+        cmd.extend(["--seed-prompt", seed_prompt])
     proc = subprocess.Popen(
-        [
-            sys.executable, "-m", "tests.e2e.test_user_bot",
-            "--token", token,
-            "--turns", str(turns),
-        ],
+        cmd,
         cwd=str(PROJECT_ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -454,16 +459,20 @@ def _kill_proc(proc: subprocess.Popen):
             proc.kill()
 
 
-def run_single_test(bot_token: str, test_token: str, run_id: str) -> dict:
-    """단일 테스트 실행"""
+def run_single_test(bot_token: str, test_token: str, run_id: str,
+                     resume: bool = False, seed_prompt: str = "") -> dict:
+    """단일 테스트 실행. resume=True 면 DB/채널 유지 (초기화 스킵)."""
     print(f"\n{'='*60}")
-    print(f"  Test Run: {run_id}")
+    print(f"  Test Run: {run_id} {'[RESUME]' if resume else ''}")
     print(f"{'='*60}\n")
 
-    # 1. 초기화
-    _reset_qa()
-    # 봇 토큰 갱신 (.env에 최신 토큰 반영)
-    _setup_qa_server(bot_token)
+    # 1. 초기화 — resume 모드면 건너뜀 (기존 DB/채널 유지)
+    if not resume:
+        _reset_qa()
+        _setup_qa_server(bot_token)  # 봇 토큰 갱신 (.env에 최신 토큰 반영)
+    else:
+        print("[Runner] resume 모드 — DB/채널 유지, 봇만 재기동")
+        _setup_qa_server(bot_token)  # 토큰만 갱신
 
     # 2. Glimi 봇 시작
     glimi_proc = _start_glimi_bot()
@@ -482,7 +491,7 @@ def run_single_test(bot_token: str, test_token: str, run_id: str) -> dict:
     time.sleep(15)
 
     # 5. 테스트 유저 봇 시작
-    test_proc = _start_test_user(test_token)
+    test_proc = _start_test_user(test_token, seed_prompt=seed_prompt)
     start_time = time.time()
 
     # 6. 대기 — test_user_bot이 자체 종료(--turns 소진)하거나 외부에서 중단될 때까지
@@ -526,6 +535,10 @@ def main():
     parser.add_argument("--runs", type=int, default=1, help="반복 횟수")
     parser.add_argument("--bot-token", help="Glimi 봇 토큰 (없으면 .env에서 로드)")
     parser.add_argument("--test-token", help="테스트 유저 봇 토큰")
+    parser.add_argument("--resume", action="store_true",
+                        help="DB·채널 초기화 없이 이어서 실행 (QA 세션 유지)")
+    parser.add_argument("--seed-prompt", default="",
+                        help="test_user 초기 응답에 주입할 지시 (resume 시나리오용)")
     args = parser.parse_args()
 
     bot_token = args.bot_token or _get_bot_token()
@@ -552,7 +565,8 @@ def main():
     results = []
     for i in range(args.runs):
         run_id = f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        result = run_single_test(bot_token, test_token, run_id)
+        result = run_single_test(bot_token, test_token, run_id,
+                                  resume=args.resume, seed_prompt=args.seed_prompt)
         results.append(result)
 
         if i < args.runs - 1:
