@@ -219,9 +219,13 @@ class AgentRuntime:
             reminder_parts.append("━━━ 기억 ━━━\n" + memory_text + "\n━━━━━━━━━━━")
 
         # ── 다른 채널 최근 대화 (요약 없이 직접 주입) ──
-        cross_recent = self._get_cross_channel_recent(agent_id, channel)
-        if cross_recent:
-            reminder_parts.append(cross_recent)
+        # 첫 발화 (이 채널 기존 메시지 2 미만) 시 cross-channel peek 주입 X.
+        # Haiku 가 다른 채널 주제를 현재 대화로 끌고 오는 bleed 방지 (QA 회귀: 지아가 internal-dm-지아-소연
+        # 시작 발화에서 dm-지아 의 "개발자" 주제 그대로 꺼냄).
+        if len(recent) >= 2:
+            cross_recent = self._get_cross_channel_recent(agent_id, channel)
+            if cross_recent:
+                reminder_parts.append(cross_recent)
         _checkpoint("cross_channel_recent")
 
         # 동적 컨텍스트 전체를 system-reminder로 감싸기
@@ -389,7 +393,11 @@ class AgentRuntime:
 
         if not lines:
             return ""
-        return "[최근 다른 대화]\n" + "\n".join(lines)
+        # "다른 대화" 라벨 강화 — persona 가 현재 대화 주제로 끌어오지 않도록 명시.
+        return (
+            "[다른 채널에서 있었던 대화 — 지금 상대는 이 내용 모름. 끌어오지 말 것]\n"
+            + "\n".join(lines)
+        )
 
     def _describe_channel(self, channel: str, my_agent_id: str) -> str:
         """채널 정보를 에이전트가 이해할 수 있는 형태로 설명"""

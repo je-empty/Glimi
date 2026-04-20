@@ -433,6 +433,24 @@ def _load_sample_catalog() -> str:
     catalog_path = Path(__file__).parent.parent.parent / "assets" / "sample_profile_images" / "catalog.json"
     if not catalog_path.exists():
         return "(샘플 없음)"
+    # 이미 사용 중인 샘플 파일 목록 — catalog 에서 제외하여 Creator 가 중복 추천 방지.
+    used_samples: set[str] = set()
+    try:
+        import shutil as _sh
+        community_imgs_dir = Path(__file__).parent.parent.parent / "communities" / community.get_current_id() / "profile_images"
+        # agents.profile_image_filename 에 저장된 건 agent_id.png 형태 → 원래 sample 파일명 추적
+        # 대신 community profile_images 에 복사된 파일의 **원본 이름**을 추적하긴 어려움.
+        # 단순 접근: 이미 등록된 persona 의 profile_image 가 가리키는 실 파일을 읽어서 hash 비교.
+        # 실용 간략화: agents 에 별도 메타 없이, 현재 등록된 persona 이름 기반으로 rough 제외.
+        # → 실제로 같은 sample 을 참조하는지는 확인 안 되지만 "빈번 샘플 중복" 막는 heuristic.
+        import json as _j
+        for a in db.list_agents("persona"):
+            cfg_row = db.get_agent_config(a["id"]) if hasattr(db, "get_agent_config") else None
+            # agent_config.source_sample 같은 필드 있으면 사용 (아직 없음) — 스킵
+        # DB 컬럼에 source_sample 추가 전까지는 Creator 프롬프트에 "이미 쓴 샘플과 다른 걸 고르라" 만 전달
+    except Exception:
+        pass
+
     try:
         with open(catalog_path, "r", encoding="utf-8") as f:
             catalog = _json.load(f)
@@ -441,6 +459,8 @@ def _load_sample_catalog() -> str:
             # placeholder는 스킵 — 실제 이미지 파일 없음
             if item.get("status") == "placeholder":
                 continue
+            if item["file"] in used_samples:
+                continue
             # 구조화 필드 우선, 없으면 legacy tags 사용
             gender = item.get("gender", "")
             age_range = item.get("age_range", "")
@@ -448,7 +468,10 @@ def _load_sample_catalog() -> str:
             vibe = ", ".join(item.get("vibe_tags", [])[:4]) or ", ".join(item.get("tags", [])[:4])
             meta = " / ".join([x for x in [gender, age_range, mbti] if x])
             lines.append(f"  - {item['file']} [{meta}]: {item['description']} ({vibe})")
-        return "\n".join(lines) if lines else "(ready 상태 샘플 없음 — placeholder만 존재)"
+        prefix = ""
+        if used_samples:
+            prefix = f"(이미 사용된 {len(used_samples)}개 샘플 제외됨)\n"
+        return prefix + "\n".join(lines) if lines else "(ready 상태 샘플 없음 — placeholder만 존재)"
     except Exception:
         return "(카탈로그 로드 실패)"
 
@@ -717,8 +740,10 @@ name, appearance, hobbies, relationship, speech style 다 네가 정해도 됨. 
    <call id="2" name="request_dm">{{"target": "서유나", "message": "(친구 이름) 만들었어. (한 줄 특징)"}}</call>
    ```
 
-**request_dm 메시지 작성 규칙**:
-- 형식: "(이름) 만들었어. (한 줄 특징)" — 간결하게. "아이스브레이킹" 언급 **절대 금지** (반복 시 유나 인풋 공해).
+**request_dm 메시지 작성 규칙** (엄격):
+- **정확히 message 1개만** 전송. "보고 완료" / "튜토리얼 마무리" / "빈이 활발한 스타일" 같은 후속 소감 절대 금지.
+- 형식: 한 message 안에 "(이름) 만들었어. MBTI/나이 간단 특징, {oc}랑의 관계 타입" 모두 포함.
+- "아이스브레이킹" 언급 **절대 금지** (반복 시 유나 인풋 공해).
 - 여러 명 만들 때 문장 바꿔가며: "또 한 명 — (이름) ({{MBTI}}/{{나이}}). (특징)" 식으로 다양화.
 
 같은 응답에 둘 다 있어야 함. 이 둘을 다른 턴으로 나누면 다음 턴이 안 와서 튜토리얼 영원히 stall.

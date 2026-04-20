@@ -485,6 +485,21 @@ def add_message_hook(fn):
 
 def log_message(channel: str, speaker: str, message: str, emotion: str = None):
     conn = get_conn()
+    # 중복 방지 — 같은 채널·스피커·메시지가 최근 30초 내 이미 있으면 skip.
+    # 유나/하나가 tool chain 에서 여러 turn 에 걸쳐 같은 메시지를 재생성하는 케이스 (QA 회귀:
+    # "#dm-김지아 열리면 바로 말 걸어봐" 같은 timestamp 에 2번 log). streaming loop 내부 dedupe 는
+    # 같은 턴만 막음 → DB 레벨에서 turn-간 dedupe 추가.
+    try:
+        dup = conn.execute(
+            "SELECT id FROM conversations WHERE channel=? AND speaker=? AND message=? "
+            "AND datetime(timestamp) > datetime('now', '-30 seconds') LIMIT 1",
+            (channel, speaker, message),
+        ).fetchone()
+        if dup:
+            conn.close()
+            return
+    except Exception:
+        pass
     conn.execute(
         "INSERT INTO conversations (channel, speaker, message, context_emotion) VALUES (?, ?, ?, ?)",
         (channel, speaker, message, emotion)
