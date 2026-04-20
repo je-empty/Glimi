@@ -149,13 +149,13 @@ def _get_agent_model(agent_id: str, agent_type: str) -> dict:
     except Exception:
         pass
 
-    # 기본값 (runtime.py와 동기화)
-    type_defaults = {
-        "persona": "claude-sonnet-4-6",
-        "mgr": "claude-sonnet-4-6",
-        "creator": "claude-sonnet-4-6",
-    }
-    default = type_defaults.get(agent_type, "claude-sonnet-4-6")
+    # 기본값 — runtime.AGENT_MODELS 가 single source of truth.
+    # 이전엔 type_defaults 가 별도 하드코딩돼 runtime 바꿔도 대시보드엔 반영 X (QA 회귀).
+    try:
+        from src.core.runtime import AGENT_MODELS as _AM
+        default = _AM.get(agent_type, "claude-sonnet-4-6")
+    except Exception:
+        default = "claude-sonnet-4-6"
     model = override_model or default
 
     # provider 분류 (UI에서 색상 구분용)

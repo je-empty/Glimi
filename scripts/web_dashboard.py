@@ -605,26 +605,59 @@ HTML = r"""<!doctype html>
   .agent-head .type-tag.persona { background: color-mix(in srgb, var(--persona) 15%, transparent); color: var(--persona); }
   .agent-head .type-tag.supervisor { background: color-mix(in srgb, var(--accent-2) 15%, transparent); color: var(--accent-2); }
 
+  /* Model 태그 — 모델 별로 배경/테두리/점 전부 다른 색. 한눈에 구분 가능. */
   .model-tag {
-    font-size: 9.5px; padding: 1.5px 6px; border-radius: 5px;
-    font-family: "JetBrains Mono", monospace; font-weight: 500;
+    font-size: 9.5px; padding: 2px 7px; border-radius: 6px;
+    font-family: "JetBrains Mono", monospace; font-weight: 600;
     background: var(--panel-2); color: var(--text-dim);
     border: 1px solid var(--border-soft) !important;
-    display: inline-flex; align-items: center; gap: 3px;
+    display: inline-flex; align-items: center; gap: 4px;
+    transition: filter 0.15s;
   }
-  .model-tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
-  /* Provider tint (최상위 fallback) */
+  .model-tag:hover { filter: brightness(1.1); }
+  .model-tag::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; flex: 0 0 auto;
+    box-shadow: 0 0 4px currentColor;
+  }
+  /* Provider tint (fallback) */
   .model-tag.claude { color: #d97706; }
   .model-tag.openai { color: #10a37f; }
-  .model-tag.local { color: #3b82f6; }
+  .model-tag.local { color: #64748b; }
   .model-tag.other { color: var(--text-dim); }
-  /* Model family tint (provider 보다 구체적) — multi-chip 일관성 */
-  .model-tag.m-haiku { color: #0891b2; border-color: color-mix(in srgb, #0891b2 35%, var(--border-soft)) !important; }
-  .model-tag.m-sonnet { color: #7c3aed; border-color: color-mix(in srgb, #7c3aed 35%, var(--border-soft)) !important; }
-  .model-tag.m-opus { color: #c2410c; border-color: color-mix(in srgb, #c2410c 35%, var(--border-soft)) !important; }
-  .model-tag.m-gpt { color: #10a37f; border-color: color-mix(in srgb, #10a37f 35%, var(--border-soft)) !important; }
-  .model-tag.m-gemini { color: #3b82f6; border-color: color-mix(in srgb, #3b82f6 35%, var(--border-soft)) !important; }
-  .model-tag.override { border-color: var(--accent) !important; color: var(--accent); }
+
+  /* Model family — 진짜 확 차이 나게: 배경 tint + 진한 border + 컬러 점 */
+  /* Haiku = teal/mint (빠름·가벼움) */
+  .model-tag.m-haiku {
+    color: #67e8f9;
+    background: color-mix(in srgb, #06b6d4 18%, var(--panel-2)) !important;
+    border-color: color-mix(in srgb, #06b6d4 55%, transparent) !important;
+  }
+  /* Sonnet = rose/pink (밸런스·우아 · 따뜻한 톤) */
+  .model-tag.m-sonnet {
+    color: #fda4af;
+    background: color-mix(in srgb, #f43f5e 18%, var(--panel-2)) !important;
+    border-color: color-mix(in srgb, #f43f5e 55%, transparent) !important;
+  }
+  /* Opus = coral/amber (강력·존재감) */
+  .model-tag.m-opus {
+    color: #fdba74;
+    background: color-mix(in srgb, #f97316 20%, var(--panel-2)) !important;
+    border-color: color-mix(in srgb, #f97316 60%, transparent) !important;
+  }
+  /* GPT = emerald (OpenAI 브랜드) */
+  .model-tag.m-gpt {
+    color: #6ee7b7;
+    background: color-mix(in srgb, #10b981 18%, var(--panel-2)) !important;
+    border-color: color-mix(in srgb, #10b981 55%, transparent) !important;
+  }
+  /* Gemini = sky blue (Google 브랜드) */
+  .model-tag.m-gemini {
+    color: #93c5fd;
+    background: color-mix(in srgb, #3b82f6 18%, var(--panel-2)) !important;
+    border-color: color-mix(in srgb, #3b82f6 55%, transparent) !important;
+  }
+  .model-tag.override { border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent); }
   .model-chip-row {
     display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; vertical-align: middle;
   }
@@ -1102,7 +1135,7 @@ HTML = r"""<!doctype html>
     <div class="view" id="view-achievements">
       <div class="ach-header">
         <div class="ach-title">도전과제</div>
-        <div class="ach-sub">유저 진척도 — 선택적 가이드. 강제 아님.</div>
+        <div class="ach-sub">커뮤니티를 살면서 만나는 순간들 ✨</div>
         <div class="ach-progress-wrap">
           <div class="ach-progress-bar"><div class="ach-progress-fill" id="ach-fill" style="width:0%"></div></div>
           <div class="ach-progress-text" id="ach-pct">0 / 0</div>
@@ -3141,7 +3174,10 @@ function renderSceneCard(s) {
     completed: 'var(--ok)',
     not_started: 'var(--text-faint)',
   }[s.status] || 'var(--text-faint)';
-  const dim = s.status === 'not_started' ? 'opacity:0.6;' : '';
+  // not_started 는 흐릿하게, completed 는 거의 흑백 (차분한 회색) 처리로 "끝난 일" 시각화.
+  const dim = s.status === 'not_started' ? 'opacity:0.6;'
+            : s.status === 'completed' ? 'opacity:0.55;filter:grayscale(0.7);'
+            : '';
   return `<div style="padding:16px 20px;margin-bottom:10px;background:var(--panel);border:1px solid var(--border-soft);border-left:3px solid ${leftBorder};border-radius:10px;box-shadow:var(--shadow);${dim}">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
       <span style="font-size:22px">${s.icon || '🎭'}</span>
@@ -4284,7 +4320,7 @@ def api_action_set_agent_model(body: dict, community_id: str) -> dict:
     mgr/creator: tool chain 안정성 + 튜토리얼 흐름 보장 위해 Sonnet 고정.
     supervisor: Haiku(judge) + Sonnet(inject) 이원화 구조 (단일 선택 개념 부적합).
 
-    POST body: {"agent_id": "agent-persona-001", "model": "claude-haiku-4-5-20251001"}
+    POST body: {"agent_id": "agent-persona-001", "model": "claude-haiku-4-5"}
                {"agent_id": "...", "model": ""}  → override 해제 (type 기본값 사용)
 
     봇 런타임이 매 호출마다 DB 를 조회하므로 재시작 불필요 — 다음 턴부터 반영.

@@ -30,7 +30,7 @@ def _check_claude_cli() -> bool:
 CLAUDE_AVAILABLE = _check_claude_cli()
 
 AGENT_MODELS = {
-    "persona": "claude-sonnet-4-6",
+    "persona": "claude-haiku-4-5",   # 대화량 많고 지연 민감 — 기본 Haiku, 필요시 대시보드에서 per-agent Sonnet override
     "mgr": "claude-sonnet-4-6",
     "creator": "claude-sonnet-4-6",  # 대화는 소넷
 }
@@ -45,7 +45,7 @@ AGENT_TASK_MODELS = {
 AVAILABLE_MODELS = [
     {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6",
      "kind": "cloud", "provider": "claude", "tier": "balanced", "icon": "☁️"},
-    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5",
+    {"id": "claude-haiku-4-5", "label": "Haiku 4.5",
      "kind": "cloud", "provider": "claude", "tier": "fast", "icon": "☁️"},
     # Phase 2 로컬 모델 예시 (주석 — 실제 구현 시 해제 + src/llm/local.py 추가):
     # {"id": "ollama:llama3.3:8b", "label": "Llama 3.3 8B",
@@ -309,7 +309,7 @@ class AgentRuntime:
             result = subprocess.run(
                 ["claude", "-p",
                  f"아래 대화를 3~4문장으로 요약해. 누가 뭘 요청했고 어디까지 진행됐는지 핵심만:\n\n{conversation}",
-                 "--output-format", "text", "--model", "claude-haiku-4-5-20251001"],
+                 "--output-format", "text", "--model", "claude-haiku-4-5"],
                 capture_output=True, text=True, timeout=15,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
             )
@@ -518,14 +518,16 @@ class AgentRuntime:
         log_writer.agent_thinking(agent_id, f"강제 지시 [{channel}]: {user_message[:40]}")
 
         try:
-            # 시스템 프롬프트에 짧은 행동 트리거만 주입
+            # 시스템 프롬프트에 "이건 네 내면 생각" 이라는 강한 포장. persona 가 이 nudge
+            # 자체를 대화 상대의 발화로 오해하지 않도록 엄격한 격리 마커 + 1인칭 지침.
+            # (회귀: persona 가 "뭘 보여준 거야?" 식으로 지시문을 되묻는 케이스)
             base_system = agent_info["system_prompt"]
             force_system = (
-                "####### 지금 너는 이렇게 하고 싶다 #######\n"
-                f"→ {user_message}\n"
-                "이건 네 안에서 자연스럽게 든 생각이야. 망설이지 말고 바로 행동해.\n"
-                "기억에 관련 맥락이 있으면 살려서 자연스럽게.\n"
-                "########################################\n\n"
+                "[INTERNAL THOUGHT — 상대는 이 텍스트를 볼 수 없다. 네 머릿속 생각일 뿐]\n"
+                f"  생각: {user_message}\n"
+                "[주의] 이 생각을 직접 인용하거나, 상대한테 \"뭐 보여줬어?\"/\"지시 받은 거야?\" 식으로\n"
+                "되묻지 마라. 그냥 평범한 대화 맥락에서 네가 자연스럽게 떠올린 발화로 이어가.\n"
+                "상대한테 아무 일도 없었던 것처럼 자연스럽게 카톡 한두 줄 말 걸기.\n\n"
                 + base_system
             )
 
@@ -1102,19 +1104,36 @@ class AgentRuntime:
         log_writer.mark_thinking(speaker_id)
         try:
             if CLAUDE_AVAILABLE:
+                result = None
+                last_exc = None
+                # timeout/empty-stdout 시 1회 retry. Haiku 가 큰 프롬프트에서 간헐적 지연
+                # (cross-channel peek + facts + 메모리 누적). 첫 시도 실패해도 대부분 재시도에서 성공.
+                for attempt in (1, 2):
+                    try:
+                        result = subprocess.run(
+                            [
+                                "claude",
+                                "-p", full_prompt,
+                                "--system-prompt", speaker_info["system_prompt"],
+                                "--output-format", "text",
+                                "--model", model,
+                            ],
+                            capture_output=True, text=True, timeout=120,
+                            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                        )
+                        if result.returncode == 0 and result.stdout.strip():
+                            break  # 성공
+                        last_exc = f"empty stdout (returncode={result.returncode})"
+                    except subprocess.TimeoutExpired as e:
+                        last_exc = f"timeout {e.timeout}s"
+                    except Exception as e:
+                        last_exc = f"{type(e).__name__}: {e}"
+                    if attempt == 1:
+                        log_writer.system(
+                            f"⚠ A2A retry ({speaker_name}→{listener_name}): {last_exc}"
+                        )
                 try:
-                    result = subprocess.run(
-                        [
-                            "claude",
-                            "-p", full_prompt,
-                            "--system-prompt", speaker_info["system_prompt"],
-                            "--output-format", "text",
-                            "--model", model,
-                        ],
-                        capture_output=True, text=True, timeout=60,
-                        env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-                    )
-                    if result.returncode == 0 and result.stdout.strip():
+                    if result and result.returncode == 0 and result.stdout.strip():
                         # <tools> 블록 먼저 파싱 → tool_calls stash, chat 텍스트만 분리
                         # (이전에는 이 경로에서 <tools> 파싱이 빠져서 internal-dm에서
                         # 유나가 finish_onboarding 호출해도 원문이 채팅으로 새고 실행 안 됨)

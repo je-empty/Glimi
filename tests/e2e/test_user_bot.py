@@ -434,7 +434,7 @@ class TestUserBot(discord.Client):
                         "claude", "-p", prompt,
                         "--system-prompt", PERSONA,
                         "--output-format", "text",
-                        "--model", "claude-haiku-4-5-20251001",
+                        "--model", "claude-haiku-4-5",
                     ],
                     capture_output=True, text=True, timeout=90,
                     env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
