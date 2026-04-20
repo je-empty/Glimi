@@ -146,6 +146,11 @@ def format_for_discord(message: str,
     }
 
     out = message
+    # LLM 드리프트로 `**#channel**` 볼드 감싸는 케이스 — 채널명 주변 볼드 마커만 제거.
+    # 채널이 guild 에 있으면 `<#id>` 로 변환되는데 볼드가 남으면 `**<#id>**` 이상하고,
+    # guild 에 없으면 `**#name**` 평문 볼드로 노출됨 (QA #5 회귀). 볼드 먼저 strip.
+    out = re.sub(r'\*\*(#[^\W\d_][\w\-]*)\*\*', r'\1', out)
+
     for pattern, resolver in _RULES:
         def _sub(m, _r=resolver, _c=ctx):
             try:
