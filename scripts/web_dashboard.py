@@ -605,59 +605,27 @@ HTML = r"""<!doctype html>
   .agent-head .type-tag.persona { background: color-mix(in srgb, var(--persona) 15%, transparent); color: var(--persona); }
   .agent-head .type-tag.supervisor { background: color-mix(in srgb, var(--accent-2) 15%, transparent); color: var(--accent-2); }
 
-  /* Model 태그 — 모델 별로 배경/테두리/점 전부 다른 색. 한눈에 구분 가능. */
+  /* Model 태그 — 단순한 테두리+점 스타일. 가독성 우선, 배경 tint 없음. */
   .model-tag {
-    font-size: 9.5px; padding: 2px 7px; border-radius: 6px;
-    font-family: "JetBrains Mono", monospace; font-weight: 600;
+    font-size: 9.5px; padding: 1.5px 6px; border-radius: 5px;
+    font-family: "JetBrains Mono", monospace; font-weight: 500;
     background: var(--panel-2); color: var(--text-dim);
     border: 1px solid var(--border-soft) !important;
-    display: inline-flex; align-items: center; gap: 4px;
-    transition: filter 0.15s;
+    display: inline-flex; align-items: center; gap: 3px;
   }
-  .model-tag:hover { filter: brightness(1.1); }
-  .model-tag::before {
-    content: ''; width: 6px; height: 6px; border-radius: 50%;
-    background: currentColor; flex: 0 0 auto;
-    box-shadow: 0 0 4px currentColor;
-  }
+  .model-tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
   /* Provider tint (fallback) */
   .model-tag.claude { color: #d97706; }
   .model-tag.openai { color: #10a37f; }
-  .model-tag.local { color: #64748b; }
+  .model-tag.local { color: #3b82f6; }
   .model-tag.other { color: var(--text-dim); }
-
-  /* Model family — 진짜 확 차이 나게: 배경 tint + 진한 border + 컬러 점 */
-  /* Haiku = teal/mint (빠름·가벼움) */
-  .model-tag.m-haiku {
-    color: #67e8f9;
-    background: color-mix(in srgb, #06b6d4 18%, var(--panel-2)) !important;
-    border-color: color-mix(in srgb, #06b6d4 55%, transparent) !important;
-  }
-  /* Sonnet = rose/pink (밸런스·우아 · 따뜻한 톤) */
-  .model-tag.m-sonnet {
-    color: #fda4af;
-    background: color-mix(in srgb, #f43f5e 18%, var(--panel-2)) !important;
-    border-color: color-mix(in srgb, #f43f5e 55%, transparent) !important;
-  }
-  /* Opus = coral/amber (강력·존재감) */
-  .model-tag.m-opus {
-    color: #fdba74;
-    background: color-mix(in srgb, #f97316 20%, var(--panel-2)) !important;
-    border-color: color-mix(in srgb, #f97316 60%, transparent) !important;
-  }
-  /* GPT = emerald (OpenAI 브랜드) */
-  .model-tag.m-gpt {
-    color: #6ee7b7;
-    background: color-mix(in srgb, #10b981 18%, var(--panel-2)) !important;
-    border-color: color-mix(in srgb, #10b981 55%, transparent) !important;
-  }
-  /* Gemini = sky blue (Google 브랜드) */
-  .model-tag.m-gemini {
-    color: #93c5fd;
-    background: color-mix(in srgb, #3b82f6 18%, var(--panel-2)) !important;
-    border-color: color-mix(in srgb, #3b82f6 55%, transparent) !important;
-  }
-  .model-tag.override { border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent); }
+  /* Model family — 진한 text color + 미묘한 tinted border (원래 스타일 유지). 보라는 안 씀. */
+  .model-tag.m-haiku { color: #0891b2; border-color: color-mix(in srgb, #0891b2 35%, var(--border-soft)) !important; }
+  .model-tag.m-sonnet { color: #be123c; border-color: color-mix(in srgb, #be123c 35%, var(--border-soft)) !important; }
+  .model-tag.m-opus { color: #c2410c; border-color: color-mix(in srgb, #c2410c 35%, var(--border-soft)) !important; }
+  .model-tag.m-gpt { color: #15803d; border-color: color-mix(in srgb, #15803d 35%, var(--border-soft)) !important; }
+  .model-tag.m-gemini { color: #3b82f6; border-color: color-mix(in srgb, #3b82f6 35%, var(--border-soft)) !important; }
+  .model-tag.override { border-color: var(--accent) !important; color: var(--accent); }
   .model-chip-row {
     display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; vertical-align: middle;
   }
