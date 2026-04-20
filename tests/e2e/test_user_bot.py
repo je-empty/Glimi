@@ -123,6 +123,8 @@ class TestUserBot(discord.Client):
         self._mission_mode_announced: bool = False
         self._current_mission_cache: dict = {}
         self._current_mission_cache_at: float = 0
+        self.seed_prompt: str = ""
+        self._seed_consumed: bool = False
 
     async def on_ready(self):
         print(f"[TestUser] 로그인: {self.user.name} (#{self.user.id})")
@@ -379,8 +381,17 @@ class TestUserBot(discord.Client):
 
         mission_header = self._mission_prompt_header()
 
+        # 첫 턴에 seed_prompt 가 있으면 미션 헤더 위에 prepend — QA resume 시나리오.
+        seed_header = ""
+        if self.seed_prompt and not self._seed_consumed:
+            seed_header = (
+                f"━━ 시나리오 지시 (이번 턴만) ━━\n{self.seed_prompt}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+            )
+            self._seed_consumed = True
+
         prompt = (
-            f"{mission_header}"
+            f"{seed_header}{mission_header}"
             f"대화 기록 (각 줄 앞의 [#채널]은 해당 메시지가 나온 채널):\n{context}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"이번 답장은 #{target_ch} 채널로 간다. 오직 그 채널의 사람에게 할 말만 써.\n"
@@ -679,6 +690,9 @@ def main():
     parser = argparse.ArgumentParser(description="Glimi E2E Test User Bot")
     parser.add_argument("--token", help="테스트 봇 토큰 (없으면 .env에서 로드)")
     parser.add_argument("--turns", type=int, default=MAX_TURNS, help="최대 대화 턴")
+    parser.add_argument("--seed-prompt", default="",
+                        help="첫 응답에 주입할 추가 지시 (QA resume 시나리오용). "
+                             "페르소나 잘못된 메타 언급 바로잡기 등.")
     args = parser.parse_args()
 
     token = args.token or _get_test_token()
@@ -699,6 +713,7 @@ def main():
 
     bot = TestUserBot()
     bot.max_turns = args.turns
+    bot.seed_prompt = args.seed_prompt or ""
     bot.run(token)
 
 

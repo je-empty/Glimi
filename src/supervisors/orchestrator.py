@@ -36,8 +36,11 @@ class OrchestratorSupervisor(Supervisor):
     def __init__(self):
         super().__init__(scope={})
         self._last_started_at: float = 0.0
-        self._min_gap_between_starts: float = 300.0   # 자동 시작 간 최소 5분 간격
-        self._min_idle_per_pair_hours: float = 2.0    # 페어별 최소 idle 시간
+        # 쿨다운 완화 — QA/초기 구동 시 자율 대화 더 활발하게.
+        # 튜토리얼 직후 페르소나 3명 생성돼도 페어 선정 너무 드물어서 group/internal
+        # 채널들이 idle 로 멈춰있는 현상 방지.
+        self._min_gap_between_starts: float = 90.0    # 자동 시작 간 최소 간격 (5m → 90s)
+        self._min_idle_per_pair_hours: float = 0.5    # 페어별 최소 idle (2h → 30min)
 
     # ── check ─────────────────────────────────────────────
 
@@ -55,9 +58,10 @@ class OrchestratorSupervisor(Supervisor):
         if _time.time() - self._last_started_at < self._min_gap_between_starts:
             return
 
-        # 이미 running internal 채널 많으면 추가 시작 자제
+        # 이미 running internal 채널 너무 많으면 추가 시작 자제
+        # (5 로 상향 — 친구 N명 있을 때 여러 페어 동시 진행 허용)
         running_count = self._count_running_internal()
-        if running_count >= 3:
+        if running_count >= 5:
             return
 
         # 페어 후보 스캔
