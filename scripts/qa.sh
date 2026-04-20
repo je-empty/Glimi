@@ -78,11 +78,18 @@ echo ""
 
 # 로컬 QA 설정(.env)을 tmux 내부 shell에서 source → QA_USER_* 등 페르소나 주입
 # 파일은 gitignore됨 (개인정보 커밋 방지)
+# 인자에 공백·한글 보존하려면 printf %q 로 escape 해서 tmux 에 전달.
+# `$*` 는 공백 보존 안 됨, `"$@"` 도 tmux 단일 명령 문자열 안에선 무의미. 수동 escape 필수.
+ESCAPED_ARGS=""
+for arg in "$@"; do
+    ESCAPED_ARGS="$ESCAPED_ARGS $(printf '%q' "$arg")"
+done
+
 tmux new-session -d -s "$SESSION" -n runner \
     "ulimit -n 4096 2>/dev/null; \
      $KEYCHAIN_UNLOCK_PREFIX \
      set -a; [ -f communities/qa/.env ] && source communities/qa/.env; set +a; \
-     PYTHONUNBUFFERED=1 $PYTHON -u -m tests.e2e.runner $* 2>&1 | tee tests/e2e/results/latest.log"
+     PYTHONUNBUFFERED=1 $PYTHON -u -m tests.e2e.runner $ESCAPED_ARGS 2>&1 | tee tests/e2e/results/latest.log"
 
 echo -e "${GREEN}[$SESSION] 시작됨${NC}"
 echo -e "  실시간 로그: ${CYAN}./scripts/qa.sh attach${NC}"
