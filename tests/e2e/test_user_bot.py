@@ -405,7 +405,7 @@ class TestUserBot(discord.Client):
                         "claude", "-p", prompt,
                         "--system-prompt", PERSONA,
                         "--output-format", "text",
-                        "--model", "claude-haiku-4-5",
+                        "--model", "claude-haiku-4-5-20251001",
                     ],
                     capture_output=True, text=True, timeout=90,
                     env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
@@ -464,13 +464,45 @@ class TestUserBot(discord.Client):
         if not channels_with_unanswered:
             return
 
+        # 각 채널의 "마지막 에이전트 메시지가 명시적 질문/확인 요청인지" 감지.
+        # 질문 채널엔 가중치 부여 — 침묵 점수와 무관하게 우선 답변.
+        # 예: 하나가 "이 친구로 만들까?" 한 경우, test_user 가 mgr-dashboard 잡담 이어가다
+        # confirm 놓쳐서 튜토리얼 stall 하는 회귀 방지.
+        import re as _re_pick
+        _CONFIRM_MARKERS = (
+            "이대로 만들까", "만들까?", "이 친구로 만들", "확인 한번", "확인해줄래",
+            "오케이?", "괜찮아?", "어때?", "어떤 친구", "어떻게 할까",
+        )
+        def _is_question(text: str) -> bool:
+            if not text:
+                return False
+            if text.rstrip().endswith(("?", "?")):
+                return True
+            lower = text
+            return any(m in lower for m in _CONFIRM_MARKERS)
+
+        question_channels: set[str] = set()
+        last_agent_msg_by_ch: dict[str, str] = {}
+        for msg in self.conversation:
+            if msg.get("role") == "agent" and msg.get("channel"):
+                last_agent_msg_by_ch[msg["channel"]] = msg.get("text", "")
+        for ch in channels_with_unanswered:
+            # internal-* 채널은 제외 (에이전트끼리 대화, test_user 무관).
+            if ch.startswith("internal-"):
+                continue
+            if _is_question(last_agent_msg_by_ch.get(ch, "")):
+                question_channels.add(ch)
+
         total_msgs = len(self.conversation)
-        # 점수: 내가 마지막 발화 이후 흐른 idx 거리 (0이면 방금 답함, 클수록 오래 침묵)
-        scored: list[tuple[int, str]] = [
-            (total_msgs - last_user_idx_by_ch.get(ch, -1), ch)
-            for ch in channels_with_unanswered
-        ]
-        scored.sort(reverse=True)
+        # 점수: 질문 채널이면 +10000 bonus, 그 다음 침묵 점수.
+        def _score(ch: str) -> int:
+            base = total_msgs - last_user_idx_by_ch.get(ch, -1)
+            return base + (10000 if ch in question_channels else 0)
+
+        scored: list[tuple[int, str]] = sorted(
+            ((_score(ch), ch) for ch in channels_with_unanswered),
+            reverse=True,
+        )
         target_name = scored[0][1]
 
         if self.target_channel and self.target_channel.name != target_name:
