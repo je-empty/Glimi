@@ -943,7 +943,7 @@ def _format_retrieved_memories(agent_id: str, exclude_channel: str,
             label = label or ch
         groups.setdefault(label, []).append(m)
 
-    lines = ["## 🧠 다른 대화에서 관련 기억 (출처 혼동 주의)"]
+    lines = ["## 🧠 다른 대화에서 관련 기억 (참고용 — 지금 상대 앞에서 이 주제 먼저 꺼내지 말 것)"]
     touched: list[int] = []
     for label, mems in groups.items():
         is_internal = any((m.get("channel") or "").startswith("internal-") for m in mems)

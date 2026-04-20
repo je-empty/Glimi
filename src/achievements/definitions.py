@@ -134,33 +134,51 @@ def _check_group_chat(user_id: str) -> Optional[dict]:
     return None
 
 
+# 유나/하나 간 internal 대화는 매니저 시스템 자체의 작동 — persona 자율 사교와 무관.
+# peek_internal / agent_auto_chat 등 persona 에이전트 서사 관련 도전과제에선 제외.
+_MANAGER_NAMES = ("윤하나", "서유나", "유나", "하나")
+
+
+def _is_manager_only_channel(ch_name: str) -> bool:
+    """채널 이름에 persona 없이 매니저 이름만 포함되는지."""
+    if not ch_name:
+        return False
+    # 채널명에서 "internal-dm-" 또는 "internal-group-" 접두사 제거 후 참여자 이름들 확인
+    for prefix in ("internal-dm-", "internal-group-"):
+        if ch_name.startswith(prefix):
+            rest = ch_name[len(prefix):]
+            # 매니저 이름 모두 rest 에 포함되고, 매니저 이름이 아닌 게 없는지
+            parts = rest.split("-")
+            return all(p in _MANAGER_NAMES for p in parts if p)
+    return False
+
+
 def _check_peek_internal(user_id: str) -> Optional[dict]:
-    """internal-dm-* 또는 internal-group-* 채널에서 에이전트끼리 10+ 메시지.
-    (오너가 실제 읽었는지는 감지 불가 — 존재 + 활성도로 대리)."""
+    """persona 끼리의 비밀 대화 10+ 메시지. 매니저간 대화(internal-dm-윤하나-서유나)는 제외."""
     conn = db.get_conn()
     rows = conn.execute(
         "SELECT channel, COUNT(*) as c FROM conversations "
         "WHERE channel LIKE 'internal-%' GROUP BY channel HAVING c >= 10"
     ).fetchall()
     conn.close()
-    if rows:
-        chs = [r["channel"] for r in rows]
+    persona_channels = [r["channel"] for r in rows if not _is_manager_only_channel(r["channel"])]
+    if persona_channels:
         return {"state": "done", "mark_completed": True, "mark_unlocked": True,
-                "progress_data": {"channels": chs[:5]}}
+                "progress_data": {"channels": persona_channels[:5]}}
     return None
 
 
 def _check_agent_auto_chat(user_id: str) -> Optional[dict]:
-    """에이전트간 자율 대화 — internal-* 채널이 running 상태 도달 or 10+ 메시지."""
+    """persona 간 자율 대화 — internal-* running. 매니저간 대화는 제외."""
     conn = db.get_conn()
-    row = conn.execute(
-        "SELECT channel FROM channels WHERE channel LIKE 'internal-%' "
-        "AND status='running' LIMIT 1"
-    ).fetchone()
+    rows = conn.execute(
+        "SELECT channel FROM channels WHERE channel LIKE 'internal-%' AND status='running'"
+    ).fetchall()
     conn.close()
-    if row:
-        return {"state": "done", "mark_completed": True, "mark_unlocked": True,
-                "progress_data": {"channel": row["channel"]}}
+    for r in rows:
+        if not _is_manager_only_channel(r["channel"]):
+            return {"state": "done", "mark_completed": True, "mark_unlocked": True,
+                    "progress_data": {"channel": r["channel"]}}
     return None
 
 
