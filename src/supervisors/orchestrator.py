@@ -215,9 +215,13 @@ class OrchestratorSupervisor(Supervisor):
             else:
                 ch = existing
             db.set_channel_participants(ch_name, [a_id, b_id])
-            # start_conversation은 이미 구현된 엔진 — participants + context 받아 실행
-            situation = f"요즘 어떻게 지냈는지 가볍게 근황 나눔. ({reason})"
-            asyncio.create_task(start_conversation(ch_name, [a_id, b_id], situation=situation))
+            # start_conversation 시그니처: (channel_name, participants, send_fn, context, max_turns)
+            # send_fn 은 (agent_id, message) → await send_as_agent 호출
+            from src.bot.core import send_as_agent
+            async def _send(agent_id: str, message: str):
+                await send_as_agent(ch, agent_id, message)
+            context_text = f"요즘 어떻게 지냈는지 가볍게 근황 나눔. ({reason})"
+            asyncio.create_task(start_conversation(ch_name, [a_id, b_id], _send, context=context_text))
             log_writer.system(
                 f"[sup:orchestrator] ▶ 대화 시작: #{ch_name} ({a_name} ↔ {b_name})"
             )
