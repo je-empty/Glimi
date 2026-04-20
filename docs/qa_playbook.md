@@ -149,41 +149,59 @@ python -m tests.e2e.capture_usage diff /tmp/qa_usage_before.json \
 
 → `tests/e2e/results/token_usage.md` 에 한 줄 append 됨. 이게 누적 기록.
 
-## 5. 분석 절차
+## 5. 분석 절차 — **raw 로그 읽지 말 것** (토큰 낭비)
 
-### 5.1 정량 — 런 JSON
-`status` / `issues` / `metrics` / `tutorial_done` 확인. WARN 이상이면 5.2 로.
-
-### 5.2 정성 — 로그 + DB grep
+### 5.1 analyze_run 자동 분석 (필수 첫 단계)
 
 ```bash
-# 에러/경고
-grep -E "❌|⚠|Error|Exception|TypeError|[Tool] ✗|회귀" \
-  tests/e2e/results/run-<ID>.log
-
-# 메타 누출 (persona 발화에서만)
-sqlite3 communities/qa/community.db \
-  "SELECT channel,speaker,substr(message,1,200) FROM conversations
-   WHERE speaker LIKE 'agent-persona-%'
-     AND (message LIKE '%mgr-%' OR message LIKE '%대시보드%'
-       OR message LIKE '%만들어졌%' OR message LIKE '%시뮬레이션%'
-       OR message LIKE '%에이전트%' OR message LIKE '%캐릭터%')"
-
-# 도구 호출 실패
-grep -E "\[Tool\] ✗" communities/qa/logs/system.log
-
-# orchestrator 동작
-grep -E "\[sup:orchestrator\]" communities/qa/logs/system.log
+python -m tests.e2e.analyze_run <run_id> --pretty
+# 또는 최신 런:
+python -m tests.e2e.analyze_run --pretty
 ```
 
-### 5.3 이슈 분류 → TaskCreate
+구조화된 JSON 출력:
+- `verdict`: 한 줄 판정
+- `issues[]`: BLOCKER / REGRESSION / DRIFT / FLAKY / COSMETIC 분류 + 심각도
+- `metrics.errors`: cli_timeout, a2a_error, tool_fail, bot_crash 카운트
+- `metrics.meta.leaks_in_db`: 필터 뚫린 persona 메타 발화 (필터 정상이면 빈 배열)
+- `metrics.meta.self_awareness_locks`: 제4의 벽 박살 트리거된 persona
+- `metrics.yuna.monologue_leaks`: 괄호 독백 누출 DB 에 남은 것
+- `metrics.create_room.already_exists_spam_to_user`: 유저 노출 중복 (0 이어야 정상)
+- `metrics.persona_quality[]`: persona 별 7 체크 점수 + failed_checks
+- `metrics.memory.broken_entities`: entity 글자 깨짐 수
+- `metrics.channels`: 유형별 채널 수
+- `metrics.achievements`: unlocked/done 목록
+- `metrics.events`: events 테이블 event_type 별 카운트
 
-각 이슈를 태스크로:
+**모든 분석은 이 JSON 읽고 끝.** grep/sqlite3 는 이 스크립트가 이미 다 돌렸음. 추가로 raw 로그 안 읽어도 95% 커버됨.
+
+### 5.2 Explore sub-agent 위임 (analyze_run 커버 안 되는 탐색)
+
+analyze_run 이 모르는 **새 패턴 탐색** 이 필요하면 Explore sub-agent 로:
+
+```
+Agent(
+  subagent_type="Explore",
+  description="QA 런 새 이슈 패턴 탐색",
+  prompt="tests/e2e/results/run-<id>.log + communities/qa/logs/system.log +
+    communities/qa/community.db 읽고, analyze_run.py 가 놓칠 만한 이상 현상 찾아.
+    이미 알려진 이슈 (메타 누출/괄호 독백/create_room 중복/A2A timeout/entity 글자깨짐)는 제외.
+    새로운 것만. 200자 이내 리포트."
+)
+```
+
+**왜 sub-agent?** raw 로그 읽는 건 입력 토큰 폭탄. Sub-agent 는 별도 context 에서 훑고 요약만 리턴 → 내 context 보존 + 토큰 절약. 분석 자체 품질도 Sub-agent 의 전문성.
+
+### 5.3 이슈 분류
+
+analyze_run 이 자동 분류. 필요시 조정:
 - **BLOCKER**: 튜토리얼 진행 불가, 봇 크래시. 재실행 전 반드시 픽스.
-- **REGRESSION**: 이전 커밋에서 동작하던 게 깨짐. 바로 픽스.
-- **DRIFT**: 프롬프트/LLM 판단 흔들림 (예: 응답 스타일 어긋남). 프롬프트 조정.
-- **FLAKY**: 1회성, 재현 불분명. 메모하고 패스 (2회 반복되면 승급).
-- **COSMETIC**: UX 이슈, 기능 영향 X. 여유 있을 때.
+- **REGRESSION**: 이전 커밋에서 픽스된 게 재발. 바로 픽스.
+- **DRIFT**: persona 품질 게이트 fail (7중 ≤5 통과). 프롬프트 튜닝.
+- **FLAKY**: 1회성, 재현 불분명. 2회 반복시 승급.
+- **COSMETIC**: 기능 영향 X.
+
+각 이슈는 `TaskCreate` 로.
 
 ## 6. 수정 절차
 
@@ -221,10 +239,20 @@ grep -E "\[sup:orchestrator\]" communities/qa/logs/system.log
 
 ## 9. 안전 규칙
 
-- **커밋 자동 금지**: 픽스가 쌓여도 유저 승인 없이 commit 금지 (CLAUDE.md Co-Authored-By 정책). 픽스 요약만 보고.
+- **커밋 자동 금지**: 픽스가 쌓여도 유저 승인 없이 commit 금지. 픽스 요약만 보고.
 - **DB 파괴 금지**: `communities/qa/community.db` 는 매 런 초기화되지만, 다른 커뮤니티 건드리지 말 것.
 - **토큰 폭주 방지**: 런 1회당 대략 참고값 → `token_usage.md` 평균 대비 2배 이상이면 중단.
 - **공유 상태 오염 방지**: 항상 `GLIMI_COMMUNITY=qa` 전제. 대시보드(:8765) 건드리지 말 것.
+
+## 9.5 Claude(Opus) 토큰 절약 필수 원칙
+
+이 workflow 는 반복 실행이라 내 Opus 비용 누적. 매 사이클 다음 지킬 것:
+
+1. **raw 로그 절대 읽지 말 것** — `analyze_run.py` JSON 만 읽기. 로그 `grep` 도 스크립트에 맡기기.
+2. **sub-agent 적극 활용** — 로그 뒤지기·codebase 탐색 등 bulk I/O 는 Explore/general-purpose agent 로. 결과 요약만 받기.
+3. **사이클 간 `/compact`** — 오래된 tool output 요약으로 교체, context 누적 방지.
+4. **병렬 호출** — 독립적인 Bash/Read 는 한 메시지에 묶어서. 왕복 줄이기.
+5. **TaskCreate 로 track** — 이슈 별 task → 기억 대신 DB. 대화 context 슬림화.
 
 ## 10. 레퍼런스
 
