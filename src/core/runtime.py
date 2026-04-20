@@ -1076,13 +1076,17 @@ class AgentRuntime:
         # _build_context 재활용 (speaker 기준 메모리)
         base_context = self._build_context(speaker_info, channel, recent, user_message=context)
 
-        # 엄격한 role guard — 과거 하나가 유나 역할까지 같이 생성하는 버그 방지.
-        # 모델이 내부적으로 "speaker→listener→speaker→..." 대화 전체를 시뮬레이션하려 하는 경향.
+        # 엄격한 role guard — 하나가 유나 역할까지 같이 생성하는 버그 방지.
+        # 같은 내용 재요약 방지 — internal-dm 에서 같은 보고를 4-5회 반복하는 회귀 발견.
         role_guard = (
             f"\n[역할 엄수] 너는 {speaker_name} 한 사람. "
             f"{listener_name} 의 대사/답변은 절대 쓰지 마. 내가 한 턴 말하면 끝, "
             f"상대 반응은 상대가 알아서 함.\n"
-            f"[출력] 한 번에 카톡 1~4개 짧은 메시지만. 긴 독백이나 양쪽 대화 시뮬레이션 금지."
+            f"[출력] 한 번에 카톡 1~4개 짧은 메시지만. 긴 독백·양쪽 대화 시뮬레이션 금지.\n"
+            f"[반복 금지] 네가 이미 한 말은 절대 재요약·재진술 하지 마. 위 대화이력에 "
+            f"본인의 같은 요지 메시지가 이미 있으면 그 주제는 종료됐다는 뜻. 다음 화제 or 마무리로 넘어가.\n"
+            f"[종료 감지] 대화가 맴돌면 '그럼 이따 봐' '또 얘기하자' 같이 자연스럽게 끊어. "
+            f"끝없이 맴돌지 마."
         )
         if context:
             full_prompt = base_context + f"상황: {context}\n{listener_name}과(와)의 대화를 이어가.{role_guard}"
@@ -1154,7 +1158,13 @@ class AgentRuntime:
                 except Exception as e:
                     log_writer.system(f"❌ 에이전트간 대화 오류: {e}")
 
-            return [f"[테스트] {speaker_name}→{listener_name}: (Claude Code 연동 후 동작)"]
+            # LLM 호출 실패 — 이전엔 [테스트] 플레이스홀더를 채팅으로 노출시켰으나
+            # 유저 경험 저해. 빈 list 반환 → 호출부에서 "전송할 내용 없음" 처리.
+            log_writer.system(
+                f"⚠ A2A 응답 생성 실패 (CLAUDE_AVAILABLE={CLAUDE_AVAILABLE}) — "
+                f"{speaker_name}→{listener_name}"
+            )
+            return []
         finally:
             log_writer.mark_done(speaker_id)
 
