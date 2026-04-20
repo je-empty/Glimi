@@ -459,17 +459,47 @@ async def yuna_watcher():
     if not new_events:
         return
 
+    # 채널 context — 유저가 방금 직접 참여 중인지 확인 (새 친구 "말 걸어봐" 부적절 방지).
+    # dm-* 채널에 유저 발화가 최근 15분 내에 있으면 "이미 대화 중" 플래그.
+    from datetime import datetime as _dt, timedelta as _td
+    oc = get_user_name()
+    user_id = get_user_id()
+    active_user_dms: set[str] = set()
+    cutoff = _dt.now() - _td(minutes=15)
+    for ch in overview:
+        ch_name = ch["channel"]
+        if not ch_name.startswith("dm-"):
+            continue
+        recent = db.get_recent_messages(ch_name, limit=5)
+        for r in recent:
+            if r["speaker"] == user_id:
+                try:
+                    ts = _dt.fromisoformat(r["timestamp"])
+                    if ts >= cutoff:
+                        active_user_dms.add(ch_name)
+                        break
+                except Exception:
+                    pass
+
+    active_note = ""
+    if active_user_dms:
+        active_note = (
+            f"\n[상황] {oc}가 지금 진행 중인 대화: {', '.join(sorted(active_user_dms))}. "
+            f"이 친구들한테 '말 걸어봐' 유도 금지 — {oc} 이미 대화 중.\n"
+        )
+
     # 유나에게 활동 알림 — 특이사항만 보고, 일상 대화는 무시
     notify = "\n".join(new_events)
     notify_prompt = (
-        f"[자동알림] 최근 활동:\n{notify}\n\n"
+        f"[자동알림] 최근 활동:\n{notify}\n{active_note}\n"
         f"이건 참고용이야. **대부분 무시하고 빈 응답으로 넘어가는 게 기본**.\n"
-        f"보고 기준(아래 중 하나 이상 해당 시에만 {get_user_name()}한테 1~2줄 짧게 말 걸기):\n"
+        f"보고 기준(아래 중 하나 이상 해당 시에만 {oc}한테 1~2줄 짧게 말 걸기):\n"
         f"  1) 멤버끼리 갈등·오해·상처받는 기색\n"
-        f"  2) {get_user_name()} 직접 언급된 특이한 화제\n"
+        f"  2) {oc} 직접 언급된 특이한 화제\n"
         f"  3) 메타 용어 누출 의심 (persona 가 AI/시스템/캐릭터 식 발언)\n"
-        f"  4) 프로필 수정 필요한 새 정보 ({get_user_name()} 가 언급한 취향/상황)\n"
-        f"**일상 잡담·근황 공유·게임 얘기·과제 얘기 → 응답 금지**. 그냥 빈 응답으로 끝내."
+        f"  4) 프로필 수정 필요한 새 정보 ({oc} 가 언급한 취향/상황)\n"
+        f"**일상 잡담·근황 공유·게임 얘기·과제 얘기 → 응답 금지**. 그냥 빈 응답으로 끝내.\n"
+        f"**이미 {oc}가 대화 중인 상대한테 '지금 가서 말 걸어봐' 같은 유도 절대 금지**."
     )
 
     try:
