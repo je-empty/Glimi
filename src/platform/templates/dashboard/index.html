@@ -298,30 +298,32 @@
           body: '{}',
         }).then(r => r.json()).catch(e => ({ ok: false, error: String(e) }));
 
-        const damage = (scanRes && scanRes.result && scanRes.result.damage) || null;
+        // Sync 탭의 renderScanTable + 자동선택 로직과 **동일 계산**:
+        //   allChs = keys(counts) ∪ keys(db_counts)
+        //   diff != 0 인 채널이 sync 대상
+        const dc = (scanRes && scanRes.result && scanRes.result.counts) || {};
+        const dbC = (scanRes && scanRes.result && scanRes.result.db_counts) || {};
+        const rows = [];
+        for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
+          const db = dbC[ch] || 0;
+          const discord = dc[ch] || 0;
+          if (db !== discord) rows.push({ ch, db, discord, diff: db - discord });
+        }
 
-        if (damage && !damage.clean) {
-          _setOverlayPhase('damaged', { damage });
+        if (rows.length > 0) {
+          _setOverlayPhase('damaged', { rows });
           const decision = await new Promise(resolve => { _overlayResolver = resolve; });
           if (decision === 'cancel') {
             _hideOverlay();
             return;
           }
           _setOverlayPhase('recovering');
-          // 손상 종류 합집합 — sync 가 DB 기준으로 일괄 처리.
-          //   missing → 채널 생성 / orphan → 삭제 / wrong_category → 이동 /
-          //   msg_drift_db_more → restore (DB→Discord) / msg_drift_discord_more → 잉여 삭제
-          const affected = new Set();
-          (damage.missing_in_discord || []).forEach(n => affected.add(n));
-          (damage.orphan_in_discord || []).forEach(n => affected.add(n));
-          (damage.orphan_outside || []).forEach(o => o && o.name && affected.add(o.name));
-          (damage.wrong_category || []).forEach(o => o && o.name && affected.add(o.name));
-          (damage.msg_drift_db_more || []).forEach(o => o && o.name && affected.add(o.name));
-          (damage.msg_drift_discord_more || []).forEach(o => o && o.name && affected.add(o.name));
+          // 영향 받은 채널만 sync — Sync 탭의 "선택한 채널 싱크" 와 동일
+          const channels = rows.map(r => r.ch);
           const syncRes = await fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channels: Array.from(affected) }),
+            body: JSON.stringify({ channels }),
           }).then(r => r.json()).catch(e => ({ error: String(e) }));
           if (syncRes && syncRes.error) {
             _setOverlayPhase('error', { msg: '복구 실패: ' + (syncRes.message || syncRes.error) });
@@ -375,28 +377,28 @@
     } else if (phase === 'damaged') {
       emoji.textContent = '⚠️';
       title.textContent = '디스코드 손상 감지';
-      const d = ctx.damage || {};
+      const rows = ctx.rows || [];
+      // 손상 유형 분류 (Sync 탭과 동일 기준)
+      const missing = rows.filter(r => r.discord === 0).map(r => r.ch);         // DB 있고 Discord 없음
+      const orphan = rows.filter(r => r.db === 0).map(r => r.ch);               // Discord 있고 DB 없음
+      const driftDbMore = rows.filter(r => r.db > 0 && r.discord > 0 && r.diff > 0);
+      const driftDiscMore = rows.filter(r => r.db > 0 && r.discord > 0 && r.diff < 0);
+
       const lines = [];
-      if ((d.missing_in_discord || []).length) {
-        lines.push(`<div>❌ 누락 채널 <b style="color:#f87171">${d.missing_in_discord.length}개</b> <span style="color:#9ca3af;font-size:11px">${d.missing_in_discord.slice(0, 5).join(', ')}${d.missing_in_discord.length > 5 ? ` 외 ${d.missing_in_discord.length - 5}개` : ''}</span></div>`);
+      if (missing.length) {
+        lines.push(`<div>❌ 누락 채널 <b style="color:#f87171">${missing.length}개</b> <span style="color:#9ca3af;font-size:11px">${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` 외 ${missing.length - 5}개` : ''}</span></div>`);
       }
-      if ((d.orphan_in_discord || []).length) {
-        lines.push(`<div>👻 잉여 채널 <b style="color:#f87171">${d.orphan_in_discord.length}개</b> <span style="color:#9ca3af;font-size:11px">DB 에 없음 → 삭제됨 · ${d.orphan_in_discord.slice(0, 5).join(', ')}</span></div>`);
+      if (orphan.length) {
+        lines.push(`<div>👻 잉여 채널 <b style="color:#f87171">${orphan.length}개</b> <span style="color:#9ca3af;font-size:11px">DB 에 없음 → 삭제됨 · ${orphan.slice(0, 5).join(', ')}</span></div>`);
       }
-      if ((d.orphan_outside || []).length) {
-        lines.push(`<div>📁 카테고리 밖 orphan <b style="color:#f87171">${d.orphan_outside.length}개</b> <span style="color:#9ca3af;font-size:11px">${d.orphan_outside.slice(0, 5).map(o => '#' + o.name + ' [' + o.category + ']').join(', ')}</span></div>`);
+      if (driftDbMore.length) {
+        lines.push(`<div>📤 DB > Discord <b style="color:#f87171">${driftDbMore.length}개</b> <span style="color:#9ca3af;font-size:11px">${driftDbMore.slice(0, 3).map(r => '#' + r.ch + ' (+' + r.diff + ')').join(', ')}</span></div>`);
       }
-      if ((d.wrong_category || []).length) {
-        lines.push(`<div>🔀 카테고리 오류 <b style="color:#f87171">${d.wrong_category.length}개</b> <span style="color:#9ca3af;font-size:11px">${d.wrong_category.slice(0, 3).map(o => '#' + o.name + ' (' + o.current + '→' + o.expected + ')').join(', ')}</span></div>`);
-      }
-      if ((d.msg_drift_db_more || []).length) {
-        lines.push(`<div>📤 DB > Discord <b style="color:#f87171">${d.msg_drift_db_more.length}개</b> <span style="color:#9ca3af;font-size:11px">DB 메시지 누락분 복원 · ${d.msg_drift_db_more.slice(0, 3).map(o => '#' + o.name + ' (+' + o.diff + ')').join(', ')}</span></div>`);
-      }
-      if ((d.msg_drift_discord_more || []).length) {
-        lines.push(`<div>📥 Discord > DB <b style="color:#f87171">${d.msg_drift_discord_more.length}개</b> <span style="color:#9ca3af;font-size:11px">Discord 잉여 메시지 삭제 · ${d.msg_drift_discord_more.slice(0, 3).map(o => '#' + o.name + ' (+' + o.diff + ')').join(', ')}</span></div>`);
+      if (driftDiscMore.length) {
+        lines.push(`<div>📥 Discord > DB <b style="color:#f87171">${driftDiscMore.length}개</b> <span style="color:#9ca3af;font-size:11px">${driftDiscMore.slice(0, 3).map(r => '#' + r.ch + ' (+' + (-r.diff) + ')').join(', ')}</span></div>`);
       }
       sub.innerHTML =
-        `총 <b style="color:#f87171">${d.total_issues || 0}건</b> 문제 발견. DB 가 단일 진실원이라 DB 기준으로 정렬됨.<br>` +
+        `총 <b style="color:#f87171">${rows.length}개 채널</b> 싱크 필요. DB 기준으로 복구됨.<br>` +
         '<div style="margin-top:10px;text-align:left;font-size:12.5px;line-height:1.7">' + lines.join('') + '</div>' +
         '<span style="color:#f59e0b;font-size:12px;display:inline-block;margin-top:8px">복구 안 하면 가동 취소</span>';
       dots.style.display = 'none';
