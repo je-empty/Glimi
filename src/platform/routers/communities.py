@@ -210,6 +210,26 @@ async def verify_token_endpoint(data: VerifyTokenIn, user: dict = Depends(requir
     return await run_in_threadpool(verify_token_sync, data.token, 15.0)
 
 
+@router.get("/new_defaults")
+async def new_defaults(id: str = "", user: dict = Depends(require_user)):
+    """로컬 dev 편의 — `dev/test_defaults.json` 에 저장된 커뮤니티 id 별 기본값 반환.
+    git ignored. 이 맥에서만 유효. 등록 안 된 id 는 빈 dict.
+
+    예: {"test": {"token": "MTQ..."}}  →  GET /api/communities/new_defaults?id=test
+    """
+    if not id:
+        return {}
+    defaults_file = COMMUNITIES_DIR.parent / "dev" / "test_defaults.json"
+    if not defaults_file.exists():
+        return {}
+    try:
+        with open(defaults_file, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+    except Exception:
+        return {}
+    return data.get(id, {})
+
+
 @router.post("")
 async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     from dotenv import set_key
