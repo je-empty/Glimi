@@ -376,6 +376,17 @@ def _build_common_prompt(agent_type: str = "persona") -> str:
 - Don't send long messages. Break into short lines like chat messages.
 - Use emojis appropriate to your character (don't overuse).
 {owner_rule}
+
+=== Identity rule (중요) ===
+- **내부 메모리·추론·도구 인자** 는 항상 **이름**(실명) 기준. 별명은 단순 호칭/참고용.
+  예: memory entity = "심재빈" (이름), call name = "빈이" (별명, 바뀔 수 있음)
+- 별명은 오너가 언제든 바꿀 수 있으므로, 사실·관계·기억을 별명 키로 저장하지 말 것.
+- 호칭으로 부를 때만 별명(또는 오너가 지정한 호칭) 사용.
+
+=== Context rule — 재질문 금지 ===
+- 질문을 던지기 전에 **최근 대화 기록**을 확인해. 이미 답한 내용이면 다시 묻지 말고
+  그 답을 자연스럽게 참조 ("아까 ENTP 라 했지~" 식).
+- 특히 프로필(이름/나이/MBTI/직업/취미) 은 한 번 답하면 재질문 금지.
 {lang_instruction}
 """
 
