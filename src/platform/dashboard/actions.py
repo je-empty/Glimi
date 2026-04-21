@@ -24,20 +24,28 @@ def _channel_category(name: str) -> str:
 def _analyze_damage(scan_result: dict) -> dict:
     """scan 결과 + DB 데이터 → 손상 종류별 분류.
 
-    DB 가 단일 진실원. 차이 종류:
-      - missing_in_discord: DB 에 있는 채널이 Discord 에 없음 → 생성 필요
-      - orphan_in_discord: Discord 에만 있는 glimi 채널 → 삭제 필요
-      - orphan_outside: glimi 카테고리 밖에 있는 패턴 매칭 채널 → 삭제 필요
-      - wrong_category: 채널이 잘못된 카테고리에 있음 → 이동 필요
-      - msg_drift_db_more: DB 메시지 > Discord 메시지 (restore 필요)
-      - msg_drift_discord_more: Discord 메시지 > DB 메시지 (Discord 잉여 삭제)
+    DB 측 채널 리스트 = `channels` 테이블 ∪ `conversations` 집계 (합집합).
+    양쪽 다 봐야 channels 등록만 된 빈 채널 + 메시지만 있는 미등록 채널 둘 다 커버.
+    (이전 버전은 channels 테이블만 봐서 Sync 탭이 잡는 차이를 놓치던 버그.)
+
+    손상 종류:
+      - missing_in_discord: DB 에 있는데 Discord 에 없음 → 생성 필요
+      - orphan_in_discord: glimi-* 카테고리 안 Discord 만 있음 → 삭제 필요
+      - orphan_outside: glimi 카테고리 밖 패턴 매칭 채널 → 삭제 필요
+      - wrong_category: 채널이 잘못된 카테고리 → 이동 필요
+      - msg_drift_db_more: DB 메시지 > Discord → restore
+      - msg_drift_discord_more: Discord 메시지 > DB → 잉여 삭제
     """
-    db_channels = {c["name"]: c for c in scan_result.get("db_channels", []) or []}
+    db_channels_meta = {c["name"]: c for c in scan_result.get("db_channels", []) or []}
     discord_chs = {c["name"]: c for c in scan_result.get("discord_channels", []) or []}
     db_counts = scan_result.get("db_counts", {}) or {}
 
-    missing_in_discord = sorted([n for n in db_channels if n not in discord_chs])
-    orphan_in_discord = sorted([n for n in discord_chs if n not in db_channels])
+    # DB 측 채널 리스트 = channels 테이블 ∪ conversations 에서 등장한 채널
+    db_names = set(db_channels_meta.keys()) | set(db_counts.keys())
+    discord_names = set(discord_chs.keys())
+
+    missing_in_discord = sorted(db_names - discord_names)
+    orphan_in_discord = sorted(discord_names - db_names)
     orphan_outside = list(scan_result.get("orphan_outside", []) or [])
     wrong_category = []
     msg_drift_db_more = []
@@ -51,10 +59,8 @@ def _analyze_damage(scan_result: dict) -> dict:
                 "name": name, "current": actual_cat, "expected": expected_cat,
             })
 
-    # 메시지 카운트 비교 (양쪽 다 존재하는 채널만)
-    for name in db_channels:
-        if name not in discord_chs:
-            continue
+    # 메시지 카운트 비교 (양쪽에 다 존재하는 채널만)
+    for name in (db_names & discord_names):
         d_count = discord_chs[name].get("msg_count")
         db_count = db_counts.get(name, 0)
         if d_count is None:
