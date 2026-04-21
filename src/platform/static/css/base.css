@@ -131,6 +131,9 @@ button, .btn {
   font-family: inherit;
 }
 button:hover, .btn:hover { background: var(--border); }
+button:disabled, .btn:disabled, button[disabled] {
+  opacity: 0.4; cursor: not-allowed; pointer-events: none;
+}
 button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 500; }
 button.primary:hover { opacity: 0.92; background: var(--accent); }
 button.danger { background: transparent; color: var(--err); border-color: var(--err); }
