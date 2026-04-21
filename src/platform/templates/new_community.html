@@ -230,19 +230,41 @@ function wizSetGender(g) {
   });
 }
 
-function wizNext(from) {
+async function wizNext(from) {
   if (from === 1) {
     const id = document.getElementById('f-id').value.trim();
     if (!id || !id.replace(/-|_/g, '').match(/^[a-zA-Z0-9]+$/)) {
       alert('ID 는 영문/숫자/-/_ 만 가능');
       return;
     }
+    // 로컬 dev 편의 — dev/test_defaults.json 에 등록된 id 면 token 자동 주입
+    try {
+      const r = await fetch('/api/communities/new_defaults?id=' + encodeURIComponent(id));
+      if (r.ok) {
+        const defaults = await r.json();
+        if (defaults && defaults.token) {
+          const tokenInput = document.getElementById('f-token');
+          if (tokenInput && !tokenInput.value) {
+            tokenInput.value = defaults.token;
+            tokenInput.dataset.prefilled = '1';
+          }
+        }
+      }
+    } catch (e) {}
     wizGoto(2);
   } else if (from === 2) {
     const name = document.getElementById('f-owner-name').value.trim();
     if (!name) { alert('이름은 필수'); return; }
     wizGoto(3);
-    setTimeout(() => document.getElementById('f-token').focus(), 150);
+    // 미리 채워진 경우 피드백 + 포커스는 빈 값일 때만
+    const tokenInput = document.getElementById('f-token');
+    if (tokenInput && tokenInput.dataset.prefilled === '1') {
+      const hint = tokenInput.parentElement.querySelector('.hint');
+      if (hint) hint.innerHTML = '<span style="color:var(--ok)">✓ 로컬 설정 기본값 자동 입력됨 — 필요하면 수정 가능</span>';
+      setTimeout(() => document.getElementById('btn-verify').focus(), 150);
+    } else {
+      setTimeout(() => tokenInput.focus(), 150);
+    }
   }
 }
 
