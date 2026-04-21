@@ -102,8 +102,12 @@ async def dispatch_action(action_name: str, request: Request, user: dict = Depen
         body = {}
 
     cid = request.query_params.get("community", "")
+    # 대부분의 action 이 내부에서 asyncio.new_event_loop() 를 사용 (Discord client).
+    # FastAPI async 핸들러에서 직접 호출하면 "loop already running" 충돌 →
+    # 스레드풀에서 돌려야 함.
+    from fastapi.concurrency import run_in_threadpool
     try:
-        result = fn(body, cid)
+        result = await run_in_threadpool(fn, body, cid)
     except Exception as e:
         import traceback
         traceback.print_exc()
