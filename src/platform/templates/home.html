@@ -62,12 +62,12 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
   <h2 style="margin: 0;">내 커뮤니티</h2>
-  <button class="primary" onclick="showCreate()">+ 새 커뮤니티</button>
+  <a class="btn primary" href="/community/new" style="text-decoration:none">+ 새 커뮤니티</a>
 </div>
 
 {% if not communities %}
 <div class="card">
-  <p class="muted" style="margin: 0;">아직 커뮤니티가 없어. 상단의 <strong>+ 새 커뮤니티</strong> 로 하나 만들어봐.</p>
+  <p class="muted" style="margin: 0;">아직 커뮤니티가 없어. 상단의 <a href="/community/new"><strong>+ 새 커뮤니티</strong></a> 로 하나 만들어봐.</p>
 </div>
 {% endif %}
 
@@ -117,41 +117,7 @@
   {% endfor %}
 </div>
 
-<dialog id="create-dialog" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 20px; min-width: 340px;">
-  <h3 style="margin-top: 0;">새 커뮤니티</h3>
-  <form method="dialog" onsubmit="event.preventDefault(); submitCreate();">
-    <div style="margin: 12px 0;">
-      <label style="display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted);">id (영문·숫자·-·_)</label>
-      <input id="c-id" type="text" required style="width: 100%;">
-    </div>
-    <div style="margin: 12px 0;">
-      <label style="display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted);">언어</label>
-      <select id="c-lang" style="width: 100%;">
-        <option value="en">English</option>
-        <option value="ko" selected>한국어</option>
-      </select>
-    </div>
-    <div style="display: flex; gap: 6px; justify-content: end; margin-top: 16px;">
-      <button type="button" onclick="document.getElementById('create-dialog').close()">취소</button>
-      <button type="submit" class="primary">만들기</button>
-    </div>
-  </form>
-</dialog>
-
 <script>
-function showCreate() { document.getElementById('create-dialog').showModal(); }
-async function submitCreate() {
-  const id = document.getElementById('c-id').value.trim();
-  const language = document.getElementById('c-lang').value;
-  if (!id) return;
-  const r = await fetch('/api/communities', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, language })
-  });
-  if (!r.ok) { alert('생성 실패: ' + (await r.text())); return; }
-  location.reload();
-}
 async function ctrl(cid, action) {
   const r = await fetch('/api/communities/' + cid + '/' + action, { method: 'POST' });
   if (!r.ok) { alert('실패: ' + (await r.text())); return; }

@@ -1,7 +1,13 @@
 """커뮤니티 CRUD + 봇 start/stop API."""
 import hashlib
+import json as _json
 import os
 import shutil
+import sqlite3
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -10,20 +16,37 @@ from src.community import (
     COMMUNITIES_DIR,
     init_community,
     list_communities,
+    REGISTRY_PATH,
 )
 
 from .. import accounts
 from ..auth import require_user
 from ..community_ctx import run_in_community
+from ..discord_verify import verify_token_sync
 from ..supervisor import supervisor
 
 router = APIRouter(prefix="/api/communities")
 
 
+class OwnerProfileIn(BaseModel):
+    name: str
+    nickname: str | None = None
+    birth: str | None = None  # "2001-01-01" or raw "20010101"
+    gender: str | None = None  # "남" | "여" | ""
+
+
 class CreateCommunityIn(BaseModel):
     id: str
+    description: str = ""
     language: str = "en"
+    token: str  # Discord bot token
+    owner: OwnerProfileIn
+    clean_existing_channels: bool = False
     grant_to_user: str | None = None
+
+
+class VerifyTokenIn(BaseModel):
+    token: str
 
 
 def _visible_communities(user: dict) -> list[dict]:
@@ -80,19 +103,173 @@ async def list_my_communities(user: dict = Depends(require_user)):
     return visible
 
 
+def _normalize_birth(raw: str) -> str:
+    """20010101 → 2001-01-01. 이미 하이픈 있으면 그대로."""
+    if not raw:
+        return ""
+    digits = raw.replace("-", "").replace("/", "").replace(".", "").strip()
+    if len(digits) == 8 and digits.isdigit():
+        return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+    return raw
+
+
+def _save_owner_profile(cid: str, name: str, nickname: str, birth: str, gender: str) -> None:
+    """오너 프로필을 커뮤니티 DB 의 users + meta.active_user_id 로 저장.
+    TUI wizard._save_owner_profile 이식.
+    """
+    # DB 초기화 먼저 — env + set_community + init_db 필요
+    old = os.environ.get("GLIMI_COMMUNITY", "")
+    os.environ["GLIMI_COMMUNITY"] = cid
+    try:
+        from src import community as _comm
+        from src import db as _db
+        _comm.set_community(cid)
+        _db.DB_PATH = None
+        _db.init_db()
+
+        age = None
+        birth_year = None
+        birth_norm = _normalize_birth(birth)
+        if birth_norm:
+            try:
+                bd = datetime.strptime(birth_norm, "%Y-%m-%d")
+                birth_year = bd.year
+                age = datetime.now().year - birth_year
+            except ValueError:
+                pass
+
+        owner_id = name.lower().replace(" ", "_")
+        personality = _json.dumps(
+            {"nickname": nickname, "gender": gender},
+            ensure_ascii=False,
+        ) if (nickname or gender) else None
+
+        db_path = COMMUNITIES_DIR / cid / "community.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO users (id, name, birth_year, age, personality) VALUES (?, ?, ?, ?, ?)",
+                (owner_id, name, birth_year, age, personality),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('active_user_id', ?)",
+                (owner_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    finally:
+        if old:
+            os.environ["GLIMI_COMMUNITY"] = old
+            from src import community as _comm
+            _comm.set_community(old)
+
+
+def _update_registry(cid: str, description: str, language: str) -> None:
+    """registry.toml 의 community.{cid} 블록을 description + language 로 업데이트."""
+    if not REGISTRY_PATH.exists():
+        return
+    content = REGISTRY_PATH.read_text()
+    old_block = f'[community.{cid}]\nname = "{cid}"\ndescription = ""'
+    new_block = (
+        f'[community.{cid}]\n'
+        f'name = "{cid}"\n'
+        f'description = "{description}"\n'
+        f'language = "{language}"'
+    )
+    if old_block in content:
+        content = content.replace(old_block, new_block)
+        REGISTRY_PATH.write_text(content)
+
+
+def _run_db_migration(cid: str) -> tuple[bool, str]:
+    """subprocess 로 DB init + migrate_json_to_db. TUI wizard._run_db_init 이식.
+    long-running 이라 main process 안에서 돌리면 uvicorn worker 가 blocked."""
+    env = os.environ.copy()
+    env["GLIMI_COMMUNITY"] = cid
+    proc = subprocess.run(
+        [
+            sys.executable, "-c",
+            "from src import community, db; "
+            f"community.set_community('{cid}'); "
+            "db.init_db(); "
+            "from src.tools.migrate import migrate_json_to_db; "
+            "migrate_json_to_db()"
+        ],
+        capture_output=True, text=True, env=env,
+        cwd=str(COMMUNITIES_DIR.parent),
+        timeout=60,
+    )
+    return (proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:])
+
+
+@router.post("/verify_token")
+async def verify_token_endpoint(data: VerifyTokenIn, user: dict = Depends(require_user)):
+    """Discord 봇 토큰 검증 — 봇명/서버명/권한/기존채널 반환."""
+    from fastapi.concurrency import run_in_threadpool
+    return await run_in_threadpool(verify_token_sync, data.token, 15.0)
+
+
 @router.post("")
 async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
+    from dotenv import set_key
+
+    # ── 검증 ──
+    if not data.id:
+        raise HTTPException(400, "id required")
     if any(c["id"] == data.id for c in list_communities()):
         raise HTTPException(400, "already exists")
     if not data.id.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(400, "id must be alphanumeric with -/_")
+    if not data.token.strip():
+        raise HTTPException(400, "discord token required")
+    if not data.owner.name.strip():
+        raise HTTPException(400, "owner name required")
 
+    # ── 1. community 디렉터리 + 기본 파일 ──
     init_community(data.id)
+
+    # clean-channels 플래그 — 봇 첫 기동 시 기존 glimi-* 채널 삭제
+    if data.clean_existing_channels:
+        log_dir = COMMUNITIES_DIR / data.id / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / ".clean-channels").touch()
+
+    # ── 2. registry description + language ──
+    _update_registry(data.id, data.description, data.language)
+
+    # ── 3. .env 에 토큰 기록 ──
+    env_path = COMMUNITIES_DIR / data.id / ".env"
+    set_key(str(env_path), "DISCORD_BOT_TOKEN", data.token.strip())
+
+    # ── 4. 오너 프로필 저장 ──
+    _save_owner_profile(
+        data.id,
+        data.owner.name.strip(),
+        (data.owner.nickname or "").strip(),
+        (data.owner.birth or "").strip(),
+        (data.owner.gender or "").strip(),
+    )
+
+    # ── 5. DB 초기화 + JSON 마이그레이션 (subprocess) ──
+    from fastapi.concurrency import run_in_threadpool
+    ok, log = await run_in_threadpool(_run_db_migration, data.id)
+    if not ok:
+        # 실패해도 community 자체는 살려두고 경고 반환
+        return {
+            "ok": False,
+            "id": data.id,
+            "warning": "DB 마이그레이션 실패 — 수동으로 ./run.sh 재시도 필요",
+            "log": log,
+        }
+
+    # ── 6. 접근 권한 부여 ──
     accounts.grant_community(user["id"], data.id)
     if data.grant_to_user and user.get("role") == "admin":
         target = accounts.get_user(data.grant_to_user)
         if target:
             accounts.grant_community(target["id"], data.id)
+
     return {"ok": True, "id": data.id}
 
 

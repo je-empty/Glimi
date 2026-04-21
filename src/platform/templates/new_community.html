@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}새 커뮤니티 · Glimi{% endblock %}
+{% block head %}
+<style>
+  .wiz-wrap { max-width: 640px; margin: 0 auto; }
+  .wiz-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .wiz-header h2 { margin: 0; font-size: 22px; font-weight: 700; }
+  .wiz-back { font-size: 13px; color: var(--muted); text-decoration: none; }
+  .wiz-back:hover { color: var(--accent); text-decoration: underline; }
+
+  .wiz-progress { display: flex; gap: 8px; margin-bottom: 24px; }
+  .wiz-progress .step {
+    flex: 1; padding: 10px 14px; border-radius: 8px;
+    background: var(--panel2); color: var(--muted); font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); display: flex; align-items: center; gap: 8px;
+  }
+  .wiz-progress .step.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .wiz-progress .step.done { background: var(--panel); color: var(--ok); border-color: var(--ok); }
+  .wiz-progress .step .n {
+    width: 20px; height: 20px; border-radius: 50%; display: inline-flex;
+    align-items: center; justify-content: center; font-weight: 700;
+    background: rgba(255,255,255,0.2);
+  }
+  .wiz-progress .step.done .n::before { content: '✓'; }
+  .wiz-progress .step.done .n { background: var(--ok); color: #fff; }
+  .wiz-progress .step:not(.active):not(.done) .n { background: var(--border); }
+
+  .wiz-page { display: none; }
+  .wiz-page.active { display: block; }
+
+  .wiz-field { margin-bottom: 16px; }
+  .wiz-field label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .wiz-field .hint { color: var(--muted); font-weight: normal; font-size: 12px; }
+  .wiz-field input, .wiz-field select, .wiz-field textarea { width: 100%; }
+  .wiz-field textarea { resize: vertical; min-height: 80px; font-family: inherit; }
+
+  .wiz-gender { display: flex; gap: 8px; }
+  .wiz-gender button { flex: 1; }
+  .wiz-gender button.selected { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
+  .wiz-nav { display: flex; gap: 8px; justify-content: space-between; margin-top: 24px; }
+  .wiz-result {
+    padding: 14px 16px; border-radius: 10px; margin: 14px 0;
+    background: var(--panel2); border: 1px solid var(--border);
+    font-size: 13px; line-height: 1.65; white-space: pre-wrap;
+  }
+  .wiz-result.ok { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, var(--panel2)); }
+  .wiz-result.err { border-color: var(--err); color: var(--err); background: color-mix(in srgb, var(--err) 8%, var(--panel2)); }
+
+  .wiz-guide {
+    background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+    padding: 14px 16px; border-radius: 10px; font-size: 12.5px; line-height: 1.7;
+    margin-bottom: 14px; color: var(--text);
+  }
+  .wiz-guide h4 { margin: 0 0 8px 0; font-size: 13px; color: var(--accent); }
+  .wiz-guide ol { padding-left: 18px; margin: 6px 0; }
+  .wiz-guide code { font-size: 0.9em; }
+
+  .wiz-loading {
+    display: none; align-items: center; gap: 10px; padding: 14px 16px;
+    background: var(--panel2); border-radius: 10px; margin: 12px 0;
+  }
+  .wiz-loading.on { display: flex; }
+  .wiz-loading .spinner {
+    width: 18px; height: 18px; border: 2.5px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .wiz-missing-perms {
+    padding: 12px 14px; border-radius: 8px; margin: 10px 0;
+    background: color-mix(in srgb, var(--err) 8%, var(--panel));
+    border: 1px solid var(--err); color: var(--err); font-size: 12.5px;
+  }
+  .wiz-missing-perms ul { margin: 6px 0 0 18px; }
+
+  .wiz-existing-channels {
+    padding: 12px 14px; border-radius: 8px; margin: 10px 0;
+    background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+    border: 1px solid var(--warn); font-size: 12.5px;
+  }
+  .wiz-existing-channels h5 { margin: 0 0 6px 0; color: var(--warn); }
+  .wiz-existing-channels label { display: block; margin-top: 8px; font-size: 12.5px; cursor: pointer; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="wiz-wrap">
+  <div class="wiz-header">
+    <a href="/" class="wiz-back">← 홈</a>
+    <h2>새 커뮤니티</h2>
+  </div>
+
+  <div class="wiz-progress">
+    <div class="step active" data-step="1"><span class="n">1</span> 서버 정보</div>
+    <div class="step" data-step="2"><span class="n">2</span> 오너 프로필</div>
+    <div class="step" data-step="3"><span class="n">3</span> 디스코드 봇</div>
+    <div class="step" data-step="4"><span class="n">4</span> 확인·생성</div>
+  </div>
+
+  <!-- Step 1: 서버 정보 -->
+  <div class="wiz-page active" data-page="1">
+    <div class="card">
+      <div class="wiz-field">
+        <label>커뮤니티 ID <span class="hint">(영문·숫자·하이픈·언더스코어. 예: <code>my-server</code>)</span></label>
+        <input id="f-id" type="text" autofocus placeholder="my-server">
+      </div>
+      <div class="wiz-field">
+        <label>설명 <span class="hint">(선택 — 커뮤니티 소개)</span></label>
+        <input id="f-desc" type="text" placeholder="친구들과 편하게 지내는 공간">
+      </div>
+      <div class="wiz-field">
+        <label>에이전트 언어</label>
+        <select id="f-lang">
+          <option value="ko" selected>🇰🇷 한국어</option>
+          <option value="en">🇺🇸 English</option>
+        </select>
+        <div class="hint" style="margin-top:4px;color:var(--muted);font-size:12px">커뮤니티 생성 후 변경 불가 — 에이전트 기억이 해당 언어로 누적되기 때문</div>
+      </div>
+    </div>
+    <div class="wiz-nav">
+      <span></span>
+      <button class="primary" onclick="wizNext(1)">다음 →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: 오너 프로필 -->
+  <div class="wiz-page" data-page="2">
+    <div class="card">
+      <p class="muted" style="margin-top:0">에이전트들이 오너를 어떻게 부를지 알기 위해 필요해.</p>
+      <div class="wiz-field">
+        <label>이름 <span class="hint">(필수)</span></label>
+        <input id="f-owner-name" type="text" placeholder="재빈">
+      </div>
+      <div class="wiz-field">
+        <label>별명 <span class="hint">(선택 — 에이전트가 친근하게 부를 호칭)</span></label>
+        <input id="f-owner-nickname" type="text" placeholder="">
+      </div>
+      <div class="wiz-field">
+        <label>생년월일</label>
+        <input id="f-owner-birth" type="text" placeholder="2001-01-01">
+      </div>
+      <div class="wiz-field">
+        <label>성별</label>
+        <div class="wiz-gender">
+          <button type="button" data-gender="남" onclick="wizSetGender('남')">남</button>
+          <button type="button" data-gender="여" onclick="wizSetGender('여')">여</button>
+        </div>
+      </div>
+    </div>
+    <div class="wiz-nav">
+      <button onclick="wizGoto(1)">← 이전</button>
+      <button class="primary" onclick="wizNext(2)">다음 →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: 디스코드 봇 토큰 -->
+  <div class="wiz-page" data-page="3">
+    <div class="wiz-guide">
+      <h4>📝 Discord 봇 세팅 가이드</h4>
+      <ol>
+        <li><a href="https://discord.com/developers/applications" target="_blank">Discord Developer Portal</a> 에서 새 Application 생성</li>
+        <li>Bot 탭 → <b>Reset Token</b> → 토큰 복사</li>
+        <li>Bot 탭 → Privileged Gateway Intents → <b>Server Members Intent</b> + <b>Message Content Intent</b> 켜기</li>
+        <li>OAuth2 → URL Generator → scopes: <code>bot</code> / permissions: <b>Manage Channels</b>·<b>Manage Webhooks</b>·<b>Send Messages</b>·<b>Read Messages</b>·<b>Manage Messages</b> — 생성된 URL 로 본인 서버에 봇 초대</li>
+      </ol>
+    </div>
+    <div class="card">
+      <div class="wiz-field">
+        <label>봇 토큰 <span class="hint">(필수)</span></label>
+        <input id="f-token" type="password" placeholder="MTIzNDU2...">
+        <div class="hint" style="margin-top:4px;color:var(--muted);font-size:12px">토큰은 커뮤니티의 <code>.env</code> 에만 저장되며 플랫폼이 보관하지 않음</div>
+      </div>
+    </div>
+    <div id="verify-err" class="wiz-result err" style="display:none"></div>
+    <div id="verify-loading" class="wiz-loading">
+      <div class="spinner"></div>
+      <div>Discord 에 연결 중... <span class="muted">(최대 15초)</span></div>
+    </div>
+    <div class="wiz-nav">
+      <button onclick="wizGoto(2)">← 이전</button>
+      <button id="btn-verify" class="primary" onclick="wizVerify()">토큰 검증 →</button>
+    </div>
+  </div>
+
+  <!-- Step 4: 확인 + 생성 -->
+  <div class="wiz-page" data-page="4">
+    <div id="verify-summary" class="wiz-result ok"></div>
+    <div id="existing-channels-box" class="wiz-existing-channels" style="display:none">
+      <h5>⚠ 기존 <code>glimi-*</code> 채널이 감지됨</h5>
+      <div id="existing-list"></div>
+      <label><input type="radio" name="clean-mode" value="keep" checked> 유지 — 기존 채널 그대로 사용 (기존 대화 보존)</label>
+      <label><input type="radio" name="clean-mode" value="clean"> 삭제 — 첫 기동 시 모든 glimi 채널 삭제 후 새로 생성 (깨끗한 시작)</label>
+    </div>
+    <div id="create-loading" class="wiz-loading">
+      <div class="spinner"></div>
+      <div>커뮤니티 생성 중... <span class="muted">(DB 초기화 + 마이그레이션 — 30초 가량)</span></div>
+    </div>
+    <div id="create-err" class="wiz-result err" style="display:none"></div>
+    <div class="wiz-nav">
+      <button onclick="wizGoto(3)">← 이전</button>
+      <button id="btn-create" class="primary" onclick="wizCreate()">생성</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let wizState = {
+  step: 1,
+  gender: '',
+  verifiedInfo: null,  // {bot_name, guilds, ...}
+};
+
+function wizGoto(step) {
+  wizState.step = step;
+  document.querySelectorAll('.wiz-page').forEach(p => p.classList.toggle('active', parseInt(p.dataset.page) === step));
+  document.querySelectorAll('.wiz-progress .step').forEach(s => {
+    const n = parseInt(s.dataset.step);
+    s.classList.toggle('active', n === step);
+    s.classList.toggle('done', n < step);
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function wizSetGender(g) {
+  wizState.gender = g;
+  document.querySelectorAll('.wiz-gender button').forEach(b => {
+    b.classList.toggle('selected', b.dataset.gender === g);
+  });
+}
+
+function wizNext(from) {
+  if (from === 1) {
+    const id = document.getElementById('f-id').value.trim();
+    if (!id || !id.replace(/-|_/g, '').match(/^[a-zA-Z0-9]+$/)) {
+      alert('ID 는 영문/숫자/-/_ 만 가능');
+      return;
+    }
+    wizGoto(2);
+  } else if (from === 2) {
+    const name = document.getElementById('f-owner-name').value.trim();
+    if (!name) { alert('이름은 필수'); return; }
+    wizGoto(3);
+    setTimeout(() => document.getElementById('f-token').focus(), 150);
+  }
+}
+
+async function wizVerify() {
+  const token = document.getElementById('f-token').value.trim();
+  const errBox = document.getElementById('verify-err');
+  const loading = document.getElementById('verify-loading');
+  const btn = document.getElementById('btn-verify');
+
+  errBox.style.display = 'none';
+  if (!token) { errBox.textContent = '토큰을 입력해'; errBox.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  loading.classList.add('on');
+
+  try {
+    const r = await fetch('/api/communities/verify_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const info = await r.json();
+    loading.classList.remove('on');
+    btn.disabled = false;
+
+    if (!info.ok) {
+      errBox.innerHTML = '<b>검증 실패:</b> ' + (info.error || '알 수 없는 오류');
+      errBox.style.display = 'block';
+      return;
+    }
+    if (info.missing_perms && info.missing_perms.length) {
+      errBox.innerHTML = '<b>권한 부족:</b><ul>' +
+        info.missing_perms.map(p => '<li>' + p + '</li>').join('') +
+        '</ul><small>Discord 서버 설정 → 역할 에서 권한 부여 후 재시도.</small>';
+      errBox.style.display = 'block';
+      return;
+    }
+    if (!info.guilds || !info.guilds.length) {
+      errBox.innerHTML = '봇이 어떤 서버에도 초대되지 않았어. 먼저 서버에 초대해.';
+      errBox.style.display = 'block';
+      return;
+    }
+
+    // 성공 — step 4 로
+    wizState.verifiedInfo = info;
+    const g = info.guilds[0];
+    document.getElementById('verify-summary').innerHTML =
+      '<b>✓ 검증 완료</b>\n\n' +
+      '  봇: ' + escapeHtml(info.bot_name) + '\n' +
+      '  서버: ' + escapeHtml(g.name) + ' · 멤버 ' + g.member_count + '명\n' +
+      '  토큰: ' + maskToken(token);
+
+    const box = document.getElementById('existing-channels-box');
+    if (g.glimi_channels && g.glimi_channels.length) {
+      document.getElementById('existing-list').innerHTML =
+        '<div style="font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);margin:6px 0">' +
+        g.glimi_channels.map(ch => '#' + escapeHtml(ch.name)).join('  ') + '</div>';
+      box.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+    }
+    wizGoto(4);
+  } catch (e) {
+    loading.classList.remove('on');
+    btn.disabled = false;
+    errBox.textContent = '통신 오류: ' + e;
+    errBox.style.display = 'block';
+  }
+}
+
+async function wizCreate() {
+  const id = document.getElementById('f-id').value.trim();
+  const desc = document.getElementById('f-desc').value.trim();
+  const language = document.getElementById('f-lang').value;
+  const name = document.getElementById('f-owner-name').value.trim();
+  const nickname = document.getElementById('f-owner-nickname').value.trim();
+  const birth = document.getElementById('f-owner-birth').value.trim();
+  const gender = wizState.gender;
+  const token = document.getElementById('f-token').value.trim();
+  const cleanMode = document.querySelector('input[name="clean-mode"]:checked');
+  const cleanExisting = cleanMode && cleanMode.value === 'clean';
+
+  const errBox = document.getElementById('create-err');
+  const loading = document.getElementById('create-loading');
+  const btn = document.getElementById('btn-create');
+
+  errBox.style.display = 'none';
+  btn.disabled = true;
+  loading.classList.add('on');
+
+  try {
+    const r = await fetch('/api/communities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id, description: desc, language,
+        token,
+        owner: { name, nickname, birth, gender },
+        clean_existing_channels: cleanExisting,
+      })
+    });
+    const res = await r.json();
+    loading.classList.remove('on');
+    btn.disabled = false;
+
+    if (!r.ok || !res.ok) {
+      errBox.innerHTML = '<b>생성 실패:</b> ' + (res.detail || res.warning || res.error || r.status);
+      if (res.log) errBox.innerHTML += '<br><small><pre style="white-space:pre-wrap;font-size:11px">' + escapeHtml(res.log) + '</pre></small>';
+      errBox.style.display = 'block';
+      return;
+    }
+
+    // 생성 완료 — 대시보드로 이동 (Start 누르면 튜토리얼 자동 시작)
+    location.href = '/community/' + encodeURIComponent(id);
+  } catch (e) {
+    loading.classList.remove('on');
+    btn.disabled = false;
+    errBox.textContent = '통신 오류: ' + e;
+    errBox.style.display = 'block';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function maskToken(t) {
+  if (!t || t.length < 20) return '***';
+  return t.slice(0, 6) + '...' + t.slice(-4);
+}
+
+// 엔터키 네비게이션
+document.getElementById('f-id').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('f-desc').focus(); });
+document.getElementById('f-desc').addEventListener('keydown', e => { if (e.key === 'Enter') wizNext(1); });
+document.getElementById('f-owner-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('f-owner-nickname').focus(); });
+document.getElementById('f-owner-birth').addEventListener('keydown', e => { if (e.key === 'Enter') wizNext(2); });
+document.getElementById('f-token').addEventListener('keydown', e => { if (e.key === 'Enter') wizVerify(); });
+</script>
+{% endblock %}
