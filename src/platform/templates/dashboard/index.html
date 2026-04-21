@@ -200,15 +200,10 @@
     </div>
     <div id="tg-progress" style="margin-top:22px;font-size:11.5px;color:#9ca3af;font-family:'JetBrains Mono',monospace"></div>
 
-    <div style="margin-top:24px;text-align:left">
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9ca3af;margin-bottom:6px;padding:0 2px">
-        <span>🪵 실시간 로그 <span id="tg-log-count" style="color:#6b7280"></span></span>
-        <label style="font-size:10.5px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#6b7280">
-          <input id="tg-autoscroll" type="checkbox" checked style="cursor:pointer;width:11px;height:11px">
-          자동 스크롤
-        </label>
-      </div>
-      <pre id="tg-log" style="background:rgba(10,11,14,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin:0;height:220px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#d1d5db;white-space:pre-wrap;word-break:break-all;text-align:left"></pre>
+    <!-- 로그 — 딤 배경에 녹아들어 보이게. 위/아래 페이드로 스크롤 영역 암시 -->
+    <div style="position:relative;margin-top:20px;text-align:left">
+      <pre id="tg-log" style="background:transparent;border:none;padding:0;margin:0;height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:#8b8fa3;white-space:pre-wrap;word-break:break-all;mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)"></pre>
+      <input id="tg-autoscroll" type="checkbox" checked style="display:none">
     </div>
   </div>
 </div>
@@ -305,13 +300,11 @@
       if (r.ok) {
         const data = await r.json();
         const logEl = document.getElementById('tg-log');
-        const cntEl = document.getElementById('tg-log-count');
         const auto = document.getElementById('tg-autoscroll');
         const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
-        const content = data.log || '(로그 대기 중... 봇이 아직 출력 전)';
+        const content = data.log || '';
         if (logEl.textContent !== content) {
           logEl.textContent = content;
-          if (cntEl) cntEl.textContent = '· ' + (content ? content.split('\n').length + ' 줄' : '');
           if (auto && auto.checked && wasAtBottom) {
             logEl.scrollTop = logEl.scrollHeight;
           }
