@@ -135,23 +135,30 @@ class OrchestratorSupervisor(Supervisor):
         conn.close()
 
         # 모든 페어 후보 점수화
+        # 모르는 사이 (관계 레코드도 없고 대화 이력도 없음) 는 오케스트레이터가
+        # 냅다 내부 대화 시키지 않음 — 첫 대면은 페르소나 본인이 "쟤랑 얘기하고 싶다"
+        # 결정했을 때 자연스럽게 일어나야 함 (개별 tool 호출 경로 유지).
         candidates: list[tuple[float, str, str, str]] = []  # (score, a, b, reason)
         id_list = [p["id"] for p in personas]
         for i in range(len(id_list)):
             for j in range(i + 1, len(id_list)):
                 a_id, b_id = id_list[i], id_list[j]
                 key = tuple(sorted([a_id, b_id]))
-                score = intimacy.get(key, 50) / 100.0   # 0~1
                 last = last_chat.get(key)
+                has_rel = key in intimacy
+                if not last and not has_rel:
+                    continue  # 서로 전혀 모르는 사이 — orchestrator 는 skip
+                score = intimacy.get(key, 0) / 100.0   # 0~1 (unknown 은 0)
                 if last:
                     hours_since = (now - last).total_seconds() / 3600.0
                     if hours_since < self._min_idle_per_pair_hours:
                         continue  # 너무 최근 대화
                     score += min(hours_since / 24.0, 1.0) * 0.5   # 오래 안 봤을수록 +
-                    reason = f"idle {hours_since:.1f}h, intimacy {intimacy.get(key,50)}"
+                    reason = f"idle {hours_since:.1f}h, intimacy {intimacy.get(key,0)}"
                 else:
-                    score += 0.3   # 처음 대화도 선호
-                    reason = f"첫 대화, intimacy {intimacy.get(key,50)}"
+                    # 관계 레코드는 있지만 아직 대화 없음 — 가벼운 가점만
+                    score += 0.1
+                    reason = f"관계 있음(첫 대화), intimacy {intimacy.get(key,0)}"
                 candidates.append((score, a_id, b_id, reason))
 
         if not candidates:
