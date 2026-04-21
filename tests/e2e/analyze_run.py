@@ -134,11 +134,17 @@ def _analyze_yuna(log_text: str, conn: sqlite3.Connection) -> dict:
         out["monologue_leaks"] = [r[0] for r in rows]
     except Exception:
         out["monologue_leaks"] = []
-    # 시스템 에러 메시지 유저 채널 노출 (tool 실패 등). 유나 persona 가 "X 못 찾겠어" 라고 말하면 몰입 깨짐.
+    # 시스템 에러 태그 유저 채널 노출 — 구조화 태그 [not_found] / [tool_error] / [ERROR] 만 검사.
+    # (한글 말투 문자열 패턴 매칭은 스파게티 되므로 flat 태그 기반으로 통일.)
     try:
         rows = conn.execute(
             "SELECT substr(message,1,120) FROM conversations "
-            "WHERE speaker='agent-mgr-001' AND (message LIKE '%못 찾겠어%' OR message LIKE '%못 찾음%')"
+            "WHERE speaker LIKE 'agent-%' AND ("
+            "  message LIKE '%[not_found]%' OR "
+            "  message LIKE '%[tool_error]%' OR "
+            "  message LIKE '%[ERROR]%' OR "
+            "  message LIKE '%Traceback%'"
+            ")"
         ).fetchall()
         out["system_error_leaks"] = [r[0] for r in rows]
     except Exception:

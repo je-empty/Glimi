@@ -706,7 +706,7 @@ async def yuna_invite_owner(report_channel, args_str, guild):
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
 
     if not target_ch:
-        log_writer.system(f"채널 못 찾겠어: {ch_name}")
+        log_writer.system(f"[not_found] kind=channel name={ch_name}")
         return
 
     # mgr-dashboard에 오너한테 알림
@@ -754,7 +754,7 @@ async def yuna_delete_channel(report_channel, args_str, guild):
     ch_name = args_str.strip()
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
     if not target_ch:
-        log_writer.system(f"채널 못 찾겠어: {ch_name}")
+        log_writer.system(f"[not_found] kind=channel name={ch_name}")
         return
 
     # 보호: dm- 채널과 mgr- 채널은 삭제 방지
@@ -779,7 +779,7 @@ async def yuna_rename_channel(report_channel, args_str, guild):
     old_name, new_name = parts[0], parts[1]
     target_ch = discord.utils.get(guild.text_channels, name=old_name)
     if not target_ch:
-        log_writer.system(f"채널 못 찾겠어: {old_name}")
+        log_writer.system(f"[not_found] kind=channel name={old_name}")
         return
 
     # GROUP_PARTICIPANTS 키 갱신
@@ -801,7 +801,7 @@ async def yuna_set_channel_topic(report_channel, args_str, guild):
     ch_name, topic = parts[0], parts[1]
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
     if not target_ch:
-        log_writer.system(f"채널 못 찾겠어: {ch_name}")
+        log_writer.system(f"[not_found] kind=channel name={ch_name}")
         return
 
     await target_ch.edit(topic=topic)
@@ -1119,7 +1119,7 @@ async def yuna_delete_messages(report_channel, args_str):
         target = next((a for a in agents if a["name"] == agent_name), None)
         speaker_id = target["id"] if target else (get_user_id() if agent_name == get_user_name() else None)
         if not speaker_id:
-            log_writer.system(f"{agent_name} 못 찾겠어")
+            log_writer.system(f"[not_found] kind=agent name={agent_name}")
             return
         count = db.delete_messages_by_speaker(ch_name, speaker_id)
         await send_as_agent(report_channel, MGR_ID, f"#{ch_name}에서 {agent_name} 메시지 {count}건 삭제")
@@ -1151,7 +1151,7 @@ async def yuna_wipe_agent(report_channel, args_str):
     agents = db.list_agents()
     target = next((a for a in agents if a["name"] == agent_name), None)
     if not target:
-        log_writer.system(f"{agent_name} 못 찾겠어")
+        log_writer.system(f"[not_found] kind=agent name={agent_name}")
         return
 
     result = db.delete_agent_all_data(target["id"])
@@ -1171,7 +1171,7 @@ async def yuna_purge_messages(report_channel, args_str, guild):
 
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
     if not target_ch:
-        log_writer.system(f"채널 못 찾겠어: {ch_name}")
+        log_writer.system(f"[not_found] kind=channel name={ch_name}")
         return
 
     try:
@@ -1210,7 +1210,7 @@ async def yuna_restore_discord(report_channel, args_str, guild):
 
     target_ch = discord.utils.get(guild.text_channels, name=ch_name)
     if not target_ch:
-        log_writer.system(f"채널 못 찾겠어: {ch_name}")
+        log_writer.system(f"[not_found] kind=channel name={ch_name}")
         return
 
     messages = db.get_all_messages(ch_name)
@@ -1289,7 +1289,7 @@ async def yuna_approve_action(report_channel, args_str, guild):
 
         target = agent_by_name.get(target_name)
         if not target:
-            log_writer.system(f"{target_name} 못 찾겠어")
+            log_writer.system(f"[not_found] kind=agent name={target_name}")
             return
         target_id = target["id"]
 
@@ -1393,7 +1393,7 @@ async def yuna_force_agent(report_channel, args_str, guild):
     agents = db.list_agents()
     target = next((a for a in agents if a["name"] == agent_name), None)
     if not target:
-        log_writer.system(f"{agent_name} 못 찾겠어")
+        log_writer.system(f"[not_found] kind=agent name={agent_name}")
         return
 
     agent_id = target["id"]
@@ -1402,7 +1402,7 @@ async def yuna_force_agent(report_channel, args_str, guild):
     if guild:
         target_ch = discord.utils.get(guild.text_channels, name=ch_name)
         if not target_ch:
-            log_writer.system(f"채널 못 찾겠어: {ch_name}")
+            log_writer.system(f"[not_found] kind=channel name={ch_name}")
             return
 
     log_writer.system(f"🔧 유나 강제지시: {agent_name} @ {ch_name} → {instruction[:50]}")
@@ -1623,7 +1623,7 @@ async def _greet_new_persona(guild, agent_id, agent_name, dm_name):
         await _aio.sleep(3)  # 채널 생성 커밋 + UI 반영 여유
         ch = discord.utils.get(guild.text_channels, name=dm_name)
         if not ch:
-            log_writer.system(f"[새친구인사] #{dm_name} 채널 못 찾음 — 스킵")
+            log_writer.system(f"[not_found] kind=dm_channel name={dm_name} phase=greet_skip")
             return
 
         from src.core.profile import get_user_name, get_owner_call_name
@@ -1679,7 +1679,7 @@ async def _cmd_profile_delete(report_channel, args_str):
     target = next((a for a in agents if a["name"] == agent_name or agent_name in a["name"]), None)
 
     if not target:
-        log_writer.system(f"{agent_name} 못 찾겠어")
+        log_writer.system(f"[not_found] kind=agent name={agent_name}")
         return
 
     profile_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(__file__))), "profiles", f"{target['id']}.json")
@@ -1765,7 +1765,7 @@ async def _apply_sample_profile_image(report_channel, args_str, guild, caller_ag
             target = a
             break
     if not target:
-        log_writer.system(f"{agent_name} 못 찾겠어")
+        log_writer.system(f"[not_found] kind=agent name={agent_name}")
         return
 
     # 샘플 파일 확인
@@ -1773,7 +1773,7 @@ async def _apply_sample_profile_image(report_channel, args_str, guild, caller_ag
     sample_dir = os.path.join(project_root, "assets", "sample_profile_images")
     sample_path = os.path.join(sample_dir, sample_file)
     if not os.path.exists(sample_path):
-        log_writer.system(f"샘플 파일 못 찾겠어: {sample_file}")
+        log_writer.system(f"[not_found] kind=sample name={sample_file}")
         return
 
     # 커뮤니티 프로필 이미지 디렉토리에 복사 (agent_id.png + agent_id-full.png)
