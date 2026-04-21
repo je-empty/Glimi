@@ -104,6 +104,12 @@ _CLAUDE_ERROR_PREFIXES = (
     "claude api",
     "model not found",
     "authentication",
+    # 메타 단어 누출 방어 — LLM 이 실수로 "Claude Code" 뱉으면 감지해서 drop
+    "claude code",
+    "claude-code",
+    "connection error",
+    "연결이 끊",
+    "연결 끊겨",
 )
 
 
@@ -516,26 +522,28 @@ class AgentRuntime:
 
     def generate_response_force(self, agent_id: str, channel: str,
                                 user_message: str) -> list[str]:
-        """강제 지시 — 시스템 프롬프트에 강제 지시 추가, user_message는 순수 질문만"""
+        """강제 지시 — 시스템 프롬프트에 강제 지시 추가, user_message는 순수 질문만.
+
+        실패 시 빈 리스트 반환 — 호출자가 empty 면 송출 skip 해야 함.
+        과거엔 placeholder 뿌려 "Claude Code 연결 끊겨있어" 같은 메타 문구가
+        target 채널에 그대로 노출되던 버그.
+        """
         if agent_id not in self._active_agents:
             self.activate_agent(agent_id)
         if agent_id not in self._active_agents:
-            return ["[오류] 에이전트를 찾을 수 없습니다."]
+            return []
 
         agent_info = self._active_agents[agent_id]
         profile = agent_info["profile"]
-        # raw window는 모든 에이전트 RAW_WINDOW(15)로 통일 — 컨텍스트 폭증 대신
-        # memory.py L1/L2 요약이 그 이전 메시지의 사실을 보존 (구체적 명사/옵션/결정)
+        name = profile.get("name", agent_id)
         _limit = RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
         log_writer.mark_thinking(agent_id)
         log_writer.agent_thinking(agent_id, f"강제 지시 [{channel}]: {user_message[:40]}")
 
+        responses: list[str] = []
         try:
-            # 시스템 프롬프트에 "이건 네 내면 생각" 이라는 강한 포장. persona 가 이 nudge
-            # 자체를 대화 상대의 발화로 오해하지 않도록 엄격한 격리 마커 + 1인칭 지침.
-            # (회귀: persona 가 "뭘 보여준 거야?" 식으로 지시문을 되묻는 케이스)
             base_system = agent_info["system_prompt"]
             force_system = (
                 "[INTERNAL THOUGHT — 상대는 이 텍스트를 볼 수 없다. 네 머릿속 생각일 뿐]\n"
@@ -546,12 +554,13 @@ class AgentRuntime:
                 + base_system
             )
 
-            # 전체 맥락 (감정 + 메모리 + cross-channel + 대화이력) + 트리거
             context = self._build_context(agent_info, channel, recent, user_message=user_message)
             full_prompt = context + "(자연스럽게 먼저 말 걸어)"
 
             model = _resolve_agent_model(agent_id, profile.get("type", "persona"))
 
+            # Timeout 120s — force 경로는 prompt 크기 큼 (메모리 + cross-channel + recent).
+            # 60s 로는 Haiku + CLI overhead 까지 감안 빈번히 초과 → 매번 실패하던 버그.
             result = subprocess.run(
                 [
                     "claude",
@@ -560,27 +569,36 @@ class AgentRuntime:
                     "--output-format", "text",
                     "--model", model,
                 ],
-                capture_output=True, text=True, timeout=60,
+                capture_output=True, text=True, timeout=120,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
                 cwd=_CLI_CWD,
             )
 
             if result.returncode != 0:
-                return self._placeholder_response(profile, user_message)
+                err = (result.stderr or result.stdout or "")[:180]
+                log_writer.system(f"⚠ 강제지시 실패 ({name} @ {channel}): exit={result.returncode} {err}")
+                return []
 
             raw = result.stdout.strip()
             if not raw:
-                return ["..."]
+                log_writer.system(f"⚠ 강제지시 빈 응답 ({name} @ {channel})")
+                return []
 
-            responses = self._parse_response(raw, agent_name=profile["name"])
+            if _looks_like_claude_error(raw):
+                _report_claude_error(name, raw, source="force")
+                return []
 
+            responses = self._parse_response(raw, agent_name=name)
+
+        except subprocess.TimeoutExpired:
+            log_writer.system(f"⚠ 강제지시 타임아웃 ({name} @ {channel}, 120s)")
+            return []
         except Exception as e:
-            log_writer.system(f"❌ 강제 지시 오류: {e}")
-            responses = self._placeholder_response(profile, user_message)
+            log_writer.system(f"❌ 강제 지시 오류 ({name} @ {channel}): {type(e).__name__}: {str(e)[:140]}")
+            return []
         finally:
             log_writer.mark_done(agent_id)
 
-        # DB 로깅 (에이전트 응답만)
         agent_db = db.get_agent(agent_id)
         current_emotion = agent_db.get("current_emotion", "평온") if agent_db else None
         for msg in responses:
@@ -1055,23 +1073,26 @@ class AgentRuntime:
         return unique if unique else ["..."]
 
     def _placeholder_response(self, profile: dict, user_message: str) -> list[str]:
+        """CLI 호출 실패/빈 응답 시 fallback. 몰입 보호를 위해 메타 단어 ("Claude Code" 등)
+        일절 사용 금지. 자연스러운 "지금 잠깐 바빠서" 식 문구로 대체.
+
+        과거엔 "Claude Code 연결 끊겨있어" 문구가 그대로 Discord 로 나가서 유저가
+        persona 의 정체성 메타를 알아차리는 몰입 깨짐 버그.
+        """
         name = profile["name"]
         agent_type = profile.get("type", "persona")
 
-        # 사용자 호칭: relationship_to_owner.pet_name → user name → 기본값
         rel = profile.get("relationship_to_owner", {})
         owner_call = rel.get("pet_name") or get_user_display_name() or "사용자"
 
         if agent_type == "mgr":
             return [
-                f"{owner_call} 나 {name}인데",
-                "지금 Claude Code 연결이 끊겨서 추론이 안 돼",
-                "연결 복구되면 바로 할게"
+                f"{owner_call} 잠깐 다른 거 보는 중이야",
+                "이따 다시 얘기할게~",
             ]
         elif agent_type == "creator":
             return [
-                f"{owner_call} 나 {name}~",
-                "Claude Code 연결 끊겨서 지금은 작업 못 해 ㅠ"
+                f"{owner_call} 지금 뭐 좀 정리 중인데 이따 봐~",
             ]
         else:
             speech = profile.get("speech", {})
@@ -1079,7 +1100,7 @@ class AgentRuntime:
             sample = exprs[0] if exprs else "응"
             return [
                 f"{owner_call} {sample}",
-                f"나 {name}인데 지금 Claude Code 연결이 끊겨있어",
+                "나 지금 잠깐 딴 거 하고 있어 이따 말할게",
             ]
 
     def refresh_agent(self, agent_id: str):

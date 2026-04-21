@@ -1057,6 +1057,11 @@ async def cmd_force(ctx, *, message: str):
             lambda: runtime.generate_response_force(agent_id, channel_name, actual_message)
         )
 
+    # 빈 응답 = timeout/에러 — 메타 문구 뿌리는 대신 오너에게 에러 알림.
+    if not responses:
+        await ctx.send(f"⚠ {agent_name} 응답 생성 실패 (타임아웃/에러). 잠시 후 다시 시도해줘.")
+        return
+
     for i, msg in enumerate(responses):
         if i > 0:
             await asyncio.sleep(0.8)

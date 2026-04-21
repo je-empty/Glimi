@@ -35,12 +35,17 @@ class OrchestratorSupervisor(Supervisor):
 
     def __init__(self):
         super().__init__(scope={})
-        self._last_started_at: float = 0.0
-        # 쿨다운 완화 — QA/초기 구동 시 자율 대화 더 활발하게.
-        # 튜토리얼 직후 페르소나 3명 생성돼도 페어 선정 너무 드물어서 group/internal
-        # 채널들이 idle 로 멈춰있는 현상 방지.
-        self._min_gap_between_starts: float = 90.0    # 자동 시작 간 최소 간격 (5m → 90s)
-        self._min_idle_per_pair_hours: float = 0.5    # 페어별 최소 idle (2h → 30min)
+        # 봇 기동 직후 바로 orchestrator 가 페어 선정하지 않도록 현재 시각으로 초기화.
+        # 기존엔 0.0 으로 두어서 재기동 후 첫 check (15s 후) 에 즉시 대화 시작 →
+        # persona 가 오너에게 인사할 틈도 없이 내부 대화 투입되는 회귀.
+        import time as _time
+        self._last_started_at: float = _time.time()
+        self._min_gap_between_starts: float = 90.0    # 자동 시작 간 최소 간격
+        self._min_idle_per_pair_hours: float = 0.5    # 페어별 최소 idle
+        # 신규 persona 유예 — 생성 후 이 시간 동안은 orchestrator 후보에서 제외.
+        # 이유: 갓 만들어진 친구가 오너와 첫 대면/인사 끝내기 전에 다른 persona 와
+        # 내부 대화 시작하면 유저 몰입 깨짐.
+        self._new_persona_grace_minutes: float = 30.0
 
     # ── check ─────────────────────────────────────────────
 
@@ -88,8 +93,9 @@ class OrchestratorSupervisor(Supervisor):
         """지금 대화시키기 적합한 에이전트 페어. reason은 로그용."""
         conn = db.get_conn()
         try:
+            # created_at 도 가져와 신규 persona 유예 판정 — 갓 만들어진 친구는 스킵.
             personas = conn.execute(
-                "SELECT id, name FROM agents WHERE type='persona' AND status='active'"
+                "SELECT id, name, created_at FROM agents WHERE type='persona' AND status='active'"
             ).fetchall()
         except Exception:
             conn.close()
@@ -97,6 +103,21 @@ class OrchestratorSupervisor(Supervisor):
         if len(personas) < 2:
             conn.close()
             return None
+
+        # 신규 persona 필터 — 생성 후 grace 기간 안이면 후보에서 제거.
+        now = datetime.utcnow()
+        mature_ids: set[str] = set()
+        for p in personas:
+            try:
+                created = datetime.fromisoformat(p["created_at"]) if p["created_at"] else None
+            except Exception:
+                created = None
+            if created is None:
+                mature_ids.add(p["id"])
+                continue
+            age_min = (now - created).total_seconds() / 60.0
+            if age_min >= self._new_persona_grace_minutes:
+                mature_ids.add(p["id"])
 
         # 페어별 친밀도
         rel_rows = conn.execute(
@@ -108,7 +129,6 @@ class OrchestratorSupervisor(Supervisor):
             intimacy[key] = int(r["intimacy_score"] or 0)
 
         # 최근 internal-dm/group 대화 시각
-        now = datetime.utcnow()
         last_chat: dict[tuple[str, str], datetime] = {}
         rows = conn.execute(
             "SELECT channel, MAX(timestamp) as ts FROM conversations "
@@ -134,15 +154,18 @@ class OrchestratorSupervisor(Supervisor):
                         last_chat[key] = ts
         conn.close()
 
-        # 모든 페어 후보 점수화
-        # 모르는 사이 (관계 레코드도 없고 대화 이력도 없음) 는 오케스트레이터가
-        # 냅다 내부 대화 시키지 않음 — 첫 대면은 페르소나 본인이 "쟤랑 얘기하고 싶다"
-        # 결정했을 때 자연스럽게 일어나야 함 (개별 tool 호출 경로 유지).
+        # 모든 페어 후보 점수화.
+        # 제외 조건:
+        #   - 둘 중 하나라도 신규 persona (grace 기간 안) → skip
+        #   - 서로 관계 레코드도 없고 internal 대화 이력도 없음 → skip
+        # 첫 대면은 persona 본인이 "쟤랑 얘기하고 싶다" 결정했을 때 자연스럽게 일어나야 함.
         candidates: list[tuple[float, str, str, str]] = []  # (score, a, b, reason)
         id_list = [p["id"] for p in personas]
         for i in range(len(id_list)):
             for j in range(i + 1, len(id_list)):
                 a_id, b_id = id_list[i], id_list[j]
+                if a_id not in mature_ids or b_id not in mature_ids:
+                    continue
                 key = tuple(sorted([a_id, b_id]))
                 last = last_chat.get(key)
                 has_rel = key in intimacy
@@ -222,6 +245,14 @@ class OrchestratorSupervisor(Supervisor):
             else:
                 ch = existing
             db.set_channel_participants(ch_name, [a_id, b_id])
+            # 첫 internal 대화면 관계 레코드도 자동 생성 — 없으면 다음 스캔에서도 계속
+            # "모르는 사이" 로 분류되어 skip → rapport 쌓이지 못하는 루프. 여기서 기본
+            # 관계 (친구, intimacy=30) 로 등록해 이후 orchestrator 가 정상 pick 가능.
+            if not db.get_relationship(a_id, b_id):
+                try:
+                    db.add_relationship(a_id, b_id, "친구", intimacy=30, dynamics="처음 대화 시작")
+                except Exception:
+                    pass
             # start_conversation 시그니처: (channel_name, participants, send_fn, context, max_turns)
             # send_fn 은 (agent_id, message) → await send_as_agent 호출
             from src.bot.core import send_as_agent
