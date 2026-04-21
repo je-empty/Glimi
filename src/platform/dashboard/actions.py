@@ -24,41 +24,43 @@ def _channel_category(name: str) -> str:
 def _analyze_damage(scan_result: dict) -> dict:
     """scan 결과 → 손상 분류.
 
-    **Sync 탭 (`renderScanTable`) 과 동일 기준** — counts(Discord) + db_counts(DB) 만 비교:
-      allChs = keys(counts) ∪ keys(db_counts)
-      for each ch:  diff = db - discord
-        diff > 0 && discord == 0  → missing_in_discord
-        diff < 0 && db == 0       → orphan_in_discord
-        diff != 0 (둘 다 > 0)     → msg_drift (DB 기준, DB>discord 또는 discord>DB)
+    채널 존재 여부는 **`channels` 테이블 등록** 기준 (db_channels) — conversations 메시지 0건
+    이라고 orphan 판정하면 mgr-system-log 처럼 대화 없는 관리 채널이 매번 찍힘.
+    메시지 drift 는 별개로 counts(Discord) vs db_counts(DB conversations) 비교.
+
+    판정:
+      discord ∌ ch & db_channels ∋ ch        → missing_in_discord
+      discord ∋ ch & db_channels ∌ ch        → orphan_in_discord
+      양쪽 존재 & db_count != discord_count  → msg_drift
 
     부가 정보 (scan 이 제공하면 함께 표시):
       - orphan_outside: glimi 카테고리 밖 패턴 매칭
       - wrong_category: 채널 카테고리 오류
-
-    clean 판정: Sync 탭 그대로 — 어떤 채널이든 diff != 0 이면 손상.
     """
     counts = scan_result.get("counts", {}) or {}
     db_counts = scan_result.get("db_counts", {}) or {}
     discord_chs = {c["name"]: c for c in scan_result.get("discord_channels", []) or []}
+    db_channel_list = scan_result.get("db_channels", []) or []
+    db_channel_names = {c["name"] for c in db_channel_list if c.get("name")}
 
-    all_chs = set(counts.keys()) | set(db_counts.keys())
+    # 채널 존재 기준 set
+    discord_set = set(discord_chs.keys()) | set(counts.keys())
+    # db 쪽은 channels 테이블 기준 — 대화 있지만 channels 등록 안 된 과거 고아도 커버 위해 db_counts 키도 합침
+    db_set = set(db_channel_names) | set(db_counts.keys())
 
-    missing_in_discord: list = []
-    orphan_in_discord: list = []
+    missing_in_discord: list = [ch for ch in sorted(db_set - discord_set)]
+    orphan_in_discord: list = [ch for ch in sorted(discord_set - db_set)]
+
+    # 메시지 drift — 양쪽 모두 존재하는 채널만
     msg_drift_db_more: list = []
     msg_drift_discord_more: list = []
-
-    for ch in all_chs:
+    for ch in (discord_set & db_set):
         db_count = db_counts.get(ch, 0)
         d_count = counts.get(ch, 0)
         diff = db_count - d_count
         if diff == 0:
             continue
-        if d_count == 0:
-            missing_in_discord.append(ch)
-        elif db_count == 0:
-            orphan_in_discord.append(ch)
-        elif diff > 0:
+        if diff > 0:
             msg_drift_db_more.append({
                 "name": ch, "db": db_count, "discord": d_count, "diff": diff,
             })
@@ -66,9 +68,6 @@ def _analyze_damage(scan_result: dict) -> dict:
             msg_drift_discord_more.append({
                 "name": ch, "db": db_count, "discord": d_count, "diff": -diff,
             })
-
-    missing_in_discord.sort()
-    orphan_in_discord.sort()
 
     # 부가 정보 — scan 이 제공하면 포함 (카테고리 오류 / glimi 밖 orphan)
     orphan_outside = list(scan_result.get("orphan_outside", []) or [])

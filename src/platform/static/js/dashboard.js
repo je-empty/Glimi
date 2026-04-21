@@ -1290,11 +1290,33 @@ async function runSyncAction(action, extraBody) {
       if (r.logs && r.logs.length) appendOut(r.logs.join('\n'));
       if (r.result) appendOut(JSON.stringify(r.result, null, 2));
     }
-    // Sync 완료 후엔 cache 무효화 → 다음 scan 에서 최신 확인
+    // Sync 완료 후엔 자동 재스캔 → 실제 clean 상태를 `_lastScanResult` 에 저장.
+    // 이전엔 cache 만 무효화 (null) 해서 테이블은 비어있어도 실제 검증 안 한 상태였음.
+    // → 가동 시 overlay 가 fresh scan 하면 재전송 실패 같은 drift 를 새로 찾아내 sync 탭과
+    //   상태가 엇갈려 보이는 문제. 이제 sync 직후 한번 더 scan 해서 실제로 clean 인지 확인.
     if (action === 'sync') {
-      _lastScanResult = null;
       _syncSelectedChannels.clear();
-      renderScanTable();
+      appendOut('\n▶ 싱크 후 재검증 스캔...');
+      try {
+        const vr = await postJson(q('/api/action/scan_discord'), {});
+        if (vr && vr.result) {
+          _lastScanResult = vr.result;
+          const dc = vr.result.counts || {};
+          const dbC = vr.result.db_counts || {};
+          let drift = 0;
+          for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
+            if ((dbC[ch] || 0) !== (dc[ch] || 0)) drift++;
+          }
+          appendOut(drift === 0 ? '✓ 재검증: drift 없음' : `⚠ 재검증: ${drift}개 채널 여전히 drift`);
+          renderScanTable();
+        } else {
+          _lastScanResult = null;
+          renderScanTable();
+        }
+      } catch (_e) {
+        _lastScanResult = null;
+        renderScanTable();
+      }
     }
     toast(`${labels[action]} 완료`, 'ok');
   }
@@ -1786,10 +1808,13 @@ function buildGraphElements(snap) {
   return { nodes, edges: edges.concat(supEdges) };
 }
 
-function pickGraphLayout(nodeCount, fullscreen) {
-  // 노드 수가 적을 때 (튜토리얼 초기 등) concentric 로는 supervisor 가 따로 먼 ring 에
-  // 고립됨 → cose (force-directed) 로 엣지 기반 배치. 엣지 연결된 supervisor 가 agent 옆에 붙음.
-  if (nodeCount <= 5) {
+function pickGraphLayout(nodeCount, fullscreen, hasSup) {
+  // concentric — owner 중앙, agents 외곽 ring, supervisors 더 외곽.
+  // 슈퍼바이저 노드가 섞여 있는데 전체 노드가 적으면 (≤5) supervisor 가 외곽 ring 에
+  // 고립되어 못생김 → 그때만 cose 폴백. 그 외엔 concentric 로 통일해서 mgr 이 맨 위
+  // (startAngle -π/2), creator 가 그 다음 시계방향 (오른쪽) 에 오도록.
+  // buildGraphElements 에서 typeRank 로 mgr → creator → persona 순 정렬됨.
+  if (hasSup && nodeCount <= 5) {
     return {
       name: 'cose',
       fit: true,
@@ -1802,7 +1827,6 @@ function pickGraphLayout(nodeCount, fullscreen) {
       numIter: 800,
     };
   }
-  // concentric — owner 중앙, agents 외곽 ring, supervisors 더 외곽
   const minSpace = nodeCount <= 8 ? 75 : 50;
   const spacingF = 1.25;
   return {
@@ -1819,7 +1843,9 @@ function pickGraphLayout(nodeCount, fullscreen) {
     avoidOverlap: true,
     fit: true,
     padding: fullscreen ? 140 : 25,
-    startAngle: nodeCount === 3 ? Math.PI : -Math.PI / 2,
+    // mgr 이 첫 순서라 startAngle 에 배치됨 → -π/2 (위). 다음 creator 는 시계방향 다음 슬롯.
+    // nodeCount==3 만 예외로 π (왼쪽) 쓰던 로직 제거 — 일관성 있게 항상 -π/2.
+    startAngle: -Math.PI / 2,
     animate: false,
   };
 }
@@ -2092,7 +2118,7 @@ function mountCytoscapeGraph(snap) {
         style: { 'overlay-opacity': 0.1 },
       },
     ],
-    layout: pickGraphLayout(nodes.length, fullscreen),
+    layout: pickGraphLayout(nodes.length, fullscreen, nodes.some(n => (n.classes || '').indexOf('sup') === 0)),
   });
 
   // ===== Interactivity =====
