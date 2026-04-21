@@ -89,7 +89,7 @@ def format_convo(msgs: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def call_haiku(prompt: str, timeout: int = 40) -> str:
+def call_haiku(prompt: str, timeout: int = 90) -> str:
     try:
         r = subprocess.run(
             ["claude", "-p", prompt, "--output-format", "text", "--model", MODEL],
