@@ -105,9 +105,22 @@ async def dispatch_action(action_name: str, request: Request, user: dict = Depen
     # 대부분의 action 이 내부에서 asyncio.new_event_loop() 를 사용 (Discord client).
     # FastAPI async 핸들러에서 직접 호출하면 "loop already running" 충돌 →
     # 스레드풀에서 돌려야 함.
+    #
+    # **커뮤니티 컨텍스트 스위치 필수**: POST action 들은 global state
+    # (env GLIMI_COMMUNITY, db.DB_PATH, profile cache, webhook cache) 에 의존.
+    # 다른 커뮤니티의 GET 요청이 끼어들어서 active community 를 바꿔놓으면,
+    # cid 가 test 여도 실제로는 demo DB/token 으로 sync 돌아가서 엉뚱한 서버를
+    # 망침. with_community_nonblocking 이 maintenance pin 도 잡아서 스위치를
+    # action 끝날 때까지 차단.
     from fastapi.concurrency import run_in_threadpool
+    from ..dashboard.context import with_community_nonblocking
+    full_path = _full_path(request)
+
+    def _run_with_context():
+        return with_community_nonblocking(full_path, lambda: fn(body, cid))
+
     try:
-        result = await run_in_threadpool(fn, body, cid)
+        result = await run_in_threadpool(_run_with_context)
     except Exception as e:
         import traceback
         traceback.print_exc()

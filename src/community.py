@@ -148,6 +148,12 @@ def get_profile_image_path(filename: str) -> Optional[str]:
     assets_path = ASSETS_DIR / "profile_images" / filename
     if assets_path.exists():
         return str(assets_path)
+    # 3. sample 카탈로그 폴백 — DB 에 sample 파일명이 그대로 저장된 경우
+    # (create_agent_profile JSON 에 sample 파일명이 들어가고 set_profile_image 가
+    #  아직 안 불렸거나 실패한 과도기 상태)
+    sample_path = ASSETS_DIR / "sample_profile_images" / filename
+    if sample_path.exists():
+        return str(sample_path)
     return None
 
 

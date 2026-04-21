@@ -278,11 +278,12 @@ async def _h_delete_agent_profile(args: dict, ctx: ToolContext):
 
 async def _h_set_profile_image(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _apply_sample_profile_image
-    # 중복 방지 — 이미 같은 이미지로 지정된 persona 에 다시 set 호출되면 skip.
-    # 이전엔 Creator 가 같은 persona 를 2번 생성 시도 → 두 번째에 set_profile_image 도
-    # 다시 호출 → 유저 채널에 "이 얼굴로 맞춰뒀어" 이미지 preview 재전송 회귀.
+    # 중복 방지 — 같은 sample 로 이미 적용된 persona 면 skip.
+    # 비교 대상은 `sample_source_file` (apply 성공 후에만 set) — `profile_image_filename`
+    # 은 create_agent_profile JSON 에 LLM 이 sample 파일명을 그대로 집어넣는 케이스가
+    # 있어서 "skip 했는데 실제 apply 는 한 번도 안 된" 회귀 발생.
     target_agent = db.get_agent_by_name(args["name"])
-    if target_agent and target_agent.get("profile_image_filename") == args["profile_image_filename"]:
+    if target_agent and target_agent.get("sample_source_file") == args["profile_image_filename"]:
         log_writer.system(
             f"[set_profile_image] skip — {args['name']} 이미 {args['profile_image_filename']} 적용됨"
         )

@@ -961,8 +961,12 @@
     transition: all 0.15s;
   }
   .ach-card:hover { border-color: var(--accent); }
-  .ach-card.locked { opacity: 0.42; filter: grayscale(0.5); }
-  .ach-card.done { background: color-mix(in srgb, var(--ok) 6%, var(--panel)); border-color: color-mix(in srgb, var(--ok) 30%, var(--border)); }
+  /* 미달성 (locked / unlocked = in-progress) — 둘 다 dim. done 만 강조. */
+  .ach-card.locked, .ach-card.unlocked { opacity: 0.42; filter: grayscale(0.5); }
+  .ach-card.done { opacity: 1; filter: none;
+    background: color-mix(in srgb, var(--ok) 6%, var(--panel));
+    border-color: color-mix(in srgb, var(--ok) 30%, var(--border));
+  }
   .ach-icon { font-size: 28px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
   .ach-body { flex: 1; min-width: 0; }
   .ach-name { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
