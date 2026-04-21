@@ -356,13 +356,16 @@ async def sync_community(
                 if channels_filter and ch_name not in channels_filter:
                     continue
 
+                # DB 메시지 timestamp 순 전체 로드 (divergence 스캔 용)
                 conn = db.get_conn()
-                db_count = conn.execute(
-                    "SELECT COUNT(*) FROM conversations WHERE channel=?", (ch_name,)
-                ).fetchone()[0]
+                db_messages_ordered = [dict(r) for r in conn.execute(
+                    "SELECT * FROM conversations WHERE channel=? ORDER BY timestamp ASC, id ASC",
+                    (ch_name,)
+                ).fetchall()]
                 conn.close()
+                db_count = len(db_messages_ordered)
 
-                # Discord 메시지 내용 가져오기 (전체)
+                # Discord 메시지 oldest_first 전체 로드
                 discord_msgs = []
                 try:
                     discord_msgs = await _fetch_all_messages(ch, after=None, progress_fn=_progress)
@@ -376,80 +379,76 @@ async def sync_community(
                 discord_count = len(discord_msgs)
                 _progress(f"  {ch_name}: Discord {discord_count} / DB {db_count}")
 
-                # DB가 기준 — Discord에 DB보다 많은 메시지가 있으면 정리
-                if discord_count > db_count and discord_msgs:
-                    # DB에 있는 메시지 내용 set
-                    conn = db.get_conn()
-                    db_messages = set()
-                    for row in conn.execute(
-                        "SELECT message FROM conversations WHERE channel=?", (ch_name,)
-                    ).fetchall():
-                        db_messages.add(row[0])
-                    conn.close()
+                # ── 순서 기반 divergence 찾기 ──
+                # 기존엔 content-set diff 로 누락분을 끝에 덧붙여 순서 깨짐 (중간 비어있으면 뒤에 붙음).
+                # 이제 oldest→newest 로 동시 walk 해서 첫 불일치 index 찾고, Discord 쪽은 거기부터 잘라버리고
+                # DB 쪽을 거기부터 순서대로 webhook 재전송 → 양쪽 순서 완벽 일치.
+                min_len = min(db_count, discord_count)
+                divergence = min_len
+                for i in range(min_len):
+                    db_text = db_messages_ordered[i].get("message") or ""
+                    dc_text = discord_msgs[i].content or ""
+                    if db_text != dc_text:
+                        divergence = i
+                        break
 
-                    # 삭제 대상 수 계산
-                    to_delete = [msg for msg in discord_msgs if msg.content and msg.content not in db_messages]
+                discord_to_delete = discord_msgs[divergence:]
+                db_to_send = db_messages_ordered[divergence:]
 
-                    if to_delete:
-                        # DB가 비어있거나 삭제할 메시지가 많으면 채널 재생성이 효율적
-                        if db_count == 0 or len(to_delete) > 20:
-                            _progress(f"  {ch_name}: 메시지 {len(to_delete)}건 정리 — 채널 재생성")
-                            cat = ch.category
-                            position = ch.position
-                            try:
-                                await ch.delete(reason="Glimi Sync: 채널 재생성 (효율적 정리)")
-                                new_ch = await guild.create_text_channel(ch_name, category=cat)
-                                try:
-                                    await new_ch.move(beginning=True, offset=position)
-                                except Exception:
-                                    pass
-                                surviving[ch_name] = new_ch
-                                ch = new_ch
-                                discord_msgs = []
-                                discord_count = 0
-                                total_discord_to_db += len(to_delete)
-                                _progress(f"  {ch_name}: 채널 재생성 완료")
-                            except Exception as e:
-                                result["errors"].append(f"채널 재생성 실패 ({ch_name}): {e}")
-                        else:
-                            # 소량이면 개별 삭제
-                            deleted = 0
-                            for msg in to_delete:
-                                try:
-                                    await msg.delete()
-                                    deleted += 1
-                                    await asyncio.sleep(0.5)
-                                except Exception:
-                                    pass
-                            if deleted:
-                                total_discord_to_db += deleted
-                                _progress(f"  {ch_name}: Discord 메시지 {deleted}건 삭제 (DB 기준)")
+                if not discord_to_delete and not db_to_send:
+                    result["channels_scanned"] += 1
+                    await asyncio.sleep(0.3)
+                    continue
 
-                # ── DB → Discord (DB에 있는데 Discord에 없는 메시지 복원) ──
-                if db_count > 0 and db_count > discord_count:
-                    need = db_count - discord_count
-                    _progress(f"  {ch_name}: DB→Discord 복원 ({need}건 누락)...")
+                # 삭제 대상 많으면 채널 재생성이 효율적 (20건 초과 or DB 가 비어있음)
+                recreated = False
+                if discord_to_delete and (db_count == 0 or len(discord_to_delete) > 20):
+                    _progress(
+                        f"  {ch_name}: divergence={divergence}, 삭제 {len(discord_to_delete)}건 — 채널 재생성"
+                    )
+                    cat = ch.category
+                    position = ch.position
+                    try:
+                        await ch.delete(reason="Glimi Sync: 순서 복구 (채널 재생성)")
+                        new_ch = await guild.create_text_channel(ch_name, category=cat)
+                        try:
+                            await new_ch.move(beginning=True, offset=position)
+                        except Exception:
+                            pass
+                        surviving[ch_name] = new_ch
+                        ch = new_ch
+                        total_discord_to_db += len(discord_to_delete)
+                        # 재생성 후엔 DB 전체를 순서대로 다시 보냄 (divergence 전 앞부분도 재전송)
+                        db_to_send = db_messages_ordered
+                        discord_to_delete = []
+                        recreated = True
+                        _progress(f"  {ch_name}: 채널 재생성 완료 — 전체 {len(db_to_send)}건 재전송 예정")
+                    except Exception as e:
+                        result["errors"].append(f"채널 재생성 실패 ({ch_name}): {e}")
 
-                    # Discord에 이미 있는 메시지 내용 set (중복 방지)
-                    discord_contents = set()
-                    for dm in discord_msgs:
-                        if dm.content:
-                            discord_contents.add(dm.content)
+                # 재생성 안 했으면 divergence 부터 Discord 메시지 개별 삭제 (oldest→newest)
+                if not recreated and discord_to_delete:
+                    _progress(
+                        f"  {ch_name}: divergence={divergence}, Discord 메시지 {len(discord_to_delete)}건 삭제"
+                    )
+                    deleted = 0
+                    for msg in discord_to_delete:
+                        try:
+                            await msg.delete()
+                            deleted += 1
+                            await asyncio.sleep(0.5)
+                        except Exception:
+                            pass
+                    if deleted:
+                        total_discord_to_db += deleted
+                        _progress(f"  {ch_name}: Discord 메시지 {deleted}건 삭제 완료")
 
-                    conn = db.get_conn()
-                    messages = [dict(r) for r in conn.execute(
-                        "SELECT * FROM conversations WHERE channel=? ORDER BY timestamp ASC",
-                        (ch_name,)
-                    ).fetchall()]
-                    conn.close()
-
-                    # Discord에 없는 메시지만 필터
-                    to_send = [m for m in messages if m["message"] not in discord_contents]
-                    _progress(f"  {ch_name}: {len(to_send)}건 전송 예정")
-
+                # ── DB → Discord: divergence 부터 순서대로 webhook 전송 ──
+                if db_to_send:
+                    _progress(f"  {ch_name}: DB→Discord {len(db_to_send)}건 순서대로 전송...")
                     webhooks = {}
                     sent = 0
-                    for msg in to_send:
+                    for msg in db_to_send:
                         speaker_id = msg["speaker"]
                         content = msg["message"]
 
@@ -476,7 +475,7 @@ async def sync_community(
                             await webhooks[wh_key].send(content=content, username=display_name)
                             sent += 1
                             if sent % 20 == 0:
-                                _progress(f"  {ch_name}: {sent}/{len(to_send)}건")
+                                _progress(f"  {ch_name}: {sent}/{len(db_to_send)}건")
                             await asyncio.sleep(0.5)
                         except discord_lib.HTTPException as e:
                             if e.status == 429:
@@ -496,7 +495,7 @@ async def sync_community(
                             await asyncio.sleep(2)
 
                     total_db_to_discord += sent
-                    _progress(f"  {ch_name}: DB→Discord {sent}건 복원 완료")
+                    _progress(f"  {ch_name}: DB→Discord {sent}건 전송 완료")
 
                 result["channels_scanned"] += 1
                 await asyncio.sleep(0.3)
