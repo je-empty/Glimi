@@ -46,6 +46,13 @@ def _ensure_creator_seeded() -> bool:
             log_writer.system(f"❌ creator 시드 엔트리 없음 in {seed_path.name}")
             return False
         db.save_agent_profile(creator_seed)
+        # 채널 ↔ 에이전트 매핑 갱신 (봇 startup 의 _build_channel_maps 이후 추가된 agent)
+        try:
+            from src.bot import CHANNEL_AGENT_MAP, AGENT_CHANNEL_MAP
+            CHANNEL_AGENT_MAP[CREATOR_CHANNEL] = CREATOR_ID
+            AGENT_CHANNEL_MAP[CREATOR_ID] = CREATOR_CHANNEL
+        except Exception:
+            pass
         log_writer.system(f"✓ creator lazy 시드 등록: {CREATOR_ID}")
         return True
     except Exception as e:
