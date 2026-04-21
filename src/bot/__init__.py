@@ -83,9 +83,11 @@ def _get_agent_lock(agent_id: str) -> asyncio.Lock:
 
 _system_log_queue: list[str] = []
 
-# ── 개발 요청 상태 ───────────────────────────────────
+# ── 개발 요청 상태 (커뮤니티별 — 루트 공유 금지) ───────
+# 과거엔 PROJECT_ROOT/dev/pending.json 였으나, 다중 커뮤니티 subprocess 가
+# 동시 기동되면 같은 파일 덮어써서 요청이 섞임. community dir 안으로 격리.
 
-DEV_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "dev")
+DEV_DIR = str(community.get_community_dir() / "dev")
 DEV_PENDING = os.path.join(DEV_DIR, "pending.json")
 DEV_RESULT = os.path.join(DEV_DIR, "result.json")
 os.makedirs(DEV_DIR, exist_ok=True)
