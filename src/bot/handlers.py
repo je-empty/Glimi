@@ -426,6 +426,15 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
     if not profile:
         return
 
+    # 튜토리얼 collect_profile phase 에선 오너 메시지에서 즉시 프로필 자동 추출.
+    # 유나가 update_profile 툴 호출 누락해도 다음 턴에 DB 가 최신 상태 → 재질문 방지.
+    try:
+        if db.get_meta("tutorial_phase") in ("collect_profile", None, "") and not db.is_meta_breached(agent_id):
+            from src.core.profile_autoextract import apply_autoextract
+            apply_autoextract(user_message)
+    except Exception:
+        pass
+
     # 메타 박살된 persona 는 응답 불가 — 이름·메모리 사라진 상태
     if db.is_meta_breached(agent_id):
         try:
