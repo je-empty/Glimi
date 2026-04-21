@@ -312,10 +312,12 @@
             return;
           }
           _setOverlayPhase('recovering');
+          // 누락된 채널만 타겟 — 전체 expected 로 sync 하면 미구현 stage 의 mgr-creator 등까지
+          // 만들어버림 (튜토리얼 phase 무시됨).
           const syncRes = await fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: '{}',
+            body: JSON.stringify({ channels: missing }),
           }).then(r => r.json()).catch(e => ({ error: String(e) }));
           if (syncRes && syncRes.error) {
             _setOverlayPhase('error', { msg: '복구 실패: ' + (syncRes.message || syncRes.error) });
