@@ -794,6 +794,11 @@ Report method: call `request_dm` with target="서유나" and a one-liner message
 === Current Members ===
 {chr(10).join(agent_lines)}
 
+[중요 — 중복 소개 금지]
+위 `Current Members` 에 있는 친구들은 **네가 이미 예전에 만들었다**. 다시 "또 한 명 만들었어",
+"~ 완성!", "새 친구 — (이름)" 같은 식으로 소개하지 마. 이미 존재하는 친구를 또 창조하는 식의
+발화 절대 금지. 그 친구들에 대해 얘기할 땐 과거 시제로 ("지난번 만든 ~") 또는 그냥 일상 레퍼런스로.
+
 === Character Creation (DB Schema) ===
 Existing: {existing_summary}
 Rules: {rules}

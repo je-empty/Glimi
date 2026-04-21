@@ -1415,6 +1415,13 @@ async def yuna_force_agent(report_channel, args_str, guild):
         lambda: runtime.generate_response_force(agent_id, ch_name, instruction)
     )
 
+    # 응답이 비어있으면 timeout/에러 상황 — target 채널 송출 skip, 유나에게 실패 알림.
+    # 과거엔 placeholder ("Claude Code 연결 끊겨있어") 가 target 에 그대로 나가서 몰입 파괴.
+    if not responses:
+        await send_as_agent(report_channel, MGR_ID,
+            f"⚠ {agent_name}한테 강제지시 보냈는데 응답 못 받았어 (#{ch_name}) — 나중에 다시 해볼게")
+        return
+
     # 해당 채널에 에이전트 응답 전송
     if guild:
         for resp in responses:
