@@ -75,9 +75,9 @@ Memory & channels:
 Output format (STRICT):
 - Output ONLY the message text you'd type into Discord. Nothing else.
 - NEVER add stage directions in parentheses like "(또 끊겼냐고 묻는 톤)" / "(웃으며)" / "(짜증난 듯)". You're not narrating — you ARE the person.
-- NEVER add author name prefix like "재빈:" or "나:".
+- NEVER add author name prefix like "{_QA_NICKNAME}:" or "나:".
 - Don't write thinking/meta lines like "흠, 다음엔 이렇게 말해야지".
-- Just write what 재빈 would type. Plain Korean text + emoji.
+- Just write what you ({_QA_NAME}) would actually type. Plain Korean text + emoji.
 """
 
 MAX_TURNS = 150  # 최대 대화 턴 (튜토리얼 ~20턴 + 도전과제 수행 공간)
@@ -340,7 +340,7 @@ class TestUserBot(discord.Client):
                                 print("[TestUser] 추가 대기 후도 무응답 — 종료")
                                 break
                     else:
-                        # mission 미완 상태 + 봇 idle 이면 재빈이 다음 주제 선제 꺼냄.
+                        # mission 미완 상태 + 봇 idle 이면 테스트 유저가 다음 주제 선제 꺼냄.
                         # 이전엔 즉시 break — persona 1명만 만들고 cycle 조기 종료 회귀.
                         if not await self._proactive_reboot(f"idle {IDLE_TIMEOUT}초"):
                             print(f"[TestUser] 에이전트 응답 타임아웃 ({IDLE_TIMEOUT}초) — 선제 재시동 실패, 종료")
@@ -598,7 +598,7 @@ class TestUserBot(discord.Client):
             print(f"[#{ch_name}] [{_QA_NAME}] {text}")
 
     async def _proactive_reboot(self, reason: str) -> bool:
-        """에이전트 idle + mission 미완 시 재빈이 다음 주제 선제 발화로 대화 재시동.
+        """에이전트 idle + mission 미완 시 테스트 유저가 다음 주제 선제 발화로 대화 재시동.
         성공 시 True (루프 계속), 실패 시 False (break 허용).
 
         _proactive_count 로 최대 3회 제한 — 무한 루프 방지.
