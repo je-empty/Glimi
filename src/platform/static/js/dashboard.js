@@ -1787,11 +1787,24 @@ function buildGraphElements(snap) {
 }
 
 function pickGraphLayout(nodeCount, fullscreen) {
+  // 노드 수가 적을 때 (튜토리얼 초기 등) concentric 로는 supervisor 가 따로 먼 ring 에
+  // 고립됨 → cose (force-directed) 로 엣지 기반 배치. 엣지 연결된 supervisor 가 agent 옆에 붙음.
+  if (nodeCount <= 5) {
+    return {
+      name: 'cose',
+      fit: true,
+      padding: fullscreen ? 140 : 40,
+      animate: false,
+      nodeRepulsion: () => 6500,
+      idealEdgeLength: () => nodeCount <= 3 ? 120 : 90,
+      edgeElasticity: () => 100,
+      gravity: 0.2,
+      numIter: 800,
+    };
+  }
   // concentric — owner 중앙, agents 외곽 ring, supervisors 더 외곽
-  //   fullscreen: spacingFactor 키워서 ring 반경 ↑ → 노드끼리 + 오너-에이전트 거리 넓어짐
-  //   fit: true 가 알아서 캔버스 안으로 스케일 — spacingFactor 는 단순히 ratio 로 작용
-  const minSpace = nodeCount <= 4 ? 120 : (nodeCount <= 8 ? 75 : 50);
-  const spacingF = nodeCount <= 4 ? 1.4 : 1.25;
+  const minSpace = nodeCount <= 8 ? 75 : 50;
+  const spacingF = 1.25;
   return {
     name: 'concentric',
     concentric: function(node) {
@@ -1801,14 +1814,11 @@ function pickGraphLayout(nodeCount, fullscreen) {
       return 1;
     },
     levelWidth: function() { return 1; },
-    // overview 는 padding 작게 → 노드들이 캔버스 가득 채워 크게 보임
     minNodeSpacing: fullscreen ? minSpace * 1.4 : minSpace,
     spacingFactor: fullscreen ? spacingF * 1.25 : spacingF,
     avoidOverlap: true,
     fit: true,
     padding: fullscreen ? 140 : 25,
-    // N=3: startAngle=π → mgr(첫번째)는 왼쪽, creator(두번째)는 오른쪽
-    // 그 외: top 부터 시작 (-π/2)
     startAngle: nodeCount === 3 ? Math.PI : -Math.PI / 2,
     animate: false,
   };
