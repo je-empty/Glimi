@@ -1144,6 +1144,23 @@ HTML = r"""<!doctype html>
   <div class="lb-caption" id="lightbox-caption"></div>
 </div>
 
+<!-- Sync progress modal (진행 중 UI 잠금) -->
+<div id="sync-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;width:min(720px,100%);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+    <div style="padding:16px 22px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:12px">
+      <div id="sync-modal-spinner" style="width:18px;height:18px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="flex:1">
+        <div id="sync-modal-title" style="font-weight:700;font-size:15px">작업 중...</div>
+        <div id="sync-modal-subtitle" style="font-size:11.5px;color:var(--text-dim);margin-top:2px">다른 탭·버튼 이용 불가</div>
+      </div>
+      <button id="sync-modal-cancel" onclick="cancelSyncAction()" class="act-btn small danger" style="display:none">취소</button>
+      <button id="sync-modal-close" onclick="closeSyncModal()" class="act-btn small" style="display:none">닫기</button>
+    </div>
+    <div id="sync-modal-log" style="flex:1;overflow-y:auto;padding:14px 22px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.55;color:var(--text-dim);background:var(--panel-2);white-space:pre-wrap;min-height:280px;max-height:55vh"></div>
+  </div>
+</div>
+<style>@keyframes spin { to { transform: rotate(360deg) } }</style>
+
 <!-- Loading bar -->
 <div class="loading-bar"></div>
 
@@ -2159,15 +2176,20 @@ function toast(msg, variant='ok', ms=3000) {
   setTimeout(() => { el.classList.remove('show'); }, ms);
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, extraOpts) {
+  // extraOpts.signal 로 AbortController 지원 (sync 모달 취소용).
+  // extraOpts.rethrowAbort true 시 AbortError 그대로 throw (catch 쪽에서 처리).
+  const opts = {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {}),
+  };
+  if (extraOpts && extraOpts.signal) opts.signal = extraOpts.signal;
   try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body || {}),
-    });
+    const r = await fetch(url, opts);
     return await r.json();
   } catch (e) {
+    if (e.name === 'AbortError') throw e;
     return {error: 'fetch_failed', message: String(e)};
   }
 }
@@ -2187,16 +2209,59 @@ async function isBotRunning() {
   return !!(item && item.running);
 }
 
+let _syncAbortCtrl = null;
+let _syncInProgress = false;
+
+function openSyncModal(title, cancellable) {
+  document.getElementById('sync-modal').style.display = 'flex';
+  document.getElementById('sync-modal-title').textContent = title;
+  document.getElementById('sync-modal-subtitle').textContent = '다른 탭·버튼 이용 불가';
+  document.getElementById('sync-modal-spinner').style.display = 'block';
+  document.getElementById('sync-modal-cancel').style.display = cancellable ? 'inline-block' : 'none';
+  document.getElementById('sync-modal-close').style.display = 'none';
+  document.getElementById('sync-modal-log').textContent = '';
+  _syncInProgress = true;
+}
+
+function finishSyncModal(success) {
+  document.getElementById('sync-modal-spinner').style.display = 'none';
+  document.getElementById('sync-modal-cancel').style.display = 'none';
+  document.getElementById('sync-modal-close').style.display = 'inline-block';
+  document.getElementById('sync-modal-subtitle').textContent = success ? '완료 ✓' : '중단됨';
+  _syncInProgress = false;
+}
+
+function closeSyncModal() {
+  if (_syncInProgress) return;  // 진행 중엔 강제 닫기 금지
+  document.getElementById('sync-modal').style.display = 'none';
+}
+
+function cancelSyncAction() {
+  if (_syncAbortCtrl) {
+    _syncAbortCtrl.abort();
+    appendSyncLog('\n⏸ 취소 요청됨...');
+  }
+}
+
+function appendSyncLog(s) {
+  const log = document.getElementById('sync-modal-log');
+  log.textContent += s + '\n';
+  log.scrollTop = log.scrollHeight;
+}
+
 async function runSyncAction(action) {
+  if (_syncInProgress) { toast('이미 sync 작업 중', 'warn'); return; }
   const endpoints = {
     scan: '/api/action/scan_discord',
     sync: '/api/action/run_sync',
     restore: '/api/action/restore',
   };
   const labels = { scan: 'Scan Discord', sync: 'Full Sync', restore: 'Restore Messages' };
-  const out = document.getElementById('sync-output');
-  const appendOut = (s) => { out.textContent += s + '\n'; out.scrollTop = out.scrollHeight; };
-  out.textContent = '';
+  // Scan 만 취소 가능 (dry-run). Full Sync / Restore 는 중간 abort 시 DB·Discord 불일치 위험 → 불허.
+  const cancellable = (action === 'scan');
+  openSyncModal(labels[action], cancellable);
+  const appendOut = appendSyncLog;
+  _syncAbortCtrl = new AbortController();
 
   // 서버 실행 중이면 자동 stop → run → restart 플로우
   const running = await isBotRunning();
@@ -2205,21 +2270,37 @@ async function runSyncAction(action) {
   if (running) {
     if (!confirm(`${labels[action]}를 실행하려면 서버 일시 중단이 필요. 중단 → 실행 → 재시작 자동으로 진행할까?`)) {
       appendOut('❌ 취소됨');
+      finishSyncModal(false);
       return;
     }
     restartAfter = true;
     appendOut('⏸ 서버 중단 중...');
     const stopR = await postJson(q('/api/action/stop_server'), {});
-    if (stopR.error) { appendOut(`❌ 중단 실패: ${stopR.message || stopR.error}`); toast('중단 실패', 'err'); return; }
+    if (stopR.error) { appendOut(`❌ 중단 실패: ${stopR.message || stopR.error}`); toast('중단 실패', 'err'); finishSyncModal(false); return; }
     appendOut(`✓ 프로세스 ${stopR.count}개 종료`);
-    // running=false 될 때까지 대기 (최대 30초)
     const stopped = await waitFor(async () => !(await isBotRunning()), 1000, 30);
     if (!stopped) { appendOut('⚠ 서버가 여전히 running 감지 — 계속 진행'); }
     appendOut('● 서버 오프라인 확인');
   }
 
   appendOut(`▶ ${labels[action]} 실행 중...`);
-  const r = await postJson(q(endpoints[action]), {});
+  let r;
+  try {
+    // Scan 만 AbortController signal 연결 (취소 가능)
+    const fetchOpts = cancellable ? { signal: _syncAbortCtrl.signal } : {};
+    r = await postJson(q(endpoints[action]), {}, fetchOpts);
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      appendOut('⏹ 사용자 취소로 중단됨');
+      toast('취소됨', 'warn');
+      finishSyncModal(false);
+      return;
+    }
+    appendOut(`❌ 요청 오류: ${e.message}`);
+    toast(e.message, 'err');
+    finishSyncModal(false);
+    return;
+  }
   if (r.error) {
     appendOut(`❌ ${r.message || r.error}`);
     toast(r.message || r.error, 'err');
@@ -2236,6 +2317,7 @@ async function runSyncAction(action) {
     if (startR.error) { appendOut(`⚠ 재시작 실패: ${startR.message || startR.error}`); toast('재시작 실패 — 수동 기동 필요', 'err', 5000); }
     else { appendOut('● 서버 재시작 요청됨 (10~20초 후 online)'); toast('서버 재시작 중', 'ok'); }
   }
+  finishSyncModal(!r.error);
   tick();
 }
 
