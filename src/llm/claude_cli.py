@@ -69,6 +69,7 @@ class ClaudeCLIBackend(LLMBackend):
         max_tokens: int = 2048,
         timeout: int = 60,
         cacheable_system: bool = False,  # CLI 는 무시
+        cli_cwd: Optional[str] = None,    # neutral cwd 강제 (CLAUDE.md 회피용)
         **kwargs,
     ) -> LLMResponse:
         args = self._base_args(user, system, model)
@@ -78,6 +79,7 @@ class ClaudeCLIBackend(LLMBackend):
                 args,
                 capture_output=True, text=True, timeout=timeout,
                 env=env,
+                cwd=cli_cwd,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return LLMResponse(text=result.stdout.strip(), model=model)

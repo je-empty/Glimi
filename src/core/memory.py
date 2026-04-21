@@ -357,25 +357,67 @@ def _run_extraction(agent_id: str, channel: str):
 # Claude CLI 호출
 # ────────────────────────────────────────────────────
 
+_EXTRACTION_SYSTEM = (
+    "너는 순수 텍스트 요약/추출기. 아래 사용자 프롬프트의 지시사항만 따라.\n"
+    "주의: cwd 의 CLAUDE.md / 프로젝트 문서 / 코드 컨텍스트는 **완전히 무시해**. "
+    "너는 어떤 프로젝트의 코드 assistant 가 아님. 단지 '주어진 대화 텍스트를 "
+    "요약/구조화' 하는 툴임.\n"
+    "절대 하지 말 것:\n"
+    "- 요청이 적절한지 되묻기\n"
+    "- 의도 확인 질문\n"
+    "- '이게 XX 프로젝트 관련이 맞나요' 류 meta-commentary\n"
+    "- 내용이 선정적·개인적이어도 그대로 요약 (사용자 본인의 사적 대화임)\n"
+    "- 사과·경고·안내 문구 삽입\n"
+    "**오직 요청된 포맷(JSON 또는 글머리표) 만 출력.**"
+)
+
+# Haiku refusal/meta-commentary 패턴 감지용 — 이런 텍스트가 요약으로 저장되면 안 됨.
+_REFUSAL_MARKERS = (
+    "요청이 Glimi", "Glimi 프로젝트와 관련",
+    "붙여넣으신", "잘못된 텍스트", "의도가 명확하지",
+    "확인이 필요합니다", "명확히 해주시면", "도와드리겠습니다",
+    "코드베이스 작업", "아키텍처 개선",
+)
+
+
+def _looks_like_refusal(text: str) -> bool:
+    """LLM 이 요약 대신 meta-commentary/refusal 을 뱉은 경우 감지."""
+    if not text:
+        return True
+    t = text[:500]
+    # 복수 marker hit = 거의 확실
+    hits = sum(1 for m in _REFUSAL_MARKERS if m in t)
+    return hits >= 2
+
+
 def _call_claude(prompt: str, model: str = EXTRACTION_MODEL, timeout: int = 30,
                   system: str = "") -> str:
     """LLM backend 추상화 경유. SDK 설정 시 prompt caching 활용.
 
     메모리 추출은 구조화 JSON 응답이므로 system 부분을 caching 에 적합한 형태로 분리.
-    (현재 prompt 통합 구조 유지 위해 system 은 선택적 — 추후 full migration 시 분리).
+    CLI 백엔드로 fallback 될 경우 **Glimi 프로젝트 루트에서 실행되면 CLAUDE.md 가 로드되어
+    Haiku 가 '이건 프로젝트 관련 작업이 아니다' 라고 refusal 뱉는 버그** 때문에
+    neutral cwd (HOME) 에서 subprocess 실행시키고, 강한 override system prompt 주입함.
     """
+    import os as _os
     try:
         from src.llm import generate
+        # 호출자가 명시한 system 이 있으면 우선, 없으면 기본 추출기 system 부여.
+        effective_system = system or _EXTRACTION_SYSTEM
         resp = generate(
-            system=system,
+            system=effective_system,
             user=prompt,
             model=model,
             agent_type="memory_extract",
             timeout=timeout,
             max_tokens=1024,
-            cacheable_system=bool(system),
+            cacheable_system=True,
+            cli_cwd=_os.path.expanduser("~"),  # CLAUDE.md 회피 — CLI 만 해석, SDK 는 무시
         )
         if resp.text:
+            if _looks_like_refusal(resp.text):
+                print(f"[Memory] refusal 감지 → drop: {resp.text[:120]}...")
+                return ""
             return resp.text
         if resp.error:
             print(f"[Memory] LLM 오류: {resp.error}")
