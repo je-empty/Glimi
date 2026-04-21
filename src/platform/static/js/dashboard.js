@@ -1092,6 +1092,10 @@ function appendSyncLog(s) {
 let _lastScanResult = null;   // {counts, db_counts, total, channels_scanned}
 let _syncSelectedChannels = new Set();
 
+// 메시지 drift 무시 채널 (백엔드 actions.py 의 MSG_SYNC_EXCLUDED 와 일치).
+// 채널 존재 여부 (missing/orphan) 는 그대로 체크 — drift 만 스킵.
+const MSG_SYNC_EXCLUDED = new Set(['mgr-system-log']);
+
 function _chDiffInfo(dbCount, dcCount) {
   const diff = dbCount - dcCount;
   if (diff > 0) return { cls: 'diff-up', label: `⬆ ${diff}건 Discord 누락 → 복원` };
@@ -1109,7 +1113,8 @@ function renderScanTable() {
   const dc = _lastScanResult.counts || {};
   const dbC = _lastScanResult.db_counts || {};
   const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
-  const rows = [...allChs].map(ch => ({
+  // MSG_SYNC_EXCLUDED 채널은 Sync 탭에서 아예 숨김 (유저가 실수로 선택 체크 못하게)
+  const rows = [...allChs].filter(ch => !MSG_SYNC_EXCLUDED.has(ch)).map(ch => ({
     ch,
     db: dbC[ch] || 0,
     dc: dc[ch] || 0,
@@ -1204,6 +1209,7 @@ function scanToggleAll(checked) {
   const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
   if (checked) {
     for (const ch of allChs) {
+      if (MSG_SYNC_EXCLUDED.has(ch)) continue;
       if ((dbC[ch] || 0) !== (dc[ch] || 0)) _syncSelectedChannels.add(ch);
     }
   } else {
@@ -1280,6 +1286,7 @@ async function runSyncAction(action, extraBody) {
       const dc = r.result.counts || {};
       const dbC = r.result.db_counts || {};
       for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
+        if (MSG_SYNC_EXCLUDED.has(ch)) continue;
         if ((dbC[ch] || 0) !== (dc[ch] || 0)) _syncSelectedChannels.add(ch);
       }
       const totalDiff = Object.keys(dc).length + Object.keys(dbC).length;
@@ -1305,6 +1312,7 @@ async function runSyncAction(action, extraBody) {
           const dbC = vr.result.db_counts || {};
           let drift = 0;
           for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
+            if (MSG_SYNC_EXCLUDED.has(ch)) continue;
             if ((dbC[ch] || 0) !== (dc[ch] || 0)) drift++;
           }
           appendOut(drift === 0 ? '✓ 재검증: drift 없음' : `⚠ 재검증: ${drift}개 채널 여전히 drift`);

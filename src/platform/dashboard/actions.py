@@ -6,6 +6,12 @@
 from .context import maintenance_on, maintenance_off, require_server_stopped
 
 
+# 메시지 동기화 제외 채널 — 존재 여부만 체크하고, DB↔Discord 메시지 카운트 drift 는 무시.
+# mgr-system-log 는 봇 런타임이 로그를 webhook 으로 쏘는 채널이라 매 기동마다 메시지 누적되고
+# DB 기록과 달라 매번 "drift" 로 잡힘. 유저한테 의미 없는 노이즈.
+MSG_SYNC_EXCLUDED = {"mgr-system-log"}
+
+
 def _channel_category(name: str) -> str:
     """채널 이름 → 기대 카테고리. src.bot.core._get_category_for_channel 의 사본 (의존성 회피)."""
     if name.startswith("mgr"):
@@ -51,10 +57,12 @@ def _analyze_damage(scan_result: dict) -> dict:
     missing_in_discord: list = [ch for ch in sorted(db_set - discord_set)]
     orphan_in_discord: list = [ch for ch in sorted(discord_set - db_set)]
 
-    # 메시지 drift — 양쪽 모두 존재하는 채널만
+    # 메시지 drift — 양쪽 모두 존재하는 채널만. MSG_SYNC_EXCLUDED 는 drift 체크 스킵.
     msg_drift_db_more: list = []
     msg_drift_discord_more: list = []
     for ch in (discord_set & db_set):
+        if ch in MSG_SYNC_EXCLUDED:
+            continue
         db_count = db_counts.get(ch, 0)
         d_count = counts.get(ch, 0)
         diff = db_count - d_count

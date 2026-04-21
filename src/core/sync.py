@@ -350,10 +350,19 @@ async def sync_community(
             # 아바타 로드 함수
             from src.bot.core import _get_profile_image_bytes
 
+            # 메시지 sync 제외 채널 — 채널 존재는 보장하지만 DB↔Discord 메시지 카운트 맞춤 X.
+            # mgr-system-log 는 런타임 로그가 webhook 으로 실시간 누적되는 곳이라 매번 drift.
+            MSG_SYNC_EXCLUDED = {"mgr-system-log"}
+
             for ch_name in list(surviving.keys()):
                 ch = surviving[ch_name]
                 # 채널 필터 적용
                 if channels_filter and ch_name not in channels_filter:
+                    continue
+                # mgr-system-log 같은 런타임 로그 채널은 메시지 sync 스킵 (존재만 보장)
+                if ch_name in MSG_SYNC_EXCLUDED:
+                    _progress(f"  {ch_name}: 메시지 sync 스킵 (로그 채널)")
+                    result["channels_scanned"] += 1
                     continue
 
                 # DB 메시지 timestamp 순 전체 로드 (divergence 스캔 용)
