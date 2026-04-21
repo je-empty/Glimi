@@ -522,10 +522,11 @@ async def ensure_channels(guild: discord.Guild):
         db.set_channel_participants(MGR_CHANNEL, [MGR_ID])
         log_writer.system("Initial setup: mgr-dashboard ready")
     else:
-        # 일반 실행: 전체 채널 보장
-        # CHANNEL_AGENT_MAP 에는 dm-* / mgr-* 만 있어서 internal-dm-*/internal-group-*/group-*
-        # 채널이 누락됨. DB channels 테이블 기반으로 보강 (QA 회귀: internal-dm-윤하나-서유나 Discord 누락).
-        needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
+        # 일반 실행: DB channels 테이블 = 단일 진실원.
+        # 튜토리얼이 phase 별로 채널을 DB 에 등록하므로 '등록된 것만' Discord 에 보장.
+        # 이전 방식 (CHANNEL_AGENT_MAP + MGR_SYSTEM_LOG/CREATOR_CHANNEL 하드코딩) 은
+        # 튜토리얼 greet 단계에서 봇 재시작 시 미래 phase 채널까지 미리 만들던 버그.
+        needed = set()
         try:
             for row in db.get_channel_overview():
                 ch = row["channel"]
@@ -533,6 +534,9 @@ async def ensure_channels(guild: discord.Guild):
                     needed.add(ch)
         except Exception:
             pass
+        # 방어: DB 엔트리가 비정상 유실됐는데 이미 greet 끝난 상태면 최소 mgr-dashboard 는 보장
+        if not needed:
+            needed.add(MGR_CHANNEL)
         existing = {ch.name: ch for ch in guild.text_channels}
 
         # 불필요 채널 삭제
