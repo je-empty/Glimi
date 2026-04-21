@@ -367,24 +367,24 @@ sequenceDiagram
 ```bash
 git clone https://github.com/jaebinsim/Glimi.git
 cd Glimi
-./run    # venv 자동 생성, 의존성 설치, Wizard 실행
+./run.sh    # venv 자동 생성, 의존성 설치, Glimi 플랫폼 실행
 ```
 
 **필수**: Python 3.11+, Node.js, [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`npm install -g @anthropic-ai/claude-code`)
 
 > 모든 기능을 쓰려면 Claude Code Max 플랜 권장. 없으면 에이전트들이 연결 실패 안내 메시지로 응답합니다.
 
-Wizard가 안내합니다:
-1. **커뮤니티 생성** — ID 설정, 프로필 입력 (이름·별명·생년·성별)
-2. **디스코드 봇 세팅** — 토큰 검증 + 권한 체크
-3. **서버 시작** → 매니저와 자동 튜토리얼
-4. **웹 대시보드 열기** → `http://localhost:8765`
+`http://localhost:8000` 열고 로그인 (`admin/rmfflal` 또는 `test/0000`). 웹 UI 에서:
+1. **커뮤니티 생성·관리** (홈 리스트에서 원클릭)
+2. **봇 시작·중지·재시작** (대시보드 상단 바)
+3. **관찰** — 에이전트 그래프·채널·기억·씬·이벤트·헬스
 
 ```bash
-./scripts/run.sh my-server         # 특정 커뮤니티 실행
-./scripts/web_dashboard.py demo    # 특정 커뮤니티 대시보드
-python -m src.community list       # 커뮤니티 목록
-python -m src.community init xyz   # 새 커뮤니티 초기화
+./run.sh --port 9000                    # 포트 변경
+./run.sh --legacy <community>           # 레거시 단일 봇 모드 (QA/디버깅)
+python -m src.platform.accounts list    # 계정 목록
+python -m src.community list            # 커뮤니티 목록 (CLI)
+python -m src.community init xyz        # 새 커뮤니티 초기화
 ```
 
 ---

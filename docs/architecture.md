@@ -16,7 +16,6 @@ Glimi/
 │   ├── run.sh              ← 메인 실행 (플랫폼 데몬)
 │   ├── stop.sh
 │   ├── qa.sh               ← E2E QA 자동화
-│   ├── web_dashboard.py    ← 구 stdlib 대시보드 (플랫폼 이전 완료 시 제거)
 │   ├── seed_demo_mockup.py ← demo 커뮤니티 목업
 │   └── migrate_timestamps_to_utc.py
 ├── communities/            ← 커뮤니티별 데이터 (.gitignore)
