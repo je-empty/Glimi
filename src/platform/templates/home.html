@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Glimi · 내 커뮤니티{% endblock %}
+{% block head %}
+<style>
+  .community-list { display: flex; flex-direction: column; gap: 12px; }
+  .community-row {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: center;
+    transition: border-color 0.15s;
+  }
+  .community-row { cursor: pointer; }
+  .community-row:hover { border-color: var(--accent); }
+  .community-row .controls button, .community-row .controls a {
+    position: relative; z-index: 2; /* 버튼 클릭은 row 로 버블 안 됨 */
+  }
+  .community-row .main { min-width: 0; }
+  .community-row .head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .community-row .head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+  .community-row .head .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .community-row .desc { color: var(--muted); font-size: 13px; margin: 2px 0 10px 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .community-row .meta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .community-row .controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: end; }
+
+  /* 아바타 그룹 — 동그라미 겹쳐 띄우기 */
+  .avatar-stack {
+    display: inline-flex; align-items: center; padding-left: 10px;
+  }
+  .avatar-stack .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--panel2); border: 2px solid var(--panel);
+    margin-left: -10px; object-fit: cover;
+    transition: transform 0.12s;
+    flex-shrink: 0;
+  }
+  .avatar-stack .avatar:hover { transform: translateY(-2px); z-index: 10; position: relative; }
+  .avatar-stack .more {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--panel2); border: 2px solid var(--panel);
+    margin-left: -10px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--muted); font-weight: 500;
+  }
+
+  .count-badge {
+    font-size: 12px; color: var(--muted);
+  }
+  .count-badge strong { color: var(--text); font-weight: 600; }
+
+  @media (max-width: 640px) {
+    .community-row { grid-template-columns: 1fr; }
+    .community-row .controls { justify-content: start; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <h2 style="margin: 0;">내 커뮤니티</h2>
+  <button class="primary" onclick="showCreate()">+ 새 커뮤니티</button>
+</div>
+
+{% if not communities %}
+<div class="card">
+  <p class="muted" style="margin: 0;">아직 커뮤니티가 없어. 상단의 <strong>+ 새 커뮤니티</strong> 로 하나 만들어봐.</p>
+</div>
+{% endif %}
+
+<div class="community-list">
+  {% for c in communities %}
+  <div class="community-row" onclick="location.href='/community/{{ c.id }}'">
+    <div class="main">
+      <div class="head">
+        <h3>{{ c.name or c.id }}</h3>
+        <span class="id">{{ c.id }}</span>
+        <span class="pill {{ 'running' if c.running else 'stopped' }}">
+          {{ 'RUN' if c.running else 'STOP' }}
+        </span>
+        {% if c.is_default %}<span class="pill stopped">default</span>{% endif %}
+      </div>
+      {% if c.description %}<div class="desc">{{ c.description }}</div>{% endif %}
+      <div class="meta">
+        <div class="avatar-stack">
+          {% for m in c.members[:8] %}
+          <img class="avatar" src="{{ m.avatar_url }}" alt="{{ m.name }}" title="{{ m.name }}{% if m.type == 'mgr' %} (매니저){% elif m.type == 'creator' %} (크리에이터){% endif %}"
+               loading="lazy" onerror="this.style.background='var(--panel2)'">
+          {% endfor %}
+          {% if c.member_count > 8 %}
+          <span class="more">+{{ c.member_count - 8 }}</span>
+          {% endif %}
+        </div>
+        <span class="count-badge">
+          {% if c.member_count %}
+            <strong>{{ c.member_count }}</strong>명
+          {% else %}
+            아직 없음
+          {% endif %}
+        </span>
+        {% if not c.has_env %}<span class="count-badge" style="color: var(--warn);">⚠ no .env</span>{% endif %}
+      </div>
+    </div>
+    <div class="controls" onclick="event.stopPropagation()">
+      {% if c.running %}
+      <button onclick="ctrl('{{ c.id }}', 'stop')">Stop</button>
+      <button onclick="ctrl('{{ c.id }}', 'restart')">Restart</button>
+      {% else %}
+      <button class="primary" onclick="ctrl('{{ c.id }}', 'start')">Start</button>
+      {% endif %}
+      <button class="danger" onclick="deleteCommunity('{{ c.id }}')">삭제</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<dialog id="create-dialog" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 20px; min-width: 340px;">
+  <h3 style="margin-top: 0;">새 커뮤니티</h3>
+  <form method="dialog" onsubmit="event.preventDefault(); submitCreate();">
+    <div style="margin: 12px 0;">
+      <label style="display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted);">id (영문·숫자·-·_)</label>
+      <input id="c-id" type="text" required style="width: 100%;">
+    </div>
+    <div style="margin: 12px 0;">
+      <label style="display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted);">언어</label>
+      <select id="c-lang" style="width: 100%;">
+        <option value="en">English</option>
+        <option value="ko" selected>한국어</option>
+      </select>
+    </div>
+    <div style="display: flex; gap: 6px; justify-content: end; margin-top: 16px;">
+      <button type="button" onclick="document.getElementById('create-dialog').close()">취소</button>
+      <button type="submit" class="primary">만들기</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+function showCreate() { document.getElementById('create-dialog').showModal(); }
+async function submitCreate() {
+  const id = document.getElementById('c-id').value.trim();
+  const language = document.getElementById('c-lang').value;
+  if (!id) return;
+  const r = await fetch('/api/communities', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, language })
+  });
+  if (!r.ok) { alert('생성 실패: ' + (await r.text())); return; }
+  location.reload();
+}
+async function ctrl(cid, action) {
+  const r = await fetch('/api/communities/' + cid + '/' + action, { method: 'POST' });
+  if (!r.ok) { alert('실패: ' + (await r.text())); return; }
+  setTimeout(() => location.reload(), 800);
+}
+async function deleteCommunity(cid) {
+  if (!confirm(cid + ' 커뮤니티를 완전히 삭제할까? (DB + 프로필 이미지 포함)')) return;
+  const r = await fetch('/api/communities/' + cid, { method: 'DELETE' });
+  if (!r.ok) { alert('삭제 실패: ' + (await r.text())); return; }
+  location.reload();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Glimi · 로그인{% endblock %}
+{% block content %}
+<div style="max-width: 360px; margin: 80px auto;">
+  <div class="card">
+    <h2 style="margin-top: 0;">Glimi</h2>
+    <p class="muted" style="margin-top: 4px;">로그인하고 커뮤니티 관리</p>
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div style="margin: 14px 0;">
+        <label style="display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted);">계정명</label>
+        <input type="text" name="username" required autofocus style="width: 100%;">
+      </div>
+      <div style="margin: 14px 0;">
+        <label style="display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted);">비밀번호</label>
+        <input type="password" name="password" required style="width: 100%;">
+      </div>
+      {% if error %}
+      <div class="err">로그인 실패. 계정/비번을 확인해.</div>
+      {% endif %}
+      <button type="submit" class="primary" style="width: 100%; margin-top: 8px;">로그인</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

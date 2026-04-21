@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ community_id }} · Glimi{% endblock %}
+{% block content %}
+<p class="muted"><a href="/">← 홈</a></p>
+<h2 style="margin: 4px 0 20px 0;">{{ community_id }}</h2>
+
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <strong>봇 상태</strong>
+      <span class="pill {{ 'running' if status.running else 'stopped' }}" style="margin-left: 8px;">
+        {{ 'RUN' if status.running else 'STOP' }}
+      </span>
+      {% if status.running %}
+        <span class="muted" style="margin-left: 8px; font-size: 12px;">
+          PID {{ status.pid }} · uptime {{ '%.0f' % status.uptime_sec }}s
+        </span>
+      {% endif %}
+    </div>
+    <div style="display: flex; gap: 6px;">
+      {% if status.running %}
+      <button onclick="ctrl('stop')">Stop</button>
+      <button onclick="ctrl('restart')">Restart</button>
+      {% else %}
+      <button class="primary" onclick="ctrl('start')">Start</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+    <strong>bot.log (last 200)</strong>
+    <button onclick="loadLog()">refresh</button>
+  </div>
+  <pre id="log" style="background: #0a0b0e; border: 1px solid var(--border); border-radius: 6px; padding: 10px; max-height: 400px; overflow: auto; font-size: 12px; margin: 0;"></pre>
+</div>
+
+<div class="card">
+  <p class="muted" style="margin: 0;">대시보드(그래프·에이전트 상세·동기화·감정 뷰)는 기존 대시보드에서 ⇒
+    <a href="http://{{ request.url.hostname }}:8765/?community={{ community_id }}" target="_blank">구 대시보드 열기</a>
+    <br>(통합 예정: Task #22)
+  </p>
+</div>
+
+<script>
+const CID = {{ community_id|tojson }};
+async function ctrl(action) {
+  const r = await fetch('/api/communities/' + CID + '/' + action, { method: 'POST' });
+  if (!r.ok) { alert('실패: ' + (await r.text())); return; }
+  setTimeout(() => location.reload(), 800);
+}
+async function loadLog() {
+  const r = await fetch('/api/communities/' + CID + '/log');
+  if (!r.ok) return;
+  const data = await r.json();
+  document.getElementById('log').textContent = data.log || '(empty)';
+}
+loadLog();
+setInterval(loadLog, 5000);
+</script>
+{% endblock %}
