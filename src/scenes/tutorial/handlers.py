@@ -26,6 +26,33 @@ from src.scenes.tutorial.scene import scene
 CREATOR_ID = "agent-creator-001"
 
 
+def _ensure_creator_seeded() -> bool:
+    """크리에이터(하나) 에이전트가 DB 에 없으면 시드에서 등록.
+    튜토리얼 channels_setup phase 에 lazy 호출 — 초기 상태에선 mgr 만 존재 → 오너 시점에
+    '하나가 튜토리얼 중 새로 생긴 것처럼' 보이게.
+    반환: 실제로 등록됐으면 True, 이미 있어서 skip 했거나 실패면 False."""
+    from pathlib import Path
+    if db.get_agent(CREATOR_ID):
+        return False
+    seed_path = Path(__file__).resolve().parents[3] / "assets" / "seed_agents.json"
+    if not seed_path.exists():
+        log_writer.system(f"❌ creator 시드 파일 없음: {seed_path}")
+        return False
+    try:
+        with open(seed_path, "r", encoding="utf-8") as f:
+            seeds = _json.load(f)
+        creator_seed = next((a for a in seeds if a.get("id") == CREATOR_ID), None)
+        if not creator_seed:
+            log_writer.system(f"❌ creator 시드 엔트리 없음 in {seed_path.name}")
+            return False
+        db.save_agent_profile(creator_seed)
+        log_writer.system(f"✓ creator lazy 시드 등록: {CREATOR_ID}")
+        return True
+    except Exception as e:
+        log_writer.system(f"❌ creator 시드 로드 실패: {type(e).__name__}: {e}")
+        return False
+
+
 async def trigger_phase2(guild):
     """Phase 2 트리거 — scene의 phase를 channels_setup으로 전환하고
     채널 생성/크리에이터 소개를 비동기 실행."""
@@ -105,7 +132,10 @@ async def setup_channels(guild):
 
     await asyncio.sleep(3)
 
-    # 2. mgr-creator 생성
+    # 2. 크리에이터(하나) lazy 시드 — 이 phase 에 '새로 등장'하는 것처럼
+    _ensure_creator_seeded()
+
+    # 3. mgr-creator 생성
     try:
         creator_ch = await create_tutorial_channel(
             guild, CREATOR_CHANNEL, participants=[CREATOR_ID]
@@ -121,7 +151,7 @@ async def setup_channels(guild):
 
     await asyncio.sleep(2)
 
-    # 3. 크리에이터(하나) 인사
+    # 4. 크리에이터(하나) 인사
     runtime.activate_agent(CREATOR_ID)
     creator_profile = load_profile(CREATOR_ID)
     creator_name = creator_profile["name"] if creator_profile else "하나"

@@ -82,16 +82,21 @@ def main():
 
     db.init_db()
 
-    # 에이전트가 없으면 시드 데이터 자동 적용
+    # 에이전트가 없으면 mgr(유나) 만 시드.
+    # 크리에이터(하나) 는 튜토리얼 channels_setup phase 에 lazy 등록 —
+    # 오너 시점에 "튜토리얼 중 하나가 새로 생기는 것처럼" 보이게.
     if not db.list_agents():
         seed_path = Path(__file__).parent.parent / "assets" / "seed_agents.json"
         if seed_path.exists():
-            log.info("기본 에이전트 시드 적용 중...")
+            log.info("기본 에이전트 시드 (mgr 만) 적용 중...")
             with open(seed_path, "r", encoding="utf-8") as f:
                 seeds = json.load(f)
+            seeded = 0
             for agent in seeds:
-                db.save_agent_profile(agent)
-            log.info(f"시드 에이전트 {len(seeds)}개 등록 완료")
+                if agent.get("type") == "mgr":
+                    db.save_agent_profile(agent)
+                    seeded += 1
+            log.info(f"시드 에이전트 {seeded}개 등록 완료 (creator 는 튜토리얼 중 lazy 등록)")
 
     register_all_to_db()
     setup_initial_relationships()
