@@ -3511,56 +3511,48 @@ async function tick() {
     `;
   }
 
-  // Sync tab — static 부분은 최초 1회 + server-running 변화 시에만 재생성.
-  // 이전엔 tick 마다 innerHTML 전체 재작성 → 모바일·웹 심각한 flicker + sync-output 로그 지워짐 + 탭 열면 깜빡임.
-  const syncEl = document.getElementById('sync-full');
+  // Sync tab — sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
   const serverRunning = b.bot_alive;
-  const prevServerRunning = syncEl.dataset.serverRunning;
-  const prevChannelsLen = syncEl.dataset.channelsLen;
-  const curChannelsLen = String(snap.channels.length);
-  const needRender = !syncEl.dataset.rendered
-    || prevServerRunning !== String(serverRunning)
-    || prevChannelsLen !== curChannelsLen;
-  if (needRender) {
-    const guardNote = serverRunning
-      ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--text)">ℹ 서버 실행 중 — Sync 버튼 클릭 시 <b>자동으로 서버 중단 → 작업 → 재시작</b> 진행.</div>`
-      : `<div style="padding:10px 14px;background:color-mix(in srgb,var(--ok) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--ok) 25%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--ok)">○ 서버 오프라인 — 모든 sync 작업 즉시 가능.</div>`;
-    syncEl.innerHTML = `
-      ${guardNote}
-      <div class="detail-section" style="margin-top:0">
-        <h4>Sync Actions</h4>
-        <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
-          Discord 서버와 DB 사이 상태를 맞추는 작업. 서버 실행 중이면 자동 중단·작업·재시작.
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-          <button class="act-btn primary" onclick="runSyncAction('scan')">🔍 Scan Discord</button>
-          <button class="act-btn success" onclick="runSyncAction('sync')">▶ Full Sync</button>
-          <button class="act-btn" onclick="runSyncAction('restore')">↻ Restore Messages</button>
-        </div>
-        <div id="sync-output" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;min-height:60px;max-height:240px;overflow-y:auto;white-space:pre-wrap"></div>
+  const guardNote = serverRunning
+    ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--text)">ℹ 서버 실행 중 — Sync 버튼 클릭 시 <b>자동으로 서버 중단 → 작업 → 재시작</b> 진행. 취소 버튼 제공됨.</div>`
+    : `<div style="padding:10px 14px;background:color-mix(in srgb,var(--ok) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--ok) 25%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--ok)">○ 서버 오프라인 — 모든 sync 작업 즉시 가능.</div>`;
+  const _prevSyncOutput = document.getElementById('sync-output');
+  const _savedSyncLog = _prevSyncOutput ? _prevSyncOutput.textContent : '';
+  document.getElementById('sync-full').innerHTML = `
+    ${guardNote}
+    <div class="detail-section" style="margin-top:0">
+      <h4>Sync Actions</h4>
+      <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
+        Discord 서버와 DB 사이 상태를 맞추는 작업. 서버 실행 중이면 자동 중단·작업·재시작.
       </div>
-      <div class="detail-section">
-        <h4>Trash · <span id="trash-count" style="color:var(--text-faint)">...</span></h4>
-        <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
-          휴지통 — 채널/메시지 삭제 시 완전 삭제 대신 여기로 옮겨짐. 실수 복구용 안전망.
-          <br>Empty Trash 로 영구 삭제, 각 항목별 <b>복구</b> 가능.
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-          <button class="act-btn small" onclick="loadTrash()">새로고침</button>
-          <button class="act-btn small danger" onclick="emptyTrash()">Empty Trash</button>
-        </div>
-        <div id="trash-list"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="act-btn primary" onclick="runSyncAction('scan')">🔍 Scan Discord</button>
+        <button class="act-btn success" onclick="runSyncAction('sync')">▶ Full Sync</button>
+        <button class="act-btn" onclick="runSyncAction('restore')">↻ Restore Messages</button>
       </div>
-      <div class="detail-section">
-        <h4>DB-registered Channels · ${snap.channels.length}</h4>
-        ${renderChannelsGrouped(snap.channels)}
+      <div id="sync-output" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;min-height:60px;max-height:240px;overflow-y:auto;white-space:pre-wrap"></div>
+    </div>
+    <div class="detail-section">
+      <h4>Trash · <span id="trash-count" style="color:var(--text-faint)">...</span></h4>
+      <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
+        휴지통 — 채널/메시지 삭제 시 완전 삭제 대신 여기로 옮겨짐. 실수 복구용 안전망.
+        <br>Empty Trash 로 영구 삭제, 각 항목별 <b>복구</b> 가능.
       </div>
-    `;
-    syncEl.dataset.rendered = "true";
-    syncEl.dataset.serverRunning = String(serverRunning);
-    syncEl.dataset.channelsLen = curChannelsLen;
-    loadTrash();
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="act-btn small" onclick="loadTrash()">새로고침</button>
+        <button class="act-btn small danger" onclick="emptyTrash()">Empty Trash</button>
+      </div>
+      <div id="trash-list"></div>
+    </div>
+    <div class="detail-section">
+      <h4>DB-registered Channels · ${(snap.channels || []).length}</h4>
+      ${renderChannelsGrouped(snap.channels || [])}
+    </div>
+  `;
+  if (_savedSyncLog) {
+    document.getElementById('sync-output').textContent = _savedSyncLog;
   }
+  loadTrash();
 
   // Dev
   if (dev) {
