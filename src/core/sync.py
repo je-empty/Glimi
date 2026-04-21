@@ -400,16 +400,19 @@ async def sync_community(
                     await asyncio.sleep(0.3)
                     continue
 
-                # 삭제 대상 많으면 채널 재생성이 효율적 (20건 초과 or DB 가 비어있음)
+                # 재생성은 DB 가 완전히 비어있을 때만 (discord 쪽 대량 삭제 개별로 하느니 채널 만드는게 빠름).
+                # 그 외엔 항상 in-place: divergence 부터 Discord 개별 삭제 + DB 앞에서부터 재전송.
+                # 이전엔 discord_to_delete > 20 이면 재생성했는데, 중간 갭 하나 때문에 채널 통째로
+                # 날리는 건 채널 ID/pin/webhook 날아가서 너무 침습적. 개별 삭제가 조금 느려도 안전함.
                 recreated = False
-                if discord_to_delete and (db_count == 0 or len(discord_to_delete) > 20):
+                if discord_to_delete and db_count == 0:
                     _progress(
-                        f"  {ch_name}: divergence={divergence}, 삭제 {len(discord_to_delete)}건 — 채널 재생성"
+                        f"  {ch_name}: DB 비어있음, Discord {len(discord_to_delete)}건 — 채널 재생성"
                     )
                     cat = ch.category
                     position = ch.position
                     try:
-                        await ch.delete(reason="Glimi Sync: 순서 복구 (채널 재생성)")
+                        await ch.delete(reason="Glimi Sync: DB 빈 채널 정리 (재생성)")
                         new_ch = await guild.create_text_channel(ch_name, category=cat)
                         try:
                             await new_ch.move(beginning=True, offset=position)
@@ -418,25 +421,26 @@ async def sync_community(
                         surviving[ch_name] = new_ch
                         ch = new_ch
                         total_discord_to_db += len(discord_to_delete)
-                        # 재생성 후엔 DB 전체를 순서대로 다시 보냄 (divergence 전 앞부분도 재전송)
-                        db_to_send = db_messages_ordered
+                        db_to_send = []  # DB 가 비어있으니 보낼 것도 없음
                         discord_to_delete = []
                         recreated = True
-                        _progress(f"  {ch_name}: 채널 재생성 완료 — 전체 {len(db_to_send)}건 재전송 예정")
+                        _progress(f"  {ch_name}: 채널 재생성 완료")
                     except Exception as e:
                         result["errors"].append(f"채널 재생성 실패 ({ch_name}): {e}")
 
-                # 재생성 안 했으면 divergence 부터 Discord 메시지 개별 삭제 (oldest→newest)
+                # divergence 부터 Discord 메시지 개별 삭제 (oldest→newest 순)
                 if not recreated and discord_to_delete:
                     _progress(
-                        f"  {ch_name}: divergence={divergence}, Discord 메시지 {len(discord_to_delete)}건 삭제"
+                        f"  {ch_name}: divergence={divergence}, Discord {len(discord_to_delete)}건 개별 삭제"
                     )
                     deleted = 0
-                    for msg in discord_to_delete:
+                    for idx, msg in enumerate(discord_to_delete):
                         try:
                             await msg.delete()
                             deleted += 1
                             await asyncio.sleep(0.5)
+                            if deleted % 20 == 0:
+                                _progress(f"  {ch_name}: {deleted}/{len(discord_to_delete)}건 삭제")
                         except Exception:
                             pass
                     if deleted:
