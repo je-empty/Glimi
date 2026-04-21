@@ -43,3 +43,6 @@ backups/
 
 # 로컬 프로젝트 가이드 (개인 메모)
 GLIMI_PROJECT_GUIDE.md
+
+# 내부 분석·전략 문서 (경쟁사 리서치, 로드맵 등 — 공개 저장소에 올리지 않음)
+analysis/
