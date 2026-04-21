@@ -468,13 +468,13 @@ QUERY: list[ToolSpec] = [
 REQUEST: list[ToolSpec] = [
     ToolSpec(
         name="request_dm",
-        description="유나/하나한테 DM으로 요청·보고 보내기. target은 '윤하나' 또는 '서유나'",
+        description="유나/하나한테 DM으로 메시지 보내기. target은 '윤하나' 또는 '서유나'. mgr 이 쓰면 internal-dm-{sender}-{target} 채널에 직접 글 올리고 상대가 이어감.",
         params={
             "target": {"type": "str", "required": True, "desc": "'윤하나' | '서유나'"},
             "message": {"type": "str", "required": True, "desc": "요청·보고 내용"},
         },
         category="request",
-        applies_to=frozenset({"persona", "creator"}),
+        applies_to=frozenset({"persona", "creator", "mgr"}),
         requires_approval=True,
     ),
     ToolSpec(
