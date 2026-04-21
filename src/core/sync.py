@@ -105,16 +105,27 @@ def _get_token() -> Optional[str]:
 
 
 def _get_expected_channels() -> set[str]:
-    """DB 기반으로 존재해야 할 glimi 채널 목록"""
+    """DB 기반으로 존재해야 할 glimi 채널 목록.
+
+    mgr 에이전트가 있을 때만 mgr-dashboard/mgr-system-log, creator 있을 때만 mgr-creator 추가.
+    튜토리얼 중간 (creator 미등록) 일 때 무조건 만들어버리던 버그 해결.
+    """
     channels = set()
     agents = db.list_agents()
+    has_mgr = False
+    has_creator = False
     for a in agents:
         if a["type"] == "mgr":
             channels.add("mgr-dashboard")
-        elif a["type"] != "creator":
+            has_mgr = True
+        elif a["type"] == "creator":
+            has_creator = True
+        else:
             channels.add(f"dm-{a['name']}")
-    channels.add("mgr-creator")
-    channels.add("mgr-system-log")
+    if has_mgr:
+        channels.add("mgr-system-log")
+    if has_creator:
+        channels.add("mgr-creator")
 
     overview = db.get_channel_overview()
     for ch in overview:
