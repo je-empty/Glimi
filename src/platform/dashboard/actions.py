@@ -6,6 +6,84 @@
 from .context import maintenance_on, maintenance_off, require_server_stopped
 
 
+def _channel_category(name: str) -> str:
+    """채널 이름 → 기대 카테고리. src.bot.core._get_category_for_channel 의 사본 (의존성 회피)."""
+    if name.startswith("mgr"):
+        return "glimi-mgr"
+    if name.startswith("internal-group-"):
+        return "glimi-internal-group"
+    if name.startswith("internal-dm-") or name.startswith("internal-"):
+        return "glimi-internal-dm"
+    if name.startswith("group-"):
+        return "glimi-group"
+    if name.startswith("dm-"):
+        return "glimi-dm"
+    return "glimi"
+
+
+def _analyze_damage(scan_result: dict) -> dict:
+    """scan 결과 + DB 데이터 → 손상 종류별 분류.
+
+    DB 가 단일 진실원. 차이 종류:
+      - missing_in_discord: DB 에 있는 채널이 Discord 에 없음 → 생성 필요
+      - orphan_in_discord: Discord 에만 있는 glimi 채널 → 삭제 필요
+      - orphan_outside: glimi 카테고리 밖에 있는 패턴 매칭 채널 → 삭제 필요
+      - wrong_category: 채널이 잘못된 카테고리에 있음 → 이동 필요
+      - msg_drift_db_more: DB 메시지 > Discord 메시지 (restore 필요)
+      - msg_drift_discord_more: Discord 메시지 > DB 메시지 (Discord 잉여 삭제)
+    """
+    db_channels = {c["name"]: c for c in scan_result.get("db_channels", []) or []}
+    discord_chs = {c["name"]: c for c in scan_result.get("discord_channels", []) or []}
+    db_counts = scan_result.get("db_counts", {}) or {}
+
+    missing_in_discord = sorted([n for n in db_channels if n not in discord_chs])
+    orphan_in_discord = sorted([n for n in discord_chs if n not in db_channels])
+    orphan_outside = list(scan_result.get("orphan_outside", []) or [])
+    wrong_category = []
+    msg_drift_db_more = []
+    msg_drift_discord_more = []
+
+    for name, info in discord_chs.items():
+        expected_cat = _channel_category(name)
+        actual_cat = info.get("category", "")
+        if actual_cat and actual_cat != expected_cat:
+            wrong_category.append({
+                "name": name, "current": actual_cat, "expected": expected_cat,
+            })
+
+    # 메시지 카운트 비교 (양쪽 다 존재하는 채널만)
+    for name in db_channels:
+        if name not in discord_chs:
+            continue
+        d_count = discord_chs[name].get("msg_count")
+        db_count = db_counts.get(name, 0)
+        if d_count is None:
+            continue
+        if db_count > d_count:
+            msg_drift_db_more.append({
+                "name": name, "db": db_count, "discord": d_count, "diff": db_count - d_count,
+            })
+        elif d_count > db_count:
+            msg_drift_discord_more.append({
+                "name": name, "db": db_count, "discord": d_count, "diff": d_count - db_count,
+            })
+
+    total_issues = (
+        len(missing_in_discord) + len(orphan_in_discord) + len(orphan_outside)
+        + len(wrong_category) + len(msg_drift_db_more) + len(msg_drift_discord_more)
+    )
+    return {
+        "missing_in_discord": missing_in_discord,
+        "orphan_in_discord": orphan_in_discord,
+        "orphan_outside": orphan_outside,
+        "wrong_category": wrong_category,
+        "msg_drift_db_more": msg_drift_db_more,
+        "msg_drift_discord_more": msg_drift_discord_more,
+        "total_issues": total_issues,
+        "clean": total_issues == 0,
+    }
+
+
 def api_action_scan_discord(body: dict, community_id: str) -> dict:
     """Discord 채널별 메시지 카운트 조회 (read-only, 빠름)."""
     guard = require_server_stopped(community_id)
@@ -16,17 +94,32 @@ def api_action_scan_discord(body: dict, community_id: str) -> dict:
     try:
         logs: list[str] = []
         result = run_scan(on_progress=lambda m: logs.append(m))
+        # DB 측 채널 메타 + 메시지 카운트 — 손상 분석용
         try:
             from src import db as _db
             conn = _db.get_conn()
             db_counts: dict[str, int] = {}
             for row in conn.execute("SELECT channel, COUNT(*) FROM conversations GROUP BY channel").fetchall():
                 db_counts[row[0]] = row[1]
+            db_channels: list[dict] = []
+            for row in conn.execute("SELECT channel, status FROM channels").fetchall():
+                db_channels.append({
+                    "name": row["channel"],
+                    "status": row["status"] if "status" in row.keys() else None,
+                    "msg_count": db_counts.get(row["channel"], 0),
+                })
             conn.close()
             result["db_counts"] = db_counts
-        except Exception:
+            result["db_channels"] = db_channels
+        except Exception as e:
             result["db_counts"] = {}
-        return {"ok": result.get("ok", False), "result": result, "logs": logs[-40:]}
+            result["db_channels"] = []
+            logs.append(f"DB 메타 조회 실패: {e}")
+
+        # 손상 분석 — DB 가 단일 진실원 기준
+        damage = _analyze_damage(result)
+        result["damage"] = damage
+        return {"ok": result.get("ok", False), "result": result, "logs": logs[-60:]}
     finally:
         maintenance_off(community_id)
 

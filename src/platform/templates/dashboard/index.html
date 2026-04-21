@@ -371,12 +371,33 @@
     } else if (phase === 'damaged') {
       emoji.textContent = '⚠️';
       title.textContent = '디스코드 손상 감지';
+      const d = ctx.damage || {};
+      const lines = [];
+      if ((d.missing_in_discord || []).length) {
+        lines.push(`<div>❌ 누락 채널 <b style="color:#f87171">${d.missing_in_discord.length}개</b> <span style="color:#9ca3af;font-size:11px">${d.missing_in_discord.slice(0, 5).join(', ')}${d.missing_in_discord.length > 5 ? ` 외 ${d.missing_in_discord.length - 5}개` : ''}</span></div>`);
+      }
+      if ((d.orphan_in_discord || []).length) {
+        lines.push(`<div>👻 잉여 채널 <b style="color:#f87171">${d.orphan_in_discord.length}개</b> <span style="color:#9ca3af;font-size:11px">DB 에 없음 → 삭제됨 · ${d.orphan_in_discord.slice(0, 5).join(', ')}</span></div>`);
+      }
+      if ((d.orphan_outside || []).length) {
+        lines.push(`<div>📁 카테고리 밖 orphan <b style="color:#f87171">${d.orphan_outside.length}개</b> <span style="color:#9ca3af;font-size:11px">${d.orphan_outside.slice(0, 5).map(o => '#' + o.name + ' [' + o.category + ']').join(', ')}</span></div>`);
+      }
+      if ((d.wrong_category || []).length) {
+        lines.push(`<div>🔀 카테고리 오류 <b style="color:#f87171">${d.wrong_category.length}개</b> <span style="color:#9ca3af;font-size:11px">${d.wrong_category.slice(0, 3).map(o => '#' + o.name + ' (' + o.current + '→' + o.expected + ')').join(', ')}</span></div>`);
+      }
+      if ((d.msg_drift_db_more || []).length) {
+        lines.push(`<div>📤 DB > Discord <b style="color:#f87171">${d.msg_drift_db_more.length}개</b> <span style="color:#9ca3af;font-size:11px">DB 메시지 누락분 복원 · ${d.msg_drift_db_more.slice(0, 3).map(o => '#' + o.name + ' (+' + o.diff + ')').join(', ')}</span></div>`);
+      }
+      if ((d.msg_drift_discord_more || []).length) {
+        lines.push(`<div>📥 Discord > DB <b style="color:#f87171">${d.msg_drift_discord_more.length}개</b> <span style="color:#9ca3af;font-size:11px">Discord 잉여 메시지 삭제 · ${d.msg_drift_discord_more.slice(0, 3).map(o => '#' + o.name + ' (+' + o.diff + ')').join(', ')}</span></div>`);
+      }
       sub.innerHTML =
-        'DB 에 등록된 <b>' + ctx.dbCount + '</b>개 채널 중 <b style="color:#f87171">' + ctx.missing.length + '</b>개가 Discord 에 없음.<br>' +
-        '<span style="color:#f59e0b;font-size:12.5px;display:inline-block;margin-top:6px">복구하면 DB 상태로 Discord 채널 재생성 · 안 하면 가동 취소</span>';
+        `총 <b style="color:#f87171">${d.total_issues || 0}건</b> 문제 발견. DB 가 단일 진실원이라 DB 기준으로 정렬됨.<br>` +
+        '<div style="margin-top:10px;text-align:left;font-size:12.5px;line-height:1.7">' + lines.join('') + '</div>' +
+        '<span style="color:#f59e0b;font-size:12px;display:inline-block;margin-top:8px">복구 안 하면 가동 취소</span>';
       dots.style.display = 'none';
       actions.style.display = 'flex';
-      progress.textContent = '누락: ' + ctx.missing.slice(0, 5).join(', ') + (ctx.missing.length > 5 ? ' 외 ' + (ctx.missing.length - 5) + '개' : '');
+      progress.textContent = '';
     } else if (phase === 'recovering') {
       emoji.textContent = '🔧';
       title.textContent = '디스코드 복구 중';
