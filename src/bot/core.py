@@ -523,7 +523,16 @@ async def ensure_channels(guild: discord.Guild):
         log_writer.system("Initial setup: mgr-dashboard ready")
     else:
         # 일반 실행: 전체 채널 보장
+        # CHANNEL_AGENT_MAP 에는 dm-* / mgr-* 만 있어서 internal-dm-*/internal-group-*/group-*
+        # 채널이 누락됨. DB channels 테이블 기반으로 보강 (QA 회귀: internal-dm-윤하나-서유나 Discord 누락).
         needed = set(CHANNEL_AGENT_MAP.keys()) | {CREATOR_CHANNEL, MGR_SYSTEM_LOG}
+        try:
+            for row in db.get_channel_overview():
+                ch = row["channel"]
+                if ch.startswith(("internal-", "group-", "dm-", "mgr-")):
+                    needed.add(ch)
+        except Exception:
+            pass
         existing = {ch.name: ch for ch in guild.text_channels}
 
         # 불필요 채널 삭제
