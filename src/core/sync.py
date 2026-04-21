@@ -43,6 +43,54 @@ def _get_category_for_channel(ch_name: str) -> str:
     return "glimi"
 
 
+def _build_name_order_map() -> dict[str, int]:
+    """에이전트 이름 → DB 등록 순번. 채널명 파싱해서 정렬 키 얻는 용도.
+    persona → mgr → creator 순으로 번호 매김 (creation order 의 근사)."""
+    try:
+        agents = db.list_agents()
+    except Exception:
+        return {}
+    order: dict[str, int] = {}
+    # type 우선순위: persona 먼저, mgr, creator 마지막
+    type_prio = {"persona": 0, "mgr": 1, "creator": 2}
+    sorted_agents = sorted(agents, key=lambda a: (type_prio.get(a["type"], 99), a["id"]))
+    for idx, a in enumerate(sorted_agents):
+        order[a["name"]] = idx
+    return order
+
+
+def _channel_sort_key(ch_name: str, name_order: dict[str, int]) -> tuple:
+    """채널 내부 정렬 키.
+    규칙:
+      - glimi-mgr: mgr-system-log → mgr-dashboard → mgr-creator
+      - glimi-dm: 에이전트 creation order (name_order)
+      - glimi-group: 채널명 알파벳
+      - glimi-internal-dm: 두 참여자의 order (min, max)
+      - glimi-internal-group: 채널명 알파벳
+    """
+    MGR_ORDER = ["mgr-system-log", "mgr-dashboard", "mgr-creator"]
+    BIG = 10_000  # unknown 이름은 맨 뒤
+    if ch_name in MGR_ORDER:
+        return (0, MGR_ORDER.index(ch_name))
+    if ch_name.startswith("dm-"):
+        name = ch_name[len("dm-"):]
+        return (0, name_order.get(name, BIG), name)
+    if ch_name.startswith("internal-dm-"):
+        rest = ch_name[len("internal-dm-"):]
+        # "A-B" 형태. 이름에 "-" 가 포함되지 않는다고 가정 (한글 이름).
+        parts = rest.split("-", 1)
+        if len(parts) == 2:
+            a, b = parts
+            oa = name_order.get(a, BIG)
+            ob = name_order.get(b, BIG)
+            return (0, min(oa, ob), max(oa, ob), rest)
+        return (0, BIG, rest)
+    if ch_name.startswith("internal-group-") or ch_name.startswith("group-"):
+        return (0, ch_name)
+    # 기타 (예: glimi-* 아닌 것) → 맨 뒤
+    return (1, ch_name)
+
+
 def _get_token() -> Optional[str]:
     env_path = community.get_community_dir() / ".env"
     if not env_path.exists():
@@ -252,17 +300,25 @@ async def sync_community(
                     except Exception as e:
                         result["errors"].append(f"생성 실패 ({ch_name}): {e}")
 
-            # mgr 채널 순서 정렬
-            mgr_cat = discord_lib.utils.get(guild.categories, name="glimi-mgr")
-            if mgr_cat:
-                for i, name in enumerate(MGR_ORDER):
-                    ch = surviving.get(name)
-                    if ch:
-                        try:
-                            await ch.move(beginning=True, offset=i)
-                            await asyncio.sleep(0.3)
-                        except Exception:
-                            pass
+            # 카테고리별 채널 정렬 — mgr 고정 순서 + dm 은 agent creation order + group/internal 알파벳.
+            # dry_run 에서도 실행: position 이동은 DB 영향 없고 Discord UI 상 정리만 영향.
+            _progress("카테고리 내부 채널 정렬 중...")
+            name_order = _build_name_order_map()
+            for cat in guild.categories:
+                if not cat.name.startswith("glimi"):
+                    continue
+                # 현재 이 카테고리의 채널들 (surviving 포함 + 방금 만들어진 것)
+                in_cat = [c for c in cat.text_channels]
+                # 정렬 키로 sort
+                in_cat.sort(key=lambda c: _channel_sort_key(c.name, name_order))
+                for i, ch in enumerate(in_cat):
+                    if ch.position == i:
+                        continue
+                    try:
+                        await ch.edit(position=i)
+                        await asyncio.sleep(0.2)
+                    except Exception:
+                        pass
 
             # ═══ 3. 빈 카테고리 정리 ═══
             _progress("빈 카테고리 정리 중...")
@@ -513,6 +569,184 @@ def run_sync(
     loop = asyncio.new_event_loop()
     try:
         return loop.run_until_complete(sync_community(on_progress, channels_filter, dry_run=dry_run))
+    finally:
+        loop.close()
+
+
+async def scan_community(
+    on_progress: Optional[Callable[[str], None]] = None,
+) -> dict:
+    """Discord 채널별 메시지 카운트만 집계 (content fetch 안 함).
+    Scan 버튼 전용 — 빠른 read-only diff. DB·Discord 변경 없음.
+    반환: {"ok": bool, "counts": {ch_name: int}, "total": int, "channels_scanned": int, "error": optional}
+    """
+    token = _get_token()
+    if not token:
+        return {"ok": False, "error": "토큰 미설정", "counts": {}, "total": 0, "channels_scanned": 0}
+
+    def _progress(msg: str):
+        log_writer.system(f"[Scan] {msg}")
+        if on_progress:
+            on_progress(msg)
+
+    counts: dict[str, int] = {}
+    result = {"ok": False, "counts": counts, "total": 0, "channels_scanned": 0, "error": None}
+
+    intents = discord_lib.Intents.default()
+    intents.guilds = True
+    intents.message_content = True
+    client = discord_lib.Client(intents=intents)
+
+    @client.event
+    async def on_ready():
+        try:
+            if not client.guilds:
+                result["error"] = "서버 없음"
+                await client.close()
+                return
+            guild = client.guilds[0]
+            _progress(f"서버 연결: {guild.name}")
+
+            glimi_cats = [c for c in guild.categories if c.name.startswith("glimi")]
+            total_channels = sum(len(c.text_channels) for c in glimi_cats)
+            _progress(f"스캔 대상: {total_channels}개 채널")
+
+            scanned = 0
+            for cat in glimi_cats:
+                for ch in cat.text_channels:
+                    cnt = 0
+                    try:
+                        async for _ in ch.history(limit=None):
+                            cnt += 1
+                    except discord_lib.Forbidden:
+                        _progress(f"  {ch.name}: 권한 없음 (스킵)")
+                        continue
+                    except Exception as e:
+                        _progress(f"  {ch.name}: 실패 ({e})")
+                        continue
+                    counts[ch.name] = cnt
+                    scanned += 1
+                    _progress(f"  {ch.name}: {cnt}건 ({scanned}/{total_channels})")
+
+            result["channels_scanned"] = scanned
+            result["total"] = sum(counts.values())
+            result["ok"] = True
+        finally:
+            await client.close()
+
+    try:
+        await asyncio.wait_for(client.start(token), timeout=180)
+    except asyncio.TimeoutError:
+        result["error"] = "스캔 타임아웃 (180s)"
+    except Exception as e:
+        result["error"] = str(e)
+        _sync_error_log(f"[Scan] 크래시: {e}\n{traceback.format_exc()}")
+
+    _progress(f"스캔 완료: 총 {result['total']}건 · {result['channels_scanned']}개 채널")
+    return result
+
+
+def run_scan(on_progress: Optional[Callable[[str], None]] = None) -> dict:
+    """scan_community 동기 래퍼 — TUI·web 공통."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(scan_community(on_progress))
+    finally:
+        loop.close()
+
+
+async def arrange_with_guild(guild, on_progress: Optional[Callable[[str], None]] = None) -> dict:
+    """이미 연결된 Discord guild 를 받아 카테고리·채널 순서 정렬 (토큰 재연결 X).
+    봇 on_ready 에서 이 함수를 직접 호출해 즉시 정렬 가능."""
+    def _progress(msg: str):
+        log_writer.system(f"[Arrange] {msg}")
+        if on_progress:
+            on_progress(msg)
+
+    result = {"ok": False, "moved": 0, "categories_reordered": 0, "channels_reordered": 0, "error": None}
+
+    try:
+        # 1) 카테고리 순서
+        existing_cats = {c.name: c for c in guild.categories}
+        for i, cat_name in enumerate(CATEGORY_ORDER):
+            cat = existing_cats.get(cat_name)
+            if cat and cat.position != i:
+                try:
+                    await cat.edit(position=i)
+                    result["categories_reordered"] += 1
+                    await asyncio.sleep(0.2)
+                except Exception as e:
+                    _progress(f"  카테고리 이동 실패 ({cat_name}): {e}")
+
+        # 2) 카테고리별 채널 정렬
+        name_order = _build_name_order_map()
+        for cat in guild.categories:
+            if not cat.name.startswith("glimi"):
+                continue
+            in_cat = list(cat.text_channels)
+            in_cat.sort(key=lambda c: _channel_sort_key(c.name, name_order))
+            for i, ch in enumerate(in_cat):
+                if ch.position == i:
+                    continue
+                try:
+                    await ch.edit(position=i)
+                    result["channels_reordered"] += 1
+                    await asyncio.sleep(0.2)
+                except Exception:
+                    pass
+            if in_cat:
+                _progress(f"  {cat.name}: {len(in_cat)}개 채널")
+
+        result["moved"] = result["categories_reordered"] + result["channels_reordered"]
+        result["ok"] = True
+        _progress(f"완료 — 카테고리 {result['categories_reordered']}개, 채널 {result['channels_reordered']}개 이동")
+    except Exception as e:
+        result["error"] = str(e)
+        _sync_error_log(f"[Arrange] 크래시: {e}\n{traceback.format_exc()}")
+
+    return result
+
+
+async def arrange_community(on_progress: Optional[Callable[[str], None]] = None) -> dict:
+    """봇이 꺼진 상태에서 대시보드가 직접 호출하는 경로 — 자체 Discord client 사용."""
+    token = _get_token()
+    if not token:
+        return {"ok": False, "error": "토큰 미설정", "moved": 0}
+
+    result = {"ok": False, "moved": 0, "categories_reordered": 0, "channels_reordered": 0, "error": None}
+
+    intents = discord_lib.Intents.default()
+    intents.guilds = True
+    client = discord_lib.Client(intents=intents)
+
+    @client.event
+    async def on_ready():
+        try:
+            if not client.guilds:
+                result["error"] = "서버 없음"
+                await client.close()
+                return
+            guild = client.guilds[0]
+            r = await arrange_with_guild(guild, on_progress)
+            result.update(r)
+        finally:
+            await client.close()
+
+    try:
+        await asyncio.wait_for(client.start(token), timeout=60)
+    except asyncio.TimeoutError:
+        result["error"] = "타임아웃 (60s)"
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+def run_arrange(on_progress: Optional[Callable[[str], None]] = None) -> dict:
+    """arrange_community 동기 래퍼."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(arrange_community(on_progress))
     finally:
         loop.close()
 

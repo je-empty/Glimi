@@ -44,6 +44,11 @@ def _bot_alive_for_current_community() -> bool:
     `ps ax` 로 discord_bot 프로세스 전체 검사는 다른 커뮤니티 봇까지 잡아
     다른 커뮤니티 조회 시 오탐이 발생 → 현재 커뮤니티의 system.log mtime
     기준으로 판정 (log_writer가 주기적으로 씀 → 활성 봇은 mtime이 120s 이내).
+
+    대시보드가 "Stop Server" 로 봇을 죽였을 때 log mtime 이 아직 fresh 해서
+    120초간 Running 으로 남는 문제 → stop marker 파일 (.bot-stopped) 을 확인:
+    marker 가 있고 log mtime 보다 newer 면 stopped. 봇이 다시 뜨면 새 log 쓰면서
+    log.mtime > marker.mtime 이 돼 자동으로 alive 로 복귀.
     """
     import time as _t
     from pathlib import Path as _Path
@@ -51,10 +56,17 @@ def _bot_alive_for_current_community() -> bool:
         cid = community.get_community_id()
         if not cid:
             return False
-        # COMMUNITIES_DIR / cid / logs / system.log
         log_path = community.COMMUNITIES_DIR / cid / "logs" / "system.log"
-        if log_path.exists():
-            return (_t.time() - log_path.stat().st_mtime) < 120
+        log_mtime = log_path.stat().st_mtime if log_path.exists() else 0.0
+
+        # Stop marker: dashboard 가 봇 kill 직후 touch. log.mtime 보다 최신이면 stopped.
+        stop_marker = _Path(__file__).resolve().parent.parent.parent / "dev" / ".bot-stopped"
+        if stop_marker.exists():
+            if stop_marker.stat().st_mtime >= log_mtime:
+                return False
+
+        if log_mtime and (_t.time() - log_mtime) < 120:
+            return True
     except Exception:
         pass
     # fallback: process 기반 (log 파일이 아직 없거나 예외 시)
@@ -441,8 +453,17 @@ def human_ago(iso_ts: str) -> str:
         dt = datetime.fromisoformat(iso_ts)
     except Exception:
         return ""
-    # SQLite CURRENT_TIMESTAMP는 UTC. datetime.now()는 local → 시간대 mismatch 발생.
-    secs = (datetime.utcnow() - dt).total_seconds()
+    # 타임존 정규화:
+    #  - aware datetime (신규 UTC 데이터 or SQLite CURRENT_TIMESTAMP 에 +00 추가된 경우) → 그대로 UTC 비교
+    #  - naive (레거시 datetime.now() KST 또는 SQLite CURRENT_TIMESTAMP 둘 다 naive) → 기존 관례상 KST 로 가정
+    from datetime import timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+    if dt.tzinfo is None:
+        # 레거시 호환: naive 는 KST 로 간주 후 UTC 변환
+        dt = dt.replace(tzinfo=KST)
+    dt_utc = dt.astimezone(timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    secs = (now_utc - dt_utc).total_seconds()
     if secs < 0:
         return "방금"
     if secs < 60:

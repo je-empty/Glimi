@@ -5,10 +5,30 @@
 
 **한 줄 피칭**: AI 친구들이 오너 없이도 자기들끼리 살아가는 커뮤니티. 오너가 돌아오면 그사이 무슨 일이 있었는지 알려준다.
 
+## 🚨 개발 세션 필독
+**`docs/dev_guide.md` 를 먼저 읽어라.** 타깃·설계 락인·현재 스프린트·파일 참조 맵·금지 사항이 정리되어 있다.
+
+## 🔌 아키텍처 원칙 — Discord 는 "인터페이스 어댑터" 이지 코어 아님
+
+**현재 디스코드를 쓰는 이유는 채팅 UI 를 자체 구현하는 공수가 크기 때문.** 최종 목표는 웹 대시보드(·추후 앱)에 자체 채팅을 넣고 디스코드를 떼는 것. 따라서:
+
+- **코어 로직 (에이전트 두뇌·메모리·감정·씬·도구 실행) 은 디스코드를 몰라야 한다.** 메시지 형태·채널 개념·사용자 식별은 플랫폼 중립적 타입으로 표현.
+- **디스코드는 "출구" 레이어.** `src/bot/` = Discord 어댑터. 나중에 `src/adapters/telegram/`, `src/adapters/web_chat/` 이 붙을 자리.
+- **새 기능 설계 시 질문**: "이 로직을 Telegram·자체웹채팅에서도 그대로 재사용할 수 있나?" NO 면 그 기능은 잘못된 레이어에 있는 것.
+- **금지**: `src/core/*` 에서 `import discord`. `Webhook`, `TextChannel`, `guild` 등 Discord 타입이 코어 시그니처에 새는 것.
+- **허용 (과도기)**: `src/core/sync.py` 처럼 본질이 "Discord↔DB 동기화" 인 모듈은 discord import 해도 됨 — 이건 어댑터 책임이지 코어 비즈니스 로직이 아님. 단, 이런 모듈은 추후 `src/adapters/discord/sync.py` 로 이동 예정.
+- **추상화 목표**: 메시지 송신은 `outbox.send(channel_id, speaker, text, ...)` 추상 인터페이스를 두고, 디스코드 webhook / 텔레그램 API / 자체 웹 WebSocket 이 각자 구현하는 구조.
+
+현재 현황 + 분리 공수 추정은 **`analysis/platform_decoupling_review.md`** 참조 (없으면 해당 세션에서 새로 작성).
+
 ## 전략 로드맵 (내부, gitignored)
 - `analysis/zeta_vs_glimi_analysis.md` — 제타 경쟁 분석 + 갭 매트릭스
-- `analysis/glimi_roadmap_todo.md` — Phase 1-4 로드맵 + 체크박스
-- **현재 우선순위**: P2-1 유저 hijack 가드 → P1-2 오너 부재 시뮬레이션 → P1-5 기억 일관성 → P1-3 자동 사건 엔진
+- `analysis/glimi_roadmap_todo.md` — Phase 0-4 로드맵 + 체크박스 + 제거 리스트
+- `analysis/business_strategy.md` — 사업 전략 + 단위경제
+- `analysis/pending_decisions.md` — 확정·보류 결정 체크리스트
+- **타깃**: 20대 초반 여성 감성 유저 (B 세그먼트, 장기관계·힐링·케어)
+- **현재 스프린트**: **Phase 0 — 감정 Application Layer** (EmotionSupervisor / 프롬프트 감정 강제 / 케어 루프 / 대시보드 감정 뷰)
+- **다음**: P1 씬 다각화 (birthday > healing > milestone) → P1-2 오너 부재 시뮬레이션 → P1-5 기억 일관성
 
 ## 기술 스택
 - Python 3.11+ / discord.py

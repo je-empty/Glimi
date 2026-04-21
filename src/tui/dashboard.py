@@ -2209,7 +2209,6 @@ class DashboardScreen(Screen):
     @work(thread=True)
     def _do_sync_scan(self):
         import time
-        import asyncio as _aio
 
         def on_progress(msg):
             try:
@@ -2225,43 +2224,15 @@ class DashboardScreen(Screen):
                 self._stop_bot()
                 time.sleep(2)
 
-            from src.core.sync import _get_token, _fetch_all_messages
-            import discord as discord_lib
-
-            token = _get_token()
-            scan_result = {}
-
-            async def _scan():
-                intents = discord_lib.Intents.default()
-                intents.guilds = True
-                intents.message_content = True
-                client = discord_lib.Client(intents=intents)
-
-                @client.event
-                async def on_ready():
-                    guild = client.guilds[0]
-                    on_progress(f"서버: {guild.name}")
-                    for cat in guild.categories:
-                        if cat.name.startswith("glimi"):
-                            for ch in cat.text_channels:
-                                count = 0
-                                try:
-                                    async for _ in ch.history(limit=None):
-                                        count += 1
-                                except Exception:
-                                    pass
-                                scan_result[ch.name] = count
-                                on_progress(f"  {ch.name}: {count}건")
-                    await client.close()
-
-                await _aio.wait_for(client.start(token), timeout=120)
-
-            loop = _aio.new_event_loop()
-            loop.run_until_complete(_scan())
-            loop.close()
+            # 공통 로직 — web 대시보드와 동일한 scan 함수
+            from src.core.sync import run_scan
+            result = run_scan(on_progress=on_progress)
+            scan_result = result.get("counts", {}) if result.get("ok") else {}
+            if not result.get("ok"):
+                err = result.get("error") or "알 수 없는 오류"
+                on_progress(f"스캔 실패: {err}")
 
             self._sync_scan_data = scan_result
-            on_progress(f"스캔 완료: {sum(scan_result.values())}건")
 
         except Exception as e:
             log_writer.error(f"[Sync Scan] {e}", e)
