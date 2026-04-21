@@ -588,7 +588,19 @@ async def scan_community(
             on_progress(msg)
 
     counts: dict[str, int] = {}
-    result = {"ok": False, "counts": counts, "total": 0, "channels_scanned": 0, "error": None}
+    discord_channels: list[dict] = []
+    discord_categories: list[str] = []
+    orphan_outside: list[dict] = []  # glimi-* 카테고리 밖에 있는 mgr-/dm-/group-/internal- 패턴 채널
+    result = {
+        "ok": False,
+        "counts": counts,
+        "discord_channels": discord_channels,
+        "discord_categories": discord_categories,
+        "orphan_outside": orphan_outside,
+        "total": 0,
+        "channels_scanned": 0,
+        "error": None,
+    }
 
     intents = discord_lib.Intents.default()
     intents.guilds = True
@@ -606,8 +618,10 @@ async def scan_community(
             _progress(f"서버 연결: {guild.name}")
 
             glimi_cats = [c for c in guild.categories if c.name.startswith("glimi")]
+            for c in glimi_cats:
+                discord_categories.append(c.name)
             total_channels = sum(len(c.text_channels) for c in glimi_cats)
-            _progress(f"스캔 대상: {total_channels}개 채널")
+            _progress(f"스캔 대상: {total_channels}개 채널 · 카테고리 {len(glimi_cats)}개")
 
             scanned = 0
             for cat in glimi_cats:
@@ -618,13 +632,37 @@ async def scan_community(
                             cnt += 1
                     except discord_lib.Forbidden:
                         _progress(f"  {ch.name}: 권한 없음 (스킵)")
+                        discord_channels.append({
+                            "name": ch.name, "category": cat.name,
+                            "msg_count": None, "error": "forbidden",
+                        })
                         continue
                     except Exception as e:
                         _progress(f"  {ch.name}: 실패 ({e})")
+                        discord_channels.append({
+                            "name": ch.name, "category": cat.name,
+                            "msg_count": None, "error": str(e),
+                        })
                         continue
                     counts[ch.name] = cnt
+                    discord_channels.append({
+                        "name": ch.name, "category": cat.name, "msg_count": cnt,
+                    })
                     scanned += 1
-                    _progress(f"  {ch.name}: {cnt}건 ({scanned}/{total_channels})")
+                    _progress(f"  {ch.name} [{cat.name}]: {cnt}건 ({scanned}/{total_channels})")
+
+            # orphan 채널 — glimi-* 카테고리 밖에 있는 패턴 매칭 채널 (mgr-/dm-/group-/internal-)
+            orphan_patterns = ("mgr-", "dm-", "group-", "internal-")
+            for ch in guild.text_channels:
+                if not isinstance(ch, discord_lib.TextChannel):
+                    continue
+                if ch.category and ch.category.name.startswith("glimi"):
+                    continue
+                if not any(ch.name.startswith(p) for p in orphan_patterns):
+                    continue
+                cat_name = ch.category.name if ch.category else "(no category)"
+                orphan_outside.append({"name": ch.name, "category": cat_name})
+                _progress(f"  ⚠ orphan: #{ch.name} [{cat_name}] (glimi 카테고리 밖)")
 
             result["channels_scanned"] = scanned
             result["total"] = sum(counts.values())
