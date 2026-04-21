@@ -273,6 +273,55 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
         text = '\n'.join(out_lines)
         text = re.sub(r'\n{3,}', '\n\n', text).strip()
 
+        # P2-1 Hijack 가드 — persona 가 오너(빈이/심재빈)의 대사·행동·내심을 대신 서술하는 것 방지.
+        # 제타 비판 1번 정면 대응. 예시:
+        #   ✗ "빈이는 웃으며 말했다" (오너 행동 서술)
+        #   ✗ '빈이: "응 알겠어"' (오너 대사 서술 — 대화 시뮬레이션)
+        #   ✗ "빈이가 속으로 '아 귀찮네' 했을 거야" (오너 내심 서술)
+        try:
+            from src.core.profile import get_user_profile
+            oc = get_user_name() or ""
+            nick = ""
+            try:
+                _up = get_user_profile() or {}
+                _pers = _up.get("personality")
+                if isinstance(_pers, str):
+                    import json as _hj
+                    try: _pers = _hj.loads(_pers)
+                    except Exception: _pers = {}
+                nick = (_pers or {}).get("nickname", "") if isinstance(_pers, dict) else ""
+            except Exception:
+                pass
+        except Exception:
+            oc = ""
+            nick = ""
+        owner_names = [n for n in [oc, nick, "빈이", "재빈"] if n]
+        if owner_names:
+            # 패턴 1: "빈이: ..." / "빈이 ": 오너 대사 시뮬레이션
+            dialog_pat = re.compile(
+                r'^.*?(?:' + '|'.join(re.escape(n) for n in owner_names) + r')\s*[:：]\s*["\'"].*$',
+                re.MULTILINE,
+            )
+            # 패턴 2: "빈이는/가/이 X했다/말했다/웃었다..." 오너 행동 서술 (3인칭 서술)
+            action_pat = re.compile(
+                r'^.*?(?:' + '|'.join(re.escape(n) for n in owner_names) + r')(?:이|가|는|은)\s[^\n]*'
+                r'(?:했다|했어|말했|웃었|끄덕였|화냈|대답했|속으로|생각했|느꼈)[^\n]*$',
+                re.MULTILINE,
+            )
+            lines_out = []
+            dropped = 0
+            for ln in text.split('\n'):
+                if dialog_pat.match(ln) or action_pat.match(ln):
+                    dropped += 1
+                    continue
+                lines_out.append(ln)
+            if dropped:
+                log_writer.system(
+                    f"[hijack guard] {agent_id} 응답에서 오너 서술 {dropped}건 drop"
+                )
+            text = '\n'.join(lines_out)
+            text = re.sub(r'\n{3,}', '\n\n', text).strip()
+
         # LLM assistant drift 패턴 — persona 가 스토리텔러/AI 모드로 전환되는 문장 drop.
         # QA 회귀: 이소율이 "혹시 빈이를 만나는 장면으로 넘어가고 싶으신가요?", 이예담이
         # "대화가 자연스럽게 끝났네요. 이소율과 이예담이 인사하면서..." 식 3인칭 서술.
