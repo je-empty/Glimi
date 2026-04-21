@@ -33,6 +33,20 @@ async def home(request: Request):
     )
 
 
+@router.get("/community/new", response_class=HTMLResponse)
+async def new_community(
+    request: Request,
+    user: dict = Depends(require_user),
+):
+    """새 커뮤니티 생성 위저드 — 4 스텝 페이지.
+    /community/{community_id} 보다 먼저 등록되어야 함 (path param 충돌 방지)."""
+    return templates.env.TemplateResponse(
+        request,
+        "new_community.html",
+        {"user": user},
+    )
+
+
 @router.get("/community/{community_id}", response_class=HTMLResponse)
 async def community_dashboard(
     request: Request,
