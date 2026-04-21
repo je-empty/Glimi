@@ -22,7 +22,7 @@ from src.community import (
 from .. import accounts
 from ..auth import require_user
 from ..community_ctx import run_in_community
-from ..discord_verify import verify_token_sync
+from ..discord_verify import verify_token_sync, wipe_glimi_channels_sync
 from ..supervisor import supervisor
 
 router = APIRouter(prefix="/api/communities")
@@ -259,8 +259,15 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     # ── 1. community 디렉터리 + 기본 파일 ──
     init_community(data.id)
 
-    # clean-channels 플래그 — 봇 첫 기동 시 기존 glimi-* 채널 삭제
+    # ── 1a. (옵션) 기존 Discord glimi-* 채널·카테고리 즉시 삭제 ──
+    wipe_summary = None
     if data.clean_existing_channels:
+        from fastapi.concurrency import run_in_threadpool
+        wipe_summary = await run_in_threadpool(wipe_glimi_channels_sync, data.token.strip(), 30.0)
+        if not wipe_summary.get("ok"):
+            # 삭제 실패해도 진행하되 경고 수집
+            wipe_summary.setdefault("errors", []).append("일부 실패 — 봇 첫 기동 시 잔여분 자동 정리됨")
+        # 잔여분 대비 .clean-channels 플래그도 남겨둠 — orphan 채널 추후 정리
         log_dir = COMMUNITIES_DIR / data.id / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         (log_dir / ".clean-channels").touch()
@@ -299,21 +306,49 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
         if target:
             accounts.grant_community(target["id"], data.id)
 
-    return {"ok": True, "id": data.id}
+    return {
+        "ok": True,
+        "id": data.id,
+        "wipe": wipe_summary,
+    }
 
 
 @router.delete("/{community_id}")
-async def delete(community_id: str, user: dict = Depends(require_user)):
+async def delete(
+    community_id: str,
+    wipe_discord: bool = False,
+    user: dict = Depends(require_user),
+):
+    """커뮤니티 삭제. wipe_discord=true 면 .env 토큰으로 디스코드 channels 까지 정리."""
     if not accounts.user_can_access(user, community_id):
         raise HTTPException(403, "no access")
     if supervisor.status(community_id).get("running"):
         supervisor.stop(community_id)
 
     cdir = COMMUNITIES_DIR / community_id
+    wipe_summary = None
+
+    # ── 1. 옵션 — Discord 채널 정리 (dir 지우기 전에 .env 에서 토큰 읽기) ──
+    if wipe_discord and cdir.exists():
+        env_file = cdir / ".env"
+        token = ""
+        if env_file.exists():
+            for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if line.startswith("DISCORD_BOT_TOKEN="):
+                    token = line.split("=", 1)[1].strip().strip("'\"")
+                    break
+        if token:
+            from fastapi.concurrency import run_in_threadpool
+            wipe_summary = await run_in_threadpool(wipe_glimi_channels_sync, token, 30.0)
+        else:
+            wipe_summary = {"ok": False, "errors": [".env 에 DISCORD_BOT_TOKEN 없음"]}
+
+    # ── 2. 디렉터리 삭제 ──
     if cdir.exists():
         shutil.rmtree(cdir)
 
-    from src.community import REGISTRY_PATH
+    # ── 3. registry 정리 ──
     if REGISTRY_PATH.exists():
         content = REGISTRY_PATH.read_text()
         import re
@@ -321,8 +356,15 @@ async def delete(community_id: str, user: dict = Depends(require_user)):
             rf'\n?\[community\.{re.escape(community_id)}\][^\[]*',
             re.MULTILINE,
         )
-        REGISTRY_PATH.write_text(pattern.sub("", content))
-    return {"ok": True}
+        content = pattern.sub("", content)
+        pattern2 = re.compile(
+            rf'\n?\[communities\.{re.escape(community_id)}\][^\[]*',
+            re.MULTILINE,
+        )
+        content = pattern2.sub("", content)
+        REGISTRY_PATH.write_text(content)
+
+    return {"ok": True, "wipe": wipe_summary}
 
 
 @router.post("/{community_id}/start")

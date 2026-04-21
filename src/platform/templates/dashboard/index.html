@@ -187,6 +187,25 @@
 <div class="loading-bar"></div>
 <div class="toast" id="toast"></div>
 
+<!-- 튜토리얼 준비 중 전체 딤 오버레이 — Start 직후 유나가 인사 메시지 보낼 때까지 UI 잠금 -->
+<div id="tutorial-gate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);backdrop-filter:blur(6px);z-index:2147483641;align-items:center;justify-content:center;padding:30px">
+  <div style="max-width:460px;text-align:center;color:#fff">
+    <div style="font-size:64px;margin-bottom:20px;animation:tg-bounce 1.4s ease-in-out infinite">🧸</div>
+    <div id="tg-title" style="font-size:22px;font-weight:700;letter-spacing:-0.3px;margin-bottom:10px">유나를 부르는 중...</div>
+    <div id="tg-sub" style="font-size:14px;color:#d1d5db;line-height:1.7">머리 빗고 옷 매무새 다듬는 중... 첫인상이 중요하니까.<br><span style="color:#f59e0b;font-size:13px;display:inline-block;margin-top:6px">⚠ 디스코드는 잠시 거들떠보지 마 — 얘가 꼬임</span></div>
+    <div style="margin-top:24px;display:flex;gap:8px;justify-content:center;align-items:center">
+      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0s"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0.2s"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0.4s"></div>
+    </div>
+    <div id="tg-progress" style="margin-top:28px;font-size:11.5px;color:#9ca3af;font-family:'JetBrains Mono',monospace"></div>
+  </div>
+</div>
+<style>
+  @keyframes tg-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+  @keyframes tg-dot { 0%,80%,100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+</style>
+
 <!-- 서버에서 community 를 JS 에 주입 (URL 쿼리 의존 제거) -->
 <script>
   window.__GLIMI_COMMUNITY__ = {{ community_id|tojson }};
@@ -233,8 +252,96 @@
       if (!r.ok) { alert('실패: ' + await r.text()); return; }
       setTimeout(refresh, 500);
       setTimeout(refresh, 2500);
+      // 첫 Start 면 튜토리얼 게이트 띄우기
+      if (action === 'start' || action === 'restart') {
+        _maybeShowTutorialGate();
+      }
     } catch (e) { alert(e); }
   };
+
+  // ── 튜토리얼 준비 게이트 ────────────────────────
+  // 신규 커뮤니티 (agents=0 or tutorial_phase != complete) 에서 Start 눌렀을 때
+  // 유나가 디스코드에 인사 메시지 다 보내기 전까지 UI 잠금.
+  let _gateActive = false;
+  async function _maybeShowTutorialGate() {
+    // 현재 상태 확인 — 이미 에이전트 있고 phase=complete 면 게이트 불필요
+    try {
+      const r = await fetch('/api/snapshot?community=' + encodeURIComponent(CID));
+      if (!r.ok) return;
+      const snap = await r.json();
+      const agentCount = (snap.agents || []).length;
+      const phase = (snap.meta || {}).tutorial_phase || '';
+      if (agentCount > 0 && phase === 'complete') return;
+    } catch (e) {}
+    _showTutorialGate();
+  }
+  function _showTutorialGate() {
+    if (_gateActive) return;
+    _gateActive = true;
+    document.getElementById('tutorial-gate').style.display = 'flex';
+    _pollTutorialProgress();
+  }
+  function _hideTutorialGate() {
+    _gateActive = false;
+    document.getElementById('tutorial-gate').style.display = 'none';
+  }
+  async function _pollTutorialProgress() {
+    if (!_gateActive) return;
+    const prog = document.getElementById('tg-progress');
+    try {
+      const r = await fetch('/api/snapshot?community=' + encodeURIComponent(CID));
+      if (r.ok) {
+        const snap = await r.json();
+        const bot = snap.bot || {};
+        const agents = snap.agents || [];
+        const meta = snap.meta || {};
+        const phase = meta.tutorial_phase || '(대기)';
+        const msgs = (snap.recent_messages || []).length;
+
+        if (!bot.alive) {
+          prog.textContent = '봇 기동 대기 중... · phase: ' + phase;
+        } else if (agents.length === 0) {
+          prog.textContent = '봇 준비 중... · 에이전트 0명';
+        } else {
+          prog.textContent = 'agents=' + agents.length + ' · msgs=' + msgs + ' · phase=' + phase;
+        }
+
+        // 게이트 해제 조건:
+        //   (A) tutorial_phase === complete (튜토리얼 완료)
+        //   (B) 유나(mgr)가 존재하고 최근 메시지가 5개 이상 누적 (유나가 인사 보냄)
+        const hasMgr = agents.some(a => a.type === 'mgr');
+        if (phase === 'complete' || (hasMgr && msgs >= 5)) {
+          const title = document.getElementById('tg-title');
+          const sub = document.getElementById('tg-sub');
+          title.textContent = '✓ 준비 완료';
+          sub.textContent = '유나 소환 끝! 대시보드 사용 가능.';
+          setTimeout(_hideTutorialGate, 1200);
+          return;
+        }
+      }
+    } catch (e) {}
+    setTimeout(_pollTutorialProgress, 2500);
+  }
+
+  // 페이지 로드 시점에 이미 게이트 조건이면 띄움 (예: Start 후 새로고침 한 경우)
+  (async function () {
+    try {
+      const r = await fetch('/api/communities/' + CID + '/status');
+      if (!r.ok) return;
+      const s = await r.json();
+      if (!s.running) return;
+      const snap = await fetch('/api/snapshot?community=' + encodeURIComponent(CID)).then(x => x.json()).catch(() => null);
+      if (!snap) return;
+      const phase = (snap.meta || {}).tutorial_phase || '';
+      const agentCount = (snap.agents || []).length;
+      const hasMgr = (snap.agents || []).some(a => a.type === 'mgr');
+      const msgs = (snap.recent_messages || []).length;
+      // 봇 켜져있고 아직 튜토리얼 진행 중이면 게이트
+      if (phase !== 'complete' && !(hasMgr && msgs >= 5)) {
+        _showTutorialGate();
+      }
+    } catch (e) {}
+  })();
   refresh();
   setInterval(refresh, 3000);
 })();
