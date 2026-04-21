@@ -292,11 +292,20 @@
       let skipScan = agents.length === 0;
 
       if (!skipScan) {
-        const scanRes = await fetch('/api/action/scan_discord?community=' + encodeURIComponent(CID), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        }).then(r => r.json()).catch(e => ({ ok: false, error: String(e) }));
+        // Sync 탭이 방금 검증한 상태가 있으면 그대로 재사용 (단일 진실원) — 가동 직전
+        // 중복 scan 으로 sync 탭과 엇갈린 판정 나는 문제 방지. 없을 때만 fresh scan.
+        // _lastScanResult 는 dashboard.js 의 script-scope let — 같은 페이지 상 스크립트라 참조 가능.
+        let scanRes;
+        const cached = (typeof _lastScanResult !== 'undefined') ? _lastScanResult : null;
+        if (cached) {
+          scanRes = { ok: true, result: cached };
+        } else {
+          scanRes = await fetch('/api/action/scan_discord?community=' + encodeURIComponent(CID), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          }).then(r => r.json()).catch(e => ({ ok: false, error: String(e) }));
+        }
 
         // Sync 탭의 renderScanTable + 자동선택 로직과 **동일 계산**:
         //   allChs = keys(counts) ∪ keys(db_counts)
@@ -377,30 +386,63 @@
     } else if (phase === 'damaged') {
       emoji.textContent = '⚠️';
       title.textContent = '디스코드 손상 감지';
-      const rows = ctx.rows || [];
-      // 손상 유형 분류 (Sync 탭과 동일 기준)
-      const missing = rows.filter(r => r.discord === 0).map(r => r.ch);         // DB 있고 Discord 없음
-      const orphan = rows.filter(r => r.db === 0).map(r => r.ch);               // Discord 있고 DB 없음
-      const driftDbMore = rows.filter(r => r.db > 0 && r.discord > 0 && r.diff > 0);
-      const driftDiscMore = rows.filter(r => r.db > 0 && r.discord > 0 && r.diff < 0);
+      const rows = (ctx.rows || []).slice().sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
 
-      const lines = [];
-      if (missing.length) {
-        lines.push(`<div>❌ 누락 채널 <b style="color:#f87171">${missing.length}개</b> <span style="color:#9ca3af;font-size:11px">${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` 외 ${missing.length - 5}개` : ''}</span></div>`);
-      }
-      if (orphan.length) {
-        lines.push(`<div>👻 잉여 채널 <b style="color:#f87171">${orphan.length}개</b> <span style="color:#9ca3af;font-size:11px">DB 에 없음 → 삭제됨 · ${orphan.slice(0, 5).join(', ')}</span></div>`);
-      }
-      if (driftDbMore.length) {
-        lines.push(`<div>📤 DB > Discord <b style="color:#f87171">${driftDbMore.length}개</b> <span style="color:#9ca3af;font-size:11px">${driftDbMore.slice(0, 3).map(r => '#' + r.ch + ' (+' + r.diff + ')').join(', ')}</span></div>`);
-      }
-      if (driftDiscMore.length) {
-        lines.push(`<div>📥 Discord > DB <b style="color:#f87171">${driftDiscMore.length}개</b> <span style="color:#9ca3af;font-size:11px">${driftDiscMore.slice(0, 3).map(r => '#' + r.ch + ' (+' + (-r.diff) + ')').join(', ')}</span></div>`);
-      }
+      // Sync 탭 _chDiffInfo 와 동일 문구 + 색 매핑
+      const statusFor = (r) => {
+        if (r.diff > 0) return { label: `⬆ ${r.diff}건 Discord 누락 → 복원`, color: '#fbbf24' };
+        if (r.diff < 0) return { label: `⬇ ${-r.diff}건 Discord 초과 → 삭제`, color: '#f87171' };
+        return { label: '✓ 동기화됨', color: '#9ca3af' };
+      };
+
+      const totalDB = rows.reduce((s, r) => s + r.db, 0);
+      const totalDC = rows.reduce((s, r) => s + r.discord, 0);
+      const needUp = rows.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0);
+      const needDown = rows.filter(r => r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
+
+      const esc = (s) => String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+      ));
+
+      const summary = `
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;margin-bottom:10px;font-size:12px;color:#e5e7eb">
+          <div><span style="color:#9ca3af">DB:</span> <b>${totalDB.toLocaleString()}</b></div>
+          <div><span style="color:#9ca3af">Discord:</span> <b>${totalDC.toLocaleString()}</b></div>
+          ${needUp > 0 ? `<div style="color:#fbbf24">⬆ ${needUp.toLocaleString()}건 복원 예정</div>` : ''}
+          ${needDown > 0 ? `<div style="color:#f87171">⬇ ${needDown.toLocaleString()}건 삭제 예정</div>` : ''}
+          <div style="flex:1"></div>
+          <div style="color:#9ca3af">${rows.length}개 채널 영향</div>
+        </div>`;
+
+      const tableRows = rows.map(r => {
+        const st = statusFor(r);
+        return `
+          <tr style="border-top:1px solid rgba(255,255,255,0.08)">
+            <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#e5e7eb">#${esc(r.ch)}</td>
+            <td style="padding:6px 10px;text-align:right;color:#9ca3af">${r.db}</td>
+            <td style="padding:6px 10px;text-align:right;color:#9ca3af">${r.discord}</td>
+            <td style="padding:6px 12px;color:${st.color}">${st.label}</td>
+          </tr>`;
+      }).join('');
+
+      const table = `
+        <div style="max-height:240px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:8px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="background:rgba(255,255,255,0.05);position:sticky;top:0">
+              <tr>
+                <th style="text-align:left;padding:8px 10px;font-weight:600;color:#9ca3af">채널</th>
+                <th style="text-align:right;padding:8px 10px;font-weight:600;color:#9ca3af;width:70px">DB</th>
+                <th style="text-align:right;padding:8px 10px;font-weight:600;color:#9ca3af;width:70px">Discord</th>
+                <th style="text-align:left;padding:8px 12px;font-weight:600;color:#9ca3af">상태</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>`;
+
       sub.innerHTML =
-        `총 <b style="color:#f87171">${rows.length}개 채널</b> 싱크 필요. DB 기준으로 복구됨.<br>` +
-        '<div style="margin-top:10px;text-align:left;font-size:12.5px;line-height:1.7">' + lines.join('') + '</div>' +
-        '<span style="color:#f59e0b;font-size:12px;display:inline-block;margin-top:8px">복구 안 하면 가동 취소</span>';
+        '<div style="text-align:left">' + summary + table + '</div>' +
+        '<div style="color:#f59e0b;font-size:12px;margin-top:10px;text-align:center">DB 기준으로 복구. 복구 안 하면 가동 취소.</div>';
       dots.style.display = 'none';
       actions.style.display = 'flex';
       progress.textContent = '';
