@@ -4384,9 +4384,20 @@ def _serve_avatar(handler, path):
     # content-type
     ext = os.path.splitext(target_path)[1].lower().lstrip(".")
     ctype = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}.get(ext, "application/octet-stream")
+    # ETag for 304 Not Modified — 같은 이미지 재로드 시 bytes 전송 없이 브라우저 캐시 유지.
+    # 모바일에서 dashboard tick 마다 innerHTML 재생성 → <img> 재파싱되던 flicker 완화.
+    import hashlib as _hl
+    etag = '"' + _hl.md5(data).hexdigest()[:16] + '"'
+    if handler.headers.get("If-None-Match") == etag:
+        handler.send_response(304)
+        handler.send_header("ETag", etag)
+        handler.send_header("Cache-Control", "public, max-age=3600")
+        handler.end_headers()
+        return
     handler.send_response(200)
     handler.send_header("Content-Type", ctype)
-    handler.send_header("Cache-Control", "public, max-age=300")
+    handler.send_header("Cache-Control", "public, max-age=3600")
+    handler.send_header("ETag", etag)
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)
