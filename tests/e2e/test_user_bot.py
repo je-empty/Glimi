@@ -332,11 +332,16 @@ class TestUserBot(discord.Client):
                         try:
                             await asyncio.wait_for(self._response_event.wait(), timeout=THINKING_GRACE)
                         except asyncio.TimeoutError:
-                            print(f"[TestUser] 추가 대기 후도 무응답 — 종료")
-                            break
+                            # 여기서도 무응답 — mission 기반 선제 발화로 재시동 시도
+                            if not await self._proactive_reboot("thinking 대기도 timeout"):
+                                print("[TestUser] 추가 대기 후도 무응답 — 종료")
+                                break
                     else:
-                        print(f"[TestUser] 에이전트 응답 타임아웃 ({IDLE_TIMEOUT}초) — 추론 플래그 없음")
-                        break
+                        # mission 미완 상태 + 봇 idle 이면 재빈이 다음 주제 선제 꺼냄.
+                        # 이전엔 즉시 break — persona 1명만 만들고 cycle 조기 종료 회귀.
+                        if not await self._proactive_reboot(f"idle {IDLE_TIMEOUT}초"):
+                            print(f"[TestUser] 에이전트 응답 타임아웃 ({IDLE_TIMEOUT}초) — 선제 재시동 실패, 종료")
+                            break
 
                 self.waiting_for_response = False
 
@@ -588,6 +593,63 @@ class TestUserBot(discord.Client):
                 "role": "user", "name": _QA_NAME, "text": text, "channel": ch_name,
             })
             print(f"[#{ch_name}] [{_QA_NAME}] {text}")
+
+    async def _proactive_reboot(self, reason: str) -> bool:
+        """에이전트 idle + mission 미완 시 재빈이 다음 주제 선제 발화로 대화 재시동.
+        성공 시 True (루프 계속), 실패 시 False (break 허용).
+
+        _proactive_count 로 최대 3회 제한 — 무한 루프 방지.
+        """
+        if not hasattr(self, "_proactive_count"):
+            self._proactive_count = 0
+        if self._proactive_count >= 3:
+            print(f"[TestUser] 선제 재시동 3회 소진 — {reason}")
+            return False
+        m = self._current_mission()
+        mode = m.get("mode", "tutorial")
+        if mode == "done":
+            return False  # 미션 다 됐으면 종료 정당
+        hint = m.get("hint", "")
+        # mission 별 선제 발화 (mgr-dashboard 대상 — 유나한테 자연스럽게 요청)
+        proactive_msgs = {
+            "first_friend_chat": "아 맞다 아까 만든 친구한테 말 걸어볼게 ㅋㅋ",
+            "three_friends": "유나야 친구 한 명 더 만들어줘. 이번엔 좀 조용한 스타일로",
+            "group_chat": "우리 친구들이랑 다같이 그룹 채팅방 하나 만들어줄래?",
+            "peek_internal": "친구들끼리 지들끼리도 대화 좀 하게 해줘 궁금해",
+            "agent_auto_chat": "애들끼리 알아서 수다 떨게 두자",
+        }
+        msg = proactive_msgs.get(mode, f"그래서 {hint[:40]}")
+        # mgr-dashboard 찾기
+        target = None
+        for g in self.guilds:
+            for ch in g.text_channels:
+                if ch.name == "mgr-dashboard":
+                    target = ch; break
+            if target: break
+        if not target:
+            return False
+        try:
+            await target.send(msg)
+            self.conversation.append({
+                "role": "user", "name": _QA_NAME, "text": msg, "channel": "mgr-dashboard",
+            })
+            self.target_channel = target
+            self.turn_count += 1
+            self._proactive_count += 1
+            print(f"[#mgr-dashboard] [{_QA_NAME}] {msg}  ← [선제 재시동 #{self._proactive_count}, mission={mode}, 사유={reason}]")
+            # 응답 대기 리셋
+            self.waiting_for_response = True
+            self._response_event.clear()
+            self._pending_messages.clear()
+            try:
+                await asyncio.wait_for(self._response_event.wait(), timeout=IDLE_TIMEOUT)
+                return True
+            except asyncio.TimeoutError:
+                return False
+        except Exception as e:
+            print(f"[TestUser] proactive_reboot 오류: {e}")
+            return False
+
 
     def _current_mission(self) -> dict:
         """현재 진행할 미션 결정.
