@@ -289,9 +289,7 @@
       // 현 상태 조회 — fresh(에이전트 0) 면 scan 스킵
       const snap = await fetch('/api/snapshot?community=' + encodeURIComponent(CID)).then(r => r.json()).catch(() => ({}));
       const agents = snap.agents || [];
-      const dbChannels = (snap.channels || []).map(c => c.channel || c.name).filter(Boolean);
-
-      let skipScan = agents.length === 0 || dbChannels.length === 0;
+      let skipScan = agents.length === 0;
 
       if (!skipScan) {
         const scanRes = await fetch('/api/action/scan_discord?community=' + encodeURIComponent(CID), {
@@ -300,24 +298,30 @@
           body: '{}',
         }).then(r => r.json()).catch(e => ({ ok: false, error: String(e) }));
 
-        const counts = (scanRes && scanRes.result && scanRes.result.counts) || {};
-        const discordChannels = new Set(Object.keys(counts));
-        const missing = dbChannels.filter(ch => !discordChannels.has(ch));
+        const damage = (scanRes && scanRes.result && scanRes.result.damage) || null;
 
-        if (missing.length > 0) {
-          _setOverlayPhase('damaged', { missing, dbCount: dbChannels.length });
+        if (damage && !damage.clean) {
+          _setOverlayPhase('damaged', { damage });
           const decision = await new Promise(resolve => { _overlayResolver = resolve; });
           if (decision === 'cancel') {
             _hideOverlay();
             return;
           }
           _setOverlayPhase('recovering');
-          // 누락된 채널만 타겟 — 전체 expected 로 sync 하면 미구현 stage 의 mgr-creator 등까지
-          // 만들어버림 (튜토리얼 phase 무시됨).
+          // 손상 종류 합집합 — sync 가 DB 기준으로 일괄 처리.
+          //   missing → 채널 생성 / orphan → 삭제 / wrong_category → 이동 /
+          //   msg_drift_db_more → restore (DB→Discord) / msg_drift_discord_more → 잉여 삭제
+          const affected = new Set();
+          (damage.missing_in_discord || []).forEach(n => affected.add(n));
+          (damage.orphan_in_discord || []).forEach(n => affected.add(n));
+          (damage.orphan_outside || []).forEach(o => o && o.name && affected.add(o.name));
+          (damage.wrong_category || []).forEach(o => o && o.name && affected.add(o.name));
+          (damage.msg_drift_db_more || []).forEach(o => o && o.name && affected.add(o.name));
+          (damage.msg_drift_discord_more || []).forEach(o => o && o.name && affected.add(o.name));
           const syncRes = await fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channels: missing }),
+            body: JSON.stringify({ channels: Array.from(affected) }),
           }).then(r => r.json()).catch(e => ({ error: String(e) }));
           if (syncRes && syncRes.error) {
             _setOverlayPhase('error', { msg: '복구 실패: ' + (syncRes.message || syncRes.error) });
