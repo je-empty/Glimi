@@ -185,8 +185,11 @@ class TestUserBot(discord.Client):
                 ).fetchone()
                 conn.close()
                 if row and row[0] == "complete":
-                    print("[TestUser] resume 감지 — 튜토리얼 이미 완료, 첫 인사 대기 스킵")
+                    print("[TestUser] resume 감지 — 튜토리얼 이미 완료, 바로 대화 루프 시작")
                     await asyncio.sleep(random.uniform(2.0, 4.0))
+                    # resume 모드에선 test_user 가 먼저 말 걸어야 함 (유나 첫 인사 없음).
+                    # 이전엔 return 만 하고 _conversation_loop 시작 안 해서 dead — cycle 묵묵 48분+.
+                    asyncio.create_task(self._conversation_loop())
                     return
         except Exception as e:
             print(f"[TestUser] resume 체크 실패 (건너뜀): {e}")
