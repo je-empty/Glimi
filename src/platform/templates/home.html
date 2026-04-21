@@ -106,10 +106,10 @@
     </div>
     <div class="controls" onclick="event.stopPropagation()">
       {% if c.running %}
-      <button onclick="ctrl('{{ c.id }}', 'stop')">Stop</button>
-      <button onclick="ctrl('{{ c.id }}', 'restart')">Restart</button>
+      <button onclick="ctrl('{{ c.id }}', 'stop')">■ 정지</button>
+      <button onclick="ctrl('{{ c.id }}', 'restart')">↻ 재가동</button>
       {% else %}
-      <button class="primary" onclick="ctrl('{{ c.id }}', 'start')">Start</button>
+      <button class="primary" onclick="ctrl('{{ c.id }}', 'start')">▶ 가동</button>
       {% endif %}
       <button class="danger" onclick="deleteCommunity('{{ c.id }}')">삭제</button>
     </div>

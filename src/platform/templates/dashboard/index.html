@@ -63,9 +63,9 @@
     <div class="gp-server-ctrl" id="gp-server-ctrl">
       <span id="gp-bot-status" class="gp-status">…</span>
       <span id="gp-bot-uptime" class="gp-uptime"></span>
-      <button id="gp-start" class="gp-ctrl-btn start" onclick="glimiServerCtrl('start')">▶ 시작</button>
-      <button id="gp-restart" class="gp-ctrl-btn" onclick="glimiServerCtrl('restart')" style="display:none">↻</button>
-      <button id="gp-stop" class="gp-ctrl-btn stop" onclick="glimiServerCtrl('stop')" style="display:none">■ 중지</button>
+      <button id="gp-start" class="gp-ctrl-btn start" onclick="glimiServerCtrl('start')" title="커뮤니티 봇 가동 — 에이전트들 대화 시작">▶ 가동</button>
+      <button id="gp-restart" class="gp-ctrl-btn" onclick="glimiServerCtrl('restart')" style="display:none" title="재가동">↻ 재가동</button>
+      <button id="gp-stop" class="gp-ctrl-btn stop" onclick="glimiServerCtrl('stop')" style="display:none" title="커뮤니티 정지 — 에이전트 대화 중단">■ 정지</button>
     </div>
 
     <div style="flex:1"></div>
@@ -188,17 +188,28 @@
 <div class="toast" id="toast"></div>
 
 <!-- 튜토리얼 준비 중 전체 딤 오버레이 — Start 직후 유나가 인사 메시지 보낼 때까지 UI 잠금 -->
-<div id="tutorial-gate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);backdrop-filter:blur(6px);z-index:2147483641;align-items:center;justify-content:center;padding:30px">
-  <div style="max-width:460px;text-align:center;color:#fff">
+<div id="tutorial-gate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);backdrop-filter:blur(6px);z-index:2147483641;align-items:center;justify-content:center;padding:30px;overflow:auto">
+  <div style="max-width:640px;width:100%;text-align:center;color:#fff">
     <div style="font-size:64px;margin-bottom:20px;animation:tg-bounce 1.4s ease-in-out infinite">🧸</div>
     <div id="tg-title" style="font-size:22px;font-weight:700;letter-spacing:-0.3px;margin-bottom:10px">유나를 부르는 중...</div>
     <div id="tg-sub" style="font-size:14px;color:#d1d5db;line-height:1.7">머리 빗고 옷 매무새 다듬는 중... 첫인상이 중요하니까.<br><span style="color:#f59e0b;font-size:13px;display:inline-block;margin-top:6px">⚠ 디스코드 미리 보면 안 돼 — 아직 준비 덜 된 모습이야 🙈</span></div>
-    <div style="margin-top:24px;display:flex;gap:8px;justify-content:center;align-items:center">
+    <div style="margin-top:20px;display:flex;gap:8px;justify-content:center;align-items:center">
       <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0s"></div>
       <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0.2s"></div>
       <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0.4s"></div>
     </div>
-    <div id="tg-progress" style="margin-top:28px;font-size:11.5px;color:#9ca3af;font-family:'JetBrains Mono',monospace"></div>
+    <div id="tg-progress" style="margin-top:22px;font-size:11.5px;color:#9ca3af;font-family:'JetBrains Mono',monospace"></div>
+
+    <div style="margin-top:24px;text-align:left">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9ca3af;margin-bottom:6px;padding:0 2px">
+        <span>🪵 실시간 로그 <span id="tg-log-count" style="color:#6b7280"></span></span>
+        <label style="font-size:10.5px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#6b7280">
+          <input id="tg-autoscroll" type="checkbox" checked style="cursor:pointer;width:11px;height:11px">
+          자동 스크롤
+        </label>
+      </div>
+      <pre id="tg-log" style="background:rgba(10,11,14,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 14px;margin:0;height:220px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#d1d5db;white-space:pre-wrap;word-break:break-all;text-align:left"></pre>
+    </div>
   </div>
 </div>
 <style>
@@ -280,10 +291,34 @@
     _gateActive = true;
     document.getElementById('tutorial-gate').style.display = 'flex';
     _pollTutorialProgress();
+    _pollTutorialLog();
   }
   function _hideTutorialGate() {
     _gateActive = false;
     document.getElementById('tutorial-gate').style.display = 'none';
+  }
+  // bot.log 실시간 tail — 게이트가 떠있는 동안 1.5초마다 갱신
+  async function _pollTutorialLog() {
+    if (!_gateActive) return;
+    try {
+      const r = await fetch('/api/communities/' + CID + '/log?lines=80');
+      if (r.ok) {
+        const data = await r.json();
+        const logEl = document.getElementById('tg-log');
+        const cntEl = document.getElementById('tg-log-count');
+        const auto = document.getElementById('tg-autoscroll');
+        const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
+        const content = data.log || '(로그 대기 중... 봇이 아직 출력 전)';
+        if (logEl.textContent !== content) {
+          logEl.textContent = content;
+          if (cntEl) cntEl.textContent = '· ' + (content ? content.split('\n').length + ' 줄' : '');
+          if (auto && auto.checked && wasAtBottom) {
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        }
+      }
+    } catch (e) {}
+    setTimeout(_pollTutorialLog, 1500);
   }
   async function _pollTutorialProgress() {
     if (!_gateActive) return;
