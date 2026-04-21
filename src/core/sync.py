@@ -105,30 +105,17 @@ def _get_token() -> Optional[str]:
 
 
 def _get_expected_channels() -> set[str]:
-    """DB 기반으로 존재해야 할 glimi 채널 목록.
+    """DB channels 테이블이 단일 진실원.
 
-    mgr 에이전트가 있을 때만 mgr-dashboard/mgr-system-log, creator 있을 때만 mgr-creator 추가.
-    튜토리얼 중간 (creator 미등록) 일 때 무조건 만들어버리던 버그 해결.
+    봇/튜토리얼이 채널을 실제로 만들 때마다 channels 테이블에 등록됨.
+    sync 는 '테이블에 있는 것을 Discord 에 반영' 할 뿐 — 채널 종류나
+    에이전트 타입으로 유추해서 미리 만들지 않음.
+
+    초기 커뮤니티 상태: mgr-dashboard 만 (튜토리얼 greet 단계).
+    튜토리얼 진행되면 phase 별로 mgr-creator, mgr-system-log, dm-* 가 추가 등록.
     """
     channels = set()
-    agents = db.list_agents()
-    has_mgr = False
-    has_creator = False
-    for a in agents:
-        if a["type"] == "mgr":
-            channels.add("mgr-dashboard")
-            has_mgr = True
-        elif a["type"] == "creator":
-            has_creator = True
-        else:
-            channels.add(f"dm-{a['name']}")
-    if has_mgr:
-        channels.add("mgr-system-log")
-    if has_creator:
-        channels.add("mgr-creator")
-
-    overview = db.get_channel_overview()
-    for ch in overview:
+    for ch in db.get_channel_overview():
         channels.add(ch["channel"])
     return channels
 
@@ -294,9 +281,9 @@ async def sync_community(
                         cat = await guild.create_category(cat_name)
                         _progress(f"  카테고리 생성: {cat_name}")
 
-                # mgr 카테고리는 특정 순서
+                # mgr 카테고리는 expected 중에서 MGR_ORDER 순으로
                 if cat_name == "glimi-mgr":
-                    needed = [ch for ch in MGR_ORDER if ch not in surviving]
+                    needed = [ch for ch in MGR_ORDER if ch in expected and ch not in surviving]
 
                 for ch_name in needed:
                     if dry_run:
