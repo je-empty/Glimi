@@ -1182,14 +1182,38 @@ class AgentRuntime:
                                 f"[A2A] {speaker_name} 응답에서 {listener_name} 역할 leak {dropped}건 제거"
                             )
                         responses = cleaned
-                        # 괄호 독백 구조 필터 — 전체 라인이 괄호로 감싸진 메타 코멘트 drop.
-                        # LLM 이 "응답 안 함" 지시 받으면 0글자 대신 "(무시)/(별다른 거 없음)" 류 에뮬레이트 —
-                        # 키워드 차단은 whack-a-mole 라 구조 패턴으로 일괄.
+                        # 괄호 독백 구조 필터 + persona LLM assistant drift 필터.
+                        # A2A 대화 종료 상황에서 Haiku 가 "스토리텔러 AI" 모드로 drift —
+                        # "*손 흔들어*" roleplay, "X가 Y한다" 3인칭, "원하신다면 알려주세요" assistant 응대.
                         import re as _mre
                         _mono_pat = _mre.compile(
                             r'^\s*[\*_`]*[\(（][^\n]{0,200}[\)）][\*_`]*\s*$',
                         )
-                        responses = [m for m in responses if not _mono_pat.match(m)]
+                        _roleplay_pat = _mre.compile(r'^\s*\*[^*\n]{1,40}\*\s*$', _mre.MULTILINE)
+                        _assistant_drift = _mre.compile(
+                            r'(원하신다면|원하세요\?|알려주세요|다음\s*씬으로|장면으로\s*넘어|'
+                            r'새로운\s*씬|진행하고\s*싶으시|상황을\s*원하|자연스럽게\s*끝났|'
+                            r'더\s*이상\s*할\s*말이\s*없|대화가\s*끝났|마무리됐네)',
+                        )
+                        speaker_name_re = _mre.escape(speaker_name)
+                        _third_person = _mre.compile(
+                            rf'^.*{speaker_name_re}(?:이|과|은|는|가)\s.*(?:한다|했다|있다|된다|합니다|있어요|있네요)\s*$',
+                        )
+                        filtered = []
+                        for m in responses:
+                            m2 = _roleplay_pat.sub('', m).strip()
+                            if not m2 or _mono_pat.match(m2):
+                                continue
+                            if _assistant_drift.search(m2):
+                                continue
+                            if _third_person.match(m2):
+                                continue
+                            filtered.append(m2)
+                        if len(filtered) != len(responses):
+                            log_writer.system(
+                                f"[A2A drift] {speaker_name} 응답 {len(responses)-len(filtered)}건 drop"
+                            )
+                        responses = filtered
                         for msg in responses:
                             db.log_message(channel, speaker_id, msg)
 

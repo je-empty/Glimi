@@ -27,6 +27,14 @@ CLOSURE_PATTERNS = [
 ]
 _closure_re = [re.compile(p) for p in CLOSURE_PATTERNS]
 
+# 강한 종료 신호 — 발견 시 progress 무관 즉시 종료 (drift 방지).
+# "곧 봐", "가버렸", "대화 끝", "마무리됐" 같은 closing 후 persona 가 storyteller drift 빠지는 주 경로 차단.
+STRONG_CLOSURE_PATTERNS = [
+    r"(곧\s*봐|이따\s*봐|또\s*봐|먼저\s*가|그럼\s*이만|바이바이|굿밤|잘자)",
+    r"(손\s*흔들어|갈게\b|갈게요\b)",
+]
+_strong_closure_re = [re.compile(p) for p in STRONG_CLOSURE_PATTERNS]
+
 
 # ── 활성 대화 상태 추적 ──────────────────────────────
 
@@ -72,7 +80,13 @@ class ConversationState:
                 if overlap > 0.5:
                     return True
 
-        # 마지막 메시지에서 종료 신호 감지
+        # 강한 종료 신호 — progress 무관 즉시 종료 (drift 방지)
+        for msg in last_messages:
+            for pattern in _strong_closure_re:
+                if pattern.search(msg):
+                    return True
+
+        # 마지막 메시지에서 종료 신호 감지 (확률적)
         for msg in last_messages:
             for pattern in _closure_re:
                 if pattern.search(msg):
