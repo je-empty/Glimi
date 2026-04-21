@@ -322,6 +322,14 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
             text = '\n'.join(lines_out)
             text = re.sub(r'\n{3,}', '\n\n', text).strip()
 
+        # 지침 literal 누출 — persona/mgr 가 프롬프트 내부 지침 문구를 대사로 그대로 발화.
+        # (QA 회귀: "0글자 출력" 7건 누출)
+        instruction_leak = re.compile(
+            r'^(0\s*글자\s*출력|응답\s*생략|비응답|텍스트\s*자체\s*출력\s*금지|stdout\s*에\s*공백)$',
+            re.IGNORECASE,
+        )
+        text = '\n'.join(ln for ln in text.split('\n') if not instruction_leak.match(ln.strip()))
+
         # LLM assistant drift 패턴 — persona 가 스토리텔러/AI 모드로 전환되는 문장 drop.
         # QA 회귀: 이소율이 "혹시 빈이를 만나는 장면으로 넘어가고 싶으신가요?", 이예담이
         # "대화가 자연스럽게 끝났네요. 이소율과 이예담이 인사하면서..." 식 3인칭 서술.

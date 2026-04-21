@@ -1199,10 +1199,16 @@ class AgentRuntime:
                         _third_person = _mre.compile(
                             rf'^.*{speaker_name_re}(?:이|과|은|는|가)\s.*(?:한다|했다|있다|된다|합니다|있어요|있네요)\s*$',
                         )
+                        _instruction_leak = _mre.compile(
+                            r'^(0\s*글자\s*출력|응답\s*생략|비응답|텍스트\s*자체\s*출력\s*금지|stdout\s*에\s*공백)$',
+                            _mre.IGNORECASE,
+                        )
                         filtered = []
                         for m in responses:
                             m2 = _roleplay_pat.sub('', m).strip()
                             if not m2 or _mono_pat.match(m2):
+                                continue
+                            if _instruction_leak.match(m2):
                                 continue
                             if _assistant_drift.search(m2):
                                 continue
