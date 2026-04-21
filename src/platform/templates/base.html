@@ -30,10 +30,22 @@
       <button class="gp-btn-icon" onclick="toggleTheme()" title="테마 전환" aria-label="테마 전환">
         <span id="theme-icon">🌙</span>
       </button>
-      <span class="gp-user">{{ user.username }}</span>
-      <form method="post" action="/logout" style="display: inline;">
-        <button type="submit" title="로그아웃">로그아웃</button>
-      </form>
+      <div class="gp-user-menu">
+        <button class="gp-user-btn" id="gp-user-btn" type="button" onclick="toggleUserMenu(event)">
+          <span class="gp-user-avatar">{{ user.username[0]|upper }}</span>
+          <span class="gp-user-name">{{ user.username }}</span>
+          <span class="gp-user-chev">▾</span>
+        </button>
+        <div class="gp-user-dropdown" id="gp-user-dropdown">
+          <div class="gp-user-info">
+            <div class="gp-user-info-name">{{ user.username }}</div>
+            <div class="gp-user-info-role">{{ user.role }}</div>
+          </div>
+          <form method="post" action="/logout">
+            <button type="submit" class="gp-user-logout">로그아웃</button>
+          </form>
+        </div>
+      </div>
     </header>
     {% else %}
     <div class="gp-topbar-floating">
@@ -70,6 +82,19 @@
       var el = document.getElementById('logo-lightbox');
       if (el) el.style.display = 'flex';
     }
+    function toggleUserMenu(e) {
+      if (e) e.stopPropagation();
+      var dd = document.getElementById('gp-user-dropdown');
+      if (dd) dd.classList.toggle('open');
+    }
+    document.addEventListener('click', function(e) {
+      var m = document.querySelector('.gp-user-menu');
+      if (!m) return;
+      if (!m.contains(e.target)) {
+        var dd = document.getElementById('gp-user-dropdown');
+        if (dd) dd.classList.remove('open');
+      }
+    });
   </script>
   {% block bottom_scripts %}{% endblock %}
 </body>
