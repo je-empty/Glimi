@@ -329,18 +329,26 @@
             _hideOverlay();
             return;
           }
-          _setOverlayPhase('recovering');
+          // recovering 진입 — 복구 대상 채널 목록을 overlay 에 넘겨서 per-channel 진행 표시.
+          _setOverlayPhase('recovering', { rows });
           // 영향 받은 채널만 sync — Sync 탭의 "선택한 채널 싱크" 와 동일
           const channels = rows.map(r => r.ch);
+          // 백그라운드에서 sync 진행 중에 /api/logs poll — sync 로그 실시간 표시
+          _recoveryLogPolling = true;
+          _pollRecoveryLog();
           const syncRes = await fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ channels }),
           }).then(r => r.json()).catch(e => ({ error: String(e) }));
+          _recoveryLogPolling = false;
           if (syncRes && syncRes.error) {
             _setOverlayPhase('error', { msg: '복구 실패: ' + (syncRes.message || syncRes.error) });
             return;
           }
+          // sync 완료 — rows 에 최종 상태 표시
+          _setOverlayPhase('recovered', { rows, result: syncRes && syncRes.result });
+          await new Promise(r => setTimeout(r, 1200));  // 결과 잠시 보여주기
         }
       }
 
@@ -449,12 +457,69 @@
       dots.style.display = 'none';
       actions.style.display = 'flex';
       progress.textContent = '';
-    } else if (phase === 'recovering') {
-      emoji.textContent = '🔧';
-      title.textContent = '디스코드 복구 중';
-      sub.innerHTML = '채널 재생성 + 메시지 복원... <span style="color:#9ca3af">(1~3분 걸릴 수 있어)</span>';
+    } else if (phase === 'recovering' || phase === 'recovered') {
+      const done = phase === 'recovered';
+      emoji.textContent = done ? '✅' : '🔧';
+      title.textContent = done ? '복구 완료' : '디스코드 복구 중';
+      const rows = (ctx.rows || []).slice().sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+
+      const statusFor = (r) => {
+        if (r.diff > 0) return { label: `⬆ ${r.diff}건 복원`, color: '#fbbf24' };
+        if (r.diff < 0) return { label: `⬇ ${-r.diff}건 삭제`, color: '#f87171' };
+        return { label: '—', color: '#9ca3af' };
+      };
+
+      const escH = (s) => String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+      ));
+
+      // 각 채널별 현재 상태 — sync 로그에서 최근 라인 찾아 매칭 (done 이면 ✓)
+      const channelStatusHtml = rows.map(r => {
+        const st = statusFor(r);
+        const state = done
+          ? '<span style="color:#10b981">✓ 완료</span>'
+          : '<span style="color:#6366f1">⟳ 진행 중</span>';
+        return `
+          <tr style="border-top:1px solid rgba(255,255,255,0.08)">
+            <td style="padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#e5e7eb">#${escH(r.ch)}</td>
+            <td style="padding:5px 10px;text-align:right;color:#9ca3af">${r.db}</td>
+            <td style="padding:5px 10px;text-align:right;color:#9ca3af">${r.discord}</td>
+            <td style="padding:5px 10px;color:${st.color};font-size:11.5px">${st.label}</td>
+            <td style="padding:5px 10px">${state}</td>
+          </tr>`;
+      }).join('');
+
+      const table = `
+        <div style="max-height:180px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:8px;margin-bottom:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="background:rgba(255,255,255,0.05);position:sticky;top:0">
+              <tr>
+                <th style="text-align:left;padding:7px 10px;font-weight:600;color:#9ca3af">채널</th>
+                <th style="text-align:right;padding:7px 10px;font-weight:600;color:#9ca3af;width:55px">DB</th>
+                <th style="text-align:right;padding:7px 10px;font-weight:600;color:#9ca3af;width:55px">Discord</th>
+                <th style="text-align:left;padding:7px 10px;font-weight:600;color:#9ca3af;width:90px">액션</th>
+                <th style="text-align:left;padding:7px 10px;font-weight:600;color:#9ca3af;width:70px">상태</th>
+              </tr>
+            </thead>
+            <tbody>${channelStatusHtml}</tbody>
+          </table>
+        </div>`;
+
+      const logHtml = `
+        <div style="border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(0,0,0,0.2)">
+          <div style="padding:5px 10px;font-size:11px;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.08)">sync 로그</div>
+          <pre id="go-recovery-log" style="background:transparent;border:none;padding:8px 10px;margin:0;height:130px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.5;color:#8b8fa3;white-space:pre-wrap;word-break:break-all"></pre>
+        </div>`;
+
+      sub.innerHTML = '<div style="text-align:left">' + table + logHtml + '</div>';
+      if (done) {
+        sub.innerHTML += '<div style="color:#10b981;font-size:12.5px;margin-top:10px;text-align:center">✓ 모든 채널 복구 — 가동 이어갑니다</div>';
+      } else {
+        sub.innerHTML += '<div style="color:#9ca3af;font-size:11.5px;margin-top:8px;text-align:center">(1~3분 걸릴 수 있어)</div>';
+      }
+      dots.style.display = done ? 'none' : 'flex';
+      actions.style.display = 'none';
       progress.textContent = '';
-      _pollTutorialLog();
     } else if (phase === 'booting') {
       emoji.textContent = '🧸';
       title.textContent = '유나를 부르는 중...';
@@ -487,6 +552,30 @@
     // actions 영역 복원
     const actions = document.getElementById('go-actions');
     if (actions) actions.innerHTML = '<button onclick="_overlayDecide(\'cancel\')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소 (가동 안 함)</button><button onclick="_overlayDecide(\'recover\')" style="background:#2563eb;color:#fff;border:1px solid #2563eb;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">복구하고 가동</button>';
+  }
+
+  // sync 진행 중 system.log 의 [Sync]/[Scan]/[Arrange] 라인 tail → recovery overlay 의 pre 박스 채움.
+  let _recoveryLogPolling = false;
+  async function _pollRecoveryLog() {
+    if (!_overlayActive || !_recoveryLogPolling) return;
+    try {
+      const r = await fetch('/api/logs?tail=60&community=' + encodeURIComponent(CID));
+      if (r.ok) {
+        const data = await r.json();
+        const logEl = document.getElementById('go-recovery-log');
+        if (logEl) {
+          const filtered = (data.lines || [])
+            .filter(l => /\[(Sync|Scan|Arrange)\]/.test(l))
+            .slice(-25)
+            .join('\n');
+          if (logEl.textContent !== filtered) {
+            logEl.textContent = filtered;
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        }
+      }
+    } catch (e) {}
+    if (_recoveryLogPolling) setTimeout(_pollRecoveryLog, 1500);
   }
 
   // bot.log 실시간 tail — 게이트가 떠있는 동안 1.5초마다 갱신
