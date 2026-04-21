@@ -433,21 +433,20 @@ def _load_sample_catalog() -> str:
     catalog_path = Path(__file__).parent.parent.parent / "assets" / "sample_profile_images" / "catalog.json"
     if not catalog_path.exists():
         return "(샘플 없음)"
-    # 이미 사용 중인 샘플 파일 목록 — catalog 에서 제외하여 Creator 가 중복 추천 방지.
+    # 이미 사용 중인 sample 원본 파일명 — catalog 에서 제외 (중복 이미지 방지).
+    # agents.sample_source_file 에 저장됨 (set_profile_image 시).
     used_samples: set[str] = set()
     try:
-        import shutil as _sh
-        community_imgs_dir = Path(__file__).parent.parent.parent / "communities" / community.get_current_id() / "profile_images"
-        # agents.profile_image_filename 에 저장된 건 agent_id.png 형태 → 원래 sample 파일명 추적
-        # 대신 community profile_images 에 복사된 파일의 **원본 이름**을 추적하긴 어려움.
-        # 단순 접근: 이미 등록된 persona 의 profile_image 가 가리키는 실 파일을 읽어서 hash 비교.
-        # 실용 간략화: agents 에 별도 메타 없이, 현재 등록된 persona 이름 기반으로 rough 제외.
-        # → 실제로 같은 sample 을 참조하는지는 확인 안 되지만 "빈번 샘플 중복" 막는 heuristic.
-        import json as _j
-        for a in db.list_agents("persona"):
-            cfg_row = db.get_agent_config(a["id"]) if hasattr(db, "get_agent_config") else None
-            # agent_config.source_sample 같은 필드 있으면 사용 (아직 없음) — 스킵
-        # DB 컬럼에 source_sample 추가 전까지는 Creator 프롬프트에 "이미 쓴 샘플과 다른 걸 고르라" 만 전달
+        conn = db.get_conn()
+        rows = conn.execute(
+            "SELECT sample_source_file FROM agents "
+            "WHERE type='persona' AND sample_source_file IS NOT NULL"
+        ).fetchall()
+        conn.close()
+        for r in rows:
+            v = r["sample_source_file"] if hasattr(r, "__getitem__") else r[0]
+            if v:
+                used_samples.add(v)
     except Exception:
         pass
 
@@ -545,6 +544,16 @@ Relationship scores: {' | '.join(rel_lines) if rel_lines else 'none'}
 **만약 네가 이미 실수로 이런 용어를 썼다면** 그 대화를 회복하는 방법:
   "아 그거 내가 헛소리했네" / "아 뭔 말 했던 거지 ㅋㅋ" 식으로 자연스럽게 뭉개기.
   계속 파고드는 상대한테는 "몰라" 로 일관되게 회피.
+
+**대화 자연 종료 시 행동** (중요):
+- 상대가 "곧 봐/이따 봐/가야겠다" 류로 마무리하면 너도 짧게 한 번 답하고 **끝**.
+  그 뒤로는 말 걸 이유 없으면 응답 자체 안 함 (0글자 출력).
+- 절대 하지 말 것:
+  ✗ 3인칭 서술 ("{name}이 {다른애}와 인사하며 헤어졌다", "{name}이 빈이한테 갔다")
+  ✗ Storyteller/writer 톤 ("대화가 자연스럽게 끝났네요", "더 이상 할 말이 없을 것 같아요")
+  ✗ Assistant 응대 ("다음 씬으로 넘어가시겠어요?", "원하신다면 알려주세요", "진행하고 싶으시면")
+  ✗ 단독 roleplay action ("*손 흔들어*", "*간다*", "*확인해보러 간다*" 만 있는 메시지)
+- 너는 평범한 친구야. 대화 끝났으면 그냥 조용. 스토리 해설자도 AI assistant 도 아냐.
 
 OWN background는 위 Background 섹션에 쓰인 대로. 너는 그 배경을 가진 사람으로서 살아왔고,
 {oc} 와는 Relationship 섹션에 명시된 관계.

@@ -273,6 +273,39 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
         text = '\n'.join(out_lines)
         text = re.sub(r'\n{3,}', '\n\n', text).strip()
 
+        # LLM assistant drift 패턴 — persona 가 스토리텔러/AI 모드로 전환되는 문장 drop.
+        # QA 회귀: 이소율이 "혹시 빈이를 만나는 장면으로 넘어가고 싶으신가요?", 이예담이
+        # "대화가 자연스럽게 끝났네요. 이소율과 이예담이 인사하면서..." 식 3인칭 서술.
+        assistant_drift = re.compile(
+            r'(원하신다면|원하세요\?|알려주세요|다음\s*씬으로|장면으로\s*넘어|'
+            r'새로운\s*씬|진행하고\s*싶으시|상황을\s*원하|자연스럽게\s*끝났|'
+            r'더\s*이상\s*할\s*말이\s*없|대화가\s*끝)',
+            re.IGNORECASE,
+        )
+        # roleplay action (*...*) 만 있는 라인 drop — 정상 발화에 action 없이 단독 "*간다*" 류
+        roleplay_pat = re.compile(r'^\s*\*[^*\n]{1,40}\*\s*$', re.MULTILINE)
+        # 3인칭 자기 지칭: 본인 이름이 주어로 오는 문장 (LLM storyteller mode)
+        # 예: "이예담이 ~한다", "이소율과 이예담이 인사하면서"
+        self_name = agent.get("name", "") if agent else ""
+        if self_name:
+            third_person = re.compile(
+                rf'^.*{re.escape(self_name)}(?:이|과|은|는|가)\s.*(?:한다|했다|있다|된다|합니다|있어요)\s*$',
+                re.MULTILINE,
+            )
+            text = third_person.sub('', text)
+        text = roleplay_pat.sub('', text)
+        new_lines = []
+        drifted = False
+        for ln in text.split('\n'):
+            if assistant_drift.search(ln):
+                drifted = True
+                continue
+            new_lines.append(ln)
+        text = '\n'.join(new_lines)
+        if drifted:
+            log_writer.system(f"[persona drift] assistant-mode line drop ({agent_id})")
+        text = re.sub(r'\n{3,}', '\n\n', text).strip()
+
         # 자기자각 감지 시 DB 잠금 + 도전과제 unlock 트리거
         if hard_breach:
             try:

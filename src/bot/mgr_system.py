@@ -1789,9 +1789,13 @@ async def _apply_sample_profile_image(report_channel, args_str, guild, caller_ag
         dst_full = os.path.join(dst_dir, f"{target['id']}-full.png")
         shutil.copy2(sample_full_path, dst_full)
 
-    # DB에 profile_image_filename 업데이트
+    # DB에 profile_image_filename + sample_source_file 업데이트.
+    # sample_source_file 은 Creator catalog 에서 중복 추천 방지용 (agent_id.png 는 새 파일명이라 추적 불가).
     conn = db.get_conn()
-    conn.execute("UPDATE agents SET profile_image_filename=? WHERE id=?", (profile_image_filename, target["id"]))
+    conn.execute(
+        "UPDATE agents SET profile_image_filename=?, sample_source_file=? WHERE id=?",
+        (profile_image_filename, sample_file, target["id"]),
+    )
     conn.commit()
     conn.close()
 

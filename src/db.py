@@ -1128,6 +1128,9 @@ def _migrate_schema():
         # 메타 박살 타임스탬프 — 이 값 not null 이면 persona 가 자기 자각 발화한 것.
         # 대화 잠금 + 메모리·대화 기록 삭제됨 (MetaBreachSupervisor 가 세팅).
         "meta_breached_at": "DATETIME",
+        # 프로필 이미지로 사용한 sample 원본 파일명 (assets/sample_profile_images/*.png).
+        # Creator 가 catalog 에서 이미 쓴 sample 을 제외하고 추천하도록 추적용.
+        "sample_source_file": "TEXT",
     }
     for col, col_type in new_cols.items():
         if col not in agent_cols:
