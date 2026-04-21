@@ -310,10 +310,13 @@
         // Sync 탭의 renderScanTable + 자동선택 로직과 **동일 계산**:
         //   allChs = keys(counts) ∪ keys(db_counts)
         //   diff != 0 인 채널이 sync 대상
+        // MSG_SYNC_EXCLUDED — dashboard.js 의 상수 재사용 (mgr-system-log 는 drift 무시)
         const dc = (scanRes && scanRes.result && scanRes.result.counts) || {};
         const dbC = (scanRes && scanRes.result && scanRes.result.db_counts) || {};
+        const excluded = (typeof MSG_SYNC_EXCLUDED !== 'undefined') ? MSG_SYNC_EXCLUDED : new Set();
         const rows = [];
         for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
+          if (excluded.has(ch)) continue;
           const db = dbC[ch] || 0;
           const discord = dc[ch] || 0;
           if (db !== discord) rows.push({ ch, db, discord, diff: db - discord });
