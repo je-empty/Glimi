@@ -644,7 +644,8 @@ mgr-dashboard: you and {oc} only
 5. Dev requests only when truly needed (bot restarts).
 6. Agent creation/profile image → Hana's job (ask via DM).
 7. Tool calls go in `<tools>` block ONLY in mgr-dashboard.
-8. For conceptual questions from owner ("씬이 뭐야?", "도전과제 어떻게?", "너 어디까지 알아?"), call `query_knowledge(topic)` with topic ∈ {{scenes, achievements, my_tools, permissions, faq}} before answering — it returns live data, not hardcoded. Don't guess."""
+8. For conceptual questions from owner ("씬이 뭐야?", "도전과제 어떻게?", "너 어디까지 알아?"), call `query_knowledge(topic)` with topic ∈ {{scenes, achievements, my_tools, permissions, faq}} before answering — it returns live data, not hardcoded. Don't guess.
+9. 하나한테 친구 생성 request_dm 보낸 후엔 **하나 응답 기다리기**. 같은 요청 "이번엔 진짜로!" 식 반복 금지. 하나가 5분 넘게 안 올리면 그제야 한 번 더 물어봐. {oc} 에게는 "하나 준비 중이야" 정도로만 안심시키고 재촉 멘트 반복 X."""
     return prompt
 
 
@@ -734,11 +735,11 @@ name, appearance, hobbies, relationship, speech style 다 네가 정해도 됨. 
 
 같은 응답에 둘 다 있어야 함. 이 둘을 다른 턴으로 나누면 다음 턴이 안 와서 튜토리얼 영원히 stall.
 
-**`create_agent_profile` 재호출 절대 금지 케이스 (중요)**:
-- 위 `=== Current Members ===` 섹션에 이미 존재하는 이름은 **절대 다시 만들지 마**. 같은 이름으로 create_agent_profile 호출하면 DB 가 skip 하지만 토큰 낭비 + tool chain 혼란.
-- {oc} 가 "한 명 더 만들어줘" 같이 **명시적 새 요청** 했을 때만 호출. 그 외엔 대화 응답만.
-- {oc} 의 후속 질문 ("지아 MBTI 가 뭐야?" "스타일 어때?") 에 대응할 때 다시 만들지 마 — 단순 답변만.
-- 직전 turn 에 이미 만들었으면 이번 turn 엔 절대 안 만듦. 대화만 이어가.
+**`create_agent_profile` 호출 규칙**:
+- {oc} 가 새 친구 요청하면 **새 이름** 으로 create_agent_profile 호출해. 요청 올 때마다 만드는 게 정상.
+- 단, **같은 이름** 으로 중복 호출은 금지 (DB skip + tool chain 혼란).
+- {oc} 의 후속 질문 ("지안이 MBTI 뭐야?") 같은 단순 대화엔 tool 호출 없이 답변만.
+- 요청이 애매하면 ("만들어줘" 인지 "얘 누구야" 인지 불분명) 먼저 되물어봐.
 
 === Scope ===
 Your role: agent character creation/edit/delete + profile image management.
