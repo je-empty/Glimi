@@ -1113,29 +1113,34 @@ function renderScanTable() {
   const dc = _lastScanResult.counts || {};
   const dbC = _lastScanResult.db_counts || {};
   const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
-  // MSG_SYNC_EXCLUDED 채널은 Sync 탭에서 아예 숨김 (유저가 실수로 선택 체크 못하게)
-  const rows = [...allChs].filter(ch => !MSG_SYNC_EXCLUDED.has(ch)).map(ch => ({
+  // MSG_SYNC_EXCLUDED 채널은 테이블엔 보이지만 체크박스 비활성 + 딤처리 — 존재는 알리되
+  // 유저가 싱크 대상으로 실수 선택 못하게.
+  const rows = [...allChs].map(ch => ({
     ch,
     db: dbC[ch] || 0,
     dc: dc[ch] || 0,
     diff: (dbC[ch] || 0) - (dc[ch] || 0),
+    excluded: MSG_SYNC_EXCLUDED.has(ch),
   }));
-  // 싱크 필요한 것부터, 그 다음 diff 절대값 큰 순
+  // 제외 채널은 가장 아래로, 나머지는 싱크 필요 우선 + diff 큰 순
   rows.sort((a, b) => {
+    if (a.excluded !== b.excluded) return a.excluded ? 1 : -1;
     const needA = a.diff !== 0 ? 0 : 1;
     const needB = b.diff !== 0 ? 0 : 1;
     if (needA !== needB) return needA - needB;
     return Math.abs(b.diff) - Math.abs(a.diff);
   });
 
-  const totalDB = rows.reduce((s, r) => s + r.db, 0);
-  const totalDC = rows.reduce((s, r) => s + r.dc, 0);
-  const needUp = rows.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0);
-  const needDown = rows.filter(r => r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
-  const syncedCh = rows.filter(r => r.diff === 0).length;
-  const needCh = rows.length - syncedCh;
+  // 집계는 sync 대상 (제외 채널 아닌 것) 기준
+  const syncable = rows.filter(r => !r.excluded);
+  const totalDB = syncable.reduce((s, r) => s + r.db, 0);
+  const totalDC = syncable.reduce((s, r) => s + r.dc, 0);
+  const needUp = syncable.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0);
+  const needDown = syncable.filter(r => r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
+  const syncedCh = syncable.filter(r => r.diff === 0).length;
+  const needCh = syncable.length - syncedCh;
 
-  const allSelected = needCh > 0 && rows.filter(r => r.diff !== 0).every(r => _syncSelectedChannels.has(r.ch));
+  const allSelected = needCh > 0 && syncable.filter(r => r.diff !== 0).every(r => _syncSelectedChannels.has(r.ch));
 
   host.innerHTML = `
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 14px;background:var(--panel);border:1px solid var(--border-soft);border-radius:8px;margin-bottom:10px;font-size:12px">
@@ -1145,7 +1150,7 @@ function renderScanTable() {
       ${needDown > 0 ? `<div style="color:var(--err)">⬇ ${needDown.toLocaleString()}건 삭제 예정</div>` : ''}
       ${(needUp === 0 && needDown === 0) ? '<div style="color:var(--ok)">✓ 완전 동기화 상태</div>' : ''}
       <div style="flex:1"></div>
-      <div style="color:var(--text-dim)">${syncedCh}/${rows.length} 동기화됨</div>
+      <div style="color:var(--text-dim)">${syncedCh}/${syncable.length} 동기화됨</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
@@ -1175,18 +1180,23 @@ function renderScanTable() {
           ${rows.map(r => {
             const info = _chDiffInfo(r.db, r.dc);
             const checked = _syncSelectedChannels.has(r.ch);
-            const disabled = r.diff === 0;  // 이미 싱크된 건 선택 불필요
-            const color = r.diff > 0 ? 'var(--warn)' : (r.diff < 0 ? 'var(--err)' : 'var(--text-dim)');
+            // 제외 채널은 무조건 비활성 + 딤처리. 동기화된 채널도 체크 비활성.
+            const disabled = r.excluded || r.diff === 0;
+            const statusLabel = r.excluded ? '— sync 제외 (로그 채널)' : info.label;
+            const color = r.excluded ? 'var(--text-dim)' :
+                          (r.diff > 0 ? 'var(--warn)' : (r.diff < 0 ? 'var(--err)' : 'var(--text-dim)'));
+            const rowStyle = r.excluded ? 'opacity:0.5' : '';
             return `
-              <tr style="border-top:1px solid var(--border-soft)">
+              <tr style="border-top:1px solid var(--border-soft);${rowStyle}">
                 <td style="padding:6px 10px">
                   <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+                    ${r.excluded ? `title="mgr-system-log 은 런타임 로그 채널이라 메시지 동기화 제외"` : ''}
                     onchange="scanToggleChannel('${esc(r.ch)}', this.checked)">
                 </td>
                 <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:11.5px">#${esc(r.ch)}</td>
                 <td style="padding:6px 10px;text-align:right;color:var(--text-dim)">${r.db}</td>
                 <td style="padding:6px 10px;text-align:right;color:var(--text-dim)">${r.dc}</td>
-                <td style="padding:6px 14px;color:${color}">${info.label}</td>
+                <td style="padding:6px 14px;color:${color}">${statusLabel}</td>
               </tr>
             `;
           }).join('')}
