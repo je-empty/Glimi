@@ -81,7 +81,6 @@
         <span class="pill {{ 'running' if c.running else 'stopped' }}">
           {{ 'RUN' if c.running else 'STOP' }}
         </span>
-        {% if c.is_default %}<span class="pill stopped">default</span>{% endif %}
       </div>
       {% if c.description %}<div class="desc">{{ c.description }}</div>{% endif %}
       <div class="meta">

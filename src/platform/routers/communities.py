@@ -95,10 +95,9 @@ async def list_my_communities(user: dict = Depends(require_user)):
         c["running"] = c["id"] in running
         c["members"] = _fetch_members(c["id"])
         c["member_count"] = len(c["members"])
-    # 정렬: 실행 중 먼저 → default → 알파벳
+    # 정렬: 실행 중 먼저 → 알파벳
     visible.sort(key=lambda c: (
         0 if c.get("running") else 1,
-        0 if c.get("is_default") else 1,
         c.get("id", ""),
     ))
     return visible
