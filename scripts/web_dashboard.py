@@ -3713,24 +3713,8 @@ async function tick() {
     const memPct = health.sys_mem_pct || 0;
     const glimiMemPct = health.sys_mem_total_bytes ? (health.glimi_mem_bytes / health.sys_mem_total_bytes * 100).toFixed(1) : 0;
     const serverRun = health.bot_alive;
-    // 재렌더 전 server-log 보존 (start/stop 진행 로그가 tick 마다 지워지지 않게)
-    const _prevServerLog = document.getElementById('health-server-log');
-    const _savedServerLog = _prevServerLog ? _prevServerLog.textContent : '';
+    // Server Control 은 플랫폼 상단 바로 이동됨 — Health 탭은 순수 health 정보만
     document.getElementById('health-full').innerHTML = `
-      <div style="margin-bottom:18px">
-        <div class="section-title" style="margin-top:0">Server Control</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px;background:var(--panel);border:1px solid var(--border-soft);border-radius:10px">
-          <button class="act-btn success" onclick="runServerControl('start')" ${serverRun ? 'disabled' : ''}>▶ 서버 시작</button>
-          <button class="act-btn danger" onclick="runServerControl('stop')" ${!serverRun ? 'disabled' : ''}>⏸ 서버 중단</button>
-          <button class="act-btn primary" onclick="runServerControl('restart')">↻ 재시작</button>
-          <div style="flex:1"></div>
-          <span style="align-self:center;color:var(--text-dim);font-size:11.5px">
-            현재 상태: ${serverRun ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}
-          </span>
-        </div>
-        <div id="health-server-log" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;margin-top:8px;min-height:40px;max-height:180px;overflow-y:auto;white-space:pre-wrap"></div>
-      </div>
-
       <div style="margin-bottom:18px">
         <div class="section-title" style="margin-top:0">Processes</div>
         <div class="health-grid">
