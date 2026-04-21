@@ -1846,69 +1846,54 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
             dm_parts[0] = _resolve_agent_name(dm_parts[0])
             action_args = " ".join(dm_parts)
 
-    # 시스템 에이전트(Manager/Creator)가 ACTION을 쓴 경우 → 직접 실행
+    # DM ACTION 은 caller type 무관 — 모두 동일 경로로 internal-dm-{sender}-{target} 에 직접 투입.
+    # (과거엔 persona 의 DM 만 유나 approval flow 로 거쳐서 승인 대기 중 묻히는 UX 버그.)
+    if action_type == "DM":
+        dm_parts = action_args.split(None, 1)
+        target_name = dm_parts[0] if dm_parts else ""
+        message = dm_parts[1] if len(dm_parts) > 1 else ""
+        if not target_name or not message:
+            return
+        target = None
+        for a in db.list_agents():
+            if a["name"] == target_name:
+                target = a
+                break
+        if not target:
+            log_writer.system(f"[not_found] DM target agent={target_name}")
+            return
+        sender_name = runtime.get_agent_name(agent_id)
+        ch_name = f"internal-dm-{sender_name}-{target_name}"
+        alt_ch_name = f"internal-dm-{target_name}-{sender_name}"
+        target_ch = (discord.utils.get(guild.text_channels, name=ch_name)
+                     or discord.utils.get(guild.text_channels, name=alt_ch_name))
+        if not target_ch:
+            from src.bot.core import _get_category_for_channel, _ensure_category
+            cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
+            target_ch = await guild.create_text_channel(ch_name, category=cat)
+            db.set_channel_participants(ch_name, [agent_id, target["id"]])
+        actual_ch_name = target_ch.name
+        await send_as_agent(target_ch, agent_id, message)
+        db.log_message(actual_ch_name, agent_id, message)
+        log_writer.system(f"✓ {sender_name} → {target_name} DM (#{actual_ch_name})")
+
+        async def _send_fn(aid, msg):
+            await send_as_agent(target_ch, aid, msg)
+
+        asyncio.create_task(
+            start_conversation(
+                actual_ch_name,
+                [agent_id, target["id"]],
+                _send_fn,
+                context=message,
+            )
+        )
+        return
+
+    # 그 외 ACTION — 시스템 에이전트는 직접 실행 경로 (구 로직 유지)
     agent_info = db.get_agent(agent_id)
     is_system_agent = agent_info and agent_info.get("type") in ("mgr", "creator")
     if is_system_agent:
-        mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
-        if not mgr_ch:
-            return
-
-        if action_type == "DM":
-            dm_parts = action_args.split(None, 1)
-            target_name = dm_parts[0] if dm_parts else ""
-            message = dm_parts[1] if len(dm_parts) > 1 else ""
-            if target_name and message:
-                # 시스템 에이전트는 시스템 에이전트끼리만 DM (persona에게 직접 DM 차단)
-                target_agent = None
-                for a in db.list_agents():
-                    if a["name"] == target_name:
-                        target_agent = a
-                        break
-                if target_agent and target_agent.get("type") == "persona":
-                    log_writer.system(f"⚠ {runtime.get_agent_name(agent_id)} → {target_name} DM 차단 (시스템→persona 불가)")
-                    await send_as_agent(mgr_ch, agent_id, f"{target_name}한테는 직접 DM 보낼 수 없어")
-                    return
-                # 대상 에이전트의 internal-dm 채널에서 메시지 전송
-                from src.core.profile import load_profile
-                target = None
-                for a in db.list_agents():
-                    if a["name"] == target_name:
-                        target = a
-                        break
-                if target:
-                    sender_name = runtime.get_agent_name(agent_id)
-                    ch_name = f"internal-dm-{sender_name}-{target_name}"
-                    # 역방향 채널도 체크
-                    alt_ch_name = f"internal-dm-{target_name}-{sender_name}"
-                    target_ch = (discord.utils.get(guild.text_channels, name=ch_name)
-                                 or discord.utils.get(guild.text_channels, name=alt_ch_name))
-                    if not target_ch:
-                        from src.bot.core import _get_category_for_channel, _ensure_category
-                        cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
-                        target_ch = await guild.create_text_channel(ch_name, category=cat)
-                        db.set_channel_participants(ch_name, [agent_id, target["id"]])
-                    await send_as_agent(target_ch, agent_id, message)
-                    log_writer.system(f"✓ {sender_name} ACTION DM: → {target_name}")
-
-                    # 자율 대화 시작 (역질문도 이어감, 턴 제한 적용)
-                    actual_ch_name = target_ch.name
-                    db.log_message(actual_ch_name, agent_id, message)
-
-                    async def _send_fn(aid, msg):
-                        await send_as_agent(target_ch, aid, msg)
-                        # DB 로깅은 runtime.generate_agent_to_agent에서 처리
-
-                    asyncio.create_task(
-                        start_conversation(
-                            actual_ch_name,
-                            [agent_id, target["id"]],
-                            _send_fn,
-                            context=message,
-                        )
-                    )
-            return
-
         sender_name = runtime.get_agent_name(agent_id)
         log_writer.system(f"{sender_name} ACTION 직접 실행: {action_type} {action_args[:50]}")
         return

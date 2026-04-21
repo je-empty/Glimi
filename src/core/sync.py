@@ -216,52 +216,80 @@ async def sync_community(
             agents_by_id = {a["id"]: a for a in all_agents}       # id→agent (DB→Discord용)
 
             # ═══ 1. 채널 정리 ═══
-            _progress("채널 정리 중...")
-            glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
-            all_glimi_channels = []
-            for cat in glimi_categories:
-                for ch in cat.text_channels:
-                    all_glimi_channels.append(ch)
-
+            # channels_filter 가 있으면 (가동 복구 케이스) 전체 채널 재구조화는 스킵 —
+            # 유저는 특정 채널의 메시지 drift 만 고치고 싶어함. 불필요한 delete/move/reorder 제거.
             expected = _get_expected_channels()
-
+            fast_path = bool(channels_filter)
             surviving = {}
-            for ch in all_glimi_channels:
-                correct_cat = _get_category_for_channel(ch.name)
-                if ch.name not in expected:
-                    if dry_run:
-                        result["channels_deleted"].append(ch.name)
-                        _progress(f"  [dry-run] 삭제 예정: {ch.name}")
+
+            if fast_path:
+                _progress(f"빠른 경로 — {len(channels_filter)}개 채널만 메시지 복구")
+                # 필터 대상 채널만 surviving 에 등록. 없으면 생성 (구조 reorg 없이).
+                for ch_name in channels_filter:
+                    existing = discord_lib.utils.get(guild.text_channels, name=ch_name)
+                    if existing:
+                        surviving[ch_name] = existing
                     else:
+                        # 누락 — 카테고리만 확보 후 채널 생성
+                        cat_name = _get_category_for_channel(ch_name)
+                        cat = discord_lib.utils.get(guild.categories, name=cat_name)
+                        if not cat:
+                            try:
+                                cat = await guild.create_category(cat_name)
+                            except Exception as e:
+                                result["errors"].append(f"카테고리 생성 실패 ({cat_name}): {e}")
+                                continue
                         try:
-                            await ch.delete(reason="Glimi Sync: 불필요")
+                            new_ch = await guild.create_text_channel(ch_name, category=cat)
+                            surviving[ch_name] = new_ch
+                            result["channels_created"].append(ch_name)
+                            _progress(f"  생성: {ch_name}")
+                        except Exception as e:
+                            result["errors"].append(f"생성 실패 ({ch_name}): {e}")
+            else:
+                _progress("채널 정리 중...")
+                glimi_categories = [c for c in guild.categories if c.name.startswith("glimi")]
+                all_glimi_channels = []
+                for cat in glimi_categories:
+                    for ch in cat.text_channels:
+                        all_glimi_channels.append(ch)
+
+                for ch in all_glimi_channels:
+                    correct_cat = _get_category_for_channel(ch.name)
+                    if ch.name not in expected:
+                        if dry_run:
                             result["channels_deleted"].append(ch.name)
-                            _progress(f"  삭제: {ch.name}")
-                        except Exception as e:
-                            result["errors"].append(f"삭제 실패 ({ch.name}): {e}")
-                elif ch.category and ch.category.name != correct_cat:
-                    if dry_run:
+                            _progress(f"  [dry-run] 삭제 예정: {ch.name}")
+                        else:
+                            try:
+                                await ch.delete(reason="Glimi Sync: 불필요")
+                                result["channels_deleted"].append(ch.name)
+                                _progress(f"  삭제: {ch.name}")
+                            except Exception as e:
+                                result["errors"].append(f"삭제 실패 ({ch.name}): {e}")
+                    elif ch.category and ch.category.name != correct_cat:
+                        if dry_run:
+                            surviving[ch.name] = ch
+                            _progress(f"  [dry-run] 이동 예정: {ch.name} → {correct_cat}")
+                        else:
+                            try:
+                                target_cat = discord_lib.utils.get(guild.categories, name=correct_cat)
+                                if not target_cat:
+                                    target_cat = await guild.create_category(correct_cat)
+                                await ch.edit(category=target_cat)
+                                surviving[ch.name] = ch
+                                _progress(f"  이동: {ch.name} → {correct_cat}")
+                            except Exception as e:
+                                result["errors"].append(f"이동 실패 ({ch.name}): {e}")
+                                surviving[ch.name] = ch
+                    elif ch.name not in surviving:
                         surviving[ch.name] = ch
-                        _progress(f"  [dry-run] 이동 예정: {ch.name} → {correct_cat}")
                     else:
-                        try:
-                            target_cat = discord_lib.utils.get(guild.categories, name=correct_cat)
-                            if not target_cat:
-                                target_cat = await guild.create_category(correct_cat)
-                            await ch.edit(category=target_cat)
-                            surviving[ch.name] = ch
-                            _progress(f"  이동: {ch.name} → {correct_cat}")
-                        except Exception as e:
-                            result["errors"].append(f"이동 실패 ({ch.name}): {e}")
-                            surviving[ch.name] = ch
-                elif ch.name not in surviving:
-                    surviving[ch.name] = ch
-                else:
-                    if not dry_run:
-                        try:
-                            await ch.delete(reason="Glimi Sync: 중복")
-                        except Exception:
-                            pass
+                        if not dry_run:
+                            try:
+                                await ch.delete(reason="Glimi Sync: 중복")
+                            except Exception:
+                                pass
 
             # ═══ 2. 카테고리 생성 + 채널 생성 (순서대로) ═══
             _progress("채널 생성 중...")
