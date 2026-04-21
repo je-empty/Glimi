@@ -242,26 +242,12 @@ async function wizNext(from) {
       alert('ID 는 영문/숫자/-/_ 만 가능');
       return;
     }
-    // 로컬 dev 편의 — dev/test_defaults.json 에 등록된 id 면 token 자동 주입
-    try {
-      const r = await fetch('/api/communities/new_defaults?id=' + encodeURIComponent(id));
-      if (r.ok) {
-        const defaults = await r.json();
-        if (defaults && defaults.token) {
-          const tokenInput = document.getElementById('f-token');
-          if (tokenInput && !tokenInput.value) {
-            tokenInput.value = defaults.token;
-            tokenInput.dataset.prefilled = '1';
-          }
-        }
-      }
-    } catch (e) {}
+    await _tryApplyDefaults(id);
     wizGoto(2);
   } else if (from === 2) {
     const name = document.getElementById('f-owner-name').value.trim();
     if (!name) { alert('이름은 필수'); return; }
     wizGoto(3);
-    // 미리 채워진 경우 피드백 + 포커스는 빈 값일 때만
     const tokenInput = document.getElementById('f-token');
     if (tokenInput && tokenInput.dataset.prefilled === '1') {
       const hint = tokenInput.parentElement.querySelector('.hint');
@@ -272,6 +258,47 @@ async function wizNext(from) {
     }
   }
 }
+
+// 로컬 dev — dev/test_defaults.json 에 등록된 id 면 모든 필드 자동 채움.
+// 빈 필드만 덮어씀 (유저가 이미 수정한 필드는 유지).
+async function _tryApplyDefaults(id) {
+  try {
+    const r = await fetch('/api/communities/new_defaults?id=' + encodeURIComponent(id));
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d || Object.keys(d).length === 0) return;
+
+    const fill = (elId, val) => {
+      if (!val) return;
+      const el = document.getElementById(elId);
+      if (el && !el.value.trim()) { el.value = val; el.dataset.prefilled = '1'; }
+    };
+    fill('f-name', d.name);
+    fill('f-desc', d.description);
+    fill('f-token', d.token);
+    // language
+    if (d.language) {
+      const sel = document.getElementById('f-lang');
+      if (sel) sel.value = d.language;
+    }
+    const owner = d.owner || {};
+    fill('f-owner-name', owner.name);
+    fill('f-owner-nickname', owner.nickname);
+    fill('f-owner-birth', owner.birth);
+    if (owner.gender && !wizState.gender) wizSetGender(owner.gender);
+  } catch (e) {}
+}
+
+// 이름 필드에 실시간 디바운스 — 매칭되는 defaults 있으면 바로 채움
+// (step 1 → 2 넘어가기 전에도 시각적으로 채워짐)
+let _defTimer = null;
+document.getElementById('f-name').addEventListener('input', e => {
+  if (_defTimer) clearTimeout(_defTimer);
+  _defTimer = setTimeout(() => {
+    const id = document.getElementById('f-id').value.trim();
+    if (id) _tryApplyDefaults(id);
+  }, 400);
+});
 
 async function wizVerify() {
   const token = document.getElementById('f-token').value.trim();
