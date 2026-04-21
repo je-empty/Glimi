@@ -1,0 +1,165 @@
+"""GET 엔드포인트 — snapshot, agent, channel, logs, health, dev, usage, achievements, i18n.
+
+원본: scripts/web_dashboard.py lines 4149-4316 (api_*)
+"""
+import json
+from pathlib import Path
+
+from .context import read_query, with_community
+
+ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+
+def api_snapshot(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        snap = monitor.snapshot()
+        for c in snap["channels"]:
+            c["last_ago"] = monitor.human_ago(c["last_ts"])
+        return snap
+    return with_community(path, _run)
+
+
+def api_logs(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        tail = int(read_query(path, "tail", "150") or 150)
+        return {"lines": monitor.get_recent_system_logs(tail_lines=tail)}
+    return with_community(path, _run)
+
+
+def api_agent_activity(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        aid = read_query(path, "id", "")
+        if not aid:
+            return {"logs": [], "chat": []}
+        return {
+            "logs": monitor.get_agent_thinking_logs(aid, n=5),
+            "chat": monitor.get_agent_recent_chat(aid, limit=3),
+        }
+    return with_community(path, _run)
+
+
+def api_agent_detail(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        aid = read_query(path, "id", "")
+        if not aid:
+            return {"error": "missing id"}
+        return monitor.get_agent_detail(aid)
+    return with_community(path, _run)
+
+
+def api_channel_detail(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        name = read_query(path, "name", "")
+        if not name:
+            return {"error": "missing name"}
+        return monitor.get_channel_detail(name)
+    return with_community(path, _run)
+
+
+def api_health(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        return monitor.get_health()
+    return with_community(path, _run)
+
+
+def api_dev(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        return monitor.get_dev_state()
+    return with_community(path, _run)
+
+
+def api_usage(path: str) -> dict:
+    def _run():
+        from src.core import monitor
+        return monitor.get_usage_stats()
+    return with_community(path, _run)
+
+
+def api_achievements(path: str) -> dict:
+    """현재 커뮤니티의 도전과제 진척도."""
+    from urllib.parse import parse_qs, urlparse
+    q = parse_qs(urlparse(path).query)
+
+    def _run():
+        try:
+            from src.achievements import engine as _eng
+            if q.get("recompute", ["0"])[0] in ("1", "true", "yes"):
+                _eng.recompute_all()
+            return _eng.dashboard_summary()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {"error": str(e), "items": [], "done": 0, "total": 0}
+    return with_community(path, _run)
+
+
+def api_i18n(path: str) -> dict:
+    """i18n/dashboard.{ko,en}.json 파일 로드."""
+    from urllib.parse import parse_qs, urlparse
+    q = parse_qs(urlparse(path).query)
+    lang = (q.get("lang", ["ko"])[0] or "ko").lower()
+    if lang not in ("ko", "en"):
+        lang = "ko"
+    fp = ROOT / "i18n" / f"dashboard.{lang}.json"
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def api_communities() -> dict:
+    """각 커뮤니티의 running 상태까지 포함해서 반환.
+
+    running 판별: 플랫폼 supervisor 등록 여부 + 로그 mtime fallback.
+    """
+    from src import community as _comm
+    import time
+
+    items = _comm.list_communities()
+    active_id = _comm.get_community_id()
+    now = time.time()
+
+    # supervisor 에 등록된 running 목록
+    try:
+        from src.platform.supervisor import supervisor
+        running_set = set(supervisor.list_running())
+    except Exception:
+        running_set = set()
+
+    for it in items:
+        # supervisor 우선, 없으면 log mtime 폴백
+        if it["id"] in running_set:
+            it["running"] = True
+            it["last_log_age_sec"] = 0
+        else:
+            try:
+                log_path = ROOT / "communities" / it["id"] / "logs" / "system.log"
+                if log_path.exists():
+                    age = now - log_path.stat().st_mtime
+                    it["running"] = age < 120
+                    it["last_log_age_sec"] = int(age)
+                else:
+                    it["running"] = False
+                    it["last_log_age_sec"] = None
+            except Exception:
+                it["running"] = False
+                it["last_log_age_sec"] = None
+
+    return {"items": items, "active": active_id}
+
+
+def api_models() -> dict:
+    """사용 가능 모델 카탈로그 — 대시보드 dropdown 소스."""
+    try:
+        from src.core.runtime import AVAILABLE_MODELS
+        return {"items": AVAILABLE_MODELS}
+    except Exception as e:
+        return {"error": str(e), "items": []}

@@ -1,7 +1,7 @@
 """
 Monitor — 커뮤니티 런타임 상태를 읽기전용으로 조회하는 순수 데이터 계층.
 
-CLI dashboard (src/tui/dashboard.py)와 Web dashboard (scripts/web_dashboard.py)
+CLI dashboard (src/tui/dashboard.py)와 Web dashboard (src/platform/dashboard/)
 둘 다 이 모듈을 소비. 렌더링만 각자, 데이터 로직은 단일 소스.
 
 서버 제어(start/stop/restart)는 wizard 소관 — 여기서는 절대 건드리지 않음.

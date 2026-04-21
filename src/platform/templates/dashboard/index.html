@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}{{ community_id }} · Glimi{% endblock %}
+
+{% block head %}
+<!-- 대시보드 고유 스타일 -->
+<link rel="stylesheet" href="/static/css/dashboard.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* 대시보드는 전체 뷰포트 사용 (base main 패딩 무시) */
+  html, body { height: 100%; overflow: hidden; isolation: isolate; }
+  body {
+    font: 13px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* 플랫폼 서버 컨트롤 */
+  .gp-server-ctrl { display: flex; align-items: center; gap: 6px; }
+  .gp-server-ctrl .gp-status {
+    padding: 2px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 600;
+    background: var(--panel-2, #f3f4f6); color: var(--text-dim, #6b7280);
+    white-space: nowrap;
+  }
+  .gp-server-ctrl .gp-status.running { background: var(--ok, #10b981); color: #fff; }
+  .gp-server-ctrl .gp-status.stopped { background: var(--text-faint, #9ca3af); color: #fff; }
+  .gp-server-ctrl .gp-uptime { color: var(--text-dim, #6b7280); font-size: 11px; min-width: 28px; }
+  .gp-server-ctrl .gp-ctrl-btn {
+    padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    border: 1px solid var(--border, #e5e7eb); background: transparent; color: inherit;
+    font-family: inherit;
+  }
+  .gp-server-ctrl .gp-ctrl-btn:hover { border-color: var(--accent, #2563eb); }
+  .gp-server-ctrl .gp-ctrl-btn.start { background: var(--ok, #10b981); color: #fff; border-color: var(--ok, #10b981); }
+  .gp-server-ctrl .gp-ctrl-btn.stop { color: var(--err, #ef4444); border-color: var(--err, #ef4444); }
+  @keyframes spin { to { transform: rotate(360deg) } }
+</style>
+{% endblock %}
+
+{% block topbar %}
+<!-- 대시보드는 기존 app 헤더 사용 (JS 가 #community-btn, #theme-toggle 등에 바인딩) -->
+{% endblock %}
+
+{% block body %}
+<div class="app">
+  <header class="status">
+    <a href="/" class="brand" title="Glimi 홈" style="text-decoration:none;color:inherit">
+      <img src="/logo" alt="Glimi" class="brand-logo">
+      <span class="brand-name">Glimi</span>
+    </a>
+
+    <div style="position:relative" id="community-switcher-wrap">
+      <button class="community-btn" id="community-btn" title="커뮤니티 전환">
+        <span class="sv-dot"></span>
+        <span id="community-btn-name">—</span>
+        <span class="chev">▾</span>
+      </button>
+      <div class="community-menu" id="community-menu"></div>
+    </div>
+
+    <!-- 플랫폼 서버 컨트롤 -->
+    <div class="gp-server-ctrl" id="gp-server-ctrl">
+      <span id="gp-bot-status" class="gp-status">…</span>
+      <span id="gp-bot-uptime" class="gp-uptime"></span>
+      <button id="gp-start" class="gp-ctrl-btn start" onclick="glimiServerCtrl('start')">▶ 시작</button>
+      <button id="gp-restart" class="gp-ctrl-btn" onclick="glimiServerCtrl('restart')" style="display:none">↻</button>
+      <button id="gp-stop" class="gp-ctrl-btn stop" onclick="glimiServerCtrl('stop')" style="display:none">■ 중지</button>
+    </div>
+
+    <div style="flex:1"></div>
+
+    <div style="position:relative" id="lang-switcher-wrap">
+      <button class="btn-icon" id="lang-toggle" title="언어">🌐</button>
+      <div class="lang-menu" id="lang-menu"></div>
+    </div>
+    <button class="btn-icon" id="supervisor-toggle" title="Supervisor view — 내면 조종 보기">💭</button>
+    <button class="btn-icon" id="theme-toggle" title="Theme">☀</button>
+    {% if user %}
+    <span class="gp-user" style="font-size:12px;color:var(--text-dim);margin:0 6px">{{ user.username }}</span>
+    <form method="post" action="/logout" style="display:inline">
+      <button type="submit" class="btn-icon" title="로그아웃">⏏</button>
+    </form>
+    {% endif %}
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="agents">Agents <span class="count" id="tc-agents">0</span></button>
+    <button data-tab="channels">Channels <span class="count" id="tc-channels">0</span></button>
+    <button data-tab="messages">Messages <span class="count" id="tc-messages">0</span></button>
+    <button data-tab="scenes">Scenes <span class="count" id="tc-scenes">0</span></button>
+    <button data-tab="achievements">Achievements <span class="count" id="tc-achievements">—</span></button>
+    <button data-tab="events">Events <span class="count" id="tc-events">0</span></button>
+    <button data-tab="supervisors" class="sup-tab">Supervisors <span class="count" id="tc-supervisors">0</span></button>
+    <button data-tab="health">Health</button>
+    <button data-tab="sync">Sync</button>
+    <button data-tab="dev">Dev</button>
+    <button data-tab="usage">Usage</button>
+    <button data-tab="logs">Logs</button>
+  </nav>
+
+  <main>
+    <div class="view active" id="view-overview">
+      <div class="empty-banner">
+        <h2>📭 이 커뮤니티는 비어있어요</h2>
+        <div>아직 에이전트나 대화가 없어요. 상단의 <b>▶ 시작</b> 버튼을 눌러 봇을 실행해 봐.</div>
+      </div>
+      <div class="offline-banner" id="offline-banner">
+        <b>오프라인</b> — 커뮤니티 서버가 실행 중이 아님. 마지막 스냅샷 표시 중 (실시간 아님)
+        <span class="muted" id="offline-last"></span>
+      </div>
+      <div class="hero" id="hero"></div>
+      <div class="graph-panel" id="graph-panel"></div>
+      <div class="overview-grid">
+        <div class="kpi"><div class="label">Server Status</div><div class="value" id="kpi-server">—</div></div>
+        <div class="kpi"><div class="label">Discord Bot</div><div class="value" id="kpi-bot">—</div></div>
+        <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
+        <div class="kpi"><div class="label">Active Scene</div><div class="value" id="kpi-scene">—</div></div>
+        <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
+      </div>
+      <div class="section-title">Agents</div>
+      <div class="agent-grid" id="overview-agents"></div>
+      <div class="section-title">Recent Conversations</div>
+      <div class="msg-list" id="overview-msgs"></div>
+    </div>
+
+    <div class="view" id="view-agents"><div class="agent-grid" id="agents-full"></div></div>
+    <div class="view" id="view-channels"><div id="channels-full"></div></div>
+    <div class="view" id="view-messages"><div class="msg-list" id="messages-full"></div></div>
+    <div class="view" id="view-scenes"><div id="scenes-full"></div></div>
+    <div class="view" id="view-achievements">
+      <div class="ach-header">
+        <div class="ach-title">도전과제</div>
+        <div class="ach-sub">커뮤니티를 살면서 만나는 순간들 ✨</div>
+        <div class="ach-progress-wrap">
+          <div class="ach-progress-bar"><div class="ach-progress-fill" id="ach-fill" style="width:0%"></div></div>
+          <div class="ach-progress-text" id="ach-pct">0 / 0</div>
+        </div>
+      </div>
+      <div class="ach-grid" id="ach-grid"></div>
+    </div>
+    <div class="view" id="view-events"><div class="event-list" id="events-full"></div></div>
+    <div class="view" id="view-health"><div class="health-grid" id="health-full"></div></div>
+    <div class="view" id="view-sync"><div id="sync-full"></div></div>
+    <div class="view" id="view-dev"><div id="dev-full"></div></div>
+    <div class="view" id="view-usage"><div id="usage-full"></div></div>
+    <div class="view" id="view-supervisors"><div id="supervisors-full"></div></div>
+    <div class="view" id="view-logs"><div class="log-view" id="logs-full"></div></div>
+  </main>
+</div>
+
+<!-- Detail Modal -->
+<div class="detail-backdrop" id="detail-backdrop">
+  <div class="detail-panel">
+    <div class="detail-head">
+      <span class="d-emoji" id="d-emoji">◆</span>
+      <span class="d-title" id="d-title">—</span>
+      <button class="d-close" id="d-close">닫기</button>
+    </div>
+    <div class="detail-body" id="d-body"></div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="this.classList.remove('open')">
+  <img id="lightbox-img" src="" alt="">
+  <div class="lb-caption" id="lightbox-caption"></div>
+</div>
+
+<!-- Sync progress modal -->
+<div id="sync-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;width:min(720px,100%);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+    <div style="padding:16px 22px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:12px">
+      <div id="sync-modal-spinner" style="width:18px;height:18px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="flex:1">
+        <div id="sync-modal-title" style="font-weight:700;font-size:15px">작업 중...</div>
+        <div id="sync-modal-subtitle" style="font-size:11.5px;color:var(--text-dim);margin-top:2px">다른 탭·버튼 이용 불가</div>
+      </div>
+      <button id="sync-modal-cancel" onclick="cancelSyncAction()" class="act-btn small danger" style="display:none">취소</button>
+      <button id="sync-modal-close" onclick="closeSyncModal()" class="act-btn small" style="display:none">닫기</button>
+    </div>
+    <div id="sync-modal-log" style="flex:1;overflow-y:auto;padding:14px 22px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.55;color:var(--text-dim);background:var(--panel-2);white-space:pre-wrap;min-height:280px;max-height:55vh"></div>
+  </div>
+</div>
+
+<div class="loading-bar"></div>
+<div class="toast" id="toast"></div>
+
+<!-- 서버에서 community 를 JS 에 주입 (URL 쿼리 의존 제거) -->
+<script>
+  window.__GLIMI_COMMUNITY__ = {{ community_id|tojson }};
+</script>
+
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="/static/js/dashboard.js"></script>
+
+<!-- 플랫폼 서버 컨트롤 로직 -->
+<script>
+(function() {
+  const CID = window.__GLIMI_COMMUNITY__;
+  async function refresh() {
+    try {
+      const r = await fetch('/api/communities/' + CID + '/status');
+      if (!r.ok) return;
+      const s = await r.json();
+      const badge = document.getElementById('gp-bot-status');
+      const up = document.getElementById('gp-bot-uptime');
+      const startBtn = document.getElementById('gp-start');
+      const restartBtn = document.getElementById('gp-restart');
+      const stopBtn = document.getElementById('gp-stop');
+      if (!badge) return;
+      if (s.running) {
+        badge.textContent = 'RUNNING';
+        badge.className = 'gp-status running';
+        if (s.uptime_sec) up.textContent = Math.round(s.uptime_sec) + 's';
+        startBtn.style.display = 'none';
+        restartBtn.style.display = '';
+        stopBtn.style.display = '';
+      } else {
+        badge.textContent = 'STOPPED';
+        badge.className = 'gp-status stopped';
+        up.textContent = '';
+        startBtn.style.display = '';
+        restartBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+      }
+    } catch (e) {}
+  }
+  window.glimiServerCtrl = async function(action) {
+    try {
+      const r = await fetch('/api/communities/' + CID + '/' + action, { method: 'POST' });
+      if (!r.ok) { alert('실패: ' + await r.text()); return; }
+      setTimeout(refresh, 500);
+      setTimeout(refresh, 2500);
+    } catch (e) { alert(e); }
+  };
+  refresh();
+  setInterval(refresh, 3000);
+})();
+</script>
+{% endblock %}

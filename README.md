@@ -367,24 +367,23 @@ The web dashboard also has an **Auto Fix** action that triggers the same flow.
 ```bash
 git clone https://github.com/jaebinsim/Glimi.git
 cd Glimi
-./run    # Auto-creates venv, installs deps, launches Wizard
+./run.sh    # Auto-creates venv, installs deps, launches Glimi Platform
 ```
 
 **Requirements**: Python 3.11+, Node.js, [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`npm install -g @anthropic-ai/claude-code`)
 
 > Claude Code Max plan is recommended for full functionality. Without it, agents respond with placeholder messages indicating the connection is down.
 
-The Wizard walks you through:
-1. **Create community** — set ID, enter your profile (name, nickname, birth, gender)
-2. **Discord bot setup** — token verification + permission check
-3. **Start server** → auto-tutorial with Manager
-4. **Open Web Dashboard** at `http://localhost:8765`
+Open `http://localhost:8000` and log in (`admin/rmfflal` or `test/0000`). From the web UI you can:
+1. **Create / manage communities** (one-click from the home list)
+2. **Start / stop / restart** community bots from the dashboard top bar
+3. **Observe** agent graph, channels, memory, scenes, events, health
 
 ```bash
-./scripts/run.sh my-server         # Run a specific community
-./scripts/web_dashboard.py demo    # Dashboard for a specific community
-python -m src.community list       # List communities
-python -m src.community init xyz   # Initialize a new community
+./run.sh --port 9000                  # Change port
+./run.sh --legacy <community>         # Legacy single-bot mode (QA/debugging)
+python -m src.platform.accounts list  # List accounts
+python -m src.community list          # List communities (CLI)
 ```
 
 ---
