@@ -191,9 +191,12 @@ def _update_registry(cid: str, name: str, description: str, language: str) -> No
         REGISTRY_PATH.write_text(content)
 
 
-def _run_db_migration(cid: str) -> tuple[bool, str]:
-    """subprocess 로 DB init + migrate_json_to_db. TUI wizard._run_db_init 이식.
-    long-running 이라 main process 안에서 돌리면 uvicorn worker 가 blocked."""
+def _run_db_init(cid: str) -> tuple[bool, str]:
+    """신규 커뮤니티용 DB 초기화. subprocess 로 격리 — main process 의
+    전역 community state 오염 방지.
+
+    레거시 JSON → DB 마이그레이션은 더 이상 호출 안 함 (profiles/ 가 있는
+    과거 설치 업그레이드에만 필요했음 — 신규 커뮤니티엔 무관)."""
     env = os.environ.copy()
     env["GLIMI_COMMUNITY"] = cid
     proc = subprocess.run(
@@ -201,13 +204,11 @@ def _run_db_migration(cid: str) -> tuple[bool, str]:
             sys.executable, "-c",
             "from src import community, db; "
             f"community.set_community('{cid}'); "
-            "db.init_db(); "
-            "from src.tools.migrate import migrate_json_to_db; "
-            "migrate_json_to_db()"
+            "db.init_db()"
         ],
         capture_output=True, text=True, env=env,
         cwd=str(COMMUNITIES_DIR.parent),
-        timeout=60,
+        timeout=30,
     )
     return (proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:])
 
@@ -280,15 +281,14 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
         (data.owner.gender or "").strip(),
     )
 
-    # ── 5. DB 초기화 + JSON 마이그레이션 (subprocess) ──
+    # ── 5. DB 초기화 (subprocess) ──
     from fastapi.concurrency import run_in_threadpool
-    ok, log = await run_in_threadpool(_run_db_migration, data.id)
+    ok, log = await run_in_threadpool(_run_db_init, data.id)
     if not ok:
-        # 실패해도 community 자체는 살려두고 경고 반환
         return {
             "ok": False,
             "id": data.id,
-            "warning": "DB 마이그레이션 실패 — 수동으로 ./run.sh 재시도 필요",
+            "warning": "DB 초기화 실패",
             "log": log,
         }
 
