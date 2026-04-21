@@ -430,28 +430,42 @@ async def _h_discord_get_pins(args, ctx):
 async def _h_request_dm(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _forward_action_to_yuna
     target = args["target"]
-    # 중복 호출 차단 — 같은 caller가 같은 target에게 한 번 보낸 보고를 또 보내는 경우
-    # (하나가 튜토리얼 리포트를 중복 전송해서 내부-dm이 어지러워지는 사례 방지).
-    # 메시지 내용이 완전 다르면 허용 (caller가 의도적으로 후속 메시지 보낼 수 있음)이라
-    # 직전 1건만 비교. meta key에 저장하고 helper에서 체크.
+    cur_msg = args.get("message", "") or ""
+
+    # 중복 호출 차단 — **60초 내 + 거의 동일 메시지** 만 drop.
+    # 과거엔 영구 저장 + 70% 일치로 너무 공격적이라, 유저가 재촉해서 유나/서진이 비슷한 문구로
+    # request_dm 두 번째 시도하면 두 번째가 silent drop → "보낼게" 해놓고 실제 증발하는 버그.
+    # (ex: "빈이가 발냄새 궁금하대" → 1분 뒤 "빈이가 또 발냄새 물어보래" drop)
+    import time as _time
+    import json as _json
     dedup_key = f"request_dm:last:{ctx.caller_agent_id}:{target}"
-    prev = db.get_meta(dedup_key) or ""
-    cur_msg = args.get("message", "")
-    # 너무 비슷한 내용 (80% 이상 prefix 동일) 재전송 차단
-    if prev and _similar_prefix(prev, cur_msg, threshold=0.7):
+    prev_raw = db.get_meta(dedup_key) or ""
+    try:
+        prev_obj = _json.loads(prev_raw) if prev_raw else {}
+    except Exception:
+        prev_obj = {}
+    prev_msg = prev_obj.get("msg", "") if isinstance(prev_obj, dict) else ""
+    prev_ts = prev_obj.get("ts", 0) if isinstance(prev_obj, dict) else 0
+    now = _time.time()
+    within_window = (now - prev_ts) < 60  # 60초 내 재전송
+    if within_window and prev_msg and _similar_prefix(prev_msg, cur_msg, threshold=0.95):
         log_writer.system(
-            f"[request_dm] {ctx.caller_agent_id} → {target} 중복 보고 스킵 "
-            f"(prev='{prev[:40]}', cur='{cur_msg[:40]}')"
+            f"[request_dm] {ctx.caller_agent_id} → {target} 60초 내 거의 동일 메시지 스킵 "
+            f"(prev='{prev_msg[:40]}', cur='{cur_msg[:40]}')"
         )
-        return {"skipped": True, "reason": "duplicate", "target": target}
-    db.set_meta(dedup_key, cur_msg)
-    s = json.dumps({
+        return {
+            "skipped": True,
+            "reason": "same_message_within_60s",
+            "target": target,
+            "note": "방금 보낸 메시지와 거의 동일해서 중복 방지됨. 다른 내용이면 표현 바꿔서 재시도.",
+        }
+    db.set_meta(dedup_key, _json.dumps({"msg": cur_msg, "ts": now}, ensure_ascii=False))
+    s = _json.dumps({
         "type": "DM",
         "target": target,
         "message": cur_msg,
     }, ensure_ascii=False)
     await _forward_action_to_yuna(ctx.caller_agent_id, s, ctx.guild)
-    # 이벤트 로그 — 누가 누구한테 DM 요청
     try:
         db.log_event("dm_request", [ctx.caller_agent_id, target],
                      f"{ctx.caller_agent_id}가 {target}한테 DM 요청: {cur_msg[:60]}",
@@ -461,9 +475,8 @@ async def _h_request_dm(args: dict, ctx: ToolContext):
     return {"forwarded_to": target}
 
 
-def _similar_prefix(a: str, b: str, threshold: float = 0.7) -> bool:
-    """두 문자열의 앞부분이 threshold 이상 겹치면 True. 정교한 유사도 계산 대신
-    첫 30자 기준 Jaccard 유사도로 가볍게."""
+def _similar_prefix(a: str, b: str, threshold: float = 0.95) -> bool:
+    """두 문자열의 앞부분이 threshold 이상 겹치면 True. 60자 기준 문자별 일치율."""
     if not a or not b:
         return False
     al = a[:60].lower().replace(" ", "")
