@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from src import community
+from src.core.timeutil import now_utc_iso  # DB 타임스탬프는 UTC aware 로 통일 (클라이언트가 로컬 변환)
 
 DB_PATH = None  # community.get_db_path()로 동적 결정
 
@@ -408,7 +409,7 @@ def update_emotion(agent_id: str, emotion: str, intensity: int):
     conn = get_conn()
     conn.execute(
         "UPDATE agents SET current_emotion = ?, emotion_intensity = ?, last_active = ? WHERE id = ?",
-        (emotion, intensity, datetime.now().isoformat(), agent_id)
+        (emotion, intensity, now_utc_iso(), agent_id)
     )
     conn.commit()
     conn.close()
@@ -431,7 +432,7 @@ def add_relationship(agent_a: str, agent_b: str, rel_type: str, intimacy: int = 
     conn.execute(
         """INSERT OR REPLACE INTO relationships (agent_a, agent_b, type, intimacy_score, dynamics, updated_at)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (agent_a, agent_b, rel_type, intimacy, dynamics, datetime.now().isoformat())
+        (agent_a, agent_b, rel_type, intimacy, dynamics, now_utc_iso())
     )
     conn.commit()
     conn.close()
@@ -463,7 +464,7 @@ def update_intimacy(agent_a: str, agent_b: str, delta: int):
         """UPDATE relationships 
            SET intimacy_score = MIN(100, MAX(0, intimacy_score + ?)), updated_at = ?
            WHERE agent_a = ? AND agent_b = ?""",
-        (delta, datetime.now().isoformat(), agent_a, agent_b)
+        (delta, now_utc_iso(), agent_a, agent_b)
     )
     conn.commit()
     conn.close()
@@ -508,7 +509,7 @@ def log_message(channel: str, speaker: str, message: str, emotion: str = None):
     if speaker.startswith("agent-"):
         conn.execute(
             "UPDATE agents SET last_active = ? WHERE id = ?",
-            (datetime.now().isoformat(), speaker)
+            (now_utc_iso(), speaker)
         )
     conn.commit()
     conn.close()
@@ -1464,7 +1465,7 @@ def save_agent_profile(profile: dict):
         profile.get("birth_year"), profile.get("age"), profile.get("gender"),
         profile.get("mbti"), profile.get("enneagram"),
         profile.get("background"), profile_image_filename,
-        profile.get("version", 1), profile.get("created_at", datetime.now().isoformat()),
+        profile.get("version", 1), profile.get("created_at", now_utc_iso()),
     ))
 
     # 위성 테이블 (JSON blob)
@@ -1770,17 +1771,17 @@ def upsert_achievement(user_id: str, key: str, state: str = None,
         new_progress = _json.dumps(progress_data, ensure_ascii=False) if progress_data is not None else existing["progress_data"]
         new_unlocked = existing["unlocked_at"]
         if mark_unlocked and not new_unlocked:
-            new_unlocked = datetime.now().isoformat()
+            new_unlocked = now_utc_iso()
         new_completed = existing["completed_at"]
         if mark_completed and not new_completed:
-            new_completed = datetime.now().isoformat()
+            new_completed = now_utc_iso()
         conn.execute(
             "UPDATE achievements SET state = ?, progress_data = ?, unlocked_at = ?, completed_at = ? "
             "WHERE user_id = ? AND key = ?",
             (new_state, new_progress, new_unlocked, new_completed, user_id, key)
         )
     else:
-        now = datetime.now().isoformat()
+        now = now_utc_iso()
         conn.execute(
             "INSERT INTO achievements (user_id, key, state, progress_data, unlocked_at, completed_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",

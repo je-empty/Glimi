@@ -78,6 +78,13 @@ async def on_ready():
         log_writer.system(f"Server connected: {guild.name}")
         log_writer.system("Initializing channels...")
         await ensure_channels(guild)
+        # 채널 순서 정렬 — 카테고리 순서 + 각 카테고리 내부 규칙. 봇이 이미 연결돼 있으니
+        # 자체 Discord client 열 필요 없이 guild 객체 그대로 사용.
+        try:
+            from src.core.sync import arrange_with_guild
+            await arrange_with_guild(guild)
+        except Exception as e:
+            log_writer.system(f"⚠ 채널 정렬 실패 (무시하고 진행): {e}")
         log_writer.system("Syncing profile images...")
         await sync_profile_images(guild)
 

@@ -34,6 +34,9 @@ mkdir -p dev
 # PID 파일
 PID_FILE="dev/.bot.pid"
 DASHBOARD_PID_FILE="dev/.dashboard.pid"
+# 대시보드가 "Stop Server" 눌렀을 때 이 플래그 생성 → 아래 respawn 루프가 존중해서
+# 파일 제거될 때까지 봇 재시작 안 함. Start Server 는 이 파일만 지우면 끝.
+PAUSE_FILE="dev/.bot-paused"
 DASHBOARD_PORT="${GLIMI_DASHBOARD_PORT:-8765}"
 
 # 웹 대시보드 자동 시작 (외부망 접속용 — 포트 $DASHBOARD_PORT 포워딩하면 됨)
@@ -57,7 +60,22 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
+# fresh 실행 시 이전 세션이 남긴 pause flag 정리 — 새로 띄운다는 건 실제로 돌리고 싶다는 의사
+if [ -f "$PAUSE_FILE" ]; then
+    echo -e "${YELLOW}[run.sh] stale pause flag 제거: $PAUSE_FILE${NC}"
+    rm -f "$PAUSE_FILE"
+fi
+
 while true; do
+    # 대시보드가 건 pause 플래그 확인 — 있으면 봇 재시작 보류
+    if [ -f "$PAUSE_FILE" ]; then
+        echo -e "${YELLOW}[run.sh] pause flag 감지 ($PAUSE_FILE) — 제거될 때까지 대기${NC}"
+        while [ -f "$PAUSE_FILE" ]; do
+            sleep 1
+        done
+        echo -e "${GREEN}[run.sh] pause 해제${NC}"
+    fi
+
     echo -e "${GREEN}[run.sh] 봇 시작...${NC}"
 
     # 봇 실행 (백그라운드 X — 직접 실행)

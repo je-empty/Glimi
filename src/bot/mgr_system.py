@@ -9,6 +9,7 @@ import json
 import asyncio
 import random
 from datetime import datetime
+from src.core.timeutil import now_utc_iso
 
 import discord
 
@@ -1017,7 +1018,7 @@ async def yuna_edit_relationship(report_channel, args_str):
             conn = db.get_conn()
             conn.execute(
                 "UPDATE relationships SET intimacy_score = ?, updated_at = ? WHERE agent_a = ? AND agent_b = ?",
-                (max(0, min(100, score)), datetime.now().isoformat(), a["id"], b["id"])
+                (max(0, min(100, score)), now_utc_iso(), a["id"], b["id"])
             )
             conn.commit()
             conn.close()
@@ -1028,7 +1029,7 @@ async def yuna_edit_relationship(report_channel, args_str):
         conn = db.get_conn()
         conn.execute(
             "UPDATE relationships SET type = ?, updated_at = ? WHERE agent_a = ? AND agent_b = ?",
-            (value, datetime.now().isoformat(), a["id"], b["id"])
+            (value, now_utc_iso(), a["id"], b["id"])
         )
         conn.commit()
         conn.close()
@@ -1039,7 +1040,7 @@ async def yuna_edit_relationship(report_channel, args_str):
         conn = db.get_conn()
         conn.execute(
             "UPDATE relationships SET dynamics = ?, updated_at = ? WHERE agent_a = ? AND agent_b = ?",
-            (value, datetime.now().isoformat(), a["id"], b["id"])
+            (value, now_utc_iso(), a["id"], b["id"])
         )
         conn.commit()
         conn.close()
@@ -1433,7 +1434,7 @@ def create_dev_request(description: str, requested_by: str) -> None:
         json.dump({
             "description": description,
             "requested_by": requested_by,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_utc_iso(),
         }, f, ensure_ascii=False, indent=2)
     log.info(f"[Dev] 요청 생성 — {description[:50]}")
 

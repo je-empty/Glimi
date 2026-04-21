@@ -1663,16 +1663,18 @@ function renderAgent(a, clickable=true) {
   }
 
   const onclick = clickable ? `onclick="openAgent('${esc(a.id)}')"` : '';
-  // last_active를 상대 시간으로 표시
+  // last_active 를 상대 시간으로 표시. _parseServerTs 로 aware/naive(KST fallback) 모두 처리.
   let agoText = '';
   if (a.last_active) {
     try {
-      const dt = new Date(a.last_active);
-      const secs = (Date.now() - dt.getTime()) / 1000;
-      if (secs < 60) agoText = `${Math.floor(secs)}s`;
-      else if (secs < 3600) agoText = `${Math.floor(secs/60)}m`;
-      else if (secs < 86400) agoText = `${Math.floor(secs/3600)}h`;
-      else agoText = `${Math.floor(secs/86400)}d`;
+      const dt = _parseServerTs(a.last_active);
+      if (dt && !isNaN(dt.getTime())) {
+        const secs = (Date.now() - dt.getTime()) / 1000;
+        if (secs < 60) agoText = `${Math.floor(secs)}s`;
+        else if (secs < 3600) agoText = `${Math.floor(secs/60)}m`;
+        else if (secs < 86400) agoText = `${Math.floor(secs/3600)}h`;
+        else agoText = `${Math.floor(secs/86400)}d`;
+      }
     } catch {}
   }
   return `<div class="${cls}" ${onclick}>
@@ -1769,16 +1771,15 @@ document.addEventListener('click', (e) => {
 });
 
 function _fmtMsgTime(iso) {
-  // "2026-04-20 06:34:22" or "2026-04-20T06:34:22" → "04-20 06:34"
-  // 오늘 메시지는 HH:MM, 그 외는 "MM-DD HH:MM" — 가독성·공간 균형.
-  if (!iso) return '';
-  const s = String(iso);
-  if (s.length < 16) return s;
-  const date = s.slice(0, 10);        // YYYY-MM-DD
-  const hhmm = s.slice(11, 16);       // HH:MM
-  const today = new Date().toISOString().slice(0, 10);
-  if (date === today) return hhmm;
-  return `${date.slice(5)} ${hhmm}`;  // MM-DD HH:MM
+  // 뷰어 로컬 tz 변환. 오늘 메시지는 HH:MM, 그 외는 "MM-DD HH:MM".
+  const d = _parseServerTs(iso);
+  if (!d || isNaN(d.getTime())) return String(iso || '');
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function renderMessage(m) {
@@ -1831,7 +1832,7 @@ function renderEvent(e) {
   return `<div class="event">
     <span class="type">${esc(e.type)}</span>
     <span class="desc">${esc(e.description)}</span>
-    <span class="ts">${esc((e.timestamp||'').slice(11, 19))}</span>
+    <span class="ts">${esc(fmtLocalHMS(e.timestamp))}</span>
   </div>`;
 }
 
@@ -2017,7 +2018,7 @@ async function openAgent(id) {
       ${pin}${typeBadge}${imp}
       <span class="mcontent">${esc(m.content)}</span>
       ${ents}${ch}
-      <span class="mts">${esc((m.created_at||'').slice(5, 16))}</span>
+      <span class="mts">${esc(fmtLocalMonthDayHM(m.created_at))}</span>
     </div>`;
   };
 
@@ -2074,7 +2075,7 @@ async function openAgent(id) {
           <span class="mem-predicate">${esc(f.predicate)}</span>
           <span class="mcontent">${esc(f.object)}</span>
           ${f.importance >= 8 ? '<span class="mem-pin" title="중요">⭐</span>' : ''}
-          <span class="mts">${esc((f.created_at||'').slice(5, 16))}</span>
+          <span class="mts">${esc(fmtLocalMonthDayHM(f.created_at))}</span>
         </div>`).join('')}
       </div>`
     ).join('');
@@ -2089,7 +2090,7 @@ async function openAgent(id) {
       ${d.relationship_history.slice(0,10).map(h => `<div class="mem-item">
         <span class="mem-predicate">${esc(h.delta_type || '?')}</span>
         <span class="mcontent">${esc(h.from_state||'?')} → ${esc(h.to_state||'?')}${h.reason ? ' · '+esc(h.reason) : ''}</span>
-        <span class="mts">${esc((h.created_at||'').slice(5, 16))}</span>
+        <span class="mts">${esc(fmtLocalMonthDayHM(h.created_at))}</span>
       </div>`).join('')}
     </div>`;
   }
@@ -2249,21 +2250,149 @@ function appendSyncLog(s) {
   log.scrollTop = log.scrollHeight;
 }
 
-async function runSyncAction(action) {
+// Scan 결과 + 선택 상태 — 탭 재렌더에도 살아남음
+let _lastScanResult = null;   // {counts, db_counts, total, channels_scanned}
+let _syncSelectedChannels = new Set();
+
+function _chDiffInfo(dbCount, dcCount) {
+  const diff = dbCount - dcCount;
+  if (diff > 0) return { cls: 'diff-up', label: `⬆ ${diff}건 Discord 누락 → 복원` };
+  if (diff < 0) return { cls: 'diff-down', label: `⬇ ${-diff}건 Discord 초과 → 삭제` };
+  return { cls: 'diff-ok', label: '✓ 동기화됨' };
+}
+
+function renderScanTable() {
+  const host = document.getElementById('scan-result');
+  if (!host) return;
+  if (!_lastScanResult) {
+    host.innerHTML = '';
+    return;
+  }
+  const dc = _lastScanResult.counts || {};
+  const dbC = _lastScanResult.db_counts || {};
+  const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
+  const rows = [...allChs].map(ch => ({
+    ch,
+    db: dbC[ch] || 0,
+    dc: dc[ch] || 0,
+    diff: (dbC[ch] || 0) - (dc[ch] || 0),
+  }));
+  // 싱크 필요한 것부터, 그 다음 diff 절대값 큰 순
+  rows.sort((a, b) => {
+    const needA = a.diff !== 0 ? 0 : 1;
+    const needB = b.diff !== 0 ? 0 : 1;
+    if (needA !== needB) return needA - needB;
+    return Math.abs(b.diff) - Math.abs(a.diff);
+  });
+
+  const totalDB = rows.reduce((s, r) => s + r.db, 0);
+  const totalDC = rows.reduce((s, r) => s + r.dc, 0);
+  const needUp = rows.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0);
+  const needDown = rows.filter(r => r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
+  const syncedCh = rows.filter(r => r.diff === 0).length;
+  const needCh = rows.length - syncedCh;
+
+  const allSelected = needCh > 0 && rows.filter(r => r.diff !== 0).every(r => _syncSelectedChannels.has(r.ch));
+
+  host.innerHTML = `
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 14px;background:var(--panel);border:1px solid var(--border-soft);border-radius:8px;margin-bottom:10px;font-size:12px">
+      <div><span style="color:var(--text-dim)">DB:</span> <b>${totalDB.toLocaleString()}</b></div>
+      <div><span style="color:var(--text-dim)">Discord:</span> <b>${totalDC.toLocaleString()}</b></div>
+      ${needUp > 0 ? `<div style="color:var(--warn)">⬆ ${needUp.toLocaleString()}건 복원 예정</div>` : ''}
+      ${needDown > 0 ? `<div style="color:var(--err)">⬇ ${needDown.toLocaleString()}건 삭제 예정</div>` : ''}
+      ${(needUp === 0 && needDown === 0) ? '<div style="color:var(--ok)">✓ 완전 동기화 상태</div>' : ''}
+      <div style="flex:1"></div>
+      <div style="color:var(--text-dim)">${syncedCh}/${rows.length} 동기화됨</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+        <input type="checkbox" id="scan-toggle-all" ${allSelected ? 'checked' : ''} onchange="scanToggleAll(this.checked)">
+        <b>싱크 필요한 ${needCh}개 전체 선택</b>
+      </label>
+      <div style="flex:1"></div>
+      <div style="color:var(--text-dim);font-size:11.5px">
+        선택: <b id="scan-selected-count">${_syncSelectedChannels.size}</b>개
+      </div>
+      <button class="act-btn success" onclick="runSyncWithSelection()" ${_syncSelectedChannels.size === 0 ? 'disabled' : ''}>
+        ▶ 선택한 ${_syncSelectedChannels.size}개 채널 싱크
+      </button>
+    </div>
+    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:8px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="background:var(--panel-2);position:sticky;top:0">
+          <tr>
+            <th style="text-align:left;padding:8px 10px;font-weight:600;width:34px"></th>
+            <th style="text-align:left;padding:8px 10px;font-weight:600">채널</th>
+            <th style="text-align:right;padding:8px 10px;font-weight:600;width:70px">DB</th>
+            <th style="text-align:right;padding:8px 10px;font-weight:600;width:70px">Discord</th>
+            <th style="text-align:left;padding:8px 14px;font-weight:600">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => {
+            const info = _chDiffInfo(r.db, r.dc);
+            const checked = _syncSelectedChannels.has(r.ch);
+            const disabled = r.diff === 0;  // 이미 싱크된 건 선택 불필요
+            const color = r.diff > 0 ? 'var(--warn)' : (r.diff < 0 ? 'var(--err)' : 'var(--text-dim)');
+            return `
+              <tr style="border-top:1px solid var(--border-soft)">
+                <td style="padding:6px 10px">
+                  <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+                    onchange="scanToggleChannel('${esc(r.ch)}', this.checked)">
+                </td>
+                <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:11.5px">#${esc(r.ch)}</td>
+                <td style="padding:6px 10px;text-align:right;color:var(--text-dim)">${r.db}</td>
+                <td style="padding:6px 10px;text-align:right;color:var(--text-dim)">${r.dc}</td>
+                <td style="padding:6px 14px;color:${color}">${info.label}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function scanToggleChannel(ch, checked) {
+  if (checked) _syncSelectedChannels.add(ch);
+  else _syncSelectedChannels.delete(ch);
+  renderScanTable();
+}
+
+function scanToggleAll(checked) {
+  if (!_lastScanResult) return;
+  const dc = _lastScanResult.counts || {};
+  const dbC = _lastScanResult.db_counts || {};
+  const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
+  if (checked) {
+    for (const ch of allChs) {
+      if ((dbC[ch] || 0) !== (dc[ch] || 0)) _syncSelectedChannels.add(ch);
+    }
+  } else {
+    _syncSelectedChannels.clear();
+  }
+  renderScanTable();
+}
+
+function runSyncWithSelection() {
+  if (_syncSelectedChannels.size === 0) { toast('싱크할 채널을 선택해', 'warn'); return; }
+  runSyncAction('sync', { channels: [..._syncSelectedChannels] });
+}
+
+async function runSyncAction(action, extraBody) {
   if (_syncInProgress) { toast('이미 sync 작업 중', 'warn'); return; }
   const endpoints = {
     scan: '/api/action/scan_discord',
     sync: '/api/action/run_sync',
+    arrange: '/api/action/arrange_channels',
     restore: '/api/action/restore',
   };
-  const labels = { scan: 'Scan Discord', sync: 'Full Sync', restore: 'Restore Messages' };
-  // Scan 만 취소 가능 (dry-run). Full Sync / Restore 는 중간 abort 시 DB·Discord 불일치 위험 → 불허.
-  const cancellable = (action === 'scan');
+  const labels = { scan: 'Scan Discord', sync: 'Full Sync', arrange: '채널 순서 정렬', restore: 'Restore Messages' };
+  const cancellable = (action === 'scan' || action === 'arrange');
   openSyncModal(labels[action], cancellable);
   const appendOut = appendSyncLog;
   _syncAbortCtrl = new AbortController();
 
-  // 서버 실행 중이면 자동 stop → run → restart 플로우
   const running = await isBotRunning();
   let restartAfter = false;
 
@@ -2286,9 +2415,8 @@ async function runSyncAction(action) {
   appendOut(`▶ ${labels[action]} 실행 중...`);
   let r;
   try {
-    // Scan 만 AbortController signal 연결 (취소 가능)
     const fetchOpts = cancellable ? { signal: _syncAbortCtrl.signal } : {};
-    r = await postJson(q(endpoints[action]), {}, fetchOpts);
+    r = await postJson(q(endpoints[action]), extraBody || {}, fetchOpts);
   } catch (e) {
     if (e.name === 'AbortError') {
       appendOut('⏹ 사용자 취소로 중단됨');
@@ -2306,8 +2434,30 @@ async function runSyncAction(action) {
     toast(r.message || r.error, 'err');
   } else {
     appendOut('✓ 완료');
-    if (r.logs && r.logs.length) appendOut(r.logs.join('\n'));
-    if (r.result) appendOut(JSON.stringify(r.result, null, 2));
+    // Scan 결과는 global state 에 저장 → 테이블로 렌더
+    if (action === 'scan' && r.result) {
+      _lastScanResult = r.result;
+      // 이전 선택 초기화 후 diff 있는 채널 자동 선택
+      _syncSelectedChannels.clear();
+      const dc = r.result.counts || {};
+      const dbC = r.result.db_counts || {};
+      for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
+        if ((dbC[ch] || 0) !== (dc[ch] || 0)) _syncSelectedChannels.add(ch);
+      }
+      const totalDiff = Object.keys(dc).length + Object.keys(dbC).length;
+      appendOut(`  스캔 완료: ${r.result.channels_scanned}개 채널 · Discord 총 ${r.result.total}건`);
+      appendOut(`  싱크 필요: ${_syncSelectedChannels.size}개 채널 (체크됨)`);
+      renderScanTable();
+    } else {
+      if (r.logs && r.logs.length) appendOut(r.logs.join('\n'));
+      if (r.result) appendOut(JSON.stringify(r.result, null, 2));
+    }
+    // Sync 완료 후엔 cache 무효화 → 다음 scan 에서 최신 확인
+    if (action === 'sync') {
+      _lastScanResult = null;
+      _syncSelectedChannels.clear();
+      renderScanTable();
+    }
     toast(`${labels[action]} 완료`, 'ok');
   }
 
@@ -2379,23 +2529,29 @@ async function emptyTrash() {
 async function runServerControl(action) {
   const labels = { start: '시작', stop: '중단', restart: '재시작' };
   const endpoints = { start: 'start_server', stop: 'stop_server', restart: 'restart_server' };
-  const out = document.getElementById('sync-output');
+  // Health 탭의 server-log → Sync 탭의 sync-output → 아무것도 없으면 toast 만. DOM 가변성 방어.
+  const out = document.getElementById('health-server-log') || document.getElementById('sync-output');
   const appendOut = (s) => { if (out) { out.textContent += s + '\n'; out.scrollTop = out.scrollHeight; } };
   if (action === 'stop' && !confirm('커뮤니티 서버 중단?')) return;
   if (action === 'restart' && !confirm('서버 재시작? (10~20초 소요)')) return;
 
   if (out) out.textContent = `▶ 서버 ${labels[action]} 중...\n`;
+  toast(`서버 ${labels[action]} 요청 중...`, 'ok', 2000);
   const r = await postJson(q(`/api/action/${endpoints[action]}`), {});
   if (r.error) {
     appendOut(`❌ ${r.message || r.error}`);
-    toast(`서버 ${labels[action]} 실패: ${r.message || r.error}`, 'err');
+    toast(`서버 ${labels[action]} 실패: ${r.message || r.error}`, 'err', 5000);
     return;
   }
   appendOut(`✓ 서버 ${labels[action]} 요청 완료`);
   if (r.count !== undefined) appendOut(`  종료된 프로세스: ${r.count}개`);
+  if (r.mode) appendOut(`  mode: ${r.mode}`);
   if (r.message) appendOut(`  ${r.message}`);
-  toast(`서버 ${labels[action]} ${action === 'stop' ? '완료' : '중'}`, 'ok');
-  setTimeout(() => { tick(); loadCommunities(); }, 2000);
+  toast(`서버 ${labels[action]} ${action === 'stop' ? '완료' : '중'}`, 'ok', 3000);
+  // Stop 은 즉시 상태 반영 (stop marker 덕분), Start/Restart 는 봇 로그 뜨기까지 몇 초 → 여러 번 refresh
+  setTimeout(() => { tick(); loadCommunities(); }, 1000);
+  setTimeout(() => { tick(); loadCommunities(); }, 5000);
+  if (action !== 'stop') setTimeout(() => { tick(); loadCommunities(); }, 15000);
 }
 
 // ==== Main tick ====
@@ -3203,24 +3359,57 @@ function firstActiveScene(snap) {
   return activeScenes(snap)[0] || null;
 }
 
-function fmtDateTime(iso) {
-  // 서버 timestamp 는 KST naive ISO (Python datetime.now().isoformat() — tz offset 없음).
-  // 클라이언트 로컬 시간대 변환: '+09:00' 붙여 UTC 변환 후 toLocaleString.
-  // 클라이언트가 KST 면 동일, 다른 tz 면 해당 로컬 시간으로 보임.
-  if (!iso) return '';
-  const s = String(iso);
-  const naive = s.includes('T') && !/Z$|[+\-]\d{2}:?\d{2}$/.test(s);
-  try {
-    const d = new Date(naive ? s + '+09:00' : s);
-    if (isNaN(d.getTime())) return s.slice(0, 19).replace('T', ' ');
-    return d.toLocaleString(undefined, {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    });
-  } catch (e) {
-    return s.slice(0, 19).replace('T', ' ');
-  }
+// ═══ 타임존 처리 — 모든 서버 타임스탬프는 이 함수들 통해 렌더 ═══
+// 서버 규약: UTC aware ISO (`...+00:00` 또는 `...Z`). 마이그레이션 완료 후 기본값.
+// 레거시 호환: naive 문자열이 들어오면 T 구분자는 KST, 공백 구분자는 UTC 로 간주.
+// 클라이언트가 어느 tz 에 있든 toLocaleString(undefined, ...) 가 브라우저 로컬로 변환.
+function _parseServerTs(iso) {
+  if (!iso) return null;
+  const s = String(iso).trim();
+  if (!s) return null;
+  const isAware = /Z$|[+\-]\d{2}:?\d{2}$/.test(s);
+  if (isAware) return new Date(s);
+  // Naive: T 구분자 → KST 로 간주 (Python datetime.now() 레거시)
+  //        공백 구분자 → UTC 로 간주 (SQLite CURRENT_TIMESTAMP 레거시)
+  const fallback = s.includes('T') ? '+09:00' : '+00:00';
+  return new Date(s + fallback);
 }
+
+function fmtLocal(iso, opts) {
+  const d = _parseServerTs(iso);
+  if (!d || isNaN(d.getTime())) return String(iso || '');
+  return d.toLocaleString(undefined, opts || {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
+
+function fmtLocalDate(iso) {
+  const d = _parseServerTs(iso);
+  if (!d || isNaN(d.getTime())) return String(iso || '');
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+function fmtLocalHM(iso) {
+  const d = _parseServerTs(iso);
+  if (!d || isNaN(d.getTime())) return String(iso || '');
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function fmtLocalHMS(iso) {
+  const d = _parseServerTs(iso);
+  if (!d || isNaN(d.getTime())) return String(iso || '');
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
+function fmtLocalMonthDayHM(iso) {
+  const d = _parseServerTs(iso);
+  if (!d || isNaN(d.getTime())) return String(iso || '');
+  return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+// 기존 이름 호환
+function fmtDateTime(iso) { return fmtLocal(iso); }
 
 function renderSceneCard(s) {
   const statusLabel = {
@@ -3423,7 +3612,7 @@ async function tick() {
   const lastActives = snap.agents.map(a => a.last_active).filter(Boolean).sort();
   if (!b.bot_alive && lastActives.length) {
     const last = lastActives[lastActives.length - 1];
-    document.getElementById('offline-last').textContent = `마지막 활동: ${last.slice(0, 19).replace('T', ' ')}`;
+    document.getElementById('offline-last').textContent = `마지막 활동: ${fmtLocal(last)}`;
   } else {
     document.getElementById('offline-last').textContent = '';
   }
@@ -3524,6 +3713,9 @@ async function tick() {
     const memPct = health.sys_mem_pct || 0;
     const glimiMemPct = health.sys_mem_total_bytes ? (health.glimi_mem_bytes / health.sys_mem_total_bytes * 100).toFixed(1) : 0;
     const serverRun = health.bot_alive;
+    // 재렌더 전 server-log 보존 (start/stop 진행 로그가 tick 마다 지워지지 않게)
+    const _prevServerLog = document.getElementById('health-server-log');
+    const _savedServerLog = _prevServerLog ? _prevServerLog.textContent : '';
     document.getElementById('health-full').innerHTML = `
       <div style="margin-bottom:18px">
         <div class="section-title" style="margin-top:0">Server Control</div>
@@ -3536,6 +3728,7 @@ async function tick() {
             현재 상태: ${serverRun ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}
           </span>
         </div>
+        <div id="health-server-log" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;margin-top:8px;min-height:40px;max-height:180px;overflow-y:auto;white-space:pre-wrap"></div>
       </div>
 
       <div style="margin-bottom:18px">
@@ -3605,6 +3798,11 @@ async function tick() {
         </div>
       </div>
     `;
+    // 재렌더 후 server-log 내용 복원
+    if (_savedServerLog) {
+      const restored = document.getElementById('health-server-log');
+      if (restored) restored.textContent = _savedServerLog;
+    }
   }
 
   // Sync tab — sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
@@ -3623,10 +3821,12 @@ async function tick() {
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="act-btn primary" onclick="runSyncAction('scan')">🔍 Scan Discord</button>
-        <button class="act-btn success" onclick="runSyncAction('sync')">▶ Full Sync</button>
+        <button class="act-btn success" onclick="runSyncAction('sync')" title="전체 채널 싱크 (스캔 없이)">▶ Full Sync</button>
+        <button class="act-btn" onclick="runSyncAction('arrange')" title="카테고리·채널 순서만 정렬 (빠름)">⇅ 채널 순서 정렬</button>
         <button class="act-btn" onclick="runSyncAction('restore')">↻ Restore Messages</button>
       </div>
-      <div id="sync-output" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;min-height:60px;max-height:240px;overflow-y:auto;white-space:pre-wrap"></div>
+      <div id="scan-result" style="margin-bottom:12px"></div>
+      <div id="sync-output" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;min-height:60px;max-height:180px;overflow-y:auto;white-space:pre-wrap"></div>
     </div>
     <div class="detail-section">
       <h4>Trash · <span id="trash-count" style="color:var(--text-faint)">...</span></h4>
@@ -3648,6 +3848,8 @@ async function tick() {
   if (_savedSyncLog) {
     document.getElementById('sync-output').textContent = _savedSyncLog;
   }
+  // Scan 결과 테이블 복원 (tick 마다 사라지지 않도록)
+  renderScanTable();
   loadTrash();
 
   // Dev
@@ -3864,12 +4066,21 @@ import threading
 # 커뮤니티 전환은 전역 상태 (GLIMI_COMMUNITY env, _comm._current_id, db.DB_PATH)
 # 를 건드림 → 동시 요청이 서로 다른 커뮤니티를 지정하면 race로 섞임
 # (예: private 요청 중 qa 요청이 env를 덮어쓰면 private이 qa DB를 읽게 됨).
-# 모든 커뮤니티-의존 핸들러를 이 lock으로 직렬화.
+# reader-writer 패턴:
+#   - 같은 community 의 짧은 요청들은 직렬화되지만 서로 금방 풀림.
+#   - 장시간 작업(sync/scan/restore) 은 "maintenance pin" 을 잡고 lock 해제 →
+#     같은 community 의 read 는 계속 응답, 다른 community 의 switch 는 대기.
 _COMMUNITY_LOCK = threading.Lock()
+_MAINTENANCE_CV = threading.Condition(_COMMUNITY_LOCK)
 
 # startup 시점에 resolve된 community — 이후 ?community= 없는 요청의 기본값
 # (전역 _current_id leakage 로 한 번 qa 등으로 스위치되면 default로 못 돌아가는 버그 방지)
 _STARTUP_COMMUNITY: Optional[str] = None
+
+# 현재 프로세스에 active 인 community — idempotent switch 용
+_ACTIVE_COMMUNITY: Optional[str] = None
+# 장시간 mutation 이 잡고 있는 pin — 다른 community 로의 switch 를 블록
+_MAINTENANCE_COMMUNITY: Optional[str] = None
 
 
 def _read_community(path: str) -> Optional[str]:
@@ -3877,28 +4088,23 @@ def _read_community(path: str) -> Optional[str]:
     return q.get("community", [None])[0]
 
 
-def _set_active_community(cid: Optional[str]):
+def _apply_community(cid: Optional[str]):
+    """실제 프로세스 전역 상태 전환 + 캐시 invalidate. lock 안에서만 호출."""
     if cid:
         os.environ["GLIMI_COMMUNITY"] = cid
     from src import community as _comm
     if cid:
         _comm.set_community(cid)
-    # DB_PATH 전역 캐시 무효화 — 커뮤니티 전환 시 실제 DB 파일도 바뀌어야 함
     try:
         import src.db as _db
         _db.DB_PATH = None
     except Exception:
         pass
-    # 프로필/유저 캐시 무효화 — 캐시 키가 community-scoped 가 아니라
-    # 전환 시 이전 커뮤니티 데이터가 반환되는 누설 버그 방지
-    # (_profile_cache, _user_profile_cache, _user_summary_cache 전부 clear)
     try:
         from src.core.profile import invalidate_cache as _inv_profile
         _inv_profile()
     except Exception:
         pass
-    # Webhook 캐시는 봇 프로세스 전용이라 dashboard 에선 영향 없지만,
-    # 혹시 모를 상황 대비해 방어적으로 clear.
     try:
         import src.bot as _bot
         if hasattr(_bot, "_webhook_cache"):
@@ -3907,15 +4113,47 @@ def _set_active_community(cid: Optional[str]):
         pass
 
 
+def _set_active_community(cid: Optional[str]):
+    """Idempotent 전환. 이미 active 면 캐시 invalidate 생략 → 같은 community 연속 요청 시 cache hit 유지.
+    다른 community 의 maintenance pin 이 걸려 있으면 해제까지 대기 (lock 안에서 CV wait)."""
+    global _ACTIVE_COMMUNITY
+    target = cid
+    # maintenance pin 이 다른 community 면 끝날 때까지 대기
+    while _MAINTENANCE_COMMUNITY is not None and target is not None and _MAINTENANCE_COMMUNITY != target:
+        _MAINTENANCE_CV.wait()
+    if _ACTIVE_COMMUNITY == target:
+        return
+    _apply_community(target)
+    _ACTIVE_COMMUNITY = target
+
+
 def _with_community(path: str, fn):
     """URL ?community= 파라미터로 커뮤니티 전환 후 fn 호출.
     전역 상태 변경을 lock으로 직렬화 → race condition 방지.
     ?community= 명시 안 되면 startup community 로 reset (state leakage 방지)."""
     cid = _read_community(path) or _STARTUP_COMMUNITY
     with _COMMUNITY_LOCK:
-        if cid:
-            _set_active_community(cid)
+        _set_active_community(cid)
         return fn()
+
+
+def _with_community_nonblocking(path: str, fn):
+    """장시간 실행 작업(sync/scan/restore/server 제어)용.
+    community 전환 + maintenance pin 획득만 lock 안에서, 실제 작업은 lock 해제 후 수행.
+    → 같은 community 의 snapshot/health 는 pin 무시하고 통과.
+    → 다른 community 로의 switch 요청은 pin 해제까지 CV wait.
+    fn 내부에서 db.get_conn() 등을 여러 번 불러도 pin 덕분에 DB_PATH 뒤바뀔 위험 없음."""
+    global _MAINTENANCE_COMMUNITY
+    cid = _read_community(path) or _STARTUP_COMMUNITY
+    with _COMMUNITY_LOCK:
+        _set_active_community(cid)
+        _MAINTENANCE_COMMUNITY = cid
+    try:
+        return fn()
+    finally:
+        with _COMMUNITY_LOCK:
+            _MAINTENANCE_COMMUNITY = None
+            _MAINTENANCE_CV.notify_all()
 
 
 def _read_query(path: str, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -4139,38 +4377,70 @@ def _maintenance_off(community_id: str):
 
 
 def api_action_scan_discord(body: dict, community_id: str) -> dict:
-    """Discord에서 채널/메시지 스캔만 하고 DB 변경 없이 diff 보고."""
+    """Discord 채널별 메시지 카운트 조회 (read-only, 빠름). TUI·web 공통 run_scan 사용."""
     guard = _require_server_stopped(community_id)
     if guard:
         return guard
-    from src.core.sync import run_sync
+    from src.core.sync import run_scan
     _maintenance_on(community_id, "scan_discord")
     try:
+        logs: list[str] = []
+        result = run_scan(on_progress=lambda m: logs.append(m))
+        # DB 카운트 얹기 — 유저가 Discord vs DB 차이를 바로 보게
         try:
-            result = run_sync(dry_run=True)
-            return {"ok": True, "result": result, "dry_run": True}
-        except TypeError:
-            return {"error": "not_supported", "message": "run_sync()에 dry_run 지원 없음"}
+            from src import db as _db
+            conn = _db.get_conn()
+            db_counts: dict[str, int] = {}
+            for row in conn.execute("SELECT channel, COUNT(*) FROM conversations GROUP BY channel").fetchall():
+                db_counts[row[0]] = row[1]
+            conn.close()
+            result["db_counts"] = db_counts
+        except Exception:
+            result["db_counts"] = {}
+        return {"ok": result.get("ok", False), "result": result, "logs": logs[-40:]}
     finally:
         _maintenance_off(community_id)
 
 
 def api_action_run_sync(body: dict, community_id: str) -> dict:
-    """full sync 실행 (DB ↔ Discord 양방향)."""
+    """full sync 실행. body.channels (list) 로 특정 채널만 지정 가능 — TUI 플로우 동일.
+    None·빈 리스트면 전체."""
     guard = _require_server_stopped(community_id)
     if guard:
         return guard
     from src.core.sync import run_sync
+    # 선택 채널 필터 — TUI 에선 checkbox 로 고른 채널만 싱크해 효율적. 웹도 동일.
+    selected = body.get("channels")
+    channels_filter = set(selected) if isinstance(selected, list) and selected else None
+
     _maintenance_on(community_id, "run_sync")
     try:
         logs: list[str] = []
         def _cb(msg: str):
             logs.append(msg)
-        try:
-            result = run_sync(on_progress=_cb)
-        except TypeError:
-            result = run_sync()
-        return {"ok": True, "result": result, "logs": logs[-20:]}
+        result = run_sync(on_progress=_cb, channels_filter=channels_filter)
+        return {"ok": True, "result": result, "logs": logs[-40:], "channels_filter": sorted(list(channels_filter)) if channels_filter else None}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": "exception", "message": str(e)}
+    finally:
+        _maintenance_off(community_id)
+
+
+def api_action_arrange_channels(body: dict, community_id: str) -> dict:
+    """카테고리 + 채널 내부 순서 정렬만 수행 (메시지·채널 CRUD 없음). 봇 실행 중이면
+    sync/scan 처럼 중단·실행·재시작은 하지 않음 — arrange 는 자체 Discord client 를 짧게
+    띄우는 것이라 봇과 토큰 충돌 가능 → 봇 중지 필수."""
+    guard = _require_server_stopped(community_id)
+    if guard:
+        return guard
+    from src.core.sync import run_arrange
+    _maintenance_on(community_id, "arrange_channels")
+    try:
+        logs: list[str] = []
+        result = run_arrange(on_progress=lambda m: logs.append(m))
+        return {"ok": result.get("ok", False), "result": result, "logs": logs[-40:]}
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -4310,10 +4580,48 @@ def _find_bot_pids(community_id: str) -> list[int]:
         return []
 
 
+def _pause_flag_path() -> "Path":
+    return ROOT / "dev" / ".bot-paused"
+
+
+def _stop_marker_path() -> "Path":
+    """봇 kill 직후 touch — monitor._bot_alive_for_current_community 가 log mtime 보다
+    이게 newer 면 stopped 판정. 봇이 다시 로그 쓰면 자동으로 invalidate 됨."""
+    return ROOT / "dev" / ".bot-stopped"
+
+
+def _runsh_running() -> bool:
+    """scripts/run.sh 래퍼 프로세스가 살아있는지. 래퍼가 있으면 봇을 죽여도 while 루프가
+    pause flag 해제 후 자동 재시작함."""
+    import subprocess as _sp
+    try:
+        r = _sp.run(["ps", "ax", "-o", "pid,command"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.split("\n"):
+            if "scripts/run.sh" in line and "grep" not in line:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def api_action_stop_server(body: dict, community_id: str) -> dict:
-    """해당 커뮤니티 Glimi 봇 + 러너 + test-user 봇 모두 종료."""
+    """해당 커뮤니티 Glimi 봇 + 러너 + test-user 봇 모두 종료.
+    run.sh 래퍼는 while-true 로 봇을 재시작하므로, 먼저 pause 플래그를 세워서 respawn 을 막고
+    봇 PID 만 SIGTERM. 플래그는 start_server 에서 제거."""
     import signal as _sig
     import time as _t
+
+    # run.sh 래퍼가 봇을 respawn 하므로, 래퍼가 살아있을 때만 pause flag 생성.
+    # (래퍼 없이 `python -m src.discord_bot` 직접 실행한 경우에는 플래그 불필요 — 남으면 오히려
+    # 나중에 `./scripts/run.sh` 직접 실행 시 시작 지연됨)
+    runsh_alive = _runsh_running()
+    if runsh_alive:
+        pause = _pause_flag_path()
+        try:
+            pause.parent.mkdir(parents=True, exist_ok=True)
+            pause.touch()
+        except Exception:
+            pass
 
     killed = []
     # Glimi bot pids
@@ -4373,15 +4681,64 @@ def api_action_stop_server(body: dict, community_id: str) -> dict:
     except Exception:
         pass
 
-    return {"ok": True, "killed_pids": killed, "count": len(killed)}
+    # Stop marker — health 탭의 bot_alive 판정이 log mtime 120s 윈도우 때문에 stop 후
+    # 2분간 Running 으로 보이던 버그 방지. 이 파일 mtime >= log mtime 이면 stopped.
+    try:
+        marker = _stop_marker_path()
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "killed_pids": killed,
+        "count": len(killed),
+        "runsh_alive": runsh_alive,  # True 면 pause flag 로 대기 중, start_server 하면 즉시 respawn
+    }
 
 
 def api_action_start_server(body: dict, community_id: str) -> dict:
-    """scripts/run.sh {community_id}를 백그라운드로 기동."""
+    """서버 재개. run.sh 가 이미 pause 대기 중이면 플래그만 제거, 아니면 새로 띄움."""
     import subprocess as _sp
-    # 이미 돌고 있으면 거부
+
+    # Start 요청 → stop marker 먼저 제거. 새로 뜬 봇이 로그 쓰기 전에도 UI 가 "starting" 상태로
+    # 인식하게 (marker 있으면 stopped 로 오판, 없으면 120s log 윈도우 안으로 들어가면 alive).
+    try:
+        marker = _stop_marker_path()
+        if marker.exists():
+            marker.unlink()
+    except Exception:
+        pass
+
+    # 이미 돌고 있으면 거부 (pause 중이면 system.log mtime 이 stale 이라 False 가 정상)
     if _bot_running_for(community_id):
+        # 단, pause flag 가 남아있으면 플래그만 제거하고 성공
+        pause = _pause_flag_path()
+        if pause.exists():
+            try:
+                pause.unlink()
+            except Exception:
+                pass
+            return {"ok": True, "message": "pause 해제 — run.sh 가 봇 재시작"}
         return {"error": "already_running", "message": "서버가 이미 실행 중"}
+
+    # Pause flag 제거 — run.sh wait 루프가 깨어남
+    pause = _pause_flag_path()
+    pause_was_set = pause.exists()
+    try:
+        if pause_was_set:
+            pause.unlink()
+    except Exception:
+        pass
+
+    # run.sh 가 살아있으면 플래그 해제만으로 봇 재시작 → 새로 띄울 필요 없음
+    if _runsh_running():
+        return {
+            "ok": True,
+            "message": "run.sh 가 pause 해제 감지 후 봇 재시작 (10~20초)",
+            "mode": "unpaused",
+        }
 
     run_sh = ROOT / "scripts" / "run.sh"
     if not run_sh.exists():
@@ -4400,7 +4757,7 @@ def api_action_start_server(body: dict, community_id: str) -> dict:
             stdin=_sp.DEVNULL,
             start_new_session=True,  # 부모와 분리
         )
-        return {"ok": True, "pid": proc.pid, "message": "서버 시작 중 — 10~20초 후 online"}
+        return {"ok": True, "pid": proc.pid, "message": "서버 시작 중 — 10~20초 후 online", "mode": "spawned"}
     except Exception as e:
         return {"error": "exception", "message": str(e)}
 
@@ -4624,6 +4981,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         mutations = {
             "/api/action/scan_discord": api_action_scan_discord,
             "/api/action/run_sync": api_action_run_sync,
+            "/api/action/arrange_channels": api_action_arrange_channels,
             "/api/action/restore": api_action_restore,
             "/api/action/channel_clear": api_action_channel_clear,
             "/api/action/channel_delete": api_action_channel_delete,
@@ -4636,18 +4994,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "/api/action/restart_server": api_action_restart_server,
             "/api/action/set_agent_model": api_action_set_agent_model,
         }
+        # 장시간 실행 → maintenance pin 걸고 lock 해제. 같은 community 의 snapshot/health
+        # 가 action 진행 중에도 응답하도록. (sync/scan/restore: 초~분 단위, server 제어:
+        # stop 최대 10초 + start 즉시 반환이지만 pin 은 안전하게 걸어둠)
+        LONG_RUNNING = {
+            "/api/action/scan_discord",
+            "/api/action/run_sync",
+            "/api/action/arrange_channels",
+            "/api/action/restore",
+            "/api/action/stop_server",
+            "/api/action/start_server",
+            "/api/action/restart_server",
+        }
         handler = mutations.get(p)
         if handler is None:
             self._send(404, b"not found", "text/plain")
             return
-        # 커뮤니티 전환 + 핸들러 호출을 lock으로 직렬화
+
+        def _run():
+            from src import community as _comm
+            community_id = cid or _comm.get_community_id()
+            return handler(body, community_id)
+
         try:
-            with _COMMUNITY_LOCK:
-                if cid:
-                    _set_active_community(cid)
-                from src import community as _comm
-                community_id = cid or _comm.get_community_id()
-                result = handler(body, community_id)
+            if p in LONG_RUNNING:
+                result = _with_community_nonblocking(self.path, _run)
+            else:
+                result = _with_community(self.path, _run)
             self._json(result)
         except Exception as e:
             import traceback
@@ -4675,8 +5048,11 @@ def main():
     from src import community as _comm
     cid = _comm.get_community_id()
     # startup community 저장 — ?community= 없는 요청의 기본값 (state leakage 방지)
-    global _STARTUP_COMMUNITY
+    global _STARTUP_COMMUNITY, _ACTIVE_COMMUNITY
     _STARTUP_COMMUNITY = cid
+    # startup 시점에 이미 프로세스가 이 community 로 초기화돼 있으므로 ACTIVE 마킹 →
+    # 첫 같은 cid 요청에서 불필요한 cache invalidate 생략
+    _ACTIVE_COMMUNITY = cid
     print(f"[web-dashboard] http://{args.host}:{args.port}  (community={cid})")
     with ReusableServer((args.host, args.port), Handler) as srv:
         srv.serve_forever()
