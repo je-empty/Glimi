@@ -59,9 +59,56 @@ a:hover { text-decoration: underline; }
 }
 .gp-brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
 .gp-spacer { flex: 1; }
-.gp-user {
-  font-size: 12.5px; color: var(--muted); font-weight: 500; margin: 0 4px;
+
+/* ── User menu (dropdown with logout) ─────────────────── */
+.gp-user-menu { position: relative; display: inline-block; }
+.gp-user-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 4px 10px 4px 4px; cursor: pointer; font-size: 13px;
+  font-family: inherit; font-weight: 500;
+  transition: border-color 0.12s;
 }
+.gp-user-btn:hover { border-color: var(--accent); }
+.gp-user-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-fg);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.gp-user-name { font-size: 13px; }
+.gp-user-chev { font-size: 9px; color: var(--muted); margin-left: -2px; }
+
+.gp-user-dropdown {
+  display: none;
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 180px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+  z-index: 200;
+}
+.gp-user-dropdown.open { display: block; }
+.gp-user-info {
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.gp-user-info-name {
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+}
+.gp-user-info-role {
+  font-size: 11.5px; color: var(--muted); margin-top: 2px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.gp-user-logout {
+  width: 100%; text-align: left;
+  background: transparent; border: none;
+  padding: 8px 12px; border-radius: 6px;
+  color: var(--err); font-size: 13px; cursor: pointer;
+  font-family: inherit;
+}
+.gp-user-logout:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
 .gp-btn-icon {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 0; width: 32px; height: 32px;
