@@ -29,6 +29,12 @@ def _check_claude_cli() -> bool:
 
 CLAUDE_AVAILABLE = _check_claude_cli()
 
+# Claude CLI subprocess 는 반드시 Glimi 프로젝트 밖에서 실행. 프로젝트 루트 cwd 로 돌면
+# CLAUDE.md 가 로드돼 Claude Code 가 "코딩 작업" 컨텍스트 상속하면서 에이전트가 개인
+# 대화 내용에 대해 clarifying-refusal 을 뱉거나 meta-commentary 를 주입. HOME 은 프로젝트
+# CLAUDE.md 없으니 안전. (src.llm.ClaudeCLIBackend 도 동일 원칙 적용.)
+_CLI_CWD = os.path.expanduser("~")
+
 AGENT_MODELS = {
     "persona": "claude-haiku-4-5",   # 대화량 많고 지연 민감 — 기본 Haiku, 필요시 대시보드에서 per-agent Sonnet override
     "mgr": "claude-sonnet-4-6",
@@ -316,6 +322,7 @@ class AgentRuntime:
                  "--output-format", "text", "--model", "claude-haiku-4-5"],
                 capture_output=True, text=True, timeout=15,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                cwd=_CLI_CWD,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return f"[이전 대화 요약] {result.stdout.strip()}"
@@ -555,6 +562,7 @@ class AgentRuntime:
                 ],
                 capture_output=True, text=True, timeout=60,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                cwd=_CLI_CWD,
             )
 
             if result.returncode != 0:
@@ -696,6 +704,7 @@ class AgentRuntime:
                     cli_args,
                     capture_output=True, text=True, timeout=60,
                     env=cli_env,
+                    cwd=_CLI_CWD,
                 )
 
                 if result.returncode != 0:
@@ -831,6 +840,7 @@ class AgentRuntime:
                 text=True,
                 bufsize=1,
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                cwd=_CLI_CWD,
             )
 
             # Hard watchdog — Claude CLI가 stdout 안 닫고 hang 시 강제 kill (120s)
@@ -1139,6 +1149,7 @@ class AgentRuntime:
                             ],
                             capture_output=True, text=True, timeout=120,
                             env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                            cwd=_CLI_CWD,
                         )
                         if result.returncode == 0 and result.stdout.strip():
                             break  # 성공

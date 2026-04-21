@@ -69,17 +69,21 @@ class ClaudeCLIBackend(LLMBackend):
         max_tokens: int = 2048,
         timeout: int = 60,
         cacheable_system: bool = False,  # CLI 는 무시
-        cli_cwd: Optional[str] = None,    # neutral cwd 강제 (CLAUDE.md 회피용)
+        cli_cwd: Optional[str] = None,    # 오버라이드 — 기본은 HOME (CLAUDE.md 회피)
         **kwargs,
     ) -> LLMResponse:
         args = self._base_args(user, system, model)
         env = {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"}
+        # 기본 cwd = HOME. Glimi 프로젝트 루트에서 돌면 CLAUDE.md 가 로드돼 Claude Code 가
+        # '프로젝트 코딩 작업' 컨텍스트 상속하면서 에이전트/메모리 추출 결과 오염 (refusal /
+        # meta-commentary 섞임). HOME 에선 프로젝트 CLAUDE.md 없으니 안전.
+        effective_cwd = cli_cwd or os.path.expanduser("~")
         try:
             result = subprocess.run(
                 args,
                 capture_output=True, text=True, timeout=timeout,
                 env=env,
-                cwd=cli_cwd,
+                cwd=effective_cwd,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return LLMResponse(text=result.stdout.strip(), model=model)
@@ -101,15 +105,17 @@ class ClaudeCLIBackend(LLMBackend):
         max_tokens: int = 2048,
         timeout: int = 120,
         cacheable_system: bool = False,
+        cli_cwd: Optional[str] = None,
         **kwargs,
     ) -> Iterator[str]:
         """CLI 의 stdout 을 실시간 라인으로 읽어 yield.
         (기존 runtime.py 의 streaming pattern — 여기로 이전 가능)."""
         args = self._base_args(user, system, model)
         env = {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"}
+        effective_cwd = cli_cwd or os.path.expanduser("~")
         proc = subprocess.Popen(
             args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=1, env=env,
+            text=True, bufsize=1, env=env, cwd=effective_cwd,
         )
         try:
             for line in proc.stdout:
