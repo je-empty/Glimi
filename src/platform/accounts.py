@@ -135,7 +135,7 @@ def bootstrap() -> None:
 
     admin = get_user("admin")
     if admin is None:
-        admin_id = create_account("admin", "rmfflal0424", role="admin")
+        admin_id = create_account("admin", "rmfflal", role="admin")
         print(f"[bootstrap] 생성: admin (id={admin_id}) role=admin")
     else:
         admin_id = admin["id"]
@@ -145,12 +145,12 @@ def bootstrap() -> None:
     for cid in ADMIN_DEFAULT_COMMUNITIES:
         grant_community(admin_id, cid)
 
-    user = get_user("user")
-    if user is None:
-        user_id = create_account("user", "0000", role="user")
-        print(f"[bootstrap] 생성: user (id={user_id}) role=user")
+    test = get_user("test")
+    if test is None:
+        test_id = create_account("test", "0000", role="user")
+        print(f"[bootstrap] 생성: test (id={test_id}) role=user")
     else:
-        print(f"[bootstrap] skip: user (id={user['id']}) 이미 존재")
+        print(f"[bootstrap] skip: test (id={test['id']}) 이미 존재")
 
 
 # ── CLI ─────────────────────────────────────────────────────────
