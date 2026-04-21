@@ -45,10 +45,10 @@
 {% block body %}
 <div class="app">
   <header class="status">
-    <a href="/" class="brand" title="Glimi 홈" style="text-decoration:none;color:inherit">
-      <img src="/logo" alt="Glimi" class="brand-logo">
-      <span class="brand-name">Glimi</span>
-    </a>
+    <span class="brand">
+      <img src="/logo" alt="Glimi" class="brand-logo" onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기">
+      <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="홈으로">Glimi</a>
+    </span>
 
     <div style="position:relative" id="community-switcher-wrap">
       <button class="community-btn" id="community-btn" title="커뮤니티 전환">

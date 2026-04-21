@@ -158,7 +158,16 @@ async function ctrl(cid, action) {
   setTimeout(() => location.reload(), 800);
 }
 async function deleteCommunity(cid) {
-  if (!confirm(cid + ' 커뮤니티를 완전히 삭제할까? (DB + 프로필 이미지 포함)')) return;
+  // 실수 방지 — 커뮤니티 ID 를 정확히 입력해야 삭제 가능
+  const typed = prompt(
+    '정말 이 커뮤니티를 완전히 삭제할까? (DB + 프로필 이미지 전부 제거, 복구 불가)\n\n' +
+    '확인하려면 아래에 정확히 입력해:\n\n  ' + cid
+  );
+  if (typed === null) return; // cancel
+  if (typed.trim() !== cid) {
+    alert('입력이 일치하지 않아 삭제 취소됨.');
+    return;
+  }
   const r = await fetch('/api/communities/' + cid, { method: 'DELETE' });
   if (!r.ok) { alert('삭제 실패: ' + (await r.text())); return; }
   location.reload();

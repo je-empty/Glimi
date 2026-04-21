@@ -2614,11 +2614,7 @@ async function tick() {
         </div>
       </div>
     `;
-    // 재렌더 후 server-log 내용 복원
-    if (_savedServerLog) {
-      const restored = document.getElementById('health-server-log');
-      if (restored) restored.textContent = _savedServerLog;
-    }
+    // Server Control 은 플랫폼 상단 바로 이관됨 — Health 탭에는 server-log 없음
   }
 
   // Sync tab — sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
@@ -2781,19 +2777,24 @@ async function tick() {
 async function loadCommunities() {
   const d = await j('/api/communities');
   if (!d) return;
+  // 플랫폼 API 는 list 직접 반환 (계정별 접근 가능한 커뮤니티만).
+  // 레거시 {items, active} envelope 도 호환.
+  const items = Array.isArray(d) ? d : (d.items || []);
+  const active = Array.isArray(d) ? COMMUNITY : d.active;
   const btn = document.getElementById('community-btn');
   const menu = document.getElementById('community-menu');
-  const activeItem = (d.items || []).find(c => c.id === d.active);
+  if (!btn || !menu) return;
+  const activeItem = items.find(c => c.id === active);
 
   // 버튼 업데이트 (현재 선택된 커뮤니티)
-  document.getElementById('community-btn-name').textContent = d.active;
+  document.getElementById('community-btn-name').textContent = active || '—';
   if (activeItem && activeItem.running) btn.classList.remove('stopped');
   else btn.classList.add('stopped');
 
   // 메뉴 생성 — running 은 초록 테마, stopped 은 dim
-  menu.innerHTML = (d.items || []).map(c => {
+  menu.innerHTML = items.map(c => {
     const cls = ['ci'];
-    if (c.id === d.active) cls.push('active');
+    if (c.id === active) cls.push('active');
     if (!c.running) cls.push('stopped');
     const ageText = c.last_log_age_sec != null
       ? (c.last_log_age_sec < 60 ? `${c.last_log_age_sec}s` : c.last_log_age_sec < 3600 ? `${Math.floor(c.last_log_age_sec/60)}m` : `${Math.floor(c.last_log_age_sec/3600)}h`) + ' ago'
@@ -2811,31 +2812,14 @@ async function loadCommunities() {
     </div>`;
   }).join('') || '<div class="empty">no communities</div>';
 
-  // 아이템 클릭 → 전환 (즉시 UI 반영 + 로딩 표시)
+  // 아이템 클릭 → 플랫폼 경로로 이동 (/community/{id}).
+  // 페이지 전환이라 state 가 깨끗이 리셋됨 (캐시 leak 없음).
   menu.querySelectorAll('.ci').forEach(el => {
-    el.addEventListener('click', async () => {
+    el.addEventListener('click', () => {
       const newCid = el.dataset.cid;
       if (newCid === COMMUNITY) { menu.classList.remove('open'); return; }
-      COMMUNITY = newCid;
-      menu.classList.remove('open');
-
-      // 즉시 UI 리셋 + 로딩 상태
       document.body.classList.add('switching');
-      lastGraphSig = null;  // 그래프 강제 재렌더
-      // 커뮤니티 버튼 이름 즉시 교체 (응답 전에도 피드백)
-      const btnName = document.getElementById('community-btn-name');
-      if (btnName) btnName.textContent = COMMUNITY;
-
-      const url = new URL(location.href);
-      url.searchParams.set('community', COMMUNITY);
-      history.replaceState(null, '', url);
-
-      try {
-        await tick();
-        await loadCommunities();
-      } finally {
-        document.body.classList.remove('switching');
-      }
+      location.href = '/community/' + encodeURIComponent(newCid);
     });
   });
 }
