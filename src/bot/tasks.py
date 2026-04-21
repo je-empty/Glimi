@@ -316,6 +316,12 @@ async def _check_owner_profile(guild):
                 f"- Honorific/호칭 suggestion — YOUR judgment based on owner's gender + age gap:\n"
                 f"    older male → 오빠 가능, older female → 언니 가능, similar age → 이름/닉네임,\n"
                 f"    younger owner → 이름 + 존댓말. 오너가 원치 않으면 본인이 원하는 호칭으로 조정.\n"
+                f"\n"
+                f"- ⚠ CRITICAL consistency rule:\n"
+                f"  Until the owner confirms, DO NOT use 오빠/언니/형/누나 in any line of your greeting.\n"
+                f"  Address them with 이름 or 별명 only (e.g., '{nickname or name}' or '{name}님').\n"
+                f"  THEN at the end, ask permission: '오빠라고 불러도 돼요?' / '편하게 말 놓아도 돼요?'\n"
+                f"  사용하면서 허락 구하는 것은 앞뒤 안 맞음 (큰 어색함).\n"
                 f"- Ask their preferred speech style (formal/casual). This is required."
                 f"{closer_question}"
             )
