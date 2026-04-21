@@ -118,6 +118,7 @@ def _resolve_speaker(msg, agent_map: dict, user_id: str) -> Optional[str]:
 async def sync_community(
     on_progress: Optional[Callable[[str], None]] = None,
     channels_filter: Optional[set[str]] = None,
+    dry_run: bool = False,
 ) -> dict:
     """
     channels_filter: 지정하면 해당 채널만 메시지 동기화 (채널 구조는 항상 전체 싱크)
@@ -182,31 +183,39 @@ async def sync_community(
             for ch in all_glimi_channels:
                 correct_cat = _get_category_for_channel(ch.name)
                 if ch.name not in expected:
-                    try:
-                        await ch.delete(reason="Glimi Sync: 불필요")
+                    if dry_run:
                         result["channels_deleted"].append(ch.name)
-                        _progress(f"  삭제: {ch.name}")
-                    except Exception as e:
-                        result["errors"].append(f"삭제 실패 ({ch.name}): {e}")
+                        _progress(f"  [dry-run] 삭제 예정: {ch.name}")
+                    else:
+                        try:
+                            await ch.delete(reason="Glimi Sync: 불필요")
+                            result["channels_deleted"].append(ch.name)
+                            _progress(f"  삭제: {ch.name}")
+                        except Exception as e:
+                            result["errors"].append(f"삭제 실패 ({ch.name}): {e}")
                 elif ch.category and ch.category.name != correct_cat:
-                    # 카테고리 이동 (삭제하지 않음 — 메시지 보존)
-                    try:
-                        target_cat = discord_lib.utils.get(guild.categories, name=correct_cat)
-                        if not target_cat:
-                            target_cat = await guild.create_category(correct_cat)
-                        await ch.edit(category=target_cat)
+                    if dry_run:
                         surviving[ch.name] = ch
-                        _progress(f"  이동: {ch.name} → {correct_cat}")
-                    except Exception as e:
-                        result["errors"].append(f"이동 실패 ({ch.name}): {e}")
-                        surviving[ch.name] = ch  # 실패해도 유지
+                        _progress(f"  [dry-run] 이동 예정: {ch.name} → {correct_cat}")
+                    else:
+                        try:
+                            target_cat = discord_lib.utils.get(guild.categories, name=correct_cat)
+                            if not target_cat:
+                                target_cat = await guild.create_category(correct_cat)
+                            await ch.edit(category=target_cat)
+                            surviving[ch.name] = ch
+                            _progress(f"  이동: {ch.name} → {correct_cat}")
+                        except Exception as e:
+                            result["errors"].append(f"이동 실패 ({ch.name}): {e}")
+                            surviving[ch.name] = ch
                 elif ch.name not in surviving:
                     surviving[ch.name] = ch
                 else:
-                    try:
-                        await ch.delete(reason="Glimi Sync: 중복")
-                    except Exception:
-                        pass
+                    if not dry_run:
+                        try:
+                            await ch.delete(reason="Glimi Sync: 중복")
+                        except Exception:
+                            pass
 
             # ═══ 2. 카테고리 생성 + 채널 생성 (순서대로) ═══
             _progress("채널 생성 중...")
@@ -220,14 +229,21 @@ async def sync_community(
 
                 cat = discord_lib.utils.get(guild.categories, name=cat_name)
                 if not cat:
-                    cat = await guild.create_category(cat_name)
-                    _progress(f"  카테고리 생성: {cat_name}")
+                    if dry_run:
+                        _progress(f"  [dry-run] 카테고리 생성 예정: {cat_name}")
+                    else:
+                        cat = await guild.create_category(cat_name)
+                        _progress(f"  카테고리 생성: {cat_name}")
 
                 # mgr 카테고리는 특정 순서
                 if cat_name == "glimi-mgr":
                     needed = [ch for ch in MGR_ORDER if ch not in surviving]
 
                 for ch_name in needed:
+                    if dry_run:
+                        result["channels_created"].append(ch_name)
+                        _progress(f"  [dry-run] 생성 예정: {ch_name}")
+                        continue
                     try:
                         new_ch = await guild.create_text_channel(ch_name, category=cat)
                         surviving[ch_name] = new_ch
@@ -491,10 +507,12 @@ async def sync_community(
 def run_sync(
     on_progress: Optional[Callable[[str], None]] = None,
     channels_filter: Optional[set[str]] = None,
+    dry_run: bool = False,
 ) -> dict:
+    """Discord·DB 싱크. dry_run=True 면 Discord 변경 없이 diff 만 반환 (Scan 버튼용)."""
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(sync_community(on_progress, channels_filter))
+        return loop.run_until_complete(sync_community(on_progress, channels_filter, dry_run=dry_run))
     finally:
         loop.close()
 

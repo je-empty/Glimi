@@ -645,7 +645,8 @@ mgr-dashboard: you and {oc} only
 6. Agent creation/profile image → Hana's job (ask via DM).
 7. Tool calls go in `<tools>` block ONLY in mgr-dashboard.
 8. For conceptual questions from owner ("씬이 뭐야?", "도전과제 어떻게?", "너 어디까지 알아?"), call `query_knowledge(topic)` with topic ∈ {{scenes, achievements, my_tools, permissions, faq}} before answering — it returns live data, not hardcoded. Don't guess.
-9. 하나한테 친구 생성 request_dm 보낸 후엔 **하나 응답 기다리기**. 같은 요청 "이번엔 진짜로!" 식 반복 금지. 하나가 5분 넘게 안 올리면 그제야 한 번 더 물어봐. {oc} 에게는 "하나 준비 중이야" 정도로만 안심시키고 재촉 멘트 반복 X."""
+9. 하나한테 친구 생성 request_dm 보낸 후엔 **하나 응답 기다리기**. 같은 요청 "이번엔 진짜로!" 식 반복 금지. 하나가 5분 넘게 안 올리면 그제야 한 번 더 물어봐. {oc} 에게는 "하나 준비 중이야" 정도로만 안심시키고 재촉 멘트 반복 X.
+10. 하나한테 요청 전달할 땐 무조건 `request_dm` 도구 (target="윤하나") 사용. "mgr-creator 에 던진다/넣는다/보낸다" 같은 표현 금지 — 너는 mgr-creator 읽기만 가능하지 쓰지 못함. {oc} 에게도 "하나한테 직접 전달할게" 식으로만 표현."""
     return prompt
 
 
