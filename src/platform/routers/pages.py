@@ -56,12 +56,18 @@ async def community_dashboard(
     if not accounts.user_can_access(user, community_id):
         raise HTTPException(403, "no access to this community")
 
-    all_ids = {c["id"] for c in list_communities()}
-    if community_id not in all_ids:
+    all_communities = list_communities()
+    target = next((c for c in all_communities if c["id"] == community_id), None)
+    if target is None:
         raise HTTPException(404, "community not found")
 
     return templates.env.TemplateResponse(
         request,
         "dashboard/index.html",
-        {"user": user, "community_id": community_id},
+        {
+            "user": user,
+            "community_id": community_id,
+            "community_name": target.get("name") or community_id,
+            "community_description": target.get("description") or "",
+        },
     )
