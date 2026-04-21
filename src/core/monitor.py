@@ -1182,18 +1182,26 @@ def get_scenes() -> list[dict]:
     from pathlib import Path as _P
     scenes: list[dict] = []
 
-    # ── 1. Tutorial ──────────────────────────────────
+    # ── 1. Tutorial — scene 객체에서 직접 읽음 (single source of truth) ──
     try:
-        phase = db.get_meta("tutorial_phase") or ""
-        greeted = db.get_meta("yuna_greeted") or ""
+        from src.scenes.tutorial.scene import scene as _tut_scene
+        cur_phase = _tut_scene.current_phase()
+        # phase id → description (Phase 객체에서 가져옴)
+        phase_desc = next(
+            (p.description for p in _tut_scene.phases if p.id == cur_phase),
+            cur_phase,
+        )
+        is_complete = _tut_scene.is_complete()
+        is_active = _tut_scene.is_active()
     except Exception:
-        phase = ""
-        greeted = ""
+        cur_phase = ""
+        phase_desc = ""
+        is_complete = False
+        is_active = False
 
-    status = "not_started"
-    if phase == "complete":
-        status = "completed"
-    elif greeted or phase:
+    status = "completed" if is_complete else ("active" if is_active else "not_started")
+    # greet 단계 (greeted=False) 도 not_started 가 아닌 active — 씬 자체는 시작됨
+    if cur_phase == "greet":
         status = "active"
 
     # 완료 시간 — .tutorial-complete 플래그 파일의 mtime
@@ -1204,35 +1212,34 @@ def get_scenes() -> list[dict]:
         complete_flag = log_dir / ".tutorial-complete"
         if complete_flag.exists():
             completed_at = datetime.fromtimestamp(complete_flag.stat().st_mtime).isoformat()
-        # 시작 시간: yuna_greeted=1 된 시점을 추정 — 유나 첫 메시지 timestamp
-        if greeted:
-            try:
-                conn = db.get_conn()
-                row = conn.execute(
-                    "SELECT MIN(timestamp) as ts FROM conversations WHERE channel='mgr-dashboard'"
-                ).fetchone()
-                conn.close()
-                if row and row["ts"]:
-                    started_at = row["ts"]
-            except Exception:
-                pass
+        # 시작 시간: 유나의 첫 mgr-dashboard 메시지 timestamp
+        try:
+            conn = db.get_conn()
+            row = conn.execute(
+                "SELECT MIN(timestamp) as ts FROM conversations WHERE channel='mgr-dashboard'"
+            ).fetchone()
+            conn.close()
+            if row and row["ts"]:
+                started_at = row["ts"]
+        except Exception:
+            pass
     except Exception:
         pass
 
-    phase_desc_map = {
-        "": "프로필 수집 단계",
-        "channels_setup": "시스템 채널 셋업 중",
-        "channels_done": "최종 완료 대기",
-        "complete": "완료됨",
-    }
+    scene_description = ""
+    try:
+        scene_description = _tut_scene.description or ""
+    except Exception:
+        scene_description = "신규 오너 — 첫 인사부터 친구 생성까지"
+
     scenes.append({
         "id": "tutorial",
         "name": "Tutorial",
         "icon": "🌱",
-        "description": "신규 오너 가입 — 프로필 수집 → 시스템 채널 → 크리에이터 소개 → 완료",
+        "description": scene_description,
         "status": status,
-        "phase": phase,
-        "phase_desc": phase_desc_map.get(phase, phase),
+        "phase": cur_phase,
+        "phase_desc": phase_desc,
         "started_at": started_at,
         "completed_at": completed_at,
     })
