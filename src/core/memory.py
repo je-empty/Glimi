@@ -207,13 +207,15 @@ def _replace_nicknames_with_name(text: str) -> str:
         return text
     canonical = aliases[0]
     s = str(text)
-    # role terms 도 canonical 로 치환 (예: "오너가", "유저한테")
+    # canonical 을 먼저 placeholder 로 보호 — 안 그러면 예: canonical="심재빈", nickname="빈이"
+    # 일 때 "심재빈이가" 안의 "빈이" 가 부분매칭돼서 "심재심재빈가" 로 중복 생성됨.
+    placeholder = "\x00__GLIMI_OWNER_CANON__\x00"
+    s = s.replace(canonical, placeholder)
     for alias in aliases[1:]:
         if not alias or alias == canonical:
             continue
-        # 단어 경계 기준으로만 치환 — "유저"·"오너" 는 부분매칭 위험 있지만 한글이라 boundary 특수처리
-        # 간단히 그대로 replace — '빈이' in '빈이스꺼풀' 류 한국어 합성어는 거의 없음
         s = s.replace(alias, canonical)
+    s = s.replace(placeholder, canonical)
     return s
 
 
