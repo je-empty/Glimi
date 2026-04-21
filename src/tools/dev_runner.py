@@ -19,13 +19,17 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEV_DIR = os.path.join(PROJECT_ROOT, "dev")
+
+from src import log_writer
+from src import community as _community
+
+# dev 요청 상태는 커뮤니티별로 격리 — 과거엔 PROJECT_ROOT/dev/ 였으나 다중
+# 커뮤니티 subprocess 가 같은 파일에 쓰는 race 때문에 community dir 안으로 이동.
+DEV_DIR = str(_community.get_community_dir() / "dev")
 PENDING_FILE = os.path.join(DEV_DIR, "pending.json")
 RESULT_FILE = os.path.join(DEV_DIR, "result.json")
 
 os.makedirs(DEV_DIR, exist_ok=True)
-
-from src import log_writer
 
 
 def run(description: str, requested_by: str = "terminal") -> dict:

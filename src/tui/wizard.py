@@ -1967,29 +1967,19 @@ class DevModeScreen(Screen):
             self._quick_create()
 
     def _quick_create(self):
-        """Dev 봇 토큰 + 기본 프로필로 빠른 생성"""
-        # 1. .env.dev에서 토큰
+        """Dev 봇 토큰 + 기본 프로필로 빠른 생성 — 기존 커뮤니티의 토큰 재사용."""
+        # 기존 커뮤니티의 토큰 재사용 (루트에 토큰 저장 금지 원칙)
         token = None
-        env_dev = PROJECT_ROOT / ".env.dev"
-        if env_dev.exists():
-            for line in env_dev.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("DEV_BOT_TOKEN=") and not line.startswith("#"):
-                    token = line.split("=", 1)[1].strip()
-                    break
-
-        # 2. 폴백: 기존 서버에서 토큰
-        if not token:
-            for cid in _get_community_ids():
-                t = _get_token(cid)
-                if t:
-                    token = t
-                    break
+        for cid in _get_community_ids():
+            t = _get_token(cid)
+            if t:
+                token = t
+                break
 
         if not token:
             self.query_one("#dev-result", Static).update(
                 "[red]No bot token[/red]\n"
-                "[dim].env.dev에 DEV_BOT_TOKEN을 설정하거나, 기존 서버를 먼저 만드세요.[/dim]"
+                "[dim]기존 커뮤니티를 먼저 만들고 토큰을 입력하세요.[/dim]"
             )
             return
 

@@ -1026,16 +1026,17 @@ def ROOT_DIR():
 
 
 def get_dev_state() -> dict:
-    """dev/pending.json + dev/result.json 상태."""
+    """커뮤니티별 dev/pending.json + dev/result.json 상태."""
     import json as _json
-    root = ROOT_DIR()
+    from src import community as _community
     out = {"pending": None, "result": None, "active": False}
     try:
         out["active"] = log_writer.is_dev_active()
     except Exception:
         pass
-    p = root / "dev" / "pending.json"
-    r = root / "dev" / "result.json"
+    dev_dir = _community.get_community_dir() / "dev"
+    p = dev_dir / "pending.json"
+    r = dev_dir / "result.json"
     try:
         if p.exists():
             out["pending"] = _json.loads(p.read_text(encoding="utf-8"))

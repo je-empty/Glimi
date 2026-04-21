@@ -78,8 +78,12 @@ if [ "$1" = "--legacy" ]; then
     fi
     echo ""
 
-    PID_FILE="dev/.bot.pid"
-    PAUSE_FILE="dev/.bot-paused"
+    # 레거시 모드용 런타임 파일 — 커뮤니티 디렉토리 안에 격리 (루트 공유 금지)
+    CID="${GLIMI_COMMUNITY:-default}"
+    RUNTIME_DIR="communities/${CID}/runtime"
+    mkdir -p "$RUNTIME_DIR"
+    PID_FILE="${RUNTIME_DIR}/.bot.pid"
+    PAUSE_FILE="${RUNTIME_DIR}/.bot-paused"
     rm -f "$PAUSE_FILE"
 
     _leg_cleanup() {
