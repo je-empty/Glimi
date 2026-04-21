@@ -42,8 +42,13 @@ def _find_profile_image(agent_id: str) -> str | None:
 
 
 def migrate_json_to_db():
-    """profiles/*.json → DB 마이그레이션"""
+    """profiles/*.json → DB 마이그레이션. 레거시 — profiles/ 디렉터리 없으면 skip."""
     db.init_db()
+
+    # profiles/ 디렉터리 없으면 신규 설치 → 마이그레이션 대상 없음
+    if not os.path.isdir(PROFILES_DIR):
+        print("  [migrate] profiles/ 없음 — 신규 설치, 스킵")
+        return
 
     # 1. 에이전트 프로필 마이그레이션
     agent_count = 0
