@@ -132,15 +132,17 @@
       </span>
     </label>
   </div>
-  <div style="margin: 16px 0;">
+  <div class="del-body" style="margin: 16px 0;">
     <label style="display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted);">확인 입력: 커뮤니티 ID 를 정확히 입력해</label>
     <input id="del-input" type="text" style="width: 100%;" placeholder="" autocomplete="off">
   </div>
-  <div style="display: flex; gap: 6px; justify-content: end; margin-top: 18px;">
+  <div id="del-progress"></div>
+  <div class="del-actions" style="display: flex; gap: 6px; justify-content: end; margin-top: 18px;">
     <button type="button" onclick="document.getElementById('delete-dialog').close()">취소</button>
     <button type="button" class="danger" onclick="confirmDelete()">삭제</button>
   </div>
 </dialog>
+<style>@keyframes spin { to { transform: rotate(360deg) } }</style>
 
 <script>
 async function ctrl(cid, action) {
@@ -153,7 +155,9 @@ async function deleteCommunity(cid) {
   document.getElementById('del-cid').textContent = cid;
   document.getElementById('del-input').value = '';
   document.getElementById('del-wipe').checked = false;
+  document.getElementById('del-progress').innerHTML = '';
   dlg.dataset.cid = cid;
+  dlg.querySelectorAll('button').forEach(b => b.disabled = false);
   dlg.showModal();
   setTimeout(() => document.getElementById('del-input').focus(), 100);
 }
@@ -166,18 +170,42 @@ async function confirmDelete() {
     alert('입력이 일치하지 않아 삭제 취소됨.');
     return;
   }
-  dlg.close();
-  const url = '/api/communities/' + encodeURIComponent(cid) + (wipe ? '?wipe_discord=true' : '');
-  const r = await fetch(url, { method: 'DELETE' });
-  if (!r.ok) { alert('삭제 실패: ' + (await r.text())); return; }
-  const res = await r.json();
-  if (wipe && res.wipe) {
-    const w = res.wipe;
-    if (w.deleted_channels && w.deleted_channels.length) {
-      console.log('Discord 채널 삭제:', w.deleted_channels);
-    }
+  // 다이얼로그 안에서 진행 상태 표시 (닫지 않음). 버튼 비활성화.
+  const body = dlg.querySelector('.del-body');
+  const actions = dlg.querySelector('.del-actions');
+  const progress = document.getElementById('del-progress');
+  if (progress) {
+    const msg = wipe
+      ? '봇 정지 + 디스코드 채널 삭제 중... (최대 30초)'
+      : '봇 정지 + 데이터 삭제 중... (최대 10초)';
+    progress.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--panel2);border-radius:8px;margin-top:12px;border-left:3px solid var(--accent)">' +
+      '<div style="width:16px;height:16px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>' +
+      '<div style="font-size:13px">' + msg + '</div></div>';
   }
-  location.reload();
+  if (actions) actions.querySelectorAll('button').forEach(b => b.disabled = true);
+
+  const url = '/api/communities/' + encodeURIComponent(cid) + (wipe ? '?wipe_discord=true' : '');
+  try {
+    const r = await fetch(url, { method: 'DELETE' });
+    if (!r.ok) {
+      if (progress) progress.innerHTML = '<div class="err">삭제 실패: ' + (await r.text()) + '</div>';
+      if (actions) actions.querySelectorAll('button').forEach(b => b.disabled = false);
+      return;
+    }
+    const res = await r.json();
+    if (wipe && res.wipe) {
+      const w = res.wipe;
+      if (w.deleted_channels && w.deleted_channels.length) {
+        console.log('Discord 채널 삭제:', w.deleted_channels);
+      }
+    }
+    dlg.close();
+    location.reload();
+  } catch (e) {
+    if (progress) progress.innerHTML = '<div class="err">통신 오류: ' + e + '</div>';
+    if (actions) actions.querySelectorAll('button').forEach(b => b.disabled = false);
+  }
 }
 </script>
 {% endblock %}

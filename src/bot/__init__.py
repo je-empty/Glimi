@@ -16,7 +16,9 @@ from src import community
 # ── 환경변수 (커뮤니티별 .env) ────────────────────────
 
 community.ensure_dirs()
-load_dotenv(community.get_env_path())
+# override=True — 커뮤니티 .env 가 프로세스에 이미 있는 env 변수보다 우선.
+# 플랫폼이 subprocess 로 봇을 띄울 때 부모 env 가 섞여들어와도 커뮤니티 .env 가 이김.
+load_dotenv(community.get_env_path(), override=True)
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 OWNER_DISCORD_ID = os.getenv("DISCORD_OWNER_ID")
