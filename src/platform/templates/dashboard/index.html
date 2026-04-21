@@ -187,29 +187,40 @@
 <div class="loading-bar"></div>
 <div class="toast" id="toast"></div>
 
-<!-- 튜토리얼 준비 중 전체 딤 오버레이 — Start 직후 유나가 인사 메시지 보낼 때까지 UI 잠금 -->
-<div id="tutorial-gate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);backdrop-filter:blur(6px);z-index:2147483641;align-items:center;justify-content:center;padding:30px;overflow:auto">
+<!-- Glimi Overlay — 웹 동작 중 언제든 호출 가능한 범용 블로킹 오버레이.
+     현재 소비: 가동 시퀀스 (scan → 복구 → 부팅 → 튜토리얼).
+     향후 소비: 긴 작업 대기, 확인 요청, 시스템 메시지 등 -->
+<div id="glimi-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);backdrop-filter:blur(6px);z-index:2147483641;align-items:center;justify-content:center;padding:30px;overflow:auto">
   <div style="max-width:640px;width:100%;text-align:center;color:#fff">
-    <div style="font-size:64px;margin-bottom:20px;animation:tg-bounce 1.4s ease-in-out infinite">🧸</div>
-    <div id="tg-title" style="font-size:22px;font-weight:700;letter-spacing:-0.3px;margin-bottom:10px">유나를 부르는 중...</div>
-    <div id="tg-sub" style="font-size:14px;color:#d1d5db;line-height:1.7">머리 빗고 옷 매무새 다듬는 중... 첫인상이 중요하니까.<br><span style="color:#f59e0b;font-size:13px;display:inline-block;margin-top:6px">⚠ 디스코드 미리 보면 안 돼 — 아직 준비 덜 된 모습이야 🙈</span></div>
-    <div style="margin-top:20px;display:flex;gap:8px;justify-content:center;align-items:center">
-      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0s"></div>
-      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0.2s"></div>
-      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:tg-dot 1.4s infinite;animation-delay:0.4s"></div>
-    </div>
-    <div id="tg-progress" style="margin-top:22px;font-size:11.5px;color:#9ca3af;font-family:'JetBrains Mono',monospace"></div>
+    <div id="go-emoji" style="font-size:64px;margin-bottom:20px;animation:go-bounce 1.4s ease-in-out infinite">🧸</div>
+    <div id="go-title" style="font-size:22px;font-weight:700;letter-spacing:-0.3px;margin-bottom:10px">잠시만 기다려줘...</div>
+    <div id="go-sub" style="font-size:14px;color:#d1d5db;line-height:1.7"></div>
 
-    <!-- 로그 — 딤 배경에 녹아들어 보이게. 위/아래 페이드로 스크롤 영역 암시 -->
+    <!-- 점 애니 (scanning/booting 에서만) -->
+    <div id="go-dots" style="margin-top:20px;display:flex;gap:8px;justify-content:center;align-items:center">
+      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:go-dot 1.4s infinite;animation-delay:0s"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:go-dot 1.4s infinite;animation-delay:0.2s"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:#7aa2f7;animation:go-dot 1.4s infinite;animation-delay:0.4s"></div>
+    </div>
+
+    <!-- damage 상태용 버튼 영역 (평소 숨김) -->
+    <div id="go-actions" style="display:none;margin-top:22px;gap:8px;justify-content:center">
+      <button onclick="_overlayDecide('cancel')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소 (가동 안 함)</button>
+      <button onclick="_overlayDecide('recover')" style="background:#2563eb;color:#fff;border:1px solid #2563eb;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">복구하고 가동</button>
+    </div>
+
+    <div id="go-progress" style="margin-top:22px;font-size:11.5px;color:#9ca3af;font-family:'JetBrains Mono',monospace"></div>
+
+    <!-- 로그 — 딤 배경에 녹아들게. 위/아래 페이드 -->
     <div style="position:relative;margin-top:20px;text-align:left">
-      <pre id="tg-log" style="background:transparent;border:none;padding:0;margin:0;height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:#8b8fa3;white-space:pre-wrap;word-break:break-all;mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)"></pre>
-      <input id="tg-autoscroll" type="checkbox" checked style="display:none">
+      <pre id="go-log" style="background:transparent;border:none;padding:0;margin:0;height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:#8b8fa3;white-space:pre-wrap;word-break:break-all;mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)"></pre>
+      <input id="go-autoscroll" type="checkbox" checked style="display:none">
     </div>
   </div>
 </div>
 <style>
-  @keyframes tg-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
-  @keyframes tg-dot { 0%,80%,100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+  @keyframes go-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+  @keyframes go-dot { 0%,80%,100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
 </style>
 
 <!-- 서버에서 community 를 JS 에 주입 (URL 쿼리 의존 제거) -->
@@ -253,54 +264,166 @@
     } catch (e) {}
   }
   window.glimiServerCtrl = async function(action) {
+    if (action === 'start' || action === 'restart') {
+      // 가동 전 scan → 손상 감지 → (유저 결정) → 복구 → 실제 가동 → 튜토리얼
+      await _runStartupPrep(action);
+      return;
+    }
+    // stop 은 그냥 호출
     try {
       const r = await fetch('/api/communities/' + CID + '/' + action, { method: 'POST' });
       if (!r.ok) { alert('실패: ' + await r.text()); return; }
       setTimeout(refresh, 500);
       setTimeout(refresh, 2500);
-      // 첫 Start 면 튜토리얼 게이트 띄우기
-      if (action === 'start' || action === 'restart') {
-        _maybeShowTutorialGate();
-      }
     } catch (e) { alert(e); }
   };
 
-  // ── 튜토리얼 준비 게이트 ────────────────────────
-  // 신규 커뮤니티 (agents=0 or tutorial_phase != complete) 에서 Start 눌렀을 때
-  // 유나가 디스코드에 인사 메시지 다 보내기 전까지 UI 잠금.
-  let _gateActive = false;
-  async function _maybeShowTutorialGate() {
-    // 현재 상태 확인 — 이미 에이전트 있고 phase=complete 면 게이트 불필요
+  // ── Glimi Overlay: 가동 시퀀스 소비자 ─────────────────────
+  // phase: scanning → (damaged → recover) → booting → ready
+  let _overlayActive = false;
+  let _overlayResolver = null;
+  async function _runStartupPrep(action) {
+    _showOverlay();
+    _setOverlayPhase('scanning');
     try {
-      const r = await fetch('/api/snapshot?community=' + encodeURIComponent(CID));
-      if (!r.ok) return;
-      const snap = await r.json();
-      const agentCount = (snap.agents || []).length;
-      const phase = (snap.meta || {}).tutorial_phase || '';
-      if (agentCount > 0 && phase === 'complete') return;
-    } catch (e) {}
-    _showTutorialGate();
+      // 현 상태 조회 — fresh(에이전트 0) 면 scan 스킵
+      const snap = await fetch('/api/snapshot?community=' + encodeURIComponent(CID)).then(r => r.json()).catch(() => ({}));
+      const agents = snap.agents || [];
+      const dbChannels = (snap.channels || []).map(c => c.channel || c.name).filter(Boolean);
+
+      let skipScan = agents.length === 0 || dbChannels.length === 0;
+
+      if (!skipScan) {
+        const scanRes = await fetch('/api/action/scan_discord?community=' + encodeURIComponent(CID), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        }).then(r => r.json()).catch(e => ({ ok: false, error: String(e) }));
+
+        const counts = (scanRes && scanRes.result && scanRes.result.counts) || {};
+        const discordChannels = new Set(Object.keys(counts));
+        const missing = dbChannels.filter(ch => !discordChannels.has(ch));
+
+        if (missing.length > 0) {
+          _setOverlayPhase('damaged', { missing, dbCount: dbChannels.length });
+          const decision = await new Promise(resolve => { _overlayResolver = resolve; });
+          if (decision === 'cancel') {
+            _hideOverlay();
+            return;
+          }
+          _setOverlayPhase('recovering');
+          const syncRes = await fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          }).then(r => r.json()).catch(e => ({ error: String(e) }));
+          if (syncRes && syncRes.error) {
+            _setOverlayPhase('error', { msg: '복구 실패: ' + (syncRes.message || syncRes.error) });
+            return;
+          }
+        }
+      }
+
+      // 가동
+      _setOverlayPhase('booting');
+      const r = await fetch('/api/communities/' + CID + '/' + action, { method: 'POST' });
+      if (!r.ok) {
+        _setOverlayPhase('error', { msg: '가동 실패: ' + await r.text() });
+        return;
+      }
+      setTimeout(refresh, 500);
+      setTimeout(refresh, 2500);
+      _pollTutorialProgress();
+    } catch (e) {
+      _setOverlayPhase('error', { msg: String(e) });
+    }
   }
-  function _showTutorialGate() {
-    if (_gateActive) return;
-    _gateActive = true;
-    document.getElementById('tutorial-gate').style.display = 'flex';
-    _pollTutorialProgress();
-    _pollTutorialLog();
+  window._overlayDecide = function(decision) {
+    if (_overlayResolver) {
+      const r = _overlayResolver;
+      _overlayResolver = null;
+      r(decision);
+    }
+  };
+
+  // Phase rendering
+  function _setOverlayPhase(phase, ctx) {
+    ctx = ctx || {};
+    const emoji = document.getElementById('go-emoji');
+    const title = document.getElementById('go-title');
+    const sub = document.getElementById('go-sub');
+    const dots = document.getElementById('go-dots');
+    const actions = document.getElementById('go-actions');
+    const progress = document.getElementById('go-progress');
+    if (!emoji) return;
+
+    // default show/hide
+    dots.style.display = 'flex';
+    actions.style.display = 'none';
+
+    if (phase === 'scanning') {
+      emoji.textContent = '🔍';
+      title.textContent = '디스코드 상태 확인 중';
+      sub.innerHTML = '현 채널 상태 빠르게 스캔 중...';
+      progress.textContent = '';
+    } else if (phase === 'damaged') {
+      emoji.textContent = '⚠️';
+      title.textContent = '디스코드 손상 감지';
+      sub.innerHTML =
+        'DB 에 등록된 <b>' + ctx.dbCount + '</b>개 채널 중 <b style="color:#f87171">' + ctx.missing.length + '</b>개가 Discord 에 없음.<br>' +
+        '<span style="color:#f59e0b;font-size:12.5px;display:inline-block;margin-top:6px">복구하면 DB 상태로 Discord 채널 재생성 · 안 하면 가동 취소</span>';
+      dots.style.display = 'none';
+      actions.style.display = 'flex';
+      progress.textContent = '누락: ' + ctx.missing.slice(0, 5).join(', ') + (ctx.missing.length > 5 ? ' 외 ' + (ctx.missing.length - 5) + '개' : '');
+    } else if (phase === 'recovering') {
+      emoji.textContent = '🔧';
+      title.textContent = '디스코드 복구 중';
+      sub.innerHTML = '채널 재생성 + 메시지 복원... <span style="color:#9ca3af">(1~3분 걸릴 수 있어)</span>';
+      progress.textContent = '';
+      _pollTutorialLog();
+    } else if (phase === 'booting') {
+      emoji.textContent = '🧸';
+      title.textContent = '유나를 부르는 중...';
+      sub.innerHTML = '머리 빗고 옷 매무새 다듬는 중... 첫인상이 중요하니까.<br><span style="color:#f59e0b;font-size:13px;display:inline-block;margin-top:6px">⚠ 디스코드 미리 보면 안 돼 — 아직 준비 덜 된 모습이야 🙈</span>';
+      _pollTutorialLog();
+    } else if (phase === 'ready') {
+      emoji.textContent = '✓';
+      title.textContent = '준비 완료';
+      sub.innerHTML = '';
+      dots.style.display = 'none';
+      progress.textContent = '';
+    } else if (phase === 'error') {
+      emoji.textContent = '✕';
+      title.textContent = '실패';
+      sub.innerHTML = '<span style="color:#f87171">' + (ctx.msg || '') + '</span>';
+      dots.style.display = 'none';
+      actions.innerHTML = '<button onclick="_hideOverlay()" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">닫기</button>';
+      actions.style.display = 'flex';
+    }
   }
-  function _hideTutorialGate() {
-    _gateActive = false;
-    document.getElementById('tutorial-gate').style.display = 'none';
+
+  function _showOverlay() {
+    if (_overlayActive) return;
+    _overlayActive = true;
+    document.getElementById('glimi-overlay').style.display = 'flex';
   }
+  function _hideOverlay() {
+    _overlayActive = false;
+    document.getElementById('glimi-overlay').style.display = 'none';
+    // actions 영역 복원
+    const actions = document.getElementById('go-actions');
+    if (actions) actions.innerHTML = '<button onclick="_overlayDecide(\'cancel\')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소 (가동 안 함)</button><button onclick="_overlayDecide(\'recover\')" style="background:#2563eb;color:#fff;border:1px solid #2563eb;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">복구하고 가동</button>';
+  }
+
   // bot.log 실시간 tail — 게이트가 떠있는 동안 1.5초마다 갱신
   async function _pollTutorialLog() {
-    if (!_gateActive) return;
+    if (!_overlayActive) return;
     try {
       const r = await fetch('/api/communities/' + CID + '/log?lines=80');
       if (r.ok) {
         const data = await r.json();
-        const logEl = document.getElementById('tg-log');
-        const auto = document.getElementById('tg-autoscroll');
+        const logEl = document.getElementById('go-log');
+        const auto = document.getElementById('go-autoscroll');
         const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
         const content = data.log || '';
         if (logEl.textContent !== content) {
@@ -314,8 +437,8 @@
     setTimeout(_pollTutorialLog, 1500);
   }
   async function _pollTutorialProgress() {
-    if (!_gateActive) return;
-    const prog = document.getElementById('tg-progress');
+    if (!_overlayActive) return;
+    const prog = document.getElementById('go-progress');
     try {
       const r = await fetch('/api/snapshot?community=' + encodeURIComponent(CID));
       if (r.ok) {
@@ -339,11 +462,11 @@
         //   (B) 유나(mgr)가 존재하고 최근 메시지가 5개 이상 누적 (유나가 인사 보냄)
         const hasMgr = agents.some(a => a.type === 'mgr');
         if (phase === 'complete' || (hasMgr && msgs >= 5)) {
-          const title = document.getElementById('tg-title');
-          const sub = document.getElementById('tg-sub');
+          const title = document.getElementById('go-title');
+          const sub = document.getElementById('go-sub');
           title.textContent = '✓ 준비 완료';
           sub.textContent = '유나 소환 끝! 대시보드 사용 가능.';
-          setTimeout(_hideTutorialGate, 1200);
+          setTimeout(_hideOverlay, 1200);
           return;
         }
       }
@@ -364,9 +487,10 @@
       const agentCount = (snap.agents || []).length;
       const hasMgr = (snap.agents || []).some(a => a.type === 'mgr');
       const msgs = (snap.recent_messages || []).length;
-      // 봇 켜져있고 아직 튜토리얼 진행 중이면 게이트
+      // 봇 켜져있고 아직 튜토리얼 진행 중이면 오버레이
       if (phase !== 'complete' && !(hasMgr && msgs >= 5)) {
-        _showTutorialGate();
+        _showOverlay();
+        _setOverlayPhase('booting');
       }
     } catch (e) {}
   })();
