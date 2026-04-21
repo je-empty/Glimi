@@ -122,11 +122,10 @@ def _analyze_meta(conn: sqlite3.Connection) -> dict:
 
 
 def _analyze_yuna(log_text: str, conn: sqlite3.Connection) -> dict:
-    """유나 호출 빈도 + 독백 누출."""
+    """유나 호출 빈도 + 독백 누출 + 시스템 에러 발화 노출."""
     out = {}
     out["cli_calls"] = len(re.findall(r"\[agent-mgr-001\].*Claude CLI 호출", log_text))
     out["watcher_ticks"] = log_text.count("[자동알림]")
-    # 독백 누출 — filter 있지만 혹시 뚫린 것
     try:
         rows = conn.execute(
             "SELECT substr(message,1,120) FROM conversations "
@@ -135,6 +134,15 @@ def _analyze_yuna(log_text: str, conn: sqlite3.Connection) -> dict:
         out["monologue_leaks"] = [r[0] for r in rows]
     except Exception:
         out["monologue_leaks"] = []
+    # 시스템 에러 메시지 유저 채널 노출 (tool 실패 등). 유나 persona 가 "X 못 찾겠어" 라고 말하면 몰입 깨짐.
+    try:
+        rows = conn.execute(
+            "SELECT substr(message,1,120) FROM conversations "
+            "WHERE speaker='agent-mgr-001' AND (message LIKE '%못 찾겠어%' OR message LIKE '%못 찾음%')"
+        ).fetchall()
+        out["system_error_leaks"] = [r[0] for r in rows]
+    except Exception:
+        out["system_error_leaks"] = []
     return out
 
 
@@ -308,6 +316,10 @@ def _build_issues(metrics: dict, run_json: dict) -> list[dict]:
         issues.append({"severity": "REGRESSION", "category": "yuna_monologue",
                        "detail": f"괄호 독백 누출 {len(metrics['yuna']['monologue_leaks'])}건",
                        "evidence": metrics['yuna']['monologue_leaks'][:3]})
+    if metrics["yuna"].get("system_error_leaks"):
+        issues.append({"severity": "REGRESSION", "category": "yuna_system_error",
+                       "detail": f"'못 찾겠어' 류 시스템 에러 유저 노출 {len(metrics['yuna']['system_error_leaks'])}건",
+                       "evidence": metrics['yuna']['system_error_leaks'][:3]})
     if metrics["create_room"].get("already_exists_spam_to_user"):
         issues.append({"severity": "REGRESSION", "category": "create_room_spam",
                        "detail": f"유저 노출 '이미 있어:' {metrics['create_room']['already_exists_spam_to_user']}건"})
