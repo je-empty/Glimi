@@ -226,11 +226,14 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
     text = re.sub(r'.{1,10}한테\s*(DM|메시지|dm)\s*(보냈|전달|전송).{0,10}', '', text).strip()
     text = re.sub(r'.{1,10}에게\s*(DM|메시지|dm)\s*(보냈|전달|전송).{0,10}', '', text).strip()
 
-    # 괄호 독백 제거 — 전체 발화가 괄호로 감싸진 내면 thought ("(무시)", "(일상 수준...)",
-    # "*(무시)*" 이탤릭 변형). handle_dm 경로엔 tasks.yuna_watcher 와 달리 필터 없어서
-    # 그대로 노출됨. 줄 단위로 match 해서 drop.
-    _monologue_pat = re.compile(r'^\s*[\*_`]*\(\s*(무시|별거|별 거|일상|넘어|응답\s*안|특이사항)[^)]*\)[\*_`]*\s*$',
-                                re.MULTILINE)
+    # 괄호 독백 제거 — 구조 패턴 기반 (키워드 무관).
+    # LLM 이 "응답 안 함" 지시 받으면 0글자 내기 어려워 메타 코멘트로 에뮬레이트.
+    # 전체 라인이 괄호로 감싸진 형태 ("(무시)", "(별다른 보고 없음)", "*(조용히)*" 등) 일괄 drop.
+    # 정상 발화에 괄호 쓰는 경우는 드묾 (persona 가 (웃음) 같은 건 잘 안 씀).
+    _monologue_pat = re.compile(
+        r'^\s*[\*_`]*[\(（][^\n]{0,200}[\)）][\*_`]*\s*$',
+        re.MULTILINE,
+    )
     text = _monologue_pat.sub('', text)
     text = re.sub(r'\n{3,}', '\n\n', text).strip()
 

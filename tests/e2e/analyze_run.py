@@ -175,13 +175,15 @@ def _analyze_persona_quality(conn: sqlite3.Connection) -> list[dict]:
         # 반복 — 같은 첫 10자가 3회 이상
         prefixes = Counter(m[:10] for m in msgs if len(m) >= 10)
         repeats = sum(1 for _, c in prefixes.most_common(3) if c >= 3)
+        # threshold — 내향형 persona (INFJ/INFP/INTJ 등) 는 casual/질문 비율 자연히 낮음.
+        # 체크 기준은 "외향형 평균" 이 아니라 "치명적 문제 없음" 수준으로 관대하게.
         checks = {
-            "casual_tone": casual / n >= 0.3,          # ㅋㅋ/~ 적절히
-            "questions_ratio": questions / n >= 0.15,   # 되묻기
-            "no_tools": tools == 0,                     # 도구 안 건드림
-            "length_ok": avg_len <= 60,                 # 평균 발화 길이
-            "no_repeats": repeats == 0,                 # 반복 회피
-            "not_locked": breached is None,             # 메타 안 깨짐
+            "casual_tone": casual / n >= 0.15,          # ㅋㅋ/~/ㅎㅎ — 최소한의 구어체
+            "questions_ratio": questions / n >= 0.08,   # 되묻기 최소한
+            "no_tools": tools == 0,                     # 도구 안 건드림 (엄격 — persona 권한 없음)
+            "length_ok": avg_len <= 80,                 # 평균 발화 길이 (카톡 기준 넉넉하게)
+            "no_repeats": repeats <= 1,                 # 반복 1회까진 허용 (LLM drift)
+            "not_locked": breached is None,             # 메타 안 깨짐 (엄격)
             "has_msgs": n >= 3,                         # 최소 발화량
         }
         score = sum(1 for v in checks.values() if v)

@@ -808,8 +808,9 @@ class AgentRuntime:
         # creator(하나) 는 confirm 카드 (이름/나이/성별/MBTI/성격/배경/말투/관계 7-8줄)
         # + <tools> 블록까지 내보내려면 한도가 넉넉해야 함. 10 에선 tool 블록이 잘려서
         # create_agent_profile 호출 자체가 불발되는 회귀 발생.
+        # persona: 6 — 카톡 1~4줄 가이드인데 Haiku drift 로 과다 출력 자주. 6 이 적정 상한.
         MAX_STREAMING_MESSAGES = {
-            "persona": 10,
+            "persona": 6,
             "mgr": 15,
             "creator": 20,
         }
@@ -1181,11 +1182,12 @@ class AgentRuntime:
                                 f"[A2A] {speaker_name} 응답에서 {listener_name} 역할 leak {dropped}건 제거"
                             )
                         responses = cleaned
-                        # 괄호 독백 필터 — handle_dm 에만 있던 "(무시)/(일상)/(조용히)" drop 을 A2A 경로에도 적용.
-                        # QA 회귀: internal-dm-윤하나-서유나 에서 유나가 "(이미 인사 다 끝났으니 조용히)" 독백 저장.
+                        # 괄호 독백 구조 필터 — 전체 라인이 괄호로 감싸진 메타 코멘트 drop.
+                        # LLM 이 "응답 안 함" 지시 받으면 0글자 대신 "(무시)/(별다른 거 없음)" 류 에뮬레이트 —
+                        # 키워드 차단은 whack-a-mole 라 구조 패턴으로 일괄.
                         import re as _mre
                         _mono_pat = _mre.compile(
-                            r'^\s*[\*_`]*\(\s*(무시|별거|별 거|일상|넘어|응답\s*안|특이사항|조용히|이미|마무리)[^)]*\)[\*_`]*\s*$',
+                            r'^\s*[\*_`]*[\(（][^\n]{0,200}[\)）][\*_`]*\s*$',
                         )
                         responses = [m for m in responses if not _mono_pat.match(m)]
                         for msg in responses:

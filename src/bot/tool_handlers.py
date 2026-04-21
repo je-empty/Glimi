@@ -23,8 +23,42 @@ from src.core.tools.dispatcher import ToolContext
 
 async def _h_create_room(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import yuna_create_room
+    from src.core.profile import get_user_name
     names = args.get("names", [])
     topic = args.get("topic", "")
+    # Pre-check 중복 — guild 에 같은 이름의 채널 이미 있으면 skip 시그널을 LLM 에 명확히 반환.
+    # 이전엔 tool_result 가 항상 {names, topic} 이라 유나가 skip 인지 모르고 반복 호출 (cycle #8: 12회).
+    try:
+        import discord as _discord
+        # 채널명 후보 계산 — yuna_create_room 과 동일 로직의 압축판
+        oc = get_user_name()
+        agents = {a["name"]: a for a in db.list_agents()}
+        has_owner = any(n == oc for n in names)
+        participant_names = [n for n in names if n != oc and (n in agents or any(n in an for an in agents))]
+        if not participant_names:
+            # yuna_create_room 이 매칭 처리 — 그냥 전달
+            pass
+        else:
+            if has_owner:
+                prefix = "group"
+            elif len(participant_names) == 2:
+                prefix = "internal-dm"
+            else:
+                prefix = "internal-group"
+            ch_name_a = f"{prefix}-{'-'.join(participant_names)}"
+            ch_name_b = (f"{prefix}-{'-'.join(reversed(participant_names))}"
+                         if len(participant_names) == 2 else None)
+            existing = None
+            if ctx.guild:
+                existing = _discord.utils.get(ctx.guild.text_channels, name=ch_name_a)
+                if not existing and ch_name_b:
+                    existing = _discord.utils.get(ctx.guild.text_channels, name=ch_name_b)
+            if existing:
+                log_writer.system(f"[create_room] pre-check skip: #{existing.name}")
+                return {"skipped": True, "reason": "already_exists",
+                        "channel": existing.name, "names": names, "topic": topic}
+    except Exception:
+        pass
     args_str = f"{' '.join(names)} {topic}".strip()
     await yuna_create_room(ctx.channel_obj, args_str, ctx.guild)
     return {"names": names, "topic": topic}
