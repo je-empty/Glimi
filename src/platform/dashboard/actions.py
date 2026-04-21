@@ -22,35 +22,57 @@ def _channel_category(name: str) -> str:
 
 
 def _analyze_damage(scan_result: dict) -> dict:
-    """scan 결과 + DB 데이터 → 손상 종류별 분류.
+    """scan 결과 → 손상 분류.
 
-    DB 측 채널 리스트 = `channels` 테이블 ∪ `conversations` 집계 (합집합).
-    양쪽 다 봐야 channels 등록만 된 빈 채널 + 메시지만 있는 미등록 채널 둘 다 커버.
-    (이전 버전은 channels 테이블만 봐서 Sync 탭이 잡는 차이를 놓치던 버그.)
+    **Sync 탭 (`renderScanTable`) 과 동일 기준** — counts(Discord) + db_counts(DB) 만 비교:
+      allChs = keys(counts) ∪ keys(db_counts)
+      for each ch:  diff = db - discord
+        diff > 0 && discord == 0  → missing_in_discord
+        diff < 0 && db == 0       → orphan_in_discord
+        diff != 0 (둘 다 > 0)     → msg_drift (DB 기준, DB>discord 또는 discord>DB)
 
-    손상 종류:
-      - missing_in_discord: DB 에 있는데 Discord 에 없음 → 생성 필요
-      - orphan_in_discord: glimi-* 카테고리 안 Discord 만 있음 → 삭제 필요
-      - orphan_outside: glimi 카테고리 밖 패턴 매칭 채널 → 삭제 필요
-      - wrong_category: 채널이 잘못된 카테고리 → 이동 필요
-      - msg_drift_db_more: DB 메시지 > Discord → restore
-      - msg_drift_discord_more: Discord 메시지 > DB → 잉여 삭제
+    부가 정보 (scan 이 제공하면 함께 표시):
+      - orphan_outside: glimi 카테고리 밖 패턴 매칭
+      - wrong_category: 채널 카테고리 오류
+
+    clean 판정: Sync 탭 그대로 — 어떤 채널이든 diff != 0 이면 손상.
     """
-    db_channels_meta = {c["name"]: c for c in scan_result.get("db_channels", []) or []}
-    discord_chs = {c["name"]: c for c in scan_result.get("discord_channels", []) or []}
+    counts = scan_result.get("counts", {}) or {}
     db_counts = scan_result.get("db_counts", {}) or {}
+    discord_chs = {c["name"]: c for c in scan_result.get("discord_channels", []) or []}
 
-    # DB 측 채널 리스트 = channels 테이블 ∪ conversations 에서 등장한 채널
-    db_names = set(db_channels_meta.keys()) | set(db_counts.keys())
-    discord_names = set(discord_chs.keys())
+    all_chs = set(counts.keys()) | set(db_counts.keys())
 
-    missing_in_discord = sorted(db_names - discord_names)
-    orphan_in_discord = sorted(discord_names - db_names)
+    missing_in_discord: list = []
+    orphan_in_discord: list = []
+    msg_drift_db_more: list = []
+    msg_drift_discord_more: list = []
+
+    for ch in all_chs:
+        db_count = db_counts.get(ch, 0)
+        d_count = counts.get(ch, 0)
+        diff = db_count - d_count
+        if diff == 0:
+            continue
+        if d_count == 0:
+            missing_in_discord.append(ch)
+        elif db_count == 0:
+            orphan_in_discord.append(ch)
+        elif diff > 0:
+            msg_drift_db_more.append({
+                "name": ch, "db": db_count, "discord": d_count, "diff": diff,
+            })
+        else:
+            msg_drift_discord_more.append({
+                "name": ch, "db": db_count, "discord": d_count, "diff": -diff,
+            })
+
+    missing_in_discord.sort()
+    orphan_in_discord.sort()
+
+    # 부가 정보 — scan 이 제공하면 포함 (카테고리 오류 / glimi 밖 orphan)
     orphan_outside = list(scan_result.get("orphan_outside", []) or [])
     wrong_category = []
-    msg_drift_db_more = []
-    msg_drift_discord_more = []
-
     for name, info in discord_chs.items():
         expected_cat = _channel_category(name)
         actual_cat = info.get("category", "")
@@ -59,24 +81,15 @@ def _analyze_damage(scan_result: dict) -> dict:
                 "name": name, "current": actual_cat, "expected": expected_cat,
             })
 
-    # 메시지 카운트 비교 (양쪽에 다 존재하는 채널만)
-    for name in (db_names & discord_names):
-        d_count = discord_chs[name].get("msg_count")
-        db_count = db_counts.get(name, 0)
-        if d_count is None:
-            continue
-        if db_count > d_count:
-            msg_drift_db_more.append({
-                "name": name, "db": db_count, "discord": d_count, "diff": db_count - d_count,
-            })
-        elif d_count > db_count:
-            msg_drift_discord_more.append({
-                "name": name, "db": db_count, "discord": d_count, "diff": d_count - db_count,
-            })
-
+    # Sync 탭 기준 'clean': counts/db_counts diff 가 어디에도 없음
+    sync_clean = not (
+        missing_in_discord or orphan_in_discord
+        or msg_drift_db_more or msg_drift_discord_more
+    )
     total_issues = (
-        len(missing_in_discord) + len(orphan_in_discord) + len(orphan_outside)
-        + len(wrong_category) + len(msg_drift_db_more) + len(msg_drift_discord_more)
+        len(missing_in_discord) + len(orphan_in_discord)
+        + len(msg_drift_db_more) + len(msg_drift_discord_more)
+        + len(orphan_outside) + len(wrong_category)
     )
     return {
         "missing_in_discord": missing_in_discord,
@@ -86,7 +99,10 @@ def _analyze_damage(scan_result: dict) -> dict:
         "msg_drift_db_more": msg_drift_db_more,
         "msg_drift_discord_more": msg_drift_discord_more,
         "total_issues": total_issues,
-        "clean": total_issues == 0,
+        # Sync 탭 기준 — diff != 0 채널 없으면 clean.
+        # 부가(wrong_category, orphan_outside) 는 clean 판정에서 제외해
+        # Sync 탭과 동일한 판단 유지.
+        "clean": sync_clean,
     }
 
 
