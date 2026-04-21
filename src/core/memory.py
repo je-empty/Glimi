@@ -195,6 +195,51 @@ def _normalize_entities(entities: list) -> list:
     return out
 
 
+def _replace_nicknames_with_name(text: str) -> str:
+    """텍스트 안의 오너 별명/줄임형 등장을 실명으로 치환.
+    memory content / summary / fact object / relationship reason 등에 별명이 섞여
+    들어가는 걸 막는 후처리. alias 목록 중 canonical (aliases[0] = 실명) 로 통일.
+    """
+    if not text:
+        return text
+    aliases = _owner_aliases()
+    if len(aliases) < 2:
+        return text
+    canonical = aliases[0]
+    s = str(text)
+    # role terms 도 canonical 로 치환 (예: "오너가", "유저한테")
+    for alias in aliases[1:]:
+        if not alias or alias == canonical:
+            continue
+        # 단어 경계 기준으로만 치환 — "유저"·"오너" 는 부분매칭 위험 있지만 한글이라 boundary 특수처리
+        # 간단히 그대로 replace — '빈이' in '빈이스꺼풀' 류 한국어 합성어는 거의 없음
+        s = s.replace(alias, canonical)
+    return s
+
+
+def _scrub_extracted(extracted: dict) -> dict:
+    """단일 패스 추출 결과에서 content 류 필드를 nickname → name 으로 후처리."""
+    if not extracted:
+        return extracted
+    if extracted.get("summary"):
+        extracted["summary"] = _replace_nicknames_with_name(extracted["summary"])
+    facts = extracted.get("facts") or []
+    for f in facts:
+        if not isinstance(f, dict):
+            continue
+        for k in ("subject", "object"):
+            if f.get(k):
+                f[k] = _replace_nicknames_with_name(str(f[k]))
+    rels = extracted.get("relationships") or []
+    for r in rels:
+        if not isinstance(r, dict):
+            continue
+        for k in ("other", "reason"):
+            if r.get(k):
+                r[k] = _replace_nicknames_with_name(str(r[k]))
+    return extracted
+
+
 def _channel_knows(channel: str, agent_name: str) -> list[str]:
     """채널명에서 disclosure 범위 (이 대화를 직접 아는 사람) 추정."""
     ch = channel or ""
@@ -385,7 +430,7 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         "하나의 JSON으로 다음 필드를 추출:\n"
         "- summary: 글머리표 2-5개. 구체적 명사·결정·미해결 사항 그대로. '\\n- '로 구분.\n"
         "- type: event|fact|emotion|relationship 중 지배적 것 하나\n"
-        "- entities: 언급된 사람 이름 배열 (자신·오너 제외, 다른 사람만)\n"
+        "- entities: 언급된 사람 **실명(이름)** 배열 (자신·오너 제외, 다른 사람만)\n"
         "- importance: 1-10 (인사/잡담=2-3, 일상공유=4-5, 중요결정/감정변화=7+)\n"
         "- facts: 새로 알게 된 개인정보/선호 배열. 각 항목 {subject, predicate, object, importance}\n"
         "- relationships: 관계 변화 배열. 각 항목 {other, type(intimacy|dynamics|speech_style), from, to, reason}\n\n"
@@ -394,6 +439,9 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         '"facts":[{"subject":"지우","predicate":"좋아하는음식","object":"떡볶이","importance":4}],'
         '"relationships":[]}\n\n'
         "규칙:\n"
+        f"- 오너({user_name}) 는 항상 실명(이름) 으로 표기. 별명·호칭·'오너'·'빈이오빠' 같은 변형 금지.\n"
+        "  summary·facts·relationships·entities 어디든 오너 언급 시 실명만 사용.\n"
+        "- 다른 사람도 별명이 아니라 실명(프로필에 등록된 이름) 으로 기록.\n"
         "- 잡담·인사만 있으면 summary는 짧게, importance 낮게.\n"
         "- facts는 확실한 것만 (추측 금지). 없으면 빈 배열.\n"
         "- relationships는 명확한 관계 변화만. 없으면 빈 배열.\n"
@@ -448,6 +496,7 @@ def _try_l1_extract(agent_id: str, channel: str):
     extracted = _single_pass_extract(agent_id, channel, msgs)
     if not extracted:
         return
+    extracted = _scrub_extracted(extracted)
 
     from .profile import load_profile
     profile = load_profile(agent_id)
