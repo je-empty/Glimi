@@ -103,12 +103,17 @@
   <div class="wiz-page active" data-page="1">
     <div class="card">
       <div class="wiz-field">
-        <label>커뮤니티 ID <span class="hint">(영문·숫자·하이픈·언더스코어. 예: <code>my-server</code>)</span></label>
-        <input id="f-id" type="text" autofocus placeholder="my-community">
+        <label>커뮤니티 이름 <span class="hint">(한글·이모지 등 자유롭게)</span></label>
+        <input id="f-name" type="text" autofocus placeholder="내 커뮤니티">
       </div>
       <div class="wiz-field">
-        <label>설명 <span class="hint">(선택 — 커뮤니티 소개)</span></label>
-        <input id="f-desc" type="text" placeholder="내 커뮤니티 — 친구들과 편하게 수다 떠는 공간">
+        <label>커뮤니티 ID <span class="hint">(URL·내부용 — 영문/숫자/-/_. 이름 입력 시 자동 제안, 수정 가능)</span></label>
+        <input id="f-id" type="text" placeholder="my-community">
+        <div id="id-status" class="hint" style="margin-top:4px;font-size:12px"></div>
+      </div>
+      <div class="wiz-field">
+        <label>설명 <span class="hint">(선택)</span></label>
+        <input id="f-desc" type="text" placeholder="친구들과 편하게 수다 떠는 공간">
       </div>
       <div class="wiz-field">
         <label>에이전트 언어</label>
@@ -336,14 +341,21 @@ async function wizVerify() {
 }
 
 async function wizCreate() {
-  const id = document.getElementById('f-id').value.trim();
-  const desc = document.getElementById('f-desc').value.trim();
+  // 빈 필드 → placeholder 값 사용 (봇 토큰 제외)
+  const fieldOrPh = (elId) => {
+    const el = document.getElementById(elId);
+    const v = el.value.trim();
+    return v || el.placeholder || '';
+  };
+  const id = fieldOrPh('f-id');
+  const communityName = fieldOrPh('f-name');
+  const desc = fieldOrPh('f-desc');
   const language = document.getElementById('f-lang').value;
-  const name = document.getElementById('f-owner-name').value.trim();
-  const nickname = document.getElementById('f-owner-nickname').value.trim();
-  const birth = document.getElementById('f-owner-birth').value.trim();
-  const gender = wizState.gender;
-  const token = document.getElementById('f-token').value.trim();
+  const ownerName = fieldOrPh('f-owner-name');
+  const nickname = fieldOrPh('f-owner-nickname');
+  const birth = fieldOrPh('f-owner-birth');
+  const gender = wizState.gender || '';
+  const token = document.getElementById('f-token').value.trim();  // 토큰은 placeholder 사용 X
   const cleanMode = document.querySelector('input[name="clean-mode"]:checked');
   const cleanExisting = cleanMode && cleanMode.value === 'clean';
 
@@ -360,9 +372,12 @@ async function wizCreate() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id, description: desc, language,
+        id,
+        name: communityName,
+        description: desc,
+        language,
         token,
-        owner: { name, nickname, birth, gender },
+        owner: { name: ownerName, nickname, birth, gender },
         clean_existing_channels: cleanExisting,
       })
     });
@@ -397,7 +412,48 @@ function maskToken(t) {
   return t.slice(0, 6) + '...' + t.slice(-4);
 }
 
+// 이름 → ID 자동 제안 (유저가 직접 수정했으면 건드리지 않음)
+function _slugify(s) {
+  return String(s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, '')          // 따옴표 제거
+    .replace(/[^a-z0-9가-힣_-]+/g, '-')  // 영소/숫자/한글/-/_ 외 전부 dash
+    .replace(/-+/g, '-')            // 연속 dash 1개로
+    .replace(/^-|-$/g, '')          // 앞뒤 dash 제거
+    // 한글은 그대로 두되 최종적으로 ASCII 만 남게 romanize 대신 dash 로 변환
+    .replace(/[^a-z0-9_-]+/g, (m) => {
+      // 한글 등은 음절 단위 dash 로 (간이)
+      return m ? '-' : '';
+    })
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 32);
+}
+document.getElementById('f-name').addEventListener('input', e => {
+  const idInput = document.getElementById('f-id');
+  if (idInput.dataset.userEdited === '1') return;  // 유저가 직접 수정했으면 자동 변경 안 함
+  const slug = _slugify(e.target.value);
+  idInput.value = slug;
+  _updateIdStatus();
+});
+document.getElementById('f-id').addEventListener('input', e => {
+  e.target.dataset.userEdited = '1';
+  _updateIdStatus();
+});
+function _updateIdStatus() {
+  const id = document.getElementById('f-id').value.trim();
+  const el = document.getElementById('id-status');
+  if (!id) { el.textContent = ''; return; }
+  if (!id.replace(/-|_/g, '').match(/^[a-z0-9A-Z]+$/)) {
+    el.innerHTML = '<span style="color:var(--err)">영문/숫자/-/_ 만 가능</span>';
+    return;
+  }
+  el.innerHTML = '<span style="color:var(--muted)">URL: <code>/community/' + id + '</code></span>';
+}
+
 // 엔터키 네비게이션
+document.getElementById('f-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('f-id').focus(); });
 document.getElementById('f-id').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('f-desc').focus(); });
 document.getElementById('f-desc').addEventListener('keydown', e => { if (e.key === 'Enter') wizNext(1); });
 document.getElementById('f-owner-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('f-owner-nickname').focus(); });

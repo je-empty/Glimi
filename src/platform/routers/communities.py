@@ -37,6 +37,7 @@ class OwnerProfileIn(BaseModel):
 
 class CreateCommunityIn(BaseModel):
     id: str
+    name: str | None = None  # 표시용 이름 (한글 등). 없으면 id 로 폴백
     description: str = ""
     language: str = "en"
     token: str  # Discord bot token
@@ -165,16 +166,24 @@ def _save_owner_profile(cid: str, name: str, nickname: str, birth: str, gender: 
             _comm.set_community(old)
 
 
-def _update_registry(cid: str, description: str, language: str) -> None:
-    """registry.toml 의 community.{cid} 블록을 description + language 로 업데이트."""
+def _toml_escape(s: str) -> str:
+    """TOML 문자열 이스케이프 — 큰따옴표·역슬래시 처리."""
+    return (s or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _update_registry(cid: str, name: str, description: str, language: str) -> None:
+    """registry.toml 의 community.{cid} 블록을 name/description/language 로 업데이트.
+    init_community 가 만든 기본 블록을 교체.
+    """
     if not REGISTRY_PATH.exists():
         return
     content = REGISTRY_PATH.read_text()
+    # init_community 가 만든 초기 블록: name=cid, description=""
     old_block = f'[community.{cid}]\nname = "{cid}"\ndescription = ""'
     new_block = (
         f'[community.{cid}]\n'
-        f'name = "{cid}"\n'
-        f'description = "{description}"\n'
+        f'name = "{_toml_escape(name or cid)}"\n'
+        f'description = "{_toml_escape(description)}"\n'
         f'language = "{language}"'
     )
     if old_block in content:
@@ -255,8 +264,8 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
         log_dir.mkdir(parents=True, exist_ok=True)
         (log_dir / ".clean-channels").touch()
 
-    # ── 2. registry description + language ──
-    _update_registry(data.id, data.description, data.language)
+    # ── 2. registry name + description + language ──
+    _update_registry(data.id, data.name or data.id, data.description, data.language)
 
     # ── 3. .env 에 토큰 기록 ──
     env_path = COMMUNITIES_DIR / data.id / ".env"

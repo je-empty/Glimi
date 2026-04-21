@@ -562,15 +562,21 @@ function renderHero(snap) {
   const phase = m.tutorial_phase || '—';
   const msgCount = snap.total_messages || 0;
   const cm = snap.community_meta || {};
-  const descText = cm.description || cm.name || `${userName}의 커뮤니티`;
+  const displayName = cm.name || snap.community_id;
+  const hasSeparateName = cm.name && cm.name !== snap.community_id;
+  const descText = cm.description || '';
 
   return `<div class="hero-row">
     <div class="hero-avatars">
       ${avatarsHtml || '<div style="color:var(--text-faint);padding:16px 0">no agents yet</div>'}
     </div>
     <div class="hero-text" style="flex:1">
-      <h1><span class="sv-name">${esc(snap.community_id)}</span> <span style="color:var(--text-faint);font-weight:400"> · ${esc(descText)}</span></h1>
-      <p>${activeText}</p>
+      <h1>
+        <span class="sv-name">${esc(displayName)}</span>
+        ${hasSeparateName ? `<span style="color:var(--text-faint);font-weight:400;font-size:0.55em;margin-left:10px;font-family:'JetBrains Mono',monospace;vertical-align:middle">${esc(snap.community_id)}</span>` : ''}
+      </h1>
+      ${descText ? `<p style="color:var(--text-dim);margin-top:4px">${esc(descText)}</p>` : ''}
+      <p style="margin-top:6px">${activeText}</p>
     </div>
   </div>`;
 }
@@ -2786,12 +2792,13 @@ async function loadCommunities() {
   if (!btn || !menu) return;
   const activeItem = items.find(c => c.id === active);
 
-  // 버튼 업데이트 (현재 선택된 커뮤니티)
-  document.getElementById('community-btn-name').textContent = active || '—';
+  // 버튼 업데이트 (현재 선택된 커뮤니티 이름 우선)
+  const displayName = activeItem && (activeItem.name || activeItem.id) || active || '—';
+  document.getElementById('community-btn-name').textContent = displayName;
   if (activeItem && activeItem.running) btn.classList.remove('stopped');
   else btn.classList.add('stopped');
 
-  // 메뉴 생성 — running 은 초록 테마, stopped 은 dim
+  // 메뉴 생성 — 이름 큰 글씨, id 는 작은 mono 로 보조 표시
   menu.innerHTML = items.map(c => {
     const cls = ['ci'];
     if (c.id === active) cls.push('active');
@@ -2802,10 +2809,14 @@ async function loadCommunities() {
     const meta = c.running
       ? `<span class="ci-meta" style="color:var(--ok)">● running${ageText ? ` · ${ageText}` : ''}</span>`
       : `<span class="ci-meta">○ stopped${ageText ? ` · ${ageText}` : ''}</span>`;
+    const nm = esc(c.name || c.id);
+    const idBadge = (c.name && c.name !== c.id)
+      ? `<span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-faint);margin-left:4px">${esc(c.id)}</span>`
+      : '';
     return `<div class="${cls.join(' ')}" data-cid="${esc(c.id)}">
       <span class="ci-dot"></span>
       <div style="flex:1">
-        <div class="ci-name">${esc(c.id)}</div>
+        <div class="ci-name" style="font-family:inherit">${nm}${idBadge}</div>
         ${meta}
       </div>
       <span class="ci-check"></span>
