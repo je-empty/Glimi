@@ -3204,8 +3204,22 @@ function firstActiveScene(snap) {
 }
 
 function fmtDateTime(iso) {
+  // 서버 timestamp 는 KST naive ISO (Python datetime.now().isoformat() — tz offset 없음).
+  // 클라이언트 로컬 시간대 변환: '+09:00' 붙여 UTC 변환 후 toLocaleString.
+  // 클라이언트가 KST 면 동일, 다른 tz 면 해당 로컬 시간으로 보임.
   if (!iso) return '';
-  return String(iso).slice(0, 19).replace('T', ' ');
+  const s = String(iso);
+  const naive = s.includes('T') && !/Z$|[+\-]\d{2}:?\d{2}$/.test(s);
+  try {
+    const d = new Date(naive ? s + '+09:00' : s);
+    if (isNaN(d.getTime())) return s.slice(0, 19).replace('T', ' ');
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+  } catch (e) {
+    return s.slice(0, 19).replace('T', ' ');
+  }
 }
 
 function renderSceneCard(s) {
@@ -4099,20 +4113,46 @@ def _require_server_stopped(community_id: str) -> Optional[dict]:
     return None
 
 
+def _maintenance_flag_path(community_id: str) -> str:
+    """작업 중 봇이 체크하는 플래그 파일. 존재 시 yuna_watcher/orchestrator/handle_* 가 전부 pause."""
+    import os as _os
+    return _os.path.join(
+        _os.path.dirname(_os.path.abspath(__file__)), "..",
+        "communities", community_id, "logs", ".maintenance",
+    )
+
+
+def _maintenance_on(community_id: str, reason: str):
+    import os as _os, time as _t
+    path = _maintenance_flag_path(community_id)
+    _os.makedirs(_os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"{_t.time():.0f}\n{reason}\n")
+
+
+def _maintenance_off(community_id: str):
+    import os as _os
+    try:
+        _os.remove(_maintenance_flag_path(community_id))
+    except FileNotFoundError:
+        pass
+
+
 def api_action_scan_discord(body: dict, community_id: str) -> dict:
     """Discord에서 채널/메시지 스캔만 하고 DB 변경 없이 diff 보고."""
     guard = _require_server_stopped(community_id)
     if guard:
         return guard
     from src.core.sync import run_sync
+    _maintenance_on(community_id, "scan_discord")
     try:
-        result = run_sync(dry_run=True)
-        return {"ok": True, "result": result, "dry_run": True}
-    except TypeError:
-        # run_sync가 dry_run 인자 없으면 진행 불가
-        return {"error": "not_supported", "message": "run_sync()에 dry_run 지원 없음 — full sync만 가능"}
-    except Exception as e:
-        return {"error": "exception", "message": str(e)}
+        try:
+            result = run_sync(dry_run=True)
+            return {"ok": True, "result": result, "dry_run": True}
+        except TypeError:
+            return {"error": "not_supported", "message": "run_sync()에 dry_run 지원 없음"}
+    finally:
+        _maintenance_off(community_id)
 
 
 def api_action_run_sync(body: dict, community_id: str) -> dict:
@@ -4121,6 +4161,7 @@ def api_action_run_sync(body: dict, community_id: str) -> dict:
     if guard:
         return guard
     from src.core.sync import run_sync
+    _maintenance_on(community_id, "run_sync")
     try:
         logs: list[str] = []
         def _cb(msg: str):
@@ -4134,6 +4175,8 @@ def api_action_run_sync(body: dict, community_id: str) -> dict:
         import traceback
         traceback.print_exc()
         return {"error": "exception", "message": str(e)}
+    finally:
+        _maintenance_off(community_id)
 
 
 def api_action_restore(body: dict, community_id: str) -> dict:
@@ -4142,6 +4185,7 @@ def api_action_restore(body: dict, community_id: str) -> dict:
     if guard:
         return guard
     from src.core.sync import run_restore
+    _maintenance_on(community_id, "restore")
     try:
         logs: list[str] = []
         try:
@@ -4153,6 +4197,8 @@ def api_action_restore(body: dict, community_id: str) -> dict:
         import traceback
         traceback.print_exc()
         return {"error": "exception", "message": str(e)}
+    finally:
+        _maintenance_off(community_id)
 
 
 def api_action_channel_clear(body: dict, community_id: str) -> dict:

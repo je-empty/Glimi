@@ -128,6 +128,12 @@ async def start_conversation(
     context: str = "",
     max_turns: int = DEFAULT_MAX_TURNS,
 ) -> ConversationState:
+    from src.community import is_maintenance_mode
+    if is_maintenance_mode():
+        from src import log_writer
+        log_writer.system(f"[maintenance] start_conversation skip #{channel_name}")
+        # 최소 state 리턴 (호출자 기대 타입 유지)
+        return ConversationState(channel_name, participants, max_turns=max_turns)
     """
     에이전트 간 자동 대화 시작
 

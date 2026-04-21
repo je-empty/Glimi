@@ -418,6 +418,10 @@ async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
 
 async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, user_message: str):
     """1:1 채널 메시지 처리 — 스트리밍: 메시지 생성 즉시 디스코드 전송"""
+    from src.community import is_maintenance_mode
+    if is_maintenance_mode():
+        log_writer.system(f"[maintenance] handle_dm skip #{channel_name}")
+        return
     profile = load_profile(agent_id)
     if not profile:
         return
@@ -517,6 +521,10 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
 
 async def handle_group(message: discord.Message, channel_name: str, user_message: str):
     """그룹 채팅 — 에이전트 동시 응답 (각자 webhook이므로 병렬 가능)"""
+    from src.community import is_maintenance_mode
+    if is_maintenance_mode():
+        log_writer.system(f"[maintenance] handle_group skip #{channel_name}")
+        return
     db.log_message(channel_name, get_user_id(), user_message)
     log_writer.chat(channel_name, get_user_name(), user_message)
 

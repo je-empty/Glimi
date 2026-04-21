@@ -214,6 +214,9 @@ class SupervisorPool:
     async def tick(self, guild):
         """각 supervisor를 자기 interval 지났으면 check().
         매 ~5초마다 호출 권장 (bot tasks 에서). 각 check는 try/except 격리."""
+        from src.community import is_maintenance_mode
+        if is_maintenance_mode():
+            return
         import time as _time
         from src import log_writer
         ctx = {"guild": guild}
