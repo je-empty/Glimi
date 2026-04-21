@@ -424,6 +424,9 @@ async def supervisor_tick():
 @tasks.loop(minutes=12)
 async def yuna_watcher():
     """12분 간격 (이전 5분 → 너무 자주 보고해서 공해). 활동 감지 + 유나 판단으로 자율 대화 트리거"""
+    from src.community import is_maintenance_mode
+    if is_maintenance_mode():
+        return
 
     from src.bot.core import get_target_guild
     guild = get_target_guild()

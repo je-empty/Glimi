@@ -111,6 +111,16 @@ def get_env_path() -> str:
     return str(get_community_dir() / ".env")
 
 
+def is_maintenance_mode() -> bool:
+    """대시보드 sync/scan/restore 중이면 True. 봇 루프 전반에서 이 플래그 체크 → 작업 중엔 agent 대화·tool 실행 전부 pause.
+    DB·Discord 상태 변경 와중에 봇이 새 메시지 찍으면 불일치."""
+    try:
+        flag = get_community_dir() / "logs" / ".maintenance"
+        return flag.exists()
+    except Exception:
+        return False
+
+
 def get_log_dir() -> str:
     return str(get_community_dir() / "logs")
 
