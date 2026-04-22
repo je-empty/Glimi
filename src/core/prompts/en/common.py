@@ -7,6 +7,10 @@ via the `[LANGUAGE: X]` section regardless of prompt language.
 from __future__ import annotations
 
 from src.core.prompts.helpers import get_community_language
+from src.core.prompts.locale import (
+    chat_style_phrase,
+    filler_particles_note,
+)
 
 
 def core_identity_rules(agent_type: str) -> str:
@@ -62,23 +66,30 @@ def build_common_prompt(agent_type: str = "persona") -> str:
     else:
         owner_rule = ""
 
+    # Locale-aware style phrase — e.g. "카톡처럼 짧은 메시지 여러 개로" for ko, "Discord-style…" for en.
+    style_phrase = chat_style_phrase()
+    # Korean-specific filler particles (ㅋㅋ / ㅎㅎ) note — empty string for other langs.
+    filler_note = filler_particles_note()
+    filler_line = f"- {filler_note}\n" if filler_note else ""
+
     if lang == "ko":
         lang_instruction = (
             "\n[LANGUAGE: Korean]\n"
             "- You MUST respond in Korean (한국어). All messages must be in Korean.\n"
-            "- Use casual chat style like KakaoTalk. Short messages, multiple lines.\n"
+            f"- {style_phrase}.\n"
+            f"{filler_line}"
         )
     elif lang == "en":
         lang_instruction = (
             "\n[LANGUAGE: English]\n"
             "- You MUST respond in English. All messages must be in English.\n"
-            "- Use casual Discord chat style. Short messages, multiple lines.\n"
+            f"- {style_phrase}.\n"
         )
     else:
         lang_instruction = (
             f"\n[LANGUAGE: {lang}]\n"
             f"- You MUST respond in {lang}. All messages must be in {lang}.\n"
-            f"- Use casual chat style. Short messages, multiple lines.\n"
+            f"- {style_phrase}.\n"
         )
 
     if agent_type == "persona":
