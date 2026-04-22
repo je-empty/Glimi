@@ -2921,3 +2921,18 @@ setInterval(tick, 1500);
 setInterval(loadCommunities, 5000);  // 커뮤니티 running 상태 5초마다 갱신
 setInterval(loadAchievements, 10000);  // 도전과제 진척도 10초마다 갱신 (탭 카운트 포함)
 loadAchievements();  // 최초 1회
+
+// 모바일 브라우저는 백그라운드 탭/화면 잠금 시 setInterval 을 freeze 함.
+// 탭 복귀·bfcache 복귀 즉시 폴링 한 바퀴 돌려서 stale 화면 방지.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    tick();
+    loadCommunities();
+    loadAchievements();
+  }
+});
+window.addEventListener('pageshow', () => {
+  tick();
+  loadCommunities();
+  loadAchievements();
+});
