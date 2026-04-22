@@ -943,13 +943,25 @@ async function openAgent(id) {
   const secInner = 'margin-top:12px';
 
   // ── 프로필 정보 (항상 펼침 — 에이전트의 본질 정보) ──
+  const joinList = (arr) => (arr || []).map(esc).join(', ');
   const profileRows = [
-    d.age ? ['나이', `${esc(String(d.age))}`] : null,
-    d.gender ? ['성별', `${esc(d.gender)}`] : null,
-    d.mbti ? ['MBTI', `${esc(d.mbti)}`] : null,
-    d.enneagram ? ['에니어그램', `${esc(d.enneagram)}`] : null,
-    (d.traits && d.traits.length) ? ['성격', `${d.traits.map(esc).join(', ')}`] : null,
-    d.background ? ['배경', `${esc(d.background)}`] : null,
+    d.age ? ['나이', `${esc(String(d.age))}${d.birth_year ? ` <span style="color:var(--text-faint)">(${esc(String(d.birth_year))})</span>` : ''}`] : null,
+    d.gender ? ['성별', esc(d.gender)] : null,
+    d.mbti ? ['MBTI', esc(d.mbti)] : null,
+    d.enneagram ? ['에니어그램', esc(d.enneagram)] : null,
+    (d.traits && d.traits.length) ? ['성격', joinList(d.traits)] : null,
+    (d.likes && d.likes.length) ? ['좋아함', joinList(d.likes)] : null,
+    (d.dislikes && d.dislikes.length) ? ['싫어함', joinList(d.dislikes)] : null,
+    d.hobby ? ['취미', esc(d.hobby)] : null,
+    d.values ? ['가치관', esc(d.values)] : null,
+    d.occupation ? ['직업', esc(d.occupation)] : null,
+    d.routine ? ['일상', esc(d.routine)] : null,
+    (d.frequent_places && d.frequent_places.length) ? ['자주 가는 곳', joinList(d.frequent_places)] : null,
+    d.appearance_summary ? ['외모', esc(d.appearance_summary)] : null,
+    d.fashion_style ? ['패션', esc(d.fashion_style)] : null,
+    d.speech_style ? ['말투', esc(d.speech_style)] : null,
+    (d.signature_expressions && d.signature_expressions.length) ? ['자주 쓰는 표현', joinList(d.signature_expressions)] : null,
+    d.background ? ['배경', esc(d.background)] : null,
   ].filter(Boolean);
   const profileHtml = profileRows.length
     ? `<dl class="kv">${profileRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
