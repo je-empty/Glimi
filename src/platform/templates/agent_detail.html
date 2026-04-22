@@ -482,28 +482,39 @@
     const setActive = (id) => {
       links.forEach(a => a.classList.toggle('active', a.dataset.target === id));
     };
-    const THRESHOLD = 80; // scroll-margin-top(72) + 여유
+    // Scroll-spy 정확성 보강:
+    //  1) offsetTop 은 offsetParent 상대값 (grid ancestor 여도) — document 기준 필요하면
+    //     getBoundingClientRect().top (viewport 기준) 을 쓰는 게 더 정확.
+    //  2) 링크 클릭 → smooth scroll 진행 중 scroll event 가 계속 fire → 중간 scrollY 로
+    //     update 하면 아직 목표 섹션에 도달 전이라 **이전 섹션** 이 active 로 덮어쓰기.
+    //     → 클릭 후 900ms 동안은 scroll-spy 비활성화 (click 이 우선).
+    const THRESHOLD = 88; // scroll-margin-top(72) + topbar 여유
+    let clickLockUntil = 0;
     const updateActive = () => {
-      const y = (window.scrollY || document.documentElement.scrollTop) + THRESHOLD;
+      if (Date.now() < clickLockUntil) return;
+      // getBoundingClientRect().top = viewport top 기준 거리. 이 값이 THRESHOLD 아래면
+      // 섹션 top 이 topbar 바로 아래 또는 이미 지난 상태.
       let current = sections[0];
       for (const sec of sections) {
-        if (sec.offsetTop <= y) current = sec;
+        const top = sec.getBoundingClientRect().top;
+        if (top <= THRESHOLD) current = sec;
       }
       if (current) setActive(current.id);
     };
     if (sections.length) {
-      // 클릭한 링크는 즉시 active 표시 (scroll 완료 기다리지 않고) — 사용자 피드백 즉시성.
       links.forEach(a => {
         a.addEventListener('click', () => {
           setActive(a.dataset.target);
+          // smooth scroll 동안 scroll-spy 잠금 (브라우저별 smooth 완료 시간 ~500-700ms)
+          clickLockUntil = Date.now() + 900;
         });
       });
       window.addEventListener('scroll', updateActive, { passive: true });
       window.addEventListener('resize', updateActive);
-      // 초기 active: URL hash 또는 scroll 위치 기준
       const hashId = (location.hash || '').replace('#', '');
       if (hashId && sections.some(s => s.id === hashId)) {
         setActive(hashId);
+        clickLockUntil = Date.now() + 900; // 초기 hash 도 잠금
       } else {
         updateActive();
       }
