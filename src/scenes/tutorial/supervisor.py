@@ -153,7 +153,7 @@ class TutorialFlowSupervisor(Supervisor):
             return
 
         loop = asyncio.get_event_loop()
-        from src.core.prompts.en.supervisor_judge import TUTORIAL_PROFILE_COLLECTION_QUESTION
+        from src.scenes.tutorial.judge_prompts import TUTORIAL_PROFILE_COLLECTION_QUESTION
         judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
             MGR_CHANNEL, TUTORIAL_PROFILE_COLLECTION_QUESTION()
         ))
@@ -285,7 +285,7 @@ class TutorialFlowSupervisor(Supervisor):
             return
 
         loop = asyncio.get_event_loop()
-        from src.core.prompts.en.supervisor_judge import TUTORIAL_CREATOR_ICEBREAK_QUESTION
+        from src.scenes.tutorial.judge_prompts import TUTORIAL_CREATOR_ICEBREAK_QUESTION
         judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
             CREATOR_CHANNEL, TUTORIAL_CREATOR_ICEBREAK_QUESTION()
         ))
