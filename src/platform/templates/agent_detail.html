@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block title %}{{ agent_id }} · {{ community_name }} · Glimi{% endblock %}
+
+{% block head %}
+<!-- 에이전트 상세 페이지는 대시보드 모달 CSS (detail-section, mem-item, msg 등) 를 재사용 -->
+<link rel="stylesheet" href="/static/css/dashboard.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body {
+    font: 13px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .agent-page {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 0 20px 80px;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+  }
+  .agent-page header.page-head {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .agent-page header.page-head .avatar-wrap {
+    width: 72px; height: 72px; border-radius: 50%; overflow: hidden;
+    flex-shrink: 0; background: var(--panel-2);
+    border: 1px solid var(--border);
+  }
+  .agent-page header.page-head .avatar-wrap img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .agent-page header.page-head .hd-text { flex: 1; min-width: 0; }
+  .agent-page header.page-head .hd-name {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.3px;
+  }
+  .agent-page header.page-head .hd-sub {
+    color: var(--text-dim); font-size: 12.5px; margin-top: 4px;
+  }
+  .agent-page header.page-head .hd-back {
+    color: var(--text-dim); text-decoration: none; font-size: 12px;
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+  }
+  .agent-page header.page-head .hd-back:hover { border-color: var(--accent); color: var(--accent); }
+
+  aside.side-nav {
+    position: sticky; top: 20px;
+    align-self: start;
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
+  aside.side-nav a {
+    padding: 8px 12px;
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 12.5px;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.12s;
+  }
+  aside.side-nav a:hover { background: var(--panel-2); color: var(--text); }
+  aside.side-nav a.active { background: var(--accent); color: var(--accent-fg, #fff); }
+  aside.side-nav .nav-title {
+    font-size: 10.5px; font-weight: 700;
+    color: var(--text-faint); text-transform: uppercase;
+    letter-spacing: 1.2px; padding: 6px 12px 4px;
+  }
+
+  main.page-body {
+    min-width: 0;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  main.page-body .detail-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 22px;
+    box-shadow: var(--shadow);
+  }
+  main.page-body .detail-section + .detail-section { margin-top: 0; }
+
+  .loading {
+    padding: 40px;
+    text-align: center;
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 720px) {
+    .agent-page { grid-template-columns: 1fr; }
+    aside.side-nav { position: static; max-height: none; }
+  }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="agent-page">
+  <header class="page-head">
+    <div class="avatar-wrap" id="agent-avatar">
+      <img id="agent-avatar-img" src="" alt="" style="display:none">
+    </div>
+    <div class="hd-text">
+      <div class="hd-name" id="agent-name">에이전트 로드 중…</div>
+      <div class="hd-sub" id="agent-sub">{{ community_name }} · <span id="agent-type">—</span></div>
+    </div>
+    <a class="hd-back" href="/community/{{ community_id }}">← 대시보드</a>
+  </header>
+
+  <aside class="side-nav">
+    <div class="nav-title">Sections</div>
+    <a href="#profile" class="nav-link" data-target="profile">Profile</a>
+    <a href="#relationships" class="nav-link" data-target="relationships">Relationships</a>
+    <a href="#memory" class="nav-link" data-target="memory">🧠 Memory</a>
+    <a href="#thinking" class="nav-link" data-target="thinking">Thinking Logs</a>
+    <a href="#chat" class="nav-link" data-target="chat">Recent Chat</a>
+  </aside>
+
+  <main class="page-body" id="page-body">
+    <div class="loading">불러오는 중…</div>
+  </main>
+</div>
+
+<script>
+  window.__GLIMI_COMMUNITY__ = {{ community_id|tojson }};
+  window.__GLIMI_AGENT_ID__ = {{ agent_id|tojson }};
+</script>
+<script>
+(function() {
+  const CID = window.__GLIMI_COMMUNITY__;
+  const AID = window.__GLIMI_AGENT_ID__;
+
+  // ── helpers (dashboard.js 와 동일 규칙) ─────────────────────────
+  function esc(s) {
+    return String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  }
+  function q(u) {
+    return CID ? `${u}${u.includes('?') ? '&' : '?'}community=${encodeURIComponent(CID)}` : u;
+  }
+  async function j(u) {
+    try { const r = await fetch(u); return await r.json(); } catch { return null; }
+  }
+  function chIcon(ch) {
+    if (ch.startsWith('mgr-')) return '🏢';
+    if (ch.startsWith('dm-')) return '💬';
+    return '#';
+  }
+  function fmtLocalMonthDayHM(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
+      if (isNaN(d.getTime())) return String(iso);
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const h = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return `${m}/${day} ${h}:${min}`;
+    } catch { return String(iso); }
+  }
+  function _fmtMsgTime(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
+      if (isNaN(d.getTime())) return String(iso);
+      const h = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return `${h}:${min}`;
+    } catch { return String(iso); }
+  }
+  function roleClass(m) {
+    if (m.is_user) return 'user';
+    if (m.speaker_type === 'mgr') return 'mgr';
+    if (m.speaker_type === 'creator') return 'creator';
+    return 'persona';
+  }
+  function avatarSrc(id) {
+    return `/api/avatar?id=${encodeURIComponent(id)}${CID ? '&community=' + encodeURIComponent(CID) : ''}`;
+  }
+  function miniAvatarHtml(speakerId, isUser, speakerName) {
+    if (isUser) {
+      const initial = (speakerName || '?').slice(0, 1);
+      return `<div class="msg-avatar user" title="${esc(speakerName)}">${esc(initial)}</div>`;
+    }
+    return `<div class="msg-avatar" title="${esc(speakerName)}">
+      <img src="${avatarSrc(speakerId)}" alt="${esc(speakerName)}" loading="lazy" onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:11px;color:var(--text-faint)&quot;>?</div>'">
+    </div>`;
+  }
+  function renderMessage(m) {
+    return `<div class="msg ${roleClass(m)}">
+      ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
+      <div class="msg-body">
+        <div class="head">
+          <span class="who">${esc(m.speaker)}</span>
+          <span class="ch">#${esc(m.channel || '')}</span>
+          <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
+        </div>
+        <div class="text">${esc(m.message)}</div>
+      </div>
+    </div>`;
+  }
+  function renderModelChips(d) {
+    // Simple compact chip — 대시보드의 multi-model 파싱은 생략, 그냥 표시.
+    if (!d.model) return '';
+    return `<span class="pill neutral" style="font-family:'JetBrains Mono',monospace;font-size:11px">${esc(d.model)}</span>`;
+  }
+
+  // ── 메인 로드 ─────────────────────────────────────────────────
+  async function load() {
+    const d = await j(q(`/api/agent?id=${encodeURIComponent(AID)}`));
+    if (!d || d.error) {
+      document.getElementById('page-body').innerHTML =
+        `<div class="detail-section"><div class="empty">${esc(d?.error || 'failed to load')}</div></div>`;
+      return;
+    }
+
+    // Header
+    document.getElementById('agent-name').innerHTML = `${d.emoji || '◆'} ${esc(d.name || AID)}`;
+    document.getElementById('agent-type').textContent = d.type || '—';
+    document.title = `${d.name || AID} · Glimi`;
+    const img = document.getElementById('agent-avatar-img');
+    img.src = avatarSrc(d.id);
+    img.alt = d.name || '';
+    img.style.display = '';
+    img.onerror = () => { img.style.display = 'none'; };
+
+    // Profile 섹션
+    const profileLines = [];
+    if (d.age) profileLines.push(['Age', `${d.age} years old`]);
+    if (d.gender) profileLines.push(['Gender', d.gender]);
+    if (d.mbti) profileLines.push(['MBTI', d.mbti]);
+    if (d.enneagram) profileLines.push(['Enneagram', d.enneagram]);
+    if (d.traits && d.traits.length) profileLines.push(['Traits', d.traits.slice(0, 5).join(' · ')]);
+    if (d.emotion) profileLines.push(['Emotion', `${d.emoji || ''} ${d.emotion} (${d.intensity}/10)`]);
+    if (d.status) profileLines.push(['Status', d.status]);
+    if (d.model) profileLines.push(['Model', renderModelChips(d), true]);
+    if (d.relationship_to_owner?.type) {
+      const r = d.relationship_to_owner;
+      profileLines.push(['Owner', `${r.type}${r.pet_name ? ' (' + r.pet_name + ')' : ''}${r.duration ? ' · ' + r.duration : ''}`]);
+    }
+    if (d.background) profileLines.push(['Background', d.background]);
+
+    // Relationships
+    const rels = (d.relationships || []).map(r => {
+      const pct = Math.min(100, r.intimacy);
+      return `<div class="rel-row">
+        <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
+        <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
+        <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
+        <span class="intimacy-num">${r.intimacy}</span>
+        ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
+      </div>`;
+    }).join('');
+
+    // Memory — dashboard.js 로직 포팅
+    const TYPE_LABEL = {
+      event: {label: '사건', icon: '🎬'},
+      fact: {label: '사실', icon: '💡'},
+      emotion: {label: '감정', icon: '💓'},
+      relationship: {label: '관계', icon: '🤝'},
+    };
+    const renderMemItem = (m, opts = {}) => {
+      const t = m.mem_type ? TYPE_LABEL[m.mem_type] : null;
+      const typeBadge = t ? `<span class="mem-type-badge" title="유형">${t.icon} ${t.label}</span>` : '';
+      const imp = m.importance ? `<span class="mem-imp" title="중요도 ${m.importance}/10">${m.importance}</span>` : '';
+      const pin = m.is_pinned ? '<span class="mem-pin" title="고정됨">📌</span>' : '';
+      const ents = (m.related_entities && m.related_entities.length)
+        ? `<span class="mem-ents" title="관련 대상">${m.related_entities.map(e => esc(e)).join(' · ')}</span>` : '';
+      const ch = opts.showChannel && m.channel ? `<span class="mem-ch">${esc(m.channel)}</span>` : '';
+      return `<div class="mem-item" data-mem-id="${m.id || ''}">
+        ${pin}${typeBadge}${imp}
+        <span class="mcontent">${esc(m.content)}</span>
+        ${ents}${ch}
+        <span class="mts">${esc(fmtLocalMonthDayHM(m.created_at))}</span>
+      </div>`;
+    };
+    const LAYER_LABEL = {
+      1: {name: '최근', icon: '📖', desc: '최근 몇 분~몇 시간 요약'},
+      2: {name: '중기', icon: '📚', desc: '하루 분량 묶음 요약'},
+      3: {name: '장기', icon: '🗂', desc: '주/월 단위 큰 흐름'},
+    };
+    let memHtml = '';
+    if ((d.pinned_memories || []).length) {
+      memHtml += `<div class="mem-block mem-pinned-block">
+        <h5>📌 고정된 기억 <span class="mem-count">(${d.pinned_memories.length})</span>
+          <span class="mem-sub">항상 떠올리는 기억</span></h5>
+        ${d.pinned_memories.map(m => renderMemItem(m, {showChannel: true})).join('')}
+      </div>`;
+    }
+    for (const [ch, mems] of Object.entries(d.memories_by_channel || {})) {
+      const byLevel = {3: [], 2: [], 1: []};
+      mems.forEach(m => { (byLevel[m.level] || byLevel[1]).push(m); });
+      const anyLevels = [3, 2, 1].filter(l => byLevel[l].length);
+      if (!anyLevels.length) continue;
+      memHtml += `<div class="mem-block">
+        <h5><span class="ch-icon">${chIcon(ch)}</span> ${esc(ch)} <span class="mem-count">(${mems.length})</span></h5>
+        ${anyLevels.map(l => {
+          const L = LAYER_LABEL[l];
+          return `<div class="mem-lvl-group">
+            <div class="mem-lvl-label" title="${L.desc}">${L.icon} ${L.name} <span class="mem-count">(${byLevel[l].length})</span></div>
+            ${byLevel[l].map(renderMemItem).join('')}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+    if ((d.agent_facts || []).length) {
+      const bySubject = {};
+      (d.agent_facts || []).forEach(f => {
+        if (!bySubject[f.subject]) bySubject[f.subject] = [];
+        bySubject[f.subject].push(f);
+      });
+      memHtml += `<div class="mem-block mem-facts-group">
+        <h5>💡 알고 있는 사실 <span class="mem-count">(${d.agent_facts.length})</span>
+          <span class="mem-sub">대상별 구조화된 지식 (선호·특징·직업 등)</span></h5>`;
+      memHtml += Object.entries(bySubject).map(([subject, facts]) =>
+        `<div class="mem-subject-block">
+          <div class="mem-subject-label">${esc(subject)} <span class="mem-count">(${facts.length})</span></div>
+          ${facts.map(f => `<div class="mem-item">
+            <span class="mem-predicate">${esc(f.predicate)}</span>
+            <span class="mcontent">${esc(f.object)}</span>
+            ${f.importance >= 8 ? '<span class="mem-pin" title="중요">⭐</span>' : ''}
+            <span class="mts">${esc(fmtLocalMonthDayHM(f.created_at))}</span>
+          </div>`).join('')}
+        </div>`
+      ).join('');
+      memHtml += '</div>';
+    }
+    if ((d.relationship_history || []).length) {
+      memHtml += `<div class="mem-block">
+        <h5>📈 관계 변화 <span class="mem-count">(${d.relationship_history.length})</span>
+          <span class="mem-sub">친밀도·역학의 변곡점 기록</span></h5>
+        ${d.relationship_history.slice(0, 10).map(h => `<div class="mem-item">
+          <span class="mem-predicate">${esc(h.delta_type || '?')}</span>
+          <span class="mcontent">${esc(h.from_state || '?')} → ${esc(h.to_state || '?')}${h.reason ? ' · ' + esc(h.reason) : ''}</span>
+          <span class="mts">${esc(fmtLocalMonthDayHM(h.created_at))}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+
+    const thinkingLogs = (d.thinking_logs || []).map(l =>
+      `<div class="logline" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);padding:2px 0">${esc(l)}</div>`
+    ).join('');
+    const chatHtml = (d.primary_chat || []).map(m => renderMessage({...m, channel: d.primary_channel})).join('');
+
+    // Render
+    const body = `
+      <section id="profile" class="detail-section">
+        <h4>Profile</h4>
+        <dl class="kv">${profileLines.map(([k, v, raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
+      </section>
+      ${rels ? `<section id="relationships" class="detail-section"><h4>Relationships · ${d.relationships.length}</h4>${rels}</section>` : ''}
+      ${memHtml ? `<section id="memory" class="detail-section"><h4>🧠 MEMORY</h4>${memHtml}</section>` : ''}
+      ${thinkingLogs ? `<section id="thinking" class="detail-section"><h4>Thinking Logs</h4>${thinkingLogs}</section>` : ''}
+      ${chatHtml ? `<section id="chat" class="detail-section"><h4>Recent Chat · ${esc(d.primary_channel || '')}</h4>${chatHtml}</section>` : ''}
+    `;
+    document.getElementById('page-body').innerHTML = body;
+
+    // Scroll-spy for side nav — 간단하게 IntersectionObserver
+    const links = Array.from(document.querySelectorAll('aside.side-nav .nav-link'));
+    const sections = links
+      .map(a => document.getElementById(a.dataset.target))
+      .filter(Boolean);
+    if (sections.length && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver(entries => {
+        entries.forEach(en => {
+          if (en.isIntersecting) {
+            const id = en.target.id;
+            links.forEach(a => a.classList.toggle('active', a.dataset.target === id));
+          }
+        });
+      }, { rootMargin: '-30% 0px -60% 0px' });
+      sections.forEach(s => io.observe(s));
+    }
+  }
+
+  load();
+})();
+</script>
+{% endblock %}
