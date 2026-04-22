@@ -9,12 +9,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   /* dashboard.css 에 `html, body { height:100%; overflow:hidden }` 가 있어서
-     상세 페이지 body 스크롤이 막힌다. 여기서만 override. */
+     상세 페이지 body 스크롤이 막힌다. 여기서만 override.
+     + 앵커 점프 시 topbar 아래로 여백 확보 (scroll-padding-top). */
   html, body {
     height: auto !important;
     overflow: visible !important;
     min-height: 100%;
+    scroll-padding-top: 80px;
+    scroll-behavior: smooth;
   }
+  /* dashboard.css 의 `main { overflow:hidden; display:flex; ... }` 해제.
+     앵커 점프 시 섹션이 topbar 에 가리지 않게 scroll-margin-top 지정. */
+  main.page-body,
+  main.page-body[id] {
+    overflow: visible !important;
+  }
+  main.page-body section[id] { scroll-margin-top: 80px; }
   body {
     font: 13px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -161,7 +171,13 @@
     return CID ? `${u}${u.includes('?') ? '&' : '?'}community=${encodeURIComponent(CID)}` : u;
   }
   async function j(u) {
-    try { const r = await fetch(u); return await r.json(); } catch { return null; }
+    try {
+      const r = await fetch(u);
+      if (!r.ok) return { __httpError: r.status };
+      return await r.json();
+    } catch (e) {
+      return { __fetchError: String(e) };
+    }
   }
   function chIcon(ch) {
     if (ch.startsWith('mgr-')) return '🏢';
@@ -230,9 +246,13 @@
   // ── 메인 로드 ─────────────────────────────────────────────────
   async function load() {
     const d = await j(q(`/api/agent?id=${encodeURIComponent(AID)}`));
-    if (!d || d.error) {
+    if (!d || d.error || d.__httpError || d.__fetchError) {
+      const msg = d?.error
+        || (d?.__httpError ? `HTTP ${d.__httpError}` : null)
+        || d?.__fetchError
+        || '에이전트 정보를 불러오지 못했습니다';
       document.getElementById('page-body').innerHTML =
-        `<div class="detail-section"><div class="empty">${esc(d?.error || 'failed to load')}</div></div>`;
+        `<div class="detail-section"><div class="empty">⚠️ ${esc(msg)}</div></div>`;
       return;
     }
 
@@ -364,35 +384,57 @@
     ).join('');
     const chatHtml = (d.primary_chat || []).map(m => renderMessage({...m, channel: d.primary_channel})).join('');
 
-    // Render
+    // Render — 모든 섹션을 항상 렌더해 사이드바 앵커가 항상 매치되도록 함.
+    // 비어있는 섹션은 안내 문구로 대체.
     const body = `
       <section id="profile" class="detail-section">
         <h4>👤 프로필</h4>
-        <dl class="kv">${profileLines.map(([k, v, raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
+        ${profileLines.length
+          ? `<dl class="kv">${profileLines.map(([k, v, raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>`
+          : '<div class="empty">프로필 정보가 없습니다</div>'}
       </section>
-      ${rels ? `<section id="relationships" class="detail-section"><h4>🤝 관계 · ${d.relationships.length}</h4>${rels}</section>` : ''}
-      ${memHtml ? `<section id="memory" class="detail-section"><h4>🧠 메모리</h4>${memHtml}</section>` : ''}
-      ${thinkingLogs ? `<section id="thinking" class="detail-section"><h4>💭 추론 로그</h4>${thinkingLogs}</section>` : ''}
-      ${chatHtml ? `<section id="chat" class="detail-section"><h4>💬 최근 대화 · ${esc(d.primary_channel || '')}</h4>${chatHtml}</section>` : ''}
+      <section id="relationships" class="detail-section">
+        <h4>🤝 관계${(d.relationships || []).length ? ` · ${d.relationships.length}` : ''}</h4>
+        ${rels || '<div class="empty">아직 맺어진 관계가 없습니다</div>'}
+      </section>
+      <section id="memory" class="detail-section">
+        <h4>🧠 메모리</h4>
+        ${memHtml || '<div class="empty">기억이 아직 쌓이지 않았습니다</div>'}
+      </section>
+      <section id="thinking" class="detail-section">
+        <h4>💭 추론 로그</h4>
+        ${thinkingLogs || '<div class="empty">최근 추론 로그가 없습니다</div>'}
+      </section>
+      <section id="chat" class="detail-section">
+        <h4>💬 최근 대화${d.primary_channel ? ` · ${esc(d.primary_channel)}` : ''}</h4>
+        ${chatHtml || '<div class="empty">최근 대화가 없습니다</div>'}
+      </section>
     `;
     document.getElementById('page-body').innerHTML = body;
 
-    // Scroll-spy for side nav — 간단하게 IntersectionObserver
+    // Scroll-spy for side nav — 섹션 진입 시 active 표시.
+    // 기본 앵커 동작 (href="#id") 은 브라우저 native 라 observer 실패해도 네비게이션은 유지됨.
     const links = Array.from(document.querySelectorAll('aside.side-nav .nav-link'));
     const sections = links
       .map(a => document.getElementById(a.dataset.target))
       .filter(Boolean);
+    const setActive = (id) => {
+      links.forEach(a => a.classList.toggle('active', a.dataset.target === id));
+    };
     if (sections.length && 'IntersectionObserver' in window) {
       const io = new IntersectionObserver(entries => {
-        entries.forEach(en => {
-          if (en.isIntersecting) {
-            const id = en.target.id;
-            links.forEach(a => a.classList.toggle('active', a.dataset.target === id));
-          }
-        });
-      }, { rootMargin: '-30% 0px -60% 0px' });
+        // 가장 위에 있는 intersecting 섹션을 active 로 (여러 개가 동시에 들어오면 최상단 우선)
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .map(e => e.target)
+          .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+        if (visible.length) setActive(visible[0].id);
+      }, { rootMargin: '-80px 0px -60% 0px', threshold: [0, 0.1, 0.5] });
       sections.forEach(s => io.observe(s));
     }
+    // 초기 active: URL hash 있으면 그걸, 없으면 첫 섹션
+    const initial = (location.hash || '').replace('#', '') || (sections[0] && sections[0].id);
+    if (initial) setActive(initial);
   }
 
   load();
