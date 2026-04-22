@@ -934,6 +934,16 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
 
     from src.core.profile import invalidate_cache as _invalidate_profile_cache
 
+    def _refresh_active_agents():
+        """유저 프로필은 모든 에이전트 system prompt 에 들어가므로 활성 에이전트 전부 재빌드.
+        안 하면 runtime._active_agents 에 박힌 옛날 system prompt 계속 사용 → 재질문 회귀."""
+        try:
+            from src.core.runtime import runtime as _runtime
+            for aid in list(_runtime._active_agents.keys()):
+                _runtime.refresh_agent(aid)
+        except Exception:
+            pass
+
     if field_path in simple_fields:
         conn = db.get_conn()
         cur = conn.execute(f"SELECT {field_path} FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -945,7 +955,8 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
         conn.execute(f"UPDATE users SET {field_path} = ? WHERE id = ?", (value, user_id))
         conn.commit()
         conn.close()
-        _invalidate_profile_cache()  # 유저 프로필 캐시/요약 갱신 → mgr 프롬프트에 즉시 반영
+        _invalidate_profile_cache()  # 유저 프로필 캐시/요약 갱신
+        _refresh_active_agents()     # 활성 에이전트 system prompt 재빌드 → 다음 응답부터 새 값 반영
         log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 
@@ -977,6 +988,7 @@ async def _edit_user_profile(report_channel, user: dict, field_path: str, value:
         conn.commit()
         conn.close()
         _invalidate_profile_cache()
+        _refresh_active_agents()
         log_writer.system(f"[프로필] {user_name} 수정: {field_path} → {value}")
         return
 

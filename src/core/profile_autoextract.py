@@ -83,6 +83,18 @@ def apply_autoextract(owner_message: str) -> dict:
         return {}
 
     if saved:
+        # 프로필 캐시 + 활성 에이전트 system prompt 동기화 — 안 하면 mgr 이 옛날 값으로 재질문.
+        try:
+            from src.core.profile import invalidate_cache as _inv
+            _inv()
+        except Exception:
+            pass
+        try:
+            from src.core.runtime import runtime as _rt
+            for aid in list(_rt._active_agents.keys()):
+                _rt.refresh_agent(aid)
+        except Exception:
+            pass
         try:
             from src import log_writer
             log_writer.system(f"[profile_autoextract] 자동 저장: {saved}")
