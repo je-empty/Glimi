@@ -154,12 +154,9 @@ class TutorialFlowSupervisor(Supervisor):
             return
 
         loop = asyncio.get_event_loop()
+        from src.core.prompts.en.supervisor_judge import TUTORIAL_PROFILE_COLLECTION_QUESTION
         judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
-            MGR_CHANNEL,
-            "최근 대화를 보고 판단해줘. "
-            "유저가 마지막에 말했는데 에이전트가 아직 반응하지 않은 건가? "
-            "아니면 잡담으로 빠져서 프로필 수집이 진행되지 않는 건가? "
-            "'미응답', '잡담', '진행중' 중 하나로."
+            MGR_CHANNEL, TUTORIAL_PROFILE_COLLECTION_QUESTION
         ))
 
         if judgment in ("미응답", "no_response", "unanswered"):
@@ -289,11 +286,9 @@ class TutorialFlowSupervisor(Supervisor):
             return
 
         loop = asyncio.get_event_loop()
+        from src.core.prompts.en.supervisor_judge import TUTORIAL_CREATOR_ICEBREAK_QUESTION
         judgment = await loop.run_in_executor(None, lambda: _judge_conversation(
-            CREATOR_CHANNEL,
-            "크리에이터가 아이스브레이킹을 충분히 했나? "
-            "에이전트 생성까지 진행됐나? "
-            "'충분', '진행중' 중 하나로."
+            CREATOR_CHANNEL, TUTORIAL_CREATOR_ICEBREAK_QUESTION
         ))
 
         if judgment in ("충분", "enough", "done") and self._can_nudge():
