@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re as _re
 import subprocess
 from datetime import datetime
 
@@ -184,9 +183,8 @@ class ChatSupervisor(Supervisor):
                     agent_id, self.channel_name, instruction
                 ),
             )
-            cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
             for resp in responses:
-                clean = cmd_pat.sub('', resp).strip()
+                clean = resp.strip()
                 if clean and clean != "..." and clean != "(무시)":
                     for part in _split_for_chat(clean):
                         await send_as_agent(channel, agent_id, part)

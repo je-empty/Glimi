@@ -222,17 +222,14 @@ async def start_conversation(
                     runtime.generate_agent_to_agent(sid, lid, ch, context=ctx)
             )
 
-            # 디스코드에 전송 (legacy 태그 + <tools> 블록 strip)
+            # 디스코드에 전송 (<tools> 블록 strip)
             import re
-            TAG_RE = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
             TOOLS_RE = re.compile(r'<tools>.*?</tools>', re.IGNORECASE | re.DOTALL)
             for i, msg in enumerate(responses):
                 if i > 0:
                     await asyncio.sleep(random.uniform(0.5, 1.5))
 
-                # 모든 태그 제거 후 순수 텍스트만 전송 (legacy + <tools> 블록)
-                clean = TAG_RE.sub('', msg)
-                clean = TOOLS_RE.sub('', clean).strip()
+                clean = TOOLS_RE.sub('', msg).strip()
                 # 파편이 남은 케이스 (라인 단위로 메시지 분리된 경우 — 위 block DOTALL
                 # 정규식으로 안 걸리는 one-line 잔재)
                 if clean.lower() in ("<tools>", "</tools>") or clean.startswith("<call "):

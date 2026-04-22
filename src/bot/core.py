@@ -289,7 +289,6 @@ _DISCORD_LOG_KEYWORDS = {
     "[Tool]", "[프로필]", "[관계]", "[채널]", "[감정]",
     "튜토리얼", "Phase", "sup:tutorial",
     "Channel created", "Channel deleted",
-    "ACTION", "CMD:",  # 레거시 호환
     "개발요청", "에러", "크래시", "비정상",
 }
 

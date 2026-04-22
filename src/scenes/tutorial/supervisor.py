@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re as _re
 import subprocess
 from datetime import datetime
 
@@ -343,10 +342,9 @@ class TutorialFlowSupervisor(Supervisor):
                     agent_id, ch_name, instruction
                 )
             )
-            all_tag_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
             sent_count = 0
             for resp in responses:
-                clean = all_tag_pat.sub('', resp).strip()
+                clean = resp.strip()
                 if clean and clean != "..." and clean != "(무시)":
                     for part in _split_for_chat(clean):
                         await send_as_agent(channel, agent_id, part)

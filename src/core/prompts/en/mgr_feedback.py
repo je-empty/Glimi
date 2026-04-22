@@ -36,8 +36,8 @@ def conversation_report_prompt(
         f"마지막 대화:\n{preview}\n\n"
         f"{oc}한테 간략하게 보고해.\n"
         f"대화 내용에서 누군가가 {oc}한테 연락하겠다고 했거나 다른 사람한테 연락하려는 상황이면 "
-        f"[CMD:대화시작 ...]으로 이어지게 해줘.\n"
-        f"[CMD:강제]는 쓰지 마. 네가 직접 강제 지시하면 안 돼."
+        f"`start_conversation` 도구로 이어지게 해줘.\n"
+        f"에이전트에게 강제 지시(임의 발화 주입)는 절대 금지."
     )
 
 
@@ -51,7 +51,7 @@ def room_request_notify_prompt(agent_name: str, message: str) -> str:
     return (
         f"{agent_name}이(가) 톡방/그룹채팅을 원하는 것 같아. "
         f"메시지: \"{message[:60]}\"\n"
-        f"필요하면 [CMD:톡방 ...] 으로 만들어줘."
+        f"필요하면 `create_room` 도구로 만들어줘."
     )
 
 
@@ -70,12 +70,11 @@ def action_notify_dm_prompt(
     dm_message: str,
     oc: str,
 ) -> str:
-    """ACTION DM 승인 요청 (유나에게)."""
+    """페르소나의 DM 요청 알림 (유나에게). DM 은 자동 실행되므로 알림·상황 공유용."""
     return (
-        f"[ACTION 요청]\n"
-        f"{agent_name}이(가) {target_name}한테 DM 보내고 싶대:\n"
+        f"[요청 알림]\n"
+        f"{agent_name}이(가) {target_name}한테 DM 보냈어:\n"
         f"  \"{dm_message[:100]}\"\n\n"
-        f"승인하면 [CMD:ACTION승인 DM {agent_id} {target_name} {dm_message}] 써.\n"
         f"{_action_judge_guide(oc)}"
     )
 
@@ -87,13 +86,13 @@ def action_notify_room_prompt(
     first_msg: str,
     oc: str,
 ) -> str:
-    """ACTION 톡방 승인 요청 (유나에게)."""
+    """페르소나의 톡방 요청 알림 (유나에게). 판단 후 `create_room` 도구로 생성."""
     return (
-        f"[ACTION 요청]\n"
+        f"[요청 알림]\n"
         f"{agent_name}이(가) 톡방 만들고 싶대:\n"
         f"  참여자: {room_info}\n"
         f"  첫 메시지: \"{first_msg[:100]}\"\n\n"
-        f"승인하면 [CMD:ACTION승인 톡방 {agent_id} {room_info} | {first_msg}] 써.\n"
+        f"승인한다면 `create_room` 도구로 만들어 (name/participants/first_message 인자).\n"
         f"{_action_judge_guide(oc)}"
     )
 
@@ -103,12 +102,12 @@ def action_notify_generic_prompt(
     action_str: str,
     oc: str,
 ) -> str:
-    """기타 ACTION 승인 요청 (유나에게)."""
+    """기타 행동 요청 알림 (유나에게)."""
     return (
-        f"[ACTION 요청]\n"
+        f"[요청 알림]\n"
         f"{agent_name}이(가) 행동을 요청했어:\n"
         f"  → {action_str}\n\n"
-        f"승인하려면 적절한 CMD를 써.\n"
+        f"승인하려면 상황에 맞는 도구를 호출해.\n"
         f"{_action_judge_guide(oc)}"
     )
 
