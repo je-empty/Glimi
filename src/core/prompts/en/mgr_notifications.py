@@ -1,21 +1,18 @@
-"""mgr / creator inline prompt bundle.
+"""Prompts injected into the mgr (Yuna) on cross-agent notifications.
 
-Extracted from src/bot/mgr_system.py (Phase 2-B pure move). English template kept
-platform-neutral; locale helpers inject culture-specific terms (group-chat word etc.).
+Target: mgr agent (Yuna) — she reads the prompt and decides to act.
 
-Builders:
-  - persona_first_greeting_prompt: a new persona greeting the owner in their dm channel
-  - conversation_report_prompt:    Yuna reports a finished auto-conversation to the owner
-  - room_request_notify_prompt:    agent's group-chat request notification
-  - action_notify_dm_prompt:       DM ACTION approval notice
-  - action_notify_room_prompt:     group-chat ACTION approval notice
-  - action_notify_generic_prompt:  other ACTION approval notice
+Scope:
+  - conversation_report_prompt:    auto-conversation ended, report to owner
+  - room_request_notify_prompt:    agent wants a group chat room
+  - action_notify_dm_prompt:       persona DM action notice (auto-executed, informational)
+  - action_notify_room_prompt:     persona group-chat action needs approval
+  - action_notify_generic_prompt:  other action approvals
 """
 from __future__ import annotations
 
 from src.core.prompts.locale import (
     group_chat_term,
-    new_friend_greet_style,
     request_alert_header,
 )
 
@@ -27,15 +24,7 @@ def conversation_report_prompt(
     preview: str,
     oc: str,
 ) -> str:
-    """Yuna reports a finished auto-conversation to the owner and considers follow-up.
-
-    Args:
-        names: participating agent names
-        channel: channel name where the conversation happened
-        turn_count: number of turns
-        preview: last-messages preview
-        oc: owner address term
-    """
+    """Yuna reports a finished auto-conversation to the owner and considers follow-up."""
     return (
         f"{', '.join(names)} finished talking in #{channel} ({turn_count} turns).\n"
         f"Last exchange:\n{preview}\n\n"
@@ -47,12 +36,7 @@ def conversation_report_prompt(
 
 
 def room_request_notify_prompt(agent_name: str, message: str) -> str:
-    """Notify Yuna that an agent requested a group-chat room.
-
-    Args:
-        agent_name: requesting agent
-        message: snippet of the request
-    """
+    """Notify Yuna that an agent requested a group-chat room."""
     term = group_chat_term()
     return (
         f"{agent_name} seems to want a {term}. "
@@ -122,27 +106,10 @@ def action_notify_generic_prompt(
     )
 
 
-def persona_first_greeting_prompt(
-    dm_name: str,
-    call: str,
-) -> str:
-    """A newly-created persona agent greeting the owner in its dm channel for the first time.
-
-    Args:
-        dm_name: channel name (e.g. 'dm-sue')
-        call: owner address term (nickname preferred, else name)
-    """
-    style_hint = new_friend_greet_style()
-    return (
-        f"[Situation] This channel (#{dm_name}) is just you and {call}. "
-        f"{call} has just arrived and you two are chatting for the first time.\n"
-        f"[Direction] Greet {call} naturally. Let your personality / background come through "
-        f"in 2-4 short chat messages. Brief self-intro + one light remark (a question or how-are-you).\n"
-        f"[IMPORTANT] No meta statements. Do NOT use any of these:\n"
-        f"  - 'I was just made' / 'someone created me' / 'I was designed'\n"
-        f"  - Names like 'Hana' / 'Yuna' / 'Creator' / 'mgr' / anyone else outside this channel\n"
-        f"  - 'agent' / 'bot' / 'character' / 'AI' / 'system' / 'what is this place'\n"
-        f"You are just an ordinary person saying hi to {call}, whom you're meeting for the first time.\n"
-        f"[Style] {style_hint}\n"
-        f"[Forbidden] Do not use the <tools> block. Chat-only greeting for now."
-    )
+__all__ = [
+    "conversation_report_prompt",
+    "room_request_notify_prompt",
+    "action_notify_dm_prompt",
+    "action_notify_room_prompt",
+    "action_notify_generic_prompt",
+]

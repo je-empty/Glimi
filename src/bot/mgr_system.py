@@ -675,7 +675,7 @@ async def _run_and_report_yuna(report_ch, ch_name, participant_ids, send_fn, con
 
         # 유나에게 보고 + 후속 판단 (강제 CMD는 금지, 대화 트리거는 허용)
         from src.core.profile import get_owner_call_name as _get_oc
-        from src.core.prompts.en.mgr_feedback import conversation_report_prompt
+        from src.core.prompts.en.mgr_notifications import conversation_report_prompt
         oc = _get_oc() or "오너"
         report_prompt = conversation_report_prompt(
             names=names, channel=ch_name, turn_count=state.turn_count,
@@ -1637,7 +1637,7 @@ async def _greet_new_persona(guild, agent_id, agent_name, dm_name):
             return
 
         from src.core.profile import get_user_name, get_owner_call_name
-        from src.core.prompts.en.mgr_feedback import persona_first_greeting_prompt
+        from src.core.prompts.en.persona_events import persona_first_greeting_prompt
         owner_name = get_user_name() or "user"
         call = get_owner_call_name() or owner_name
         prompt = persona_first_greeting_prompt(dm_name=dm_name, call=call)
@@ -1714,7 +1714,7 @@ async def handle_room_request_detection(
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if mgr_ch:
         # 유나가 판단해서 행동하도록 알림
-        from src.core.prompts.en.mgr_feedback import room_request_notify_prompt
+        from src.core.prompts.en.mgr_notifications import room_request_notify_prompt
         notify_prompt = room_request_notify_prompt(agent_name=agent_name, message=message)
 
         loop = asyncio.get_event_loop()
@@ -1897,7 +1897,7 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
     action_args = parts[1] if len(parts) > 1 else ""
 
     from src.core.profile import get_owner_call_name as _get_oc
-    from src.core.prompts.en.mgr_feedback import (
+    from src.core.prompts.en.mgr_notifications import (
         action_notify_dm_prompt,
         action_notify_room_prompt,
         action_notify_generic_prompt,
