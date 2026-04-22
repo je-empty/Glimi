@@ -124,12 +124,12 @@
   </header>
 
   <aside class="side-nav">
-    <div class="nav-title">Sections</div>
-    <a href="#profile" class="nav-link" data-target="profile">Profile</a>
-    <a href="#relationships" class="nav-link" data-target="relationships">Relationships</a>
-    <a href="#memory" class="nav-link" data-target="memory">🧠 Memory</a>
-    <a href="#thinking" class="nav-link" data-target="thinking">Thinking Logs</a>
-    <a href="#chat" class="nav-link" data-target="chat">Recent Chat</a>
+    <div class="nav-title">섹션</div>
+    <a href="#profile" class="nav-link" data-target="profile">👤 프로필</a>
+    <a href="#relationships" class="nav-link" data-target="relationships">🤝 관계</a>
+    <a href="#memory" class="nav-link" data-target="memory">🧠 메모리</a>
+    <a href="#thinking" class="nav-link" data-target="thinking">💭 추론 로그</a>
+    <a href="#chat" class="nav-link" data-target="chat">💬 최근 대화</a>
   </aside>
 
   <main class="page-body" id="page-body">
@@ -360,13 +360,13 @@
     // Render
     const body = `
       <section id="profile" class="detail-section">
-        <h4>Profile</h4>
+        <h4>👤 프로필</h4>
         <dl class="kv">${profileLines.map(([k, v, raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
       </section>
-      ${rels ? `<section id="relationships" class="detail-section"><h4>Relationships · ${d.relationships.length}</h4>${rels}</section>` : ''}
-      ${memHtml ? `<section id="memory" class="detail-section"><h4>🧠 MEMORY</h4>${memHtml}</section>` : ''}
-      ${thinkingLogs ? `<section id="thinking" class="detail-section"><h4>Thinking Logs</h4>${thinkingLogs}</section>` : ''}
-      ${chatHtml ? `<section id="chat" class="detail-section"><h4>Recent Chat · ${esc(d.primary_channel || '')}</h4>${chatHtml}</section>` : ''}
+      ${rels ? `<section id="relationships" class="detail-section"><h4>🤝 관계 · ${d.relationships.length}</h4>${rels}</section>` : ''}
+      ${memHtml ? `<section id="memory" class="detail-section"><h4>🧠 메모리</h4>${memHtml}</section>` : ''}
+      ${thinkingLogs ? `<section id="thinking" class="detail-section"><h4>💭 추론 로그</h4>${thinkingLogs}</section>` : ''}
+      ${chatHtml ? `<section id="chat" class="detail-section"><h4>💬 최근 대화 · ${esc(d.primary_channel || '')}</h4>${chatHtml}</section>` : ''}
     `;
     document.getElementById('page-body').innerHTML = body;
 
