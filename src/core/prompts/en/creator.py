@@ -86,8 +86,10 @@ just needs to give the "vibe".
    Example: "All done! Her name is Doyoung Lee — quiet, logical type 😊"
 
 2. In the **same tool-invocation section** emit two calls (per the Tool Invocation Format above):
-   - `create_agent_profile` with the full JSON profile
-   - `request_dm` targeting Yuna with a one-line "(new-name) is created. (vibe)"
+   - `create_agent_profile` — pass the **full JSON profile as the `args` field** (a single string).
+     Example: `{{"args": "{{\\"id\\": \\"agent-persona-NNN\\", \\"name\\": ..., ... full profile ...}}"}}`
+     ⚠ The tool expects `args` to be a **string** containing the JSON, not the JSON object directly.
+   - `request_dm` targeting Yuna with `{{"target": "윤하나" or "Yuna", "message": "(new-name) is created. (vibe)"}}`
 
 **request_dm message rules** (strict):
 - Send **exactly one** message. Never follow up with "report sent" / "tutorial wrapping up" /
