@@ -18,6 +18,57 @@ from typing import Optional
 from src.community import COMMUNITIES_DIR, PROJECT_ROOT
 
 
+# ── 외부 기동 봇 감지 (QA runner 등 platform 바깥에서 spawn 된 봇) ───────────
+# 봇 subprocess 는 기동 시 `dev/.bot-{cid}.pid` 에 pid 를 기록. QA runner 같은 외부
+# 경로로 띄운 봇도 같은 파일 씀. status/list_running 이 자기 _handles 만 보면 이런
+# 봇을 '정지됨' 으로 잘못 표시 — PID 파일 fallback 으로 감지.
+_EXTERNAL_PID_DIR = PROJECT_ROOT / "dev"
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
+
+
+def _read_external_bot_pid(community_id: str) -> Optional[int]:
+    """dev/.bot-{cid}.pid 존재 + alive 면 pid 반환, 아니면 None."""
+    pid_file = _EXTERNAL_PID_DIR / f".bot-{community_id}.pid"
+    if not pid_file.exists():
+        return None
+    try:
+        pid = int(pid_file.read_text().strip())
+    except (ValueError, OSError):
+        return None
+    if not _pid_alive(pid):
+        return None
+    return pid
+
+
+def _scan_external_bot_cids() -> dict[str, int]:
+    """dev/.bot-*.pid 스캔 — alive pid 만 반환. {cid: pid}."""
+    out: dict[str, int] = {}
+    if not _EXTERNAL_PID_DIR.exists():
+        return out
+    for p in _EXTERNAL_PID_DIR.glob(".bot-*.pid"):
+        name = p.name  # .bot-qa.pid
+        if not name.startswith(".bot-") or not name.endswith(".pid"):
+            continue
+        cid = name[len(".bot-"):-len(".pid")]
+        # ".bot.pid" (without dash/cid) — legacy default. skip.
+        if not cid:
+            continue
+        try:
+            pid = int(p.read_text().strip())
+        except (ValueError, OSError):
+            continue
+        if _pid_alive(pid):
+            out[cid] = pid
+    return out
+
+
 @dataclass
 class BotHandle:
     community_id: str
@@ -112,21 +163,34 @@ class Supervisor:
     def status(self, community_id: str) -> dict:
         with self._lock:
             handle = self._handles.get(community_id)
-        if not handle:
-            return {"running": False, "pid": None, "started_at": None, "uptime_sec": None}
-        rc = handle.process.poll()
-        running = rc is None
-        if not running:
-            with self._lock:
-                self._handles.pop(community_id, None)
-        return {
-            "running": running,
-            "pid": handle.process.pid if running else None,
-            "started_at": handle.started_at,
-            "uptime_sec": (time.time() - handle.started_at) if running else None,
-            "exit_code": rc,
-            "log_path": str(handle.log_path),
-        }
+        if handle:
+            rc = handle.process.poll()
+            running = rc is None
+            if not running:
+                with self._lock:
+                    self._handles.pop(community_id, None)
+            return {
+                "running": running,
+                "pid": handle.process.pid if running else None,
+                "started_at": handle.started_at,
+                "uptime_sec": (time.time() - handle.started_at) if running else None,
+                "exit_code": rc,
+                "log_path": str(handle.log_path),
+                "external": False,
+            }
+        # Fallback: platform 외부에서 기동된 봇 (QA runner, 수동 실행 등).
+        ext_pid = _read_external_bot_pid(community_id)
+        if ext_pid:
+            return {
+                "running": True,
+                "pid": ext_pid,
+                "started_at": None,
+                "uptime_sec": None,
+                "exit_code": None,
+                "log_path": None,
+                "external": True,
+            }
+        return {"running": False, "pid": None, "started_at": None, "uptime_sec": None}
 
     def list_running(self) -> list[str]:
         out = []
@@ -139,6 +203,10 @@ class Supervisor:
                     stale.append(cid)
             for cid in stale:
                 self._handles.pop(cid, None)
+        # Fallback: PID 파일로 외부 기동 봇 추가 감지 (_handles 없는 경우만)
+        for cid in _scan_external_bot_cids().keys():
+            if cid not in out:
+                out.append(cid)
         return out
 
     def shutdown_all(self, timeout: float = 10.0) -> None:
