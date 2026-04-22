@@ -1,15 +1,23 @@
-"""mgr/creator 측 inline 프롬프트 모음.
+"""mgr / creator inline prompt bundle.
 
-src/bot/mgr_system.py 에서 분리됨 (Phase 2-B pure move — 로직 변경 없음).
-빌더 목록:
-  - persona_first_greeting_prompt: 새 persona 의 dm 채널 첫 인사
-  - conversation_report_prompt:    자율 대화 종료 후 유나 오너 보고
-  - room_request_notify_prompt:    에이전트의 톡방 요청 감지 알림
-  - action_notify_dm_prompt:       ACTION DM 승인 요청
-  - action_notify_room_prompt:     ACTION 톡방 승인 요청
-  - action_notify_generic_prompt:  기타 ACTION 승인 요청
+Extracted from src/bot/mgr_system.py (Phase 2-B pure move). English template kept
+platform-neutral; locale helpers inject culture-specific terms (group-chat word etc.).
+
+Builders:
+  - persona_first_greeting_prompt: a new persona greeting the owner in their dm channel
+  - conversation_report_prompt:    Yuna reports a finished auto-conversation to the owner
+  - room_request_notify_prompt:    agent's group-chat request notification
+  - action_notify_dm_prompt:       DM ACTION approval notice
+  - action_notify_room_prompt:     group-chat ACTION approval notice
+  - action_notify_generic_prompt:  other ACTION approval notice
 """
 from __future__ import annotations
+
+from src.core.prompts.locale import (
+    group_chat_term,
+    new_friend_greet_style,
+    request_alert_header,
+)
 
 
 def conversation_report_prompt(
@@ -19,47 +27,47 @@ def conversation_report_prompt(
     preview: str,
     oc: str,
 ) -> str:
-    """자율 대화 종료 후 유나가 오너에게 보고 + 후속 판단.
+    """Yuna reports a finished auto-conversation to the owner and considers follow-up.
 
     Args:
-        names: 대화 참여 에이전트 이름 리스트
-        channel: 대화 채널명
-        turn_count: 턴 수
-        preview: 마지막 메시지 미리보기
-        oc: 오너 호칭
-
-    Returns:
-        유나에게 전달할 보고 프롬프트.
+        names: participating agent names
+        channel: channel name where the conversation happened
+        turn_count: number of turns
+        preview: last-messages preview
+        oc: owner address term
     """
     return (
-        f"{', '.join(names)} 대화 끝났어 (#{channel}, {turn_count}턴).\n"
-        f"마지막 대화:\n{preview}\n\n"
-        f"{oc}한테 간략하게 보고해.\n"
-        f"대화 내용에서 누군가가 {oc}한테 연락하겠다고 했거나 다른 사람한테 연락하려는 상황이면 "
-        f"`start_conversation` 도구로 이어지게 해줘.\n"
-        f"에이전트에게 강제 지시(임의 발화 주입)는 절대 금지."
+        f"{', '.join(names)} finished talking in #{channel} ({turn_count} turns).\n"
+        f"Last exchange:\n{preview}\n\n"
+        f"Give {oc} a brief report.\n"
+        f"If anyone in the conversation said they'd contact {oc} or tried to reach another person, "
+        f"use the `start_conversation` tool to hand the thread off.\n"
+        f"NEVER force-inject utterances into an agent (no arbitrary speech injection)."
     )
 
 
 def room_request_notify_prompt(agent_name: str, message: str) -> str:
-    """에이전트가 톡방 요청한 걸 유나에게 알림.
+    """Notify Yuna that an agent requested a group-chat room.
 
     Args:
-        agent_name: 요청한 에이전트 이름
-        message: 요청 메시지 snippet
+        agent_name: requesting agent
+        message: snippet of the request
     """
+    term = group_chat_term()
     return (
-        f"{agent_name}이(가) 톡방/그룹채팅을 원하는 것 같아. "
-        f"메시지: \"{message[:60]}\"\n"
-        f"필요하면 `create_room` 도구로 만들어줘."
+        f"{agent_name} seems to want a {term}. "
+        f"Message: \"{message[:60]}\"\n"
+        f"Create it with the `create_room` tool if it makes sense."
     )
 
 
 def _action_judge_guide(oc: str) -> str:
     return (
-        "판단 기준:\n"
-        f"- 자연스러운 요청이면 승인하고 {oc}한테 간략 보고 (예: '서연이가 소율이한테 DM 보내려고 해서 승인했어')\n"
-        f"- 이상하거나 판단 어려우면 거절하지 말고 {oc}한테 먼저 물어봐 (예: '{oc} 이거 승인할까?')"
+        "Judgment rules:\n"
+        f"- If the request is natural, approve it and give {oc} a brief report "
+        f"(e.g. 'Seo-yeon wanted to DM So-yul, so I approved it').\n"
+        f"- If it's unusual or unclear, DON'T reject — ask {oc} first "
+        f"(e.g. '{oc}, should I approve this?')."
     )
 
 
@@ -70,10 +78,10 @@ def action_notify_dm_prompt(
     dm_message: str,
     oc: str,
 ) -> str:
-    """페르소나의 DM 요청 알림 (유나에게). DM 은 자동 실행되므로 알림·상황 공유용."""
+    """Persona DM-request notice to Yuna. DM is auto-executed so this is informational."""
     return (
-        f"[요청 알림]\n"
-        f"{agent_name}이(가) {target_name}한테 DM 보냈어:\n"
+        f"{request_alert_header()}\n"
+        f"{agent_name} sent a DM to {target_name}:\n"
         f"  \"{dm_message[:100]}\"\n\n"
         f"{_action_judge_guide(oc)}"
     )
@@ -86,13 +94,15 @@ def action_notify_room_prompt(
     first_msg: str,
     oc: str,
 ) -> str:
-    """페르소나의 톡방 요청 알림 (유나에게). 판단 후 `create_room` 도구로 생성."""
+    """Persona group-chat request notice to Yuna. On approval, call `create_room`."""
+    term = group_chat_term()
     return (
-        f"[요청 알림]\n"
-        f"{agent_name}이(가) 톡방 만들고 싶대:\n"
-        f"  참여자: {room_info}\n"
-        f"  첫 메시지: \"{first_msg[:100]}\"\n\n"
-        f"승인한다면 `create_room` 도구로 만들어 (name/participants/first_message 인자).\n"
+        f"{request_alert_header()}\n"
+        f"{agent_name} wants to open a {term}:\n"
+        f"  Participants: {room_info}\n"
+        f"  First message: \"{first_msg[:100]}\"\n\n"
+        f"If you approve, create it with the `create_room` tool "
+        f"(args: name / participants / first_message).\n"
         f"{_action_judge_guide(oc)}"
     )
 
@@ -102,12 +112,12 @@ def action_notify_generic_prompt(
     action_str: str,
     oc: str,
 ) -> str:
-    """기타 행동 요청 알림 (유나에게)."""
+    """Generic action-request notice to Yuna."""
     return (
-        f"[요청 알림]\n"
-        f"{agent_name}이(가) 행동을 요청했어:\n"
-        f"  → {action_str}\n\n"
-        f"승인하려면 상황에 맞는 도구를 호출해.\n"
+        f"{request_alert_header()}\n"
+        f"{agent_name} requested an action:\n"
+        f"  -> {action_str}\n\n"
+        f"To approve, call the tool that fits the situation.\n"
         f"{_action_judge_guide(oc)}"
     )
 
@@ -116,26 +126,23 @@ def persona_first_greeting_prompt(
     dm_name: str,
     call: str,
 ) -> str:
-    """새로 만든 persona 에이전트가 자기 dm 채널에서 오너에게 첫 인사.
+    """A newly-created persona agent greeting the owner in its dm channel for the first time.
 
     Args:
-        dm_name: 채널 이름 (예: 'dm-한소율')
-        call: 오너 호칭 (별명 > 이름 순)
-
-    Returns:
-        persona 에이전트에게 전달할 첫 인사 프롬프트.
+        dm_name: channel name (e.g. 'dm-sue')
+        call: owner address term (nickname preferred, else name)
     """
+    style_hint = new_friend_greet_style()
     return (
-        f"[상황] 이 채널(#{dm_name})은 너랑 {call} 둘만의 공간. "
-        f"{call}이 방금 들어와서 너랑 처음 대화 시작하는 순간.\n"
-        f"[지시] {call}에게 자연스럽게 첫 인사. "
-        f"네 성격·배경 살리면서 2~4 짧은 메시지로. "
-        f"자기소개 간단히 + 가벼운 한마디 (질문이나 안부).\n"
-        f"[중요] 메타 발언 금지. 다음 표현 쓰지 마:\n"
-        f"  - '방금 만들어졌다' / '누가 나를 만들었다' / '디자인됐다'\n"
-        f"  - '하나' / '윤하나' / '유나' / '서유나' / 'Creator' / 'mgr' 이름 언급\n"
-        f"  - '에이전트' / '봇' / '캐릭터' / 'AI' / '시스템' / '여기 뭐 하는 곳'\n"
-        f"너는 그냥 평범한 사람이고, 처음 보는 {call} 한테 말 거는 거.\n"
-        f"[스타일] 카톡처럼. 네 말투로. 로봇 같은 정형화된 인사 금지.\n"
-        f"[금지] <tools> 블록 쓰지 마. 지금은 chat 인사만."
+        f"[Situation] This channel (#{dm_name}) is just you and {call}. "
+        f"{call} has just arrived and you two are chatting for the first time.\n"
+        f"[Direction] Greet {call} naturally. Let your personality / background come through "
+        f"in 2-4 short chat messages. Brief self-intro + one light remark (a question or how-are-you).\n"
+        f"[IMPORTANT] No meta statements. Do NOT use any of these:\n"
+        f"  - 'I was just made' / 'someone created me' / 'I was designed'\n"
+        f"  - Names like 'Hana' / 'Yuna' / 'Creator' / 'mgr' / anyone else outside this channel\n"
+        f"  - 'agent' / 'bot' / 'character' / 'AI' / 'system' / 'what is this place'\n"
+        f"You are just an ordinary person saying hi to {call}, whom you're meeting for the first time.\n"
+        f"[Style] {style_hint}\n"
+        f"[Forbidden] Do not use the <tools> block. Chat-only greeting for now."
     )
