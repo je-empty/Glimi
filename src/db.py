@@ -18,7 +18,10 @@ def _get_db_path() -> str:
     if DB_PATH:
         return DB_PATH
     DB_PATH = community.get_db_path()
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    # 디렉토리 자동 생성 금지 — 삭제된 커뮤니티에 대한 stale API 폴링이 빈 디렉토리+DB 를
+    # 부활시키던 버그 차단. 새 커뮤니티는 init_community() 가 선행 mkdir 함.
+    if not os.path.exists(os.path.dirname(DB_PATH)):
+        raise FileNotFoundError(f"community directory not found: {os.path.dirname(DB_PATH)}")
     return DB_PATH
 
 
