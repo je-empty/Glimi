@@ -85,3 +85,116 @@ def filler_particles_note() -> str:
     if _lang() == "ko":
         return "'ㅋㅋ', 'ㅎㅎ', 'ㅠㅠ' 같은 자음 반복은 한국어 채팅의 자연스런 감정 표지 — 과하지 않게 적절히 사용."
     return ""
+
+
+# ── Onboarding: honorifics · speech-style block ────────────────────────────
+# Used in `en/onboarding.build_yuna_greeting_prompt` — provides the whole Korean-specific
+# "address / speech-level / casual-mode permission" coaching block. For non-ko languages a
+# minimal address-style ask is returned instead.
+
+def korean_onboarding_hints(
+    name: str,
+    age,
+    gender: str,
+    nickname: str,
+    p_name: str,
+    yuna_age: int,
+    older: bool,
+    lang: str | None = None,
+) -> str:
+    """Greeting-time coaching on honorifics + speech style.
+
+    ko: full 호칭/존댓말/반말 coaching with concrete Korean examples.
+    en (and others): generic ask-preferred-name + tone question.
+    """
+    eff = lang or _lang()
+    if eff == "ko":
+        closer_question = (
+            "\n- IMPORTANT phrasing: ask these as clear questions, NOT as soft trailing statements.\n"
+            "  나쁜 예(어색): \"오빠라고 불러도 되고요 ㅎㅎ\" (평서형 덧붙임)\n"
+            "  좋은 예(자연): \"오빠라고 불러도 돼요?\" / \"혹시 오빠라고 불러도 괜찮아요?\"\n"
+            "  말 놓기도 마찬가지: \"말 놓아도 될까요?\" / \"편하게 해도 돼요?\""
+        )
+        return (
+            f"- {name} is {age} years old, gender={gender}. You ({p_name}) are {yuna_age}y/o female.\n"
+            f"- {'Older than you — start with formal speech (존댓말).' if older else 'Similar age or unknown — start formal.'}\n"
+            f"- You want to get closer. {'Ask if casual speech is okay. ' if older else ''}\n"
+            f"- Honorific/호칭 suggestion — YOUR judgment based on owner's gender + age gap:\n"
+            f"    older male → 오빠 가능, older female → 언니 가능, similar age → 이름/닉네임,\n"
+            f"    younger owner → 이름 + 존댓말. 오너가 원치 않으면 본인이 원하는 호칭으로 조정.\n"
+            f"\n"
+            f"- ⚠ CRITICAL consistency rule:\n"
+            f"  Until the owner confirms, DO NOT use 오빠/언니/형/누나 in any line of your greeting.\n"
+            f"  Address them with 이름 or 별명 only (e.g., '{nickname or name}' or '{name}님').\n"
+            f"  THEN at the end, ask permission: '오빠라고 불러도 돼요?' / '편하게 말 놓아도 돼요?'\n"
+            f"  사용하면서 허락 구하는 것은 앞뒤 안 맞음 (큰 어색함).\n"
+            f"- Ask their preferred speech style (formal/casual). This is required."
+            f"{closer_question}"
+        )
+    # Generic (en, etc.): no honorific layer, just ask what they prefer.
+    return (
+        f"- Ask what they'd like to be called (first name / nickname / something else).\n"
+        f"- Ask if they prefer casual or more polite tone."
+    )
+
+
+def onboarding_name_hint(name: str, lang: str | None = None) -> str:
+    """How to address the user in the very first greeting."""
+    eff = lang or _lang()
+    if eff == "ko":
+        return (
+            f"Don't use full name ({name}). For Korean names, drop the surname "
+            f"(e.g. 홍길동→길동). Be friendly."
+        )
+    return f"Use first name only from ({name}). Be friendly and casual."
+
+
+# ── Persona first-greeting style hint ──────────────────────────────────────
+# Injected into `persona_first_greeting_prompt`. Korean gets the 카톡 reference, others get
+# a generic chat-app phrasing.
+
+def new_friend_greet_style() -> str:
+    if _lang() == "ko":
+        return "카톡처럼. 네 말투로. 로봇 같은 정형화된 인사 금지."
+    return "Chat-style, short lines in your own voice. No robotic or formulaic greetings."
+
+
+# ── Feedback / alert headers (mgr_feedback) ────────────────────────────────
+# Short bracketed tags that open an internal prompt to the mgr agent.
+
+def request_alert_header() -> str:
+    if _lang() == "ko":
+        return "[요청 알림]"
+    return "[Request alert]"
+
+
+# ── Supervisor judge answer tokens ─────────────────────────────────────────
+# Haiku judge returns ONE of these tokens. Downstream code pattern-matches on them
+# (e.g. `if "멈춤" in judgment`). The *question* is in English but the expected answer
+# vocabulary must stay in the community's language so caller checks still fire.
+
+def chat_stuck_answer_tokens() -> str:
+    if _lang() == "ko":
+        return "'진행중' 또는 '멈춤:이름'"
+    return "'ongoing' or 'stopped:<name>'"
+
+
+def profile_collection_answer_tokens() -> str:
+    if _lang() == "ko":
+        return "'미응답', '잡담', '진행중'"
+    return "'unanswered', 'chatting', 'ongoing'"
+
+
+def creator_icebreak_answer_tokens() -> str:
+    if _lang() == "ko":
+        return "'충분', '진행중'"
+    return "'enough', 'ongoing'"
+
+
+# ── Sample names (for locale-appropriate examples in templates) ────────────
+# Korean vs English/generic first-name examples — used in docstrings/examples only.
+
+def sample_first_names() -> tuple[str, str, str]:
+    if _lang() == "ko":
+        return ("수연", "빈이", "해린")
+    return ("sue", "bin", "haerin")
