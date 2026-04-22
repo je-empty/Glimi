@@ -163,13 +163,19 @@ def _normalize_entity(name: str) -> str:
 
 _META_SUBJECT_PAT = _re.compile(
     r'^(신규\s*에이전트|새_?에이전트|새_?친구|새\s*친구|에이전트|페르소나|봇|시스템|'
-    r'캐릭터|멤버|신규\s*멤버|새\s*멤버|친구\s*\d*|사람|user|agent|member|bot|character)$',
+    r'캐릭터|멤버|신규\s*멤버|새\s*멤버|친구\s*\d*|사람|user|agent|member|bot|character|'
+    r'멤버들|친구들|사람들|모두|전체|다들|일동|'
+    r'이\s*커뮤니티|우리\s*커뮤니티|커뮤니티|서버|방|채널|그룹)$',
     _re.IGNORECASE,
 )
 
 
 def _is_meta_subject(s: str) -> bool:
-    """사람 이름 아닌 일반화된 메타 단어인가? (fact subject 부적절)"""
+    """사람 이름 아닌 일반화된 메타 단어인가? (fact subject 부적절).
+
+    "새 멤버", "이 커뮤니티", "멤버들" 같은 추상/집합 명사는 fact subject 로 부적합.
+    agents/users 실체에 있는 사람 이름만 허용.
+    """
     if not s or not s.strip():
         return True
     s = s.strip()
@@ -179,6 +185,243 @@ def _is_meta_subject(s: str) -> bool:
     if len(s) == 1 or s.isdigit():
         return True
     return False
+
+
+# ────────────────────────────────────────────────────
+# Fact validation — subject 실체성 / predicate 정규화 / profile 중복 / 일시상태
+# ────────────────────────────────────────────────────
+
+# Predicate 정규화 맵. Haiku 가 동의어 predicate 을 마구 찍어내는 것을 한 canonical 로 합쳐
+# 같은 의미의 fact 가 8 가지 이름으로 중복 저장되는 문제 방지.
+# alias → canonical. alias 도 canonical 도 모두 lowercase/공백제거 후 비교.
+PREDICATE_ALIASES: dict[str, str] = {
+    # preferred_friend_type — "어떤 친구를 원하는가"
+    "원하는친구특성": "preferred_friend_type",
+    "원하는친구타입": "preferred_friend_type",
+    "원하는친구특징": "preferred_friend_type",
+    "원하는친구유형": "preferred_friend_type",
+    "원하는친구의성향": "preferred_friend_type",
+    "원하는캐릭터특성": "preferred_friend_type",
+    "원하는캐릭터유형": "preferred_friend_type",
+    "선호하는캐릭터유형": "preferred_friend_type",
+    "선호하는캐릭터특징": "preferred_friend_type",
+    "선호캐릭터타입": "preferred_friend_type",
+    "원하는친구": "preferred_friend_type",
+    "원하는신규멤버특징": "preferred_friend_type",
+    "찾는친구의성향": "preferred_friend_type",
+    "찾는친구의선호": "preferred_friend_type",
+    # personality — 성격
+    "성격": "personality",
+    "성격특징": "personality",
+    "성격유형": "personality",
+    "특징": "personality",
+    "성향": "personality",
+    # hobby / likes
+    "취미": "hobby",
+    "좋아하는것": "likes",
+    "좋아하는취미": "hobby",
+    "좋아하는활동": "likes",
+    "즐기는활동": "likes",
+    "관심사": "likes",
+    "관심있는것": "likes",
+    # dislikes
+    "싫어하는것": "dislikes",
+    "싫어함": "dislikes",
+    # speech_style
+    "말투": "speech_style",
+    "말투특징": "speech_style",
+    "어투": "speech_style",
+    # occupation / role
+    "직업": "occupation",
+    "직책": "occupation",
+    "담당": "occupation",
+    # mbti
+    "mbti": "mbti",
+    # preference — 분위기/장소 선호
+    "선호하는분위기": "preferred_mood",
+    "좋아하는분위기": "preferred_mood",
+    # request — 오너의 요청 (일시적일 수 있음)
+    "요청": "request",
+    "원하는것": "request",
+    "원함": "request",
+    "요청함": "request",
+}
+
+
+def _canonical_predicate(pred: str) -> str:
+    """predicate 정규화. alias → canonical. alias 에 없으면 lowercase 후 공백 정리만."""
+    if not pred:
+        return pred
+    raw = str(pred).strip()
+    # 공백·언더스코어 제거한 key 로 매칭 (alias 테이블은 이미 공백 없는 형태)
+    key = _re.sub(r'[\s_]+', '', raw).lower()
+    if key in PREDICATE_ALIASES:
+        return PREDICATE_ALIASES[key]
+    # 언더스코어 포함 원본 유지하되, 다중 공백은 단일로
+    return _re.sub(r'\s+', '_', raw)
+
+
+# 일시 상태 키워드 — object 이 이 단어만으로 이루어지면 fact 가치 없음 (시간 지나면 무의미).
+_TRANSIENT_OBJECT_PAT = _re.compile(
+    r'^(오늘|지금|방금|오랜만|잠깐|이따|나중에?|곧|아까|어제|내일|모레|'
+    r'요즘|최근|현재|당장|막|이제|금방)$'
+)
+
+
+def _is_transient_object(obj: str) -> bool:
+    """object 이 일시적 상태 단어만 담고 있나? ('오랜만', '지금' 등)."""
+    if not obj:
+        return False
+    s = str(obj).strip()
+    return bool(_TRANSIENT_OBJECT_PAT.match(s))
+
+
+def _known_real_subjects() -> set[str]:
+    """agents + users 테이블에 실제로 존재하는 사람 이름 집합.
+    fact subject 가 여기에 없으면 drop (추상/가상 subject 방지).
+    오너 별명(빈이, 재빈) 도 alias 로 허용 — 나중에 _normalize_entity 가 canonical 로 합침.
+    """
+    names: set[str] = set()
+    try:
+        for a in db.list_agents():
+            n = (a.get("name") or "").strip()
+            if n:
+                names.add(n)
+    except Exception:
+        pass
+    try:
+        from .profile import get_user_name
+        un = (get_user_name() or "").strip()
+        if un:
+            names.add(un)
+    except Exception:
+        pass
+    try:
+        for u in db.list_users():
+            n = (u.get("name") or "").strip()
+            if n:
+                names.add(n)
+    except Exception:
+        pass
+    # 오너 alias (nickname 포함) 도 허용
+    try:
+        for a in _owner_aliases():
+            if a and a not in _OWNER_ROLE_TERMS:
+                names.add(a)
+    except Exception:
+        pass
+    return names
+
+
+# Profile 필드 ↔ predicate 매핑. 자기 자신 fact 가 이미 profile 에 있는 정보면 skip.
+# canonical predicate → profile 내 검사 경로 (lambda).
+def _profile_has_value(agent_id: str, canonical_pred: str, obj: str) -> bool:
+    """agent 의 profile 에 이미 같은 정보가 있는가?
+    canonical_pred ('personality', 'likes', 'dislikes', 'speech_style', 'occupation', 'hobby')
+    에 대해 profile 의 해당 필드와 값 비교 (substring / fuzzy contains).
+    """
+    try:
+        from .profile import load_profile
+        prof = load_profile(agent_id)
+        if not prof:
+            return False
+    except Exception:
+        return False
+    obj_norm = _re.sub(r'[\s,，·、/]+', '', str(obj or "")).lower()
+    if not obj_norm:
+        return False
+
+    def _flatten(v) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, list):
+            return " ".join(str(x) for x in v)
+        if isinstance(v, dict):
+            return " ".join(str(x) for x in v.values())
+        return str(v)
+
+    def _unwrap(v):
+        """profile 위성 테이블은 {"data": {...}} 로 wrap 되어 저장됨 (agent_personality.data). unwrap."""
+        if isinstance(v, str):
+            try:
+                v = _json.loads(v)
+            except Exception:
+                return {}
+        if isinstance(v, dict) and "data" in v and isinstance(v["data"], dict) and len(v) == 1:
+            return v["data"]
+        return v or {}
+
+    pers = _unwrap(prof.get("personality"))
+    speech = _unwrap(prof.get("speech"))
+    daily = _unwrap(prof.get("daily_life"))
+
+    candidates: list[str] = []
+    if canonical_pred == "personality":
+        candidates.append(_flatten(pers.get("traits")))
+        candidates.append(_flatten(pers.get("values")))
+    elif canonical_pred == "likes" or canonical_pred == "hobby":
+        candidates.append(_flatten(pers.get("likes")))
+        candidates.append(_flatten(pers.get("hobby")))
+    elif canonical_pred == "dislikes":
+        candidates.append(_flatten(pers.get("dislikes")))
+    elif canonical_pred == "speech_style":
+        candidates.append(_flatten(speech.get("style_description")))
+        candidates.append(_flatten(speech.get("style")))
+        candidates.append(_flatten(speech.get("tone")))
+    elif canonical_pred == "occupation":
+        candidates.append(_flatten(prof.get("background")))
+        candidates.append(_flatten(daily.get("occupation")))
+    elif canonical_pred == "mbti":
+        candidates.append(_flatten(prof.get("mbti")))
+    else:
+        return False
+
+    for c in candidates:
+        c_norm = _re.sub(r'[\s,，·、/]+', '', c).lower()
+        if not c_norm:
+            continue
+        # substring 양방향 — obj 가 더 짧으면 c 안에, c 가 더 짧으면 obj 안에
+        if obj_norm in c_norm or c_norm in obj_norm:
+            return True
+    return False
+
+
+def _validate_fact(agent_id: str, subject: str, predicate: str, obj: str,
+                   allowed_subjects: Optional[set[str]] = None) -> Optional[tuple[str, str, str]]:
+    """저장 직전 fact 검증. 반환 (subject, canonical_predicate, obj) 또는 None(drop).
+
+    검증:
+      1. subject 가 meta/추상 명사면 drop
+      2. subject 가 실존 (agents/users) 에 없으면 drop
+      3. predicate 정규화 (alias → canonical)
+      4. 자기 자신 fact 이고 profile 과 중복이면 skip
+      5. object 가 일시 상태 ("오랜만", "지금") 만이면 drop
+    """
+    if not (subject and predicate and obj):
+        return None
+    s = _normalize_entity(str(subject).strip())
+    p = str(predicate).strip()
+    o = str(obj).strip()
+    if _is_meta_subject(s):
+        return None
+    if _is_transient_object(o):
+        return None
+    known = allowed_subjects if allowed_subjects is not None else _known_real_subjects()
+    if known and s not in known:
+        # 실존 사람 아닌 subject — drop (보수 기본은 drop 이 아니지만, meta-subject 외에도
+        # "새_멤버" 처럼 등록 안 된 가상 인물을 차단해야 함).
+        return None
+    canon = _canonical_predicate(p)
+    # 자기 자신 fact ↔ profile 중복
+    try:
+        from .profile import load_profile
+        my_prof = load_profile(agent_id)
+        my_name = my_prof.get("name") if my_prof else None
+        if my_name and s == my_name and _profile_has_value(agent_id, canon, o):
+            return None
+    except Exception:
+        pass
+    return (s, canon, o)
 
 
 def _normalize_entities(entities: list) -> list:
@@ -469,6 +712,19 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         for m in msgs
     )
 
+    # 실존 사람 이름 목록 — Haiku 가 여기서 subject 를 고르도록 가이드
+    try:
+        real_names = sorted(_known_real_subjects())
+    except Exception:
+        real_names = []
+    real_names_hint = ", ".join(real_names) if real_names else "(없음)"
+
+    # canonical predicate 가이드 — 동의어 난립 방지
+    canonical_predicates = (
+        "personality, likes, dislikes, hobby, speech_style, occupation, mbti, "
+        "preferred_friend_type, preferred_mood, request"
+    )
+
     prompt = (
         f"너는 {agent_name}의 기억 추출기야. 아래 대화 {len(msgs)}건에서 {agent_name} 관점의 기억을 추출해.\n\n"
         "하나의 JSON으로 다음 필드를 추출:\n"
@@ -480,7 +736,7 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         "- relationships: 관계 변화 배열. 각 항목 {other, type(intimacy|dynamics|speech_style), from, to, reason}\n\n"
         "예시:\n"
         '{"summary":"- 지우가 떡볶이 제안\\n- 주말 약속 보류","type":"event","entities":["지우"],"importance":5,'
-        '"facts":[{"subject":"지우","predicate":"좋아하는음식","object":"떡볶이","importance":4}],'
+        '"facts":[{"subject":"지우","predicate":"likes","object":"떡볶이","importance":4}],'
         '"relationships":[]}\n\n'
         "규칙:\n"
         f"- 오너({user_name}) 는 항상 실명(이름) 으로 표기. 별명·호칭·'오너'·'빈이오빠' 같은 변형 금지.\n"
@@ -489,7 +745,24 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         "- 잡담·인사만 있으면 summary는 짧게, importance 낮게.\n"
         "- facts는 확실한 것만 (추측 금지). 없으면 빈 배열.\n"
         "- relationships는 명확한 관계 변화만. 없으면 빈 배열.\n"
-        "- JSON만 출력. 다른 텍스트 없이.\n\n"
+        "- JSON만 출력. 다른 텍스트 없이.\n"
+        "\n"
+        "★ facts 추출 엄격 규칙:\n"
+        f"  1. subject 는 반드시 실존 인물 이름. 허용 이름 목록: [{real_names_hint}].\n"
+        "     '새 멤버', '새_멤버', '이 커뮤니티', '멤버들', '친구들', '신규 에이전트', '캐릭터' 같은\n"
+        "     추상·집합·가상 명사는 subject 로 쓰지 마. 미래에 생길 사람·그룹 전체는 금지.\n"
+        "  2. predicate 은 다음 canonical 목록에서 **우선 선택**:\n"
+        f"     {canonical_predicates}.\n"
+        "     같은 의미를 다른 이름으로 쓰지 마. 예: '원하는친구특성'·'선호하는캐릭터유형'·'원하는친구유형'\n"
+        "     은 모두 'preferred_friend_type' 으로 통일. '취미'·'좋아하는취미' 는 'hobby'. '성격'·'성향'·'특징'\n"
+        "     은 'personality'. 목록에 없는 개념이면 짧은 영문 snake_case 로 새로 만들되 동의어 난립 금지.\n"
+        "  3. 일시 상태 저장 금지. object 이 '오늘', '지금', '방금', '오랜만', '잠깐', '이따', '나중',\n"
+        "     '요즘' 같은 시간성 단어만으로 이루어지면 그 fact 는 넣지 마. 시간 지나면 무의미함.\n"
+        f"  4. 자기 자신({agent_name}) 에 대한 fact 는 **프로필에 이미 있는 정보면 skip**.\n"
+        "     (기본 성격·likes/dislikes·말투·직업·MBTI 는 이미 알고 있으니 중복 저장 금지.\n"
+        "     자기 자신 fact 는 오직 '이번 대화에서 새로 드러난 자기 발견' 만 허용.)\n"
+        "  5. 추측·가정·가상 상황은 fact 가 아님. 대화에서 확정된 사실만.\n"
+        "\n"
         f"대화:\n{conv_text}"
     )
 
@@ -567,18 +840,22 @@ def _try_l1_extract(agent_id: str, channel: str):
     )
 
     # Facts → agent_facts
+    # allowed_subjects 한 번 lookup 해서 루프마다 DB 조회 안 하도록
+    allowed_subjects = _known_real_subjects()
+    dropped = 0
+    kept = 0
     for f in extracted.get("facts", []):
         if not isinstance(f, dict):
             continue
-        subject = _normalize_entity(str(f.get("subject") or "").strip())
-        predicate = str(f.get("predicate") or "").strip()
-        obj = str(f.get("object") or "").strip()
-        if not (subject and predicate and obj):
+        raw_subject = str(f.get("subject") or "").strip()
+        raw_pred = str(f.get("predicate") or "").strip()
+        raw_obj = str(f.get("object") or "").strip()
+        validated = _validate_fact(agent_id, raw_subject, raw_pred, raw_obj,
+                                    allowed_subjects=allowed_subjects)
+        if not validated:
+            dropped += 1
             continue
-        # 메타 용어 subject 차단 — Haiku 가 "신규에이전트/새친구/캐릭터" 같은 일반화된 가짜 엔티티로
-        # fact 뽑는 케이스 (실제 사람 이름이 아님). 정상 persona/user 이름만 허용.
-        if _is_meta_subject(subject):
-            continue
+        subject, canon_pred, obj = validated
         try:
             f_imp = max(1, min(10, int(f.get("importance", 5))))
         except Exception:
@@ -586,12 +863,15 @@ def _try_l1_extract(agent_id: str, channel: str):
         try:
             db.add_fact(
                 agent_id=agent_id,
-                subject=subject, predicate=predicate, object_value=obj,
+                subject=subject, predicate=canon_pred, object_value=obj,
                 source_channel=channel, source_memory_id=mem_id,
                 confidence=1.0, importance=f_imp,
             )
+            kept += 1
         except Exception as e:
             print(f"[Memory] fact 저장 실패: {e}")
+    if dropped:
+        print(f"[Memory] fact validation: kept={kept} dropped={dropped}")
 
     # Relationship delta → relationship_history
     for r in extracted.get("relationships", []):
