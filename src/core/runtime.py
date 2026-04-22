@@ -163,7 +163,17 @@ class AgentRuntime:
         if not profile:
             return False
 
-        system_prompt = build_system_prompt(agent_id)
+        # Resolve current model for this agent and set it active BEFORE prompt build so
+        # model-aware snippets (tool_call_syntax_hint etc.) inject the right provider's
+        # grammar. ContextVar scoped — released in finally.
+        from src.core.prompts.model import set_active_model, reset_active_model
+        model_id = _resolve_agent_model(agent_id, profile.get("type", "persona"))
+        tok = set_active_model(model_id)
+        try:
+            system_prompt = build_system_prompt(agent_id)
+        finally:
+            reset_active_model(tok)
+
         self._active_agents[agent_id] = {
             "profile": profile,
             "system_prompt": system_prompt,

@@ -11,6 +11,10 @@ from src.core.prompts.locale import (
     chat_style_phrase,
     filler_particles_note,
 )
+from src.core.prompts.model import (
+    tool_call_syntax_hint,
+    tools_block_end_rule,
+)
 
 
 def core_identity_rules(agent_type: str) -> str:
@@ -104,8 +108,11 @@ def build_common_prompt(agent_type: str = "persona") -> str:
   parentheses, or bold — leave `#name` as plain text.
 - People's names stay plain (no formatting). Use bold only for genuinely important words — sparingly.
 - Inline code backticks only for filenames, tool names, commands: `` `update_profile` ``, `` `.env` ``.
-- Tool calls always go inside the `<tools>` block at the VERY END of the reply, never inline in prose.
+- {tools_block_end_rule()}
 - You cannot @-mention other members (they are webhooks). Just write their name as plain text.
+
+=== Tool Invocation Format ===
+{tool_call_syntax_hint()}
 
 === Core Rules ===
 {core_identity_rules(agent_type)}

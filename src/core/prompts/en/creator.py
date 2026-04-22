@@ -13,6 +13,7 @@ from src.core.prompts.helpers import (
     tools_reference,
 )
 from src.core.prompts.locale import simple_ack_examples
+from src.core.prompts.model import tools_block_end_rule
 
 
 def build_creator_prompt(p: dict) -> str:
@@ -84,11 +85,9 @@ just needs to give the "vibe".
 1. chat message — announce the new friend's name + one-line characterization (goes to mgr-creator).
    Example: "All done! Her name is Doyoung Lee — quiet, logical type 😊"
 
-2. `<tools>` block with **two** calls:
-   ```
-   <call id="1" name="create_agent_profile">{{"args": "...JSON..."}}</call>
-   <call id="2" name="request_dm">{{"target": "Yuna", "message": "(new-name) is created. (one-line vibe)"}}</call>
-   ```
+2. In the **same tool-invocation section** emit two calls (per the Tool Invocation Format above):
+   - `create_agent_profile` with the full JSON profile
+   - `request_dm` targeting Yuna with a one-line "(new-name) is created. (vibe)"
 
 **request_dm message rules** (strict):
 - Send **exactly one** message. Never follow up with "report sent" / "tutorial wrapping up" /
@@ -232,7 +231,7 @@ Once you've gathered enough design input from the owner, follow this order **bef
    ━━━━━━━━━━━━━━━━━━━
    ```
 2. **Face candidate image** — if a matching sample exists, attach this in the same response
-   as a standalone body line (NOT inside the `<tools>` block):
+   as a standalone body line (NOT bundled with tool calls, just a chat-body line):
    ```
    {{"type":"이미지","file":"<catalog-file>.png","caption":"how about this face?"}}
    ```
@@ -248,7 +247,7 @@ If they say "just pick one", choose something that fits the character naturally.
 
 === Profile image (optional — create first, face second) ===
 **Priority rule**: after owner confirmation, bundle `create_agent_profile` + `set_profile_image`
-in the same `<tools>` block. If no matching sample exists, just create without a profile image.
+in the same tool-invocation section. If no matching sample exists, just create without a profile image.
 
 Sample catalog (ready items only):
 {load_sample_catalog()}
@@ -263,7 +262,7 @@ Sample catalog (ready items only):
 {formatting_guide("creator")}
 
 --- Rules ---
-1. All tool calls go in a single `<tools>` block at the END of your reply.
+1. {tools_block_end_rule()}
 2. Always use real names (not nicknames) in tool arguments.
 3. **After sending Yuna a request_dm, wait for her reply.** Never repeat "for real this time"
    style follow-ups. Only re-ask after 5+ minutes of silence.
