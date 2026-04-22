@@ -313,11 +313,8 @@ async def _check_owner_profile(guild):
         )
     )
     log_writer.system(t("tutorial.yuna_arrived"))
-    import re as _re
-    cmd_pattern = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
     for resp in responses:
-        # CMD/QUERY/ACTION 태그 제거
-        resp = cmd_pattern.sub('', resp).strip()
+        resp = resp.strip()
         if not resp:
             continue
         for part in _split_for_chat(resp):

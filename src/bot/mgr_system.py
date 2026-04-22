@@ -771,7 +771,7 @@ async def yuna_rename_channel(report_channel, args_str, guild):
     """유나가 채널 이름 변경 — '기존이름 새이름'"""
     parts = args_str.split()
     if len(parts) < 2:
-        await send_as_agent(report_channel, MGR_ID, "형식: [CMD:채널이름변경 기존이름 새이름]")
+        await send_as_agent(report_channel, MGR_ID, "rename_channel 인자 부족 — old_name/new_name 필요")
         return
 
     old_name, new_name = parts[0], parts[1]
@@ -793,7 +793,7 @@ async def yuna_set_channel_topic(report_channel, args_str, guild):
     """유나가 채널 토픽 설정 — '채널명 토픽내용'"""
     parts = args_str.split(None, 1)
     if len(parts) < 2:
-        await send_as_agent(report_channel, MGR_ID, "형식: [CMD:채널토픽 채널명 토픽내용]")
+        await send_as_agent(report_channel, MGR_ID, "set_topic 인자 부족 — channel/topic 필요")
         return
 
     ch_name, topic = parts[0], parts[1]
@@ -821,7 +821,7 @@ async def yuna_edit_profile(report_channel, args_str):
     """
     parts = args_str.split(None, 2)
     if len(parts) < 3:
-        await send_as_agent(report_channel, MGR_ID, "형식: [CMD:프로필수정 이름 필드경로 값]")
+        await send_as_agent(report_channel, MGR_ID, "update_profile 인자 부족 — name/field/value 필요")
         return
 
     agent_name, field_path, value = parts[0], parts[1], parts[2]
@@ -999,7 +999,7 @@ async def yuna_edit_relationship(report_channel, args_str):
     """
     parts = args_str.split()
     if len(parts) < 4:
-        await send_as_agent(report_channel, MGR_ID, "형식: [CMD:관계수정 이름A 이름B 필드 값]")
+        await send_as_agent(report_channel, MGR_ID, "update_relationship 인자 부족 — agent_a/agent_b/field/value 필요")
         return
 
     name_a, name_b, field, value = parts[0], parts[1], parts[2], " ".join(parts[3:])
@@ -1109,7 +1109,7 @@ async def yuna_delete_messages(report_channel, args_str):
     """
     parts = args_str.split()
     if len(parts) < 2:
-        await send_as_agent(report_channel, MGR_ID, "형식: [CMD:대화삭제 채널 채널명] 또는 [CMD:대화삭제 키워드 검색어]")
+        await send_as_agent(report_channel, MGR_ID, "clear_messages 인자 부족 — mode=channel/keyword 와 대응 인자 필요")
         return
 
     mode = parts[0]
@@ -1122,7 +1122,7 @@ async def yuna_delete_messages(report_channel, args_str):
 
     elif mode == "화자":
         if len(parts) < 3:
-            await send_as_agent(report_channel, MGR_ID, "형식: [CMD:대화삭제 화자 채널명 이름]")
+            await send_as_agent(report_channel, MGR_ID, "clear_messages mode=speaker 는 channel 과 speaker_name 필요")
             return
         ch_name, agent_name = parts[1], parts[2]
         agents = db.list_agents()
@@ -1233,16 +1233,10 @@ async def yuna_restore_discord(report_channel, args_str, guild):
     agents_db = db.list_agents()
     agent_id_by_name = {a["name"]: a["id"] for a in agents_db}
 
-    import re as _re
-    _restore_tag_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
-
     sent = 0
     for msg in messages:
         speaker = msg["speaker"]
-        text = msg["message"]
-
-        # CMD/QUERY/ACTION 태그 제거 (DB에 태그가 남아있을 수 있음)
-        text = _restore_tag_pat.sub('', text).strip()
+        text = (msg["message"] or "").strip()
         if not text:
             continue
 
@@ -1293,7 +1287,7 @@ async def yuna_approve_action(report_channel, args_str, guild):
         # rest = "대상이름 메시지내용"
         dm_parts = rest.split(None, 1)
         if len(dm_parts) < 2:
-            await send_as_agent(report_channel, MGR_ID, "DM 형식: ACTION승인 DM ID 이름 메시지")
+            await send_as_agent(report_channel, MGR_ID, "DM 승인 인자 부족 — target_name/message 필요")
             return
         target_name, message = dm_parts
 
@@ -1516,7 +1510,7 @@ async def check_dev_results():
             f"결과:\n{message[:2000]}\n\n"
             f"위 개발 결과를 보고 판단해:\n"
             f"1. 성공이면 {oc}한테 뭘 고쳤는지 간결하게 보고해\n"
-            f"2. 실패했거나 의도대로 안 됐으면 네가 다시 [CMD:개발요청 ...]으로 재요청해 (원래 요청 + 실패 원인 포함)\n"
+            f"2. 실패했거나 의도대로 안 됐으면 네가 다시 `request_dev_task` 도구로 재요청해 (원래 요청 + 실패 원인 포함)\n"
             f"3. 네 선에서 판단 불가능한 문제면 {oc}한테 상황 설명하고 어떻게 할지 물어봐"
         )
 
@@ -1634,7 +1628,6 @@ async def _greet_new_persona(guild, agent_id, agent_name, dm_name):
     """새로 만든 persona 에이전트가 자기 dm 채널에서 오너에게 첫 인사 — 채널만 있고
     침묵하면 오너가 들어와도 뭘 해야 할지 모름. 생성 직후 자연스럽게 인사 주도."""
     import asyncio as _aio
-    import re as _re
     from src.bot.core import _split_for_chat
     try:
         await _aio.sleep(3)  # 채널 생성 커밋 + UI 반영 여유
@@ -1656,10 +1649,9 @@ async def _greet_new_persona(guild, agent_id, agent_name, dm_name):
                 agent_id, dm_name, prompt, log_user_message=False
             )
         )
-        cmd_pat = _re.compile(r'\[(?:CMD|QUERY|ACTION):[^\]]*\]')
         sent = 0
         for resp in responses:
-            resp = cmd_pat.sub('', resp).strip()
+            resp = resp.strip()
             if not resp:
                 continue
             for part in _split_for_chat(resp):

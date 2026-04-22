@@ -994,9 +994,8 @@ class DashboardScreen(Screen):
                     for l in t_lines[-4:]:
                         lines.append(f"  [dim]{_trunc(l, 70)}[/dim]")
 
-            # Recent Chat (CMD/QUERY/ACTION 제외)
-            recent = [m for m in db.get_recent_messages(ch_name, limit=10)
-                      if not _re.search(r'\[(?:CMD|QUERY|ACTION):', m["message"] or "")][-3:]
+            # Recent Chat
+            recent = db.get_recent_messages(ch_name, limit=10)[-3:]
             if recent:
                 lines.append(f"  {'─' * 50}")
                 for r in recent:
@@ -1113,12 +1112,9 @@ class DashboardScreen(Screen):
         ch_summary = "  │  ".join(ch_lines) if ch_lines else "[dim]No channels[/dim]"
         items.append(Panel(ch_summary, border_style="dim", box=box.ROUNDED, padding=(0, 1)))
 
-        # Recent Chat (CMD/QUERY/ACTION 태그 포함 메시지 제외)
-        _cmd_re = _re.compile(r'\[(?:CMD|QUERY|ACTION):')
+        # Recent Chat
         chat_lines = []
         for r in (_cache.messages[-20:] if _cache.messages else []):
-            if _cmd_re.search(r["message"] or ""):
-                continue
             sid = r["speaker"]
             c = _get_color(sid) if sid != get_user_id() else "bright_green"
             ts = r["timestamp"][11:16] if r["timestamp"] else ""

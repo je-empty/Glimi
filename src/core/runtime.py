@@ -1064,9 +1064,6 @@ class AgentRuntime:
         if not lines:
             return ["..."]
 
-        # CMD/QUERY/ACTION 태그가 포함된 줄은 태그만 보존 (대화 내용과 분리)
-        _tag_pattern = re.compile(r'\[(?:CMD|QUERY|ACTION):((?:[^\[\]]|\[[^\]]*\])*)\]')
-
         messages = []
         for line in lines:
             cleaned = " ".join(line.split())
