@@ -1,29 +1,32 @@
-"""수동 디스코드 명령 (src/bot/commands.py) 에서 쓰는 프롬프트.
+"""Prompts used by manual Discord commands (src/bot/commands.py).
 
-src/bot/commands.py 에서 분리됨 (Phase 2-B pure move — 로직 변경 없음).
-빌더 목록:
-  - create_agent_prompt:  !캐릭터생성 에서 하나한테 JSON 프로필 요청
-  - profile_image_prompt: 프로필 이미지 생성용 외부 LLM 프롬프트 (ChatGPT/Gemini 복붙용)
-  - analyze_logs_prompt:  !분석 에서 유나한테 최근 대화 분석 요청
+Extracted from src/bot/commands.py (Phase 2-B pure move).
+
+Builders:
+  - create_agent_prompt:  `!캐릭터생성` -> ask Hana for a full JSON profile
+  - profile_image_prompt: external image-gen LLM prompt (ChatGPT/Gemini copy-paste)
+  - analyze_logs_prompt:  `!분석` -> ask Yuna for a recent-conversation analysis
 """
 from __future__ import annotations
 
 
 def create_agent_prompt(new_id: str, concept: str) -> str:
-    """하나에게 새 persona 에이전트 JSON 프로필 생성 요청."""
+    """Ask Hana to produce a JSON profile for a new persona agent."""
     return (
-        f"새로운 페르소나 에이전트를 생성해줘.\n"
-        f"에이전트 ID: {new_id}\n"
-        f"컨셉: {concept}\n\n"
-        f"반드시 완전한 JSON 프로필을 출력해. "
-        f"기존 에이전트 프로필 구조와 동일하게. "
-        f"JSON만 출력하고 다른 텍스트는 넣지 마."
+        f"Create a new persona agent.\n"
+        f"Agent ID: {new_id}\n"
+        f"Concept: {concept}\n\n"
+        f"Output a complete JSON profile — same structure as existing agent profiles. "
+        f"Output JSON ONLY, no other text."
     )
 
 
 def profile_image_prompt(age, outfit_hint: str, char_detail: str) -> str:
-    """프로필 이미지 생성용 외부 LLM (ChatGPT / Gemini) 프롬프트.
-    하나가 만든 캐릭터 상세를 그림 생성 지시문으로 감싸서 return.
+    """External image-generation LLM prompt (ChatGPT / Gemini).
+
+    Wraps the character detail Hana designed into an art-direction instruction.
+    The target here is a diffusion/multimodal model that expects English — do not
+    localize this one.
     """
     base_prompt = (
         f"Anime-style profile illustration, Korean girl, age {age}, "
@@ -36,13 +39,17 @@ def profile_image_prompt(age, outfit_hint: str, char_detail: str) -> str:
 
 
 def analyze_logs_prompt(log_text: str) -> str:
-    """유나한테 최근 대화 로그 분석 요청 (!분석)."""
+    """Ask Yuna to analyze a batch of recent conversation logs (`!분석` command).
+
+    Yuna's speech style (teenage girl) is established by her system prompt and the
+    [LANGUAGE: X] block — we only describe the reporting task here.
+    """
     return (
-        f"최근 대화 로그를 분석해서 보고해줘:\n\n"
+        f"Analyze the recent conversation log and report back:\n\n"
         f"{log_text}\n\n"
-        f"1. 각 에이전트의 현재 상태/감정 추정\n"
-        f"2. 주목할 만한 관계 변화\n"
-        f"3. 대화에서 언급된 제3의 인물이 있다면 알려줘\n"
-        f"4. 새로운 에이전트를 추가하면 좋을 것 같은지 판단해. 있다면 어떤 캐릭터가 좋을지 제안해\n\n"
-        f"네 말투(고1 여자애)로 보고해."
+        f"1. Estimate each agent's current state / emotion.\n"
+        f"2. Note any notable relationship changes.\n"
+        f"3. Flag any third parties mentioned in the conversation.\n"
+        f"4. Decide whether it would be good to add a new agent. If so, suggest what kind of character.\n\n"
+        f"Report in your own voice."
     )

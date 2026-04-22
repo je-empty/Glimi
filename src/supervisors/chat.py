@@ -120,7 +120,7 @@ class ChatSupervisor(Supervisor):
         loop = asyncio.get_event_loop()
         from src.core.prompts.en.supervisor_judge import CHAT_STUCK_QUESTION
         judgment = await loop.run_in_executor(None, lambda: _judge_channel_conv(
-            self.channel_name, CHAT_STUCK_QUESTION
+            self.channel_name, CHAT_STUCK_QUESTION()
         ))
         if "멈춤" in judgment or "stopped" in judgment:
             target_id = self._pick_nudge_target(parts)
