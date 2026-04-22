@@ -185,6 +185,22 @@ class TutorialFlowSupervisor(Supervisor):
         has_syslog = MGR_SYSTEM_LOG in ch_names
         has_creator = CREATOR_CHANNEL in ch_names
         if not has_syslog or not has_creator:
+            # 재기동·충돌 등으로 phase=channels_setup 인데 채널이 아직 없을 수 있음.
+            # 원래 trigger_phase2 가 setup_channels 를 돌리는데, supervisor 가 채널 조건으로
+            # 일찍 return 하면 아무도 진행을 못 시킴 → Phase 2 영구 stall.
+            # 한 번만 setup_channels 재진입 (setup_channels 는 phase=channels_done/complete 면
+            # 알아서 종료하므로 중복 실행 안전).
+            phase = self.scene.current_phase()
+            if phase == "channels_setup" and self._can_nudge():
+                self._mark_nudged()
+                log_writer.system(
+                    f"[sup:tutorial] 재개: phase=channels_setup 인데 채널 미생성 — setup_channels 재진입"
+                )
+                from src.scenes.tutorial.handlers import setup_channels
+                try:
+                    await setup_channels(guild)
+                except Exception as e:
+                    log_writer.system(f"❌ [sup:tutorial] 재개 실패: {type(e).__name__}: {e}")
             return
 
         CREATOR_ID = "agent-creator-001"
