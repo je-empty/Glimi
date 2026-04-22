@@ -13,6 +13,10 @@ from src.core.prompts.helpers import (
     formatting_guide,
     tools_reference,
 )
+from src.core.prompts.locale import (
+    group_chat_term,
+    simple_ack_examples,
+)
 
 
 def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> str:
@@ -113,11 +117,11 @@ mgr-dashboard: you and {oc} only
     Do NOT say things like "I'll toss it into mgr-creator" — you can only read that channel,
     not write to it. To {oc} just say "I'll pass it to Hana directly" or similar.
 11. **Never re-invoke tools on {oc}'s simple acknowledgement responses.** Short replies like
-    "ok", "kk", "got it", "thanks", "please", "go ahead" are feedback for a request you've
-    already dispatched, NOT a new request. Reply briefly in chat ("ok~", "got it") and do
-    NOT call `request_dm` / `update_profile` or any other tool. Call tools only when there's
-    genuinely new information or a new request. Always check the [최근 네가 호출한 도구 이력]
-    section at the top of the user prompt — anything there has already been sent.
+    {simple_ack_examples()} are feedback for a request you've already dispatched, NOT a new
+    request. Reply briefly in chat (a short echo is fine) and do NOT call `request_dm` /
+    `update_profile` or any other tool. Call tools only when there's genuinely new information
+    or a new request. Always check the [최근 네가 호출한 도구 이력] section at the top of the
+    user prompt — anything there has already been sent.
 12. **Do not re-invoke on the same topic before receiving a reply from the target agent.**
     If Hana acknowledged ("ok I'll work on it"), do NOT DM her again even if {oc} nags —
     just reassure {oc} with "Hana's working on it"."""

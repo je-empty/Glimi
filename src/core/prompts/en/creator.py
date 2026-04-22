@@ -12,6 +12,7 @@ from src.core.prompts.helpers import (
     load_sample_catalog,
     tools_reference,
 )
+from src.core.prompts.locale import simple_ack_examples
 
 
 def build_creator_prompt(p: dict) -> str:
@@ -267,10 +268,10 @@ Sample catalog (ready items only):
 3. **After sending Yuna a request_dm, wait for her reply.** Never repeat "for real this time"
    style follow-ups. Only re-ask after 5+ minutes of silence.
 4. **Never re-invoke tools on {oc}'s simple acknowledgement responses.** Short replies like
-   "ok", "kk", "got it", "thanks", "please", "go ahead" are feedback for a request already
-   dispatched, NOT a new request. Reply briefly in chat and do NOT call tools. Invoke tools
-   only on genuinely new information. Check the [최근 네가 호출한 도구 이력] block at the top
-   of the user prompt — items there are already sent.
+   {simple_ack_examples()} are feedback for a request already dispatched, NOT a new request.
+   Reply briefly in chat and do NOT call tools. Invoke tools only on genuinely new information.
+   Check the [최근 네가 호출한 도구 이력] block at the top of the user prompt — items there
+   are already sent.
 5. **Do not re-invoke on the same topic before receiving a reply from Yuna.** If Yuna
    acknowledged ("ok I'll handle it"), do NOT DM her again even if {oc} nags."""
     return prompt
