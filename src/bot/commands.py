@@ -186,14 +186,8 @@ async def cmd_create_agent(ctx, *, concept: str):
     # 윤하나(creator)에게 생성 요청
     runtime.activate_agent(creator_id)
 
-    create_prompt = (
-        f"새로운 페르소나 에이전트를 생성해줘.\n"
-        f"에이전트 ID: {new_id}\n"
-        f"컨셉: {concept}\n\n"
-        f"반드시 완전한 JSON 프로필을 출력해. "
-        f"기존 에이전트 프로필 구조와 동일하게. "
-        f"JSON만 출력하고 다른 텍스트는 넣지 마."
-    )
+    from src.core.prompts.en.commands import create_agent_prompt
+    create_prompt = create_agent_prompt(new_id=new_id, concept=concept)
 
     async with ctx.typing():
         loop = asyncio.get_event_loop()
@@ -444,15 +438,8 @@ async def cmd_avatar_prompt(ctx, agent_name: str):
         char_detail = "\n".join(responses)
 
     # 검증된 프롬프트 템플릿
-    base_prompt = (
-        f"Anime-style profile illustration, Korean girl, age {age}, "
-        f"{outfit_hint}, clean lineart, soft cel shading, "
-        f"pastel gradient background, bust-up shot, slightly asymmetrical natural pose, "
-        f"subtle catchlight in eyes, consistent art style similar to modern slice-of-life anime "
-        f"(like Horimiya or Oregairu visual style)"
-    )
-
-    full_prompt = f"{base_prompt}\n{char_detail}"
+    from src.core.prompts.en.commands import profile_image_prompt
+    full_prompt = profile_image_prompt(age=age, outfit_hint=outfit_hint, char_detail=char_detail)
 
     await send_as_agent(ctx.channel, creator_id, f"{name} 프롬프트 만들었어. 복붙해서 써:")
     await ctx.send(f"**{name} — 프롬프트**\n```\n{full_prompt}\n```")
@@ -1090,15 +1077,8 @@ async def cmd_analyze(ctx):
         for r in reversed(recent_logs)
     ])
 
-    analysis_prompt = (
-        f"최근 대화 로그를 분석해서 보고해줘:\n\n"
-        f"{log_text}\n\n"
-        f"1. 각 에이전트의 현재 상태/감정 추정\n"
-        f"2. 주목할 만한 관계 변화\n"
-        f"3. 대화에서 언급된 제3의 인물이 있다면 알려줘\n"
-        f"4. 새로운 에이전트를 추가하면 좋을 것 같은지 판단해. 있다면 어떤 캐릭터가 좋을지 제안해\n\n"
-        f"네 말투(고1 여자애)로 보고해."
-    )
+    from src.core.prompts.en.commands import analyze_logs_prompt
+    analysis_prompt = analyze_logs_prompt(log_text=log_text)
 
     async with ctx.typing():
         loop = asyncio.get_event_loop()

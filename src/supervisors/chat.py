@@ -119,10 +119,9 @@ class ChatSupervisor(Supervisor):
             return
 
         loop = asyncio.get_event_loop()
+        from src.core.prompts.en.supervisor_judge import CHAT_STUCK_QUESTION
         judgment = await loop.run_in_executor(None, lambda: _judge_channel_conv(
-            self.channel_name,
-            "이 대화가 자연스럽게 이어지고 있나, 아니면 한쪽이 멈춰서 안 되고 있나? "
-            "멈춤이면 누가 다음에 말해야 하나? '진행중', '멈춤:에이전트이름' 중 하나로."
+            self.channel_name, CHAT_STUCK_QUESTION
         ))
         if "멈춤" in judgment or "stopped" in judgment:
             target_id = self._pick_nudge_target(parts)
