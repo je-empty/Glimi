@@ -1,34 +1,52 @@
-"""Supervisor 용 Haiku judge 질문 템플릿.
+"""Haiku judge question templates used by Supervisors.
 
-src/supervisors/chat.py + src/scenes/tutorial/supervisor.py 에서 분리됨
-(Phase 2-B pure move). 각 judge 는 Haiku 에게 최근 대화 요약을 보여주고
-한 단어 판정을 받는 구조 — 이 파일은 "question" 문자열만 제공.
+Extracted from src/supervisors/chat.py + src/scenes/tutorial/supervisor.py
+(Phase 2-B pure move). Each judge shows Haiku a recent-conversation summary and
+asks for a one-word verdict — this module provides the question strings.
+
+Questions are in English (prompt-engineering norm). The *expected answer tokens*
+stay in the community's language because downstream code pattern-matches against
+them (e.g. `if "멈춤" in judgment`). Locale helpers inject the right token list.
 """
 from __future__ import annotations
 
-
-# ── chat.py (범용 채널 대화 감시) ────────────────────────
-
-CHAT_STUCK_QUESTION = (
-    "이 대화가 자연스럽게 이어지고 있나, 아니면 한쪽이 멈춰서 안 되고 있나? "
-    "멈춤이면 누가 다음에 말해야 하나? '진행중', '멈춤:에이전트이름' 중 하나로."
+from src.core.prompts.locale import (
+    chat_stuck_answer_tokens,
+    profile_collection_answer_tokens,
+    creator_icebreak_answer_tokens,
 )
 
 
-# ── tutorial/supervisor.py ──────────────────────────────
+# Exposed as callables because the returned answer tokens depend on the active
+# community's language. Callers should do e.g. `CHAT_STUCK_QUESTION()`.
 
-TUTORIAL_PROFILE_COLLECTION_QUESTION = (
-    "최근 대화를 보고 판단해줘. "
-    "유저가 마지막에 말했는데 에이전트가 아직 반응하지 않은 건가? "
-    "아니면 잡담으로 빠져서 프로필 수집이 진행되지 않는 건가? "
-    "'미응답', '잡담', '진행중' 중 하나로."
-)
+def CHAT_STUCK_QUESTION() -> str:  # noqa: N802 (kept uppercase to mirror old constant name)
+    """General channel-conversation supervisor (src/supervisors/chat.py)."""
+    tokens = chat_stuck_answer_tokens()
+    return (
+        "Is this conversation flowing naturally, or has one side stalled and it's stuck? "
+        f"If stalled, who should speak next? Answer with one of: {tokens}."
+    )
 
-TUTORIAL_CREATOR_ICEBREAK_QUESTION = (
-    "크리에이터가 아이스브레이킹을 충분히 했나? "
-    "에이전트 생성까지 진행됐나? "
-    "'충분', '진행중' 중 하나로."
-)
+
+def TUTORIAL_PROFILE_COLLECTION_QUESTION() -> str:  # noqa: N802
+    """Tutorial: user spoke but agent hasn't reacted / drifted into small talk."""
+    tokens = profile_collection_answer_tokens()
+    return (
+        "Look at the recent conversation and judge: "
+        "did the user just speak and the agent has not reacted yet? "
+        "Or has it drifted into small talk so profile collection isn't progressing? "
+        f"Answer with one of: {tokens}."
+    )
+
+
+def TUTORIAL_CREATOR_ICEBREAK_QUESTION() -> str:  # noqa: N802
+    """Tutorial: has the creator icebroken enough / reached agent creation?"""
+    tokens = creator_icebreak_answer_tokens()
+    return (
+        "Has the creator icebroken enough? Has it progressed to agent creation? "
+        f"Answer with one of: {tokens}."
+    )
 
 
 __all__ = [
