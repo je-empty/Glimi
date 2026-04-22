@@ -767,8 +767,8 @@ async function resetAgentModel(agentId) {
 }
 
 async function openAgent(id) {
-  // 모달은 **요약 카드** 전용 — 풀 정보는 /agent/{id}?community=X 전체 페이지.
-  // 모달 좁아서 스크롤·정보 밀도 나빠 — 요약만 보여주고 "전체 보기" 로 이동.
+  // 모달 = 요약 상단 (항상 펼침) + 상세 섹션 4개 (details/summary 접힘).
+  // 풀페이지 링크는 하단 유지. 세로 밀도는 max-height: 100vh-48px (panel) 안에서 overflow.
   const d = await j(q(`/api/agent?id=${encodeURIComponent(id)}`));
   if (!d || d.error) { openModal('⚠', 'Error', `<div class="empty">${esc(d?.error || 'failed to load')}</div>`); return; }
 
@@ -798,22 +798,23 @@ async function openAgent(id) {
     );
   }
 
-  // ── 관계 top 3 (친밀도 내림차순) ─────
-  const relsTop = (d.relationships || [])
-    .slice()
-    .sort((a, b) => (b.intimacy || 0) - (a.intimacy || 0))
-    .slice(0, 3);
-  const relsHtml = relsTop.map(r => {
+  // ── 관계 top 3 (친밀도 내림차순) — 요약용 ──
+  const relsSorted = (d.relationships || []).slice().sort((a, b) => (b.intimacy || 0) - (a.intimacy || 0));
+  const relsTop = relsSorted.slice(0, 3);
+  const renderRelRow = (r) => {
     const pct = Math.min(100, r.intimacy);
     return `<div class="rel-row">
       <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
       <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
       <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
       <span class="intimacy-num">${r.intimacy}</span>
+      ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
     </div>`;
-  }).join('');
+  };
+  const relsTopHtml = relsTop.map(renderRelRow).join('');
+  const relsAllHtml = relsSorted.map(renderRelRow).join('');
 
-  // ── 최근 활동 1줄 ──────────────────────
+  // ── 최근 활동 1줄 (요약) ──────────────
   const lastMsg = (d.primary_chat || []).slice(-1)[0];
   const recentLine = lastMsg
     ? `<div style="display:flex;gap:8px;align-items:baseline;font-size:12.5px;color:var(--text-dim)">
@@ -823,10 +824,113 @@ async function openAgent(id) {
       </div>`
     : '<div style="color:var(--text-faint);font-size:12px">최근 활동 없음</div>';
 
+  // ── 메모리 섹션 (pinned + by channel + facts + relationship_history) ──
+  const TYPE_LABEL = {
+    event: {label: '사건', icon: '🎬'},
+    fact: {label: '사실', icon: '💡'},
+    emotion: {label: '감정', icon: '💓'},
+    relationship: {label: '관계', icon: '🤝'},
+  };
+  const renderMemItem = (m, opts = {}) => {
+    const t = m.mem_type ? TYPE_LABEL[m.mem_type] : null;
+    const typeBadge = t ? `<span class="mem-type-badge" title="유형">${t.icon} ${t.label}</span>` : '';
+    const imp = m.importance ? `<span class="mem-imp" title="중요도 ${m.importance}/10">${m.importance}</span>` : '';
+    const pin = m.is_pinned ? '<span class="mem-pin" title="고정됨">📌</span>' : '';
+    const ents = (m.related_entities && m.related_entities.length)
+      ? `<span class="mem-ents" title="관련 대상">${m.related_entities.map(e => esc(e)).join(' · ')}</span>` : '';
+    const ch = opts.showChannel && m.channel ? `<span class="mem-ch">${esc(m.channel)}</span>` : '';
+    return `<div class="mem-item" data-mem-id="${m.id || ''}">
+      ${pin}${typeBadge}${imp}
+      <span class="mcontent">${esc(m.content)}</span>
+      ${ents}${ch}
+      <span class="mts">${esc(fmtLocalMonthDayHM(m.created_at))}</span>
+    </div>`;
+  };
+  const LAYER_LABEL = {
+    1: {name: '최근', icon: '📖', desc: '최근 몇 분~몇 시간 요약'},
+    2: {name: '중기', icon: '📚', desc: '하루 분량 묶음 요약'},
+    3: {name: '장기', icon: '🗂', desc: '주/월 단위 큰 흐름'},
+  };
+  let memHtml = '';
+  let memCount = 0;
+  if ((d.pinned_memories || []).length) {
+    memCount += d.pinned_memories.length;
+    memHtml += `<div class="mem-block mem-pinned-block">
+      <h5>📌 고정된 기억 <span class="mem-count">(${d.pinned_memories.length})</span>
+        <span class="mem-sub">항상 떠올리는 기억</span></h5>
+      ${d.pinned_memories.map(m => renderMemItem(m, {showChannel: true})).join('')}
+    </div>`;
+  }
+  for (const [ch, mems] of Object.entries(d.memories_by_channel || {})) {
+    memCount += mems.length;
+    const byLevel = {3: [], 2: [], 1: []};
+    mems.forEach(m => { (byLevel[m.level] || byLevel[1]).push(m); });
+    const anyLevels = [3, 2, 1].filter(l => byLevel[l].length);
+    if (!anyLevels.length) continue;
+    memHtml += `<div class="mem-block">
+      <h5><span class="ch-icon">${chIcon(ch)}</span> ${esc(ch)} <span class="mem-count">(${mems.length})</span></h5>
+      ${anyLevels.map(l => {
+        const L = LAYER_LABEL[l];
+        return `<div class="mem-lvl-group">
+          <div class="mem-lvl-label" title="${L.desc}">${L.icon} ${L.name} <span class="mem-count">(${byLevel[l].length})</span></div>
+          ${byLevel[l].map(renderMemItem).join('')}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+  if ((d.agent_facts || []).length) {
+    memCount += d.agent_facts.length;
+    const bySubject = {};
+    (d.agent_facts || []).forEach(f => {
+      if (!bySubject[f.subject]) bySubject[f.subject] = [];
+      bySubject[f.subject].push(f);
+    });
+    memHtml += `<div class="mem-block mem-facts-group">
+      <h5>💡 알고 있는 사실 <span class="mem-count">(${d.agent_facts.length})</span>
+        <span class="mem-sub">대상별 구조화된 지식</span></h5>`;
+    memHtml += Object.entries(bySubject).map(([subject, facts]) =>
+      `<div class="mem-subject-block">
+        <div class="mem-subject-label">${esc(subject)} <span class="mem-count">(${facts.length})</span></div>
+        ${facts.map(f => `<div class="mem-item">
+          <span class="mem-predicate">${esc(f.predicate)}</span>
+          <span class="mcontent">${esc(f.object)}</span>
+          ${f.importance >= 8 ? '<span class="mem-pin" title="중요">⭐</span>' : ''}
+          <span class="mts">${esc(fmtLocalMonthDayHM(f.created_at))}</span>
+        </div>`).join('')}
+      </div>`
+    ).join('');
+    memHtml += '</div>';
+  }
+  if ((d.relationship_history || []).length) {
+    memCount += d.relationship_history.length;
+    memHtml += `<div class="mem-block">
+      <h5>📈 관계 변화 <span class="mem-count">(${d.relationship_history.length})</span></h5>
+      ${d.relationship_history.slice(0, 10).map(h => `<div class="mem-item">
+        <span class="mem-predicate">${esc(h.delta_type || '?')}</span>
+        <span class="mcontent">${esc(h.from_state || '?')} → ${esc(h.to_state || '?')}${h.reason ? ' · ' + esc(h.reason) : ''}</span>
+        <span class="mts">${esc(fmtLocalMonthDayHM(h.created_at))}</span>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  // ── 추론 로그 ───────────────────────────
+  const thinkingCount = (d.thinking_logs || []).length;
+  const thinkingHtml = (d.thinking_logs || []).map(l =>
+    `<div class="logline" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);padding:2px 0">${esc(l)}</div>`
+  ).join('');
+
+  // ── 최근 대화 ───────────────────────────
+  const chatCount = (d.primary_chat || []).length;
+  const chatHtml = (d.primary_chat || []).map(m => renderMessage({...m, channel: m.channel || d.primary_channel})).join('');
+
   const detailUrl = `/agent/${encodeURIComponent(d.id)}?community=${encodeURIComponent(COMMUNITY || '')}`;
   const emotionLine = d.emotion
     ? `${esc(d.emoji || '')} ${esc(d.emotion)} <span style="color:var(--text-faint)">(${esc(String(d.intensity ?? ''))}/10)</span>`
     : '';
+
+  // details/summary 공통 스타일 (인라인 — 신규 CSS 최소화)
+  const sumStyle = 'cursor:pointer;list-style:none;padding:10px 14px;margin:-14px -16px;border-radius:10px;font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.2px;display:flex;align-items:center;gap:8px';
+  const secInner = 'margin-top:12px';
 
   const body = `
     <div class="detail-section" style="margin-top:0">
@@ -836,11 +940,27 @@ async function openAgent(id) {
         ${modelHtml ? `<dt>Model</dt><dd>${modelHtml}</dd>` : ''}
       </dl>
     </div>
-    ${relsHtml ? `<div class="detail-section"><h4>Relationships · Top ${relsTop.length}</h4>${relsHtml}</div>` : ''}
+    ${relsTopHtml ? `<div class="detail-section"><h4>🤝 관계 · Top ${relsTop.length}</h4>${relsTopHtml}</div>` : ''}
     <div class="detail-section">
-      <h4>Recent Activity</h4>
+      <h4>💬 최근 활동</h4>
       ${recentLine}
     </div>
+    ${memHtml ? `<details class="detail-section" style="padding:14px 16px">
+      <summary style="${sumStyle}"><span>🧠 메모리 <span class="mem-count" style="text-transform:none;letter-spacing:0">(${memCount})</span></span><span style="margin-left:auto;color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">클릭해서 펼치기</span></summary>
+      <div style="${secInner}">${memHtml}</div>
+    </details>` : ''}
+    ${relsAllHtml && relsSorted.length > 3 ? `<details class="detail-section" style="padding:14px 16px">
+      <summary style="${sumStyle}"><span>🤝 관계 전체 <span class="mem-count" style="text-transform:none;letter-spacing:0">(${relsSorted.length})</span></span><span style="margin-left:auto;color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">클릭해서 펼치기</span></summary>
+      <div style="${secInner}">${relsAllHtml}</div>
+    </details>` : ''}
+    ${thinkingHtml ? `<details class="detail-section" style="padding:14px 16px">
+      <summary style="${sumStyle}"><span>💭 추론 로그 <span class="mem-count" style="text-transform:none;letter-spacing:0">(${thinkingCount})</span></span><span style="margin-left:auto;color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">클릭해서 펼치기</span></summary>
+      <div style="${secInner}">${thinkingHtml}</div>
+    </details>` : ''}
+    ${chatHtml ? `<details class="detail-section" style="padding:14px 16px">
+      <summary style="${sumStyle}"><span>💬 최근 대화 · ${esc(d.primary_channel || '')} <span class="mem-count" style="text-transform:none;letter-spacing:0">(${chatCount})</span></span><span style="margin-left:auto;color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">클릭해서 펼치기</span></summary>
+      <div class="msg-list" style="${secInner}">${chatHtml}</div>
+    </details>` : ''}
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
       <a href="${detailUrl}" class="act-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">🗗 전체 보기</a>
     </div>
