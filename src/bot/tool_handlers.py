@@ -432,13 +432,16 @@ async def _h_request_dm(args: dict, ctx: ToolContext):
     target = args["target"]
     cur_msg = args.get("message", "") or ""
 
-    # 중복 호출 차단 — **60초 내 + 거의 동일 메시지** 만 drop.
-    # 과거엔 영구 저장 + 70% 일치로 너무 공격적이라, 유저가 재촉해서 유나/서진이 비슷한 문구로
-    # request_dm 두 번째 시도하면 두 번째가 silent drop → "보낼게" 해놓고 실제 증발하는 버그.
-    # (ex: "빈이가 발냄새 궁금하대" → 1분 뒤 "빈이가 또 발냄새 물어보래" drop)
+    # 중복 호출 차단 — 이중 방어:
+    #   (a) 최근 180초 내 유사 메시지 (threshold 0.80) → skip
+    #   (b) 최근 180초 내 같은 target 에 **3회 이상** 호출 → 무조건 skip (내용 무관)
+    # 과거엔 60초/0.95 라 유나가 test_user "ㅇㅇ!" 확인 응답마다 미묘히 다른 문구로 request_dm
+    # 재발사해서 하나한테 똑같은 요청 20+ 회 반복 (2026-04-23 QA 관찰). 시간창 확장 + 타겟
+    # 단위 호출 빈도 카운트로 강화.
     import time as _time
     import json as _json
     dedup_key = f"request_dm:last:{ctx.caller_agent_id}:{target}"
+    count_key = f"request_dm:count:{ctx.caller_agent_id}:{target}"
     prev_raw = db.get_meta(dedup_key) or ""
     try:
         prev_obj = _json.loads(prev_raw) if prev_raw else {}
@@ -447,18 +450,40 @@ async def _h_request_dm(args: dict, ctx: ToolContext):
     prev_msg = prev_obj.get("msg", "") if isinstance(prev_obj, dict) else ""
     prev_ts = prev_obj.get("ts", 0) if isinstance(prev_obj, dict) else 0
     now = _time.time()
-    within_window = (now - prev_ts) < 60  # 60초 내 재전송
-    if within_window and prev_msg and _similar_prefix(prev_msg, cur_msg, threshold=0.95):
+    within_window = (now - prev_ts) < 180  # 180초 (3분) 로 확장
+    if within_window and prev_msg and _similar_prefix(prev_msg, cur_msg, threshold=0.80):
         log_writer.system(
-            f"[request_dm] {ctx.caller_agent_id} → {target} 60초 내 거의 동일 메시지 스킵 "
+            f"[request_dm] {ctx.caller_agent_id} → {target} 3분 내 유사 메시지 스킵 "
             f"(prev='{prev_msg[:40]}', cur='{cur_msg[:40]}')"
         )
         return {
             "skipped": True,
-            "reason": "same_message_within_60s",
+            "reason": "similar_message_within_3min",
             "target": target,
-            "note": "방금 보낸 메시지와 거의 동일해서 중복 방지됨. 다른 내용이면 표현 바꿔서 재시도.",
+            "note": "최근 3분 내 비슷한 메시지를 이미 보냈다. 하나 응답 기다리지 말고 재촉 금지.",
         }
+
+    # (b) 타겟 단위 호출 빈도 체크 — 같은 target 에 180초 내 3회+ 호출 시 강제 skip
+    count_raw = db.get_meta(count_key) or ""
+    try:
+        count_obj = _json.loads(count_raw) if count_raw else {}
+    except Exception:
+        count_obj = {}
+    timestamps = count_obj.get("ts_list", []) if isinstance(count_obj, dict) else []
+    # 180초 창 밖 타임스탬프는 버림
+    timestamps = [t for t in timestamps if (now - t) < 180]
+    if len(timestamps) >= 3:
+        log_writer.system(
+            f"[request_dm] {ctx.caller_agent_id} → {target} 3분 내 {len(timestamps)}회 연속 호출 — 강제 차단"
+        )
+        return {
+            "skipped": True,
+            "reason": "too_frequent_same_target",
+            "target": target,
+            "note": f"{target}에게 3분 내 {len(timestamps)}번 보냄. 응답 올 때까지 기다려. test_user 의 확인성 답변에 또 도구 호출 하지 마.",
+        }
+    timestamps.append(now)
+    db.set_meta(count_key, _json.dumps({"ts_list": timestamps}, ensure_ascii=False))
     db.set_meta(dedup_key, _json.dumps({"msg": cur_msg, "ts": now}, ensure_ascii=False))
     s = _json.dumps({
         "type": "DM",
