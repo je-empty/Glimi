@@ -1,26 +1,61 @@
-"""프롬프트 모듈 — agent_type 별 system prompt 빌더.
+"""프롬프트 모듈 — agent_type × language 별 system prompt 빌더.
 
 구조:
     src/core/prompts/
-    ├── __init__.py          ← 이 파일: build_system_prompt dispatch
-    ├── helpers.py           ← 공통 헬퍼 (도구 레퍼런스/포맷 가이드/말투/별칭/채널 요약/샘플 카탈로그)
-    └── en/                  ← 정본 (모든 프롬프트)
-        ├── common.py        ← build_common_prompt + core_identity_rules
-        ├── persona.py       ← build_persona_prompt
-        ├── mgr.py           ← build_mgr_prompt
-        └── creator.py       ← build_creator_prompt
+    ├── __init__.py          ← 이 파일: build_system_prompt + get_builder dispatch
+    ├── helpers.py           ← 공통 헬퍼 (tools reference / formatting / speech / pet name / ...)
+    ├── en/                  ← 정본 (순수 영어)
+    │   ├── common.py        ← build_common_prompt + core_identity_rules
+    │   ├── persona.py
+    │   ├── mgr.py
+    │   ├── creator.py
+    │   ├── onboarding.py
+    │   ├── mgr_feedback.py
+    │   ├── commands.py
+    │   └── supervisor_judge.py
+    └── ko/                  ← 한국 문화 특화 override (존댓말 / 호칭 / 해례)
+        └── ...              ← 없는 모듈은 en fallback
 
-향후 `ko/` 오버라이드 추가 시: community.get_language() 기반으로 선택,
-미구현 빌더는 en fallback.
+언어 dispatch:
+    community.get_language() → 'ko' 면 ko/ 먼저 찾고 없으면 en/ 폴백.
+    en 만 쓰는 시스템 (LLM judge 등) 은 직접 en import.
 """
 from __future__ import annotations
 
-from src.core.prompts import en
+import importlib
+from typing import Callable
+
+
+def _resolve_lang() -> str:
+    """현재 커뮤니티 언어. 오류 시 'en'."""
+    try:
+        from src.community import get_language
+        return get_language() or "en"
+    except Exception:
+        return "en"
+
+
+def _get_builder(module: str, name: str) -> Callable:
+    """lang 기반 dispatch — ko/{module} 에 name 있으면 그거, 없으면 en/{module}.name.
+
+    module: 'common' | 'persona' | 'mgr' | 'creator' | 'onboarding' | 'mgr_feedback' | 'commands' | 'supervisor_judge'
+    name:   함수명 (예: 'build_persona_prompt')
+    """
+    lang = _resolve_lang()
+    if lang != "en":
+        try:
+            m = importlib.import_module(f"src.core.prompts.{lang}.{module}")
+            fn = getattr(m, name, None)
+            if fn is not None:
+                return fn
+        except ImportError:
+            pass  # ko 모듈 없음 — en fallback
+    en_module = importlib.import_module(f"src.core.prompts.en.{module}")
+    return getattr(en_module, name)
 
 
 def build_system_prompt(agent_id: str, include_profile_image_template: bool = False) -> str:
-    """에이전트용 system prompt 생성."""
-    # lazy import — profile.py 와의 순환 회피
+    """에이전트용 system prompt 생성 — 커뮤니티 언어에 맞춰 빌더 선택."""
     from src.core.profile import load_profile
 
     profile = load_profile(agent_id)
@@ -30,12 +65,15 @@ def build_system_prompt(agent_id: str, include_profile_image_template: bool = Fa
     agent_type = profile.get("type", "persona")
 
     if agent_type == "persona":
-        return en.build_persona_prompt(profile)
+        builder = _get_builder("persona", "build_persona_prompt")
+        return builder(profile)
     elif agent_type == "mgr":
-        return en.build_mgr_prompt(profile, include_profile_image_template=include_profile_image_template)
+        builder = _get_builder("mgr", "build_mgr_prompt")
+        return builder(profile, include_profile_image_template=include_profile_image_template)
     elif agent_type == "creator":
-        return en.build_creator_prompt(profile)
+        builder = _get_builder("creator", "build_creator_prompt")
+        return builder(profile)
     return ""
 
 
-__all__ = ["build_system_prompt"]
+__all__ = ["build_system_prompt", "_get_builder"]

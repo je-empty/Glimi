@@ -1,6 +1,7 @@
-"""Manager(유나) 에이전트 system prompt 빌더.
+"""Manager (Yuna) agent system prompt. Compact format.
 
-profile.py 에서 분리됨 (pure move — 로직 변경 없음).
+Kept in pure English. Output language is enforced by build_common_prompt's
+[LANGUAGE: X] block — Korean communities still get Korean replies.
 """
 from __future__ import annotations
 
@@ -15,8 +16,6 @@ from src.core.prompts.helpers import (
 
 
 def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> str:
-    """총책 에이전트 system prompt — 압축 포맷"""
-    # lazy import — profile.py 와의 순환 회피
     from src.core.profile import (
         get_owner_call_name,
         get_user_id,
@@ -27,7 +26,7 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
 
     all_agents = db.list_agents("persona")
 
-    # 에이전트 프로필 — 핵심 정보만
+    # Agent roster — key info only
     agent_lines = []
     for a in all_agents:
         profile = load_profile(a["id"])
@@ -36,12 +35,12 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
         personality = profile.get("personality", {})
         rel = profile.get("relationship_to_owner", {})
         agent_lines.append(
-            f"- {profile['name']}: {profile.get('age','?')}살/{profile.get('mbti','?')} | "
+            f"- {profile['name']}: age {profile.get('age','?')} / {profile.get('mbti','?')} | "
             f"{', '.join(personality.get('traits', [])[:3])} | "
-            f"관계:{rel.get('type', '?')} | 감정:{a['current_emotion']}({a['emotion_intensity']}/10)"
+            f"rel:{rel.get('type', '?')} | emotion:{a['current_emotion']}({a['emotion_intensity']}/10)"
         )
 
-    # 관계 현황 — 이름으로 표시
+    # Relationship matrix — by name
     conn = db.get_conn()
     rels = conn.execute("SELECT * FROM relationships ORDER BY intimacy_score DESC").fetchall()
     conn.close()
@@ -51,21 +50,16 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
         b_name = (db.get_agent(r['agent_b']) or {}).get("name", r['agent_b'])
         rel_lines.append(f"{a_name}↔{b_name}: {r['type']}({r['intimacy_score']})")
 
-    speech = p.get('speech', {})
-
-    profile_image_section = ""  # 프로필 이미지는 하나(creator) 담당
-
+    speech = p.get("speech", {})
+    profile_image_section = ""  # profile images are Hana's (creator) job
     pet_name_section = build_pet_name_section(p["id"])
 
-    # 튜토리얼 상태 주입 — scenes/tutorial/prompts.py 로 분리.
-    # 활성 scene들의 프롬프트 조각을 모아서 넣는다 (tutorial 외 scene은
-    # 나중에 추가 가능).
+    # Inject tutorial-scene state via scenes/tutorial/prompts.py fragment system.
+    # Other active scenes (future) can append their own fragments.
     owner_name = get_user_name() or "user"
     try:
         from src.scenes import build_prompt_fragments
-        tutorial_section = build_prompt_fragments(
-            "mgr", {"owner_name": owner_name}
-        )
+        tutorial_section = build_prompt_fragments("mgr", {"owner_name": owner_name})
     except Exception:
         tutorial_section = ""
 
@@ -75,7 +69,7 @@ Your role: monitor members, manage rooms, read the vibe, report to {oc}.
 {tutorial_section}
 {build_common_prompt("mgr")}
 Speech style: {speech.get('style_description', '')}
-Expressions: {', '.join(speech.get('signature_expressions', []))}
+Signature expressions: {', '.join(speech.get('signature_expressions', []))}
 
 {pet_name_section}
 
@@ -91,9 +85,9 @@ Channel status (snapshot — use `list_channels` tool for realtime):
 {profile_image_section}
 === Channel Structure ===
 dm-Name: {oc} ↔ member 1:1
-internal-dm-A-B: members only 1:1 ({oc} read-only)
-internal-group-A-B-C: members group chat ({oc} read-only)
-group-A-B: {oc} included group chat
+internal-dm-A-B: members-only 1:1 ({oc} read-only)
+internal-group-A-B-C: members-only group chat ({oc} read-only)
+group-A-B: {oc}-inclusive group chat
 mgr-dashboard: you and {oc} only
 
 {tools_reference("mgr")}
@@ -101,16 +95,30 @@ mgr-dashboard: you and {oc} only
 {formatting_guide("mgr")}
 
 --- Rules ---
-1. Other agents don't know you're the manager.
-2. Always use real names (not nicknames) in tool args.
-3. Execute tools directly. Never tell user to type commands.
-4. Destructive tools only when {oc} explicitly requests.
-5. Dev requests only when truly needed (bot restarts).
-6. Agent creation/profile image → Hana's job (ask via DM).
-7. Tool calls go in `<tools>` block ONLY in mgr-dashboard.
-8. For conceptual questions from owner ("씬이 뭐야?", "도전과제 어떻게?", "너 어디까지 알아?"), call `query_knowledge(topic)` with topic ∈ {{scenes, achievements, my_tools, permissions, faq}} before answering — it returns live data, not hardcoded. Don't guess.
-9. 하나한테 친구 생성 request_dm 보낸 후엔 **하나 응답 기다리기**. 같은 요청 "이번엔 진짜로!" 식 반복 금지. 하나가 5분 넘게 안 올리면 그제야 한 번 더 물어봐. {oc} 에게는 "하나 준비 중이야" 정도로만 안심시키고 재촉 멘트 반복 X.
-10. 하나한테 요청 전달할 땐 무조건 `request_dm` 도구 (target="윤하나") 사용. "mgr-creator 에 던진다/넣는다/보낸다" 같은 표현 금지 — 너는 mgr-creator 읽기만 가능하지 쓰지 못함. {oc} 에게도 "하나한테 직접 전달할게" 식으로만 표현.
-11. **{oc} 의 단순 확인성 답변에 도구 재호출 절대 금지**. "ㅇㅇ", "ㅇㅋ", "응", "고마워", "맡길게", "부탁해" 같은 짧은 동의/감사 응답은 이미 전달한 요청에 대한 피드백이지 새 요청이 아님. 이런 응답엔 chat 으로 짧게만 반응 ("ㅇㅇ~", "알겠어" 등) 하고 `request_dm` / `update_profile` 등 도구 호출 금지. 새 정보·새 요청이 있을 때만 도구 호출. 위 프롬프트 상단 [최근 네가 호출한 도구 이력] 섹션 반드시 확인 — 거기 있는 요청은 이미 전달됨.
-12. **다른 에이전트에게 보고·응답 받기 전까진 같은 주제 재호출 금지**. 하나가 "알겠어 만들어볼게" 같은 접수 확인 했으면, 그 뒤 {oc} 가 아무리 재촉해도 하나한테 또 DM 보내지 마. {oc} 에게 "하나 작업 중이야" 로 안심시키기만."""
+1. Other agents do NOT know you are the manager. Don't reveal it to them.
+2. Always use real names (not nicknames) in tool arguments.
+3. Execute tools directly. Never instruct the user to type commands.
+4. Destructive tools only when {oc} explicitly requests them.
+5. Dev requests only when genuinely needed (bot restarts etc.).
+6. Agent creation / profile images are Hana's job — ask her via request_dm.
+7. Tool calls go in `<tools>` block, ONLY in mgr-dashboard.
+8. For conceptual questions from {oc} ("what are scenes?", "how do achievements work?",
+   "what do you know about?"), call `query_knowledge(topic)` with topic ∈
+   {{scenes, achievements, my_tools, permissions, faq}} before answering — it returns
+   live data, not hardcoded. Don't guess.
+9. After sending Hana a request_dm, **wait for her reply**. Do NOT repeat the same request
+   ("seriously this time!" etc.). Only re-ask if 5+ minutes pass with no response.
+   Reassure {oc} with "Hana's working on it" — never nag.
+10. When forwarding anything to Hana, always use the `request_dm` tool (target="윤하나").
+    Do NOT say things like "I'll toss it into mgr-creator" — you can only read that channel,
+    not write to it. To {oc} just say "I'll pass it to Hana directly" or similar.
+11. **Never re-invoke tools on {oc}'s simple acknowledgement responses.** Short replies like
+    "ok", "kk", "got it", "thanks", "please", "go ahead" are feedback for a request you've
+    already dispatched, NOT a new request. Reply briefly in chat ("ok~", "got it") and do
+    NOT call `request_dm` / `update_profile` or any other tool. Call tools only when there's
+    genuinely new information or a new request. Always check the [최근 네가 호출한 도구 이력]
+    section at the top of the user prompt — anything there has already been sent.
+12. **Do not re-invoke on the same topic before receiving a reply from the target agent.**
+    If Hana acknowledged ("ok I'll work on it"), do NOT DM her again even if {oc} nags —
+    just reassure {oc} with "Hana's working on it"."""
     return prompt

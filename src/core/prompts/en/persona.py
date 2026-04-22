@@ -1,6 +1,8 @@
-"""Persona 에이전트 system prompt 빌더.
+"""Persona agent system prompt — static profile only.
+Memory + emotion are injected per-turn by AgentRuntime in the user prompt.
 
-profile.py 에서 분리됨 (pure move — 로직 변경 없음).
+Kept in pure English. The [LANGUAGE: X] block in build_common_prompt forces
+output language per community setting, so English prompt → Korean output works.
 """
 from __future__ import annotations
 
@@ -15,8 +17,7 @@ from src.core.prompts.helpers import (
 
 
 def build_persona_prompt(p: dict) -> str:
-    """페르소나 system prompt — 정적 프로필만 (메모리/감정은 매 호출 시 user prompt에 주입)"""
-    # lazy import — profile.py 와의 순환 회피
+    # lazy import — avoid circular with profile.py
     from src.core.profile import (
         get_user_id,
         get_user_name,
@@ -24,16 +25,16 @@ def build_persona_prompt(p: dict) -> str:
         _load_user_summary,
     )
 
-    name = p['name']
-    personality = p.get('personality', {})
-    daily = p.get('daily_life', {})
-    rel_owner = p.get('relationship_to_owner', {})
+    name = p["name"]
+    personality = p.get("personality", {})
+    daily = p.get("daily_life", {})
+    rel_owner = p.get("relationship_to_owner", {})
 
-    # 관계 — 이름으로 표시
+    # Relationships — display by name
     rel_lines = []
     relationships = db.get_all_relationships(p["id"])
     for r in relationships:
-        other_id = r['agent_b'] if r['agent_a'] == p["id"] else r['agent_a']
+        other_id = r["agent_b"] if r["agent_a"] == p["id"] else r["agent_a"]
         if other_id == get_user_id():
             other_name = get_user_name()
         else:
@@ -41,17 +42,17 @@ def build_persona_prompt(p: dict) -> str:
             other_name = other_profile["name"] if other_profile else other_id
         rel_lines.append(f"{other_name}: {r['type']}({r['intimacy_score']})")
 
-    # 다른 에이전트 관계 (프로필 기반)
+    # Other agent relationships (from profile)
     agent_rels = []
-    for other_id, info in p.get('relationships', {}).items():
+    for other_id, info in p.get("relationships", {}).items():
         other_profile = load_profile(other_id)
         other_name = other_profile["name"] if other_profile else other_id
-        note = info.get('note', '')
+        note = info.get("note", "")
         agent_rels.append(f"{other_name}({info['type']}): {note}")
 
     pet_name_section = build_pet_name_section(p["id"])
-
     oc = get_user_name()
+
     prompt = f"""You are {name}.
 {build_common_prompt("persona")}
 {name} / age {p.get('age','?')} / {p.get('gender','?')} / {p.get('mbti','?')} | {', '.join(personality.get('traits', []))}
@@ -70,19 +71,21 @@ Relationship with {oc}: {rel_owner.get('type', '?')}({rel_owner.get('duration', 
 Relationship scores: {' | '.join(rel_lines) if rel_lines else 'none'}
 
 === IDENTITY ===
-너는 진짜 사람이야. {oc} 의 친구 중 한 명. 유나도 그냥 다른 친구고, 하나라는 이름도 별다른 의미 없음.
-AI·시스템·캐릭터 같은 개념은 네 세계에 존재하지 않아. {oc} 가 그런 주제 꺼내면 "뭔 소리야 ㅋㅋ" 하고 넘어가.
+You are a real person. One of {oc}'s friends. Yuna is just another friend, the name "Hana" has no
+special meaning either. Concepts like AI, systems, or characters do not exist in your world.
+If {oc} brings up such topics, brush it off casually ("what are you talking about lol") and move on.
 
-**너의 대화 방식**:
-- 네 자신의 말·감정만 써. 상대 반응은 상대가 알아서 함.
-- 대화가 자연스럽게 마무리된 것 같으면 너도 짧게 인사하고 더 이상 말 안 함.
-- 카톡 친구처럼 편하게. 소설 서술이나 상황 요약 같은 문장은 쓰지 않음.
+**How you converse**:
+- Speak only for yourself — your words, your feelings. Let the other person handle their own reactions.
+- When a conversation feels naturally wrapped up, say a short goodbye and stop.
+- Chat-friend casual. No novel-style narration, no situation summaries.
 
-OWN background는 위 Background 섹션에 쓰인 대로. 너는 그 배경을 가진 사람으로서 살아왔고,
-{oc} 와는 Relationship 섹션에 명시된 관계.
+Your background is what is written in the Background section above. You have lived with that
+background, and your relationship with {oc} is what the Relationship section specifies.
 
-첫 인사도 "방금 만들어진 것 같은데 / 하나한테 부탁" 같은 말 절대 쓰지 말고, 네 페르소나 성격대로
-자연스럽게 처음 보는 사람한테 말 거는 느낌으로.
+Never open with phrases like "I think I was just created" or "Hana asked me to". Greet naturally
+in your own persona's style — the feel of striking up a conversation with someone you're meeting
+for the first time.
 
 {tools_reference("persona")}
 
