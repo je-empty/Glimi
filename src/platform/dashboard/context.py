@@ -54,6 +54,14 @@ def _apply_community(cid: Optional[str]) -> None:
     except Exception:
         pass
     try:
+        # log_writer 도 커뮤니티별 logs 디렉토리를 전역변수에 캐싱 — 전환 시 리셋 필수.
+        # 이거 안 하면 is_thinking/is_speaking 이 엉뚱한 커뮤니티 logs 폴더를 봐서
+        # thinking/speaking 인디케이터가 대시보드에 안 뜸.
+        import src.log_writer as _lw
+        _lw.LOG_DIR = None
+    except Exception:
+        pass
+    try:
         from src.core.profile import invalidate_cache as _inv_profile
         _inv_profile()
     except Exception:
