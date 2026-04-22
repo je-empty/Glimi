@@ -290,7 +290,7 @@ async def _check_owner_profile(guild):
         yuna_age = 18
         older = bool(owner_age and owner_age > yuna_age)
         from src.community import get_language
-        from src.core.prompts.en.onboarding import build_yuna_greeting_prompt
+        from src.scenes.tutorial.greeting import build_yuna_greeting_prompt
         prompt = build_yuna_greeting_prompt(
             name=name,
             age=age,

@@ -1,6 +1,12 @@
-"""Onboarding (tutorial first greeting) prompt builder.
+"""Tutorial scene — `greet` phase one-shot user prompt for Yuna's first greeting.
 
-Extracted from src/bot/tasks.py. tasks.py now only calls build_yuna_greeting_prompt().
+Called once from `src/bot/tasks.py` when the tutorial enters the `greet` phase. Unlike
+`prompts.py` (persistent per-turn system-prompt fragment), this is a user-message prompt
+sent to the LLM on a single turn.
+
+Scene-local by design: tutorial-specific content lives in `src/scenes/tutorial/` not
+`src/core/prompts/en/` so new scenes can follow the same pattern
+(greeting.py / judge_prompts.py / prompts.py per scene).
 
 Core prompt is English. Korean-specific honorifics / speech-level / casual-mode coaching
 comes from `src.core.prompts.locale.korean_onboarding_hints` so the template stays
