@@ -186,7 +186,7 @@ async def cmd_create_agent(ctx, *, concept: str):
     # 윤하나(creator)에게 생성 요청
     runtime.activate_agent(creator_id)
 
-    from src.core.prompts.en.commands import create_agent_prompt
+    from src.core.prompts.en.commands.create_agent import create_agent_prompt
     create_prompt = create_agent_prompt(new_id=new_id, concept=concept)
 
     async with ctx.typing():
@@ -438,7 +438,7 @@ async def cmd_avatar_prompt(ctx, agent_name: str):
         char_detail = "\n".join(responses)
 
     # 검증된 프롬프트 템플릿
-    from src.core.prompts.en.commands import profile_image_prompt
+    from src.core.prompts.en.external.image_gen import profile_image_prompt
     full_prompt = profile_image_prompt(age=age, outfit_hint=outfit_hint, char_detail=char_detail)
 
     await send_as_agent(ctx.channel, creator_id, f"{name} 프롬프트 만들었어. 복붙해서 써:")
@@ -1077,7 +1077,7 @@ async def cmd_analyze(ctx):
         for r in reversed(recent_logs)
     ])
 
-    from src.core.prompts.en.commands import analyze_logs_prompt
+    from src.core.prompts.en.commands.analyze_logs import analyze_logs_prompt
     analysis_prompt = analyze_logs_prompt(log_text=log_text)
 
     async with ctx.typing():
