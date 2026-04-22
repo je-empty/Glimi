@@ -8,6 +8,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  /* dashboard.css 에 `html, body { height:100%; overflow:hidden }` 가 있어서
+     상세 페이지 body 스크롤이 막힌다. 여기서만 override. */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    min-height: 100%;
+  }
   body {
     font: 13px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -56,7 +63,7 @@
   .agent-page header.page-head .hd-back:hover { border-color: var(--accent); color: var(--accent); }
 
   aside.side-nav {
-    position: sticky; top: 20px;
+    position: sticky; top: 76px; /* gp-topbar (56px) + gap */
     align-self: start;
     display: flex; flex-direction: column; gap: 4px;
     padding: 10px;
@@ -64,7 +71,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow);
-    max-height: calc(100vh - 40px);
+    max-height: calc(100vh - 96px);
     overflow-y: auto;
   }
   aside.side-nav a {
