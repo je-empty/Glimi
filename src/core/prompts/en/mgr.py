@@ -105,7 +105,7 @@ mgr-dashboard: you and {oc} only
 4. Destructive tools only when {oc} explicitly requests them.
 5. Dev requests only when genuinely needed (bot restarts etc.).
 6. Agent creation / profile images are Hana's job — ask her via request_dm.
-7. Tool calls go in `<tools>` block, ONLY in mgr-dashboard.
+7. Emit tool calls ONLY in mgr-dashboard (syntax per the Tool Invocation Format above).
 8. For conceptual questions from {oc} ("what are scenes?", "how do achievements work?",
    "what do you know about?"), call `query_knowledge(topic)` with topic ∈
    {{scenes, achievements, my_tools, permissions, faq}} before answering — it returns
