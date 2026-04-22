@@ -1206,6 +1206,10 @@ class AgentRuntime:
                 last_exc = None
                 # timeout/empty-stdout 시 1회 retry. Haiku 가 큰 프롬프트에서 간헐적 지연
                 # (cross-channel peek + facts + 메모리 누적). 첫 시도 실패해도 대부분 재시도에서 성공.
+                # prompt 길이 + system prompt 길이를 진단에 포함. 거대한 prompt 가 timeout
+                # 주범인지 확인 가능.
+                _prompt_len = len(full_prompt)
+                _sys_len = len(speaker_info.get("system_prompt", ""))
                 for attempt in (1, 2):
                     try:
                         result = subprocess.run(
@@ -1216,15 +1220,21 @@ class AgentRuntime:
                                 "--output-format", "text",
                                 "--model", model,
                             ],
-                            capture_output=True, text=True, timeout=120,
+                            capture_output=True, text=True, timeout=180,
                             env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
                             cwd=_CLI_CWD,
                         )
                         if result.returncode == 0 and result.stdout.strip():
                             break  # 성공
-                        last_exc = f"empty stdout (returncode={result.returncode})"
+                        # 실패 원인 상세화 — stderr, returncode 포함 (empty stdout 의 진짜 원인 추적)
+                        _err_head = (result.stderr or "").strip()[:200]
+                        last_exc = (
+                            f"empty stdout (rc={result.returncode}, "
+                            f"prompt={_prompt_len}/sys={_sys_len} chars, "
+                            f"stderr={_err_head!r})"
+                        )
                     except subprocess.TimeoutExpired as e:
-                        last_exc = f"timeout {e.timeout}s"
+                        last_exc = f"timeout {e.timeout}s (prompt={_prompt_len}/sys={_sys_len} chars)"
                     except Exception as e:
                         last_exc = f"{type(e).__name__}: {e}"
                     if attempt == 1:
@@ -1321,7 +1331,7 @@ class AgentRuntime:
             # 유저 경험 저해. 빈 list 반환 → 호출부에서 "전송할 내용 없음" 처리.
             log_writer.system(
                 f"⚠ A2A 응답 생성 실패 (CLAUDE_AVAILABLE={CLAUDE_AVAILABLE}) — "
-                f"{speaker_name}→{listener_name}"
+                f"{speaker_name}→{listener_name} — 최종 사유: {last_exc or 'unknown'}"
             )
             return []
         finally:
