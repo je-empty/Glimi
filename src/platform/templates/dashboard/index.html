@@ -334,20 +334,40 @@
           // 영향 받은 채널만 sync — Sync 탭의 "선택한 채널 싱크" 와 동일
           const channels = rows.map(r => r.ch);
           // 백그라운드에서 sync 진행 중에 /api/logs poll — sync 로그 실시간 표시
+          // + 로그에서 "[Sync] 동기화 완료" 감지해서 fetch 실패해도 완료 판정 가능 (모바일 Safari fetch timeout 대응).
           _recoveryLogPolling = true;
+          _syncLogCompletion = null;
+          _syncLogStartTail = null;  // 새 시작 — 첫 poll 에서 기준선 재설정
           _pollRecoveryLog();
-          const syncRes = await fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
+
+          const fetchPromise = fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ channels }),
-          }).then(r => r.json()).catch(e => ({ error: String(e) }));
+          }).then(r => r.json()).catch(e => ({ error: String(e), _fetchFailed: true }));
+
+          // 로그 기반 완료 감지 promise — "[Sync] 동기화 완료" or "[Sync] 실패" 라인 잡힐 때 resolve
+          const logPromise = new Promise(resolve => { _resolveSyncLog = resolve; });
+
+          // fetch 와 로그 감지 중 먼저 resolve 되는 쪽 승리.
+          // fetch 성공: {ok, result, logs} — 정상 경로.
+          // fetch 실패 + 로그 완료: {ok:true, _fromLog:true} — 모바일 timeout 이어도 성공 판정.
+          // fetch 실패 + 로그 없음: 5분 대기 후 error.
+          const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ error: '복구 타임아웃 (5분)', _timeout: true }), 5 * 60 * 1000));
+          const syncRes = await Promise.race([fetchPromise, logPromise, timeoutPromise]);
+          // fetch 만 실패하고 로그는 아직 안 왔으면, 로그 기반 완료까지 기다려봄 (+90초)
+          let finalRes = syncRes;
+          if (syncRes && syncRes._fetchFailed) {
+            finalRes = await Promise.race([logPromise, new Promise(r => setTimeout(() => r({ error: syncRes.error || 'fetch 실패', _fromFetch: true }), 90 * 1000))]);
+          }
           _recoveryLogPolling = false;
-          if (syncRes && syncRes.error) {
-            _setOverlayPhase('error', { msg: '복구 실패: ' + (syncRes.message || syncRes.error) });
+          _resolveSyncLog = null;
+          if (finalRes && finalRes.error && !finalRes.ok) {
+            _setOverlayPhase('error', { msg: '복구 실패: ' + (finalRes.message || finalRes.error) });
             return;
           }
           // sync 완료 — rows 에 최종 상태 표시
-          _setOverlayPhase('recovered', { rows, result: syncRes && syncRes.result });
+          _setOverlayPhase('recovered', { rows, result: finalRes && finalRes.result });
           await new Promise(r => setTimeout(r, 1200));  // 결과 잠시 보여주기
         }
       }
@@ -555,22 +575,45 @@
   }
 
   // sync 진행 중 system.log 의 [Sync]/[Scan]/[Arrange] 라인 tail → recovery overlay 의 pre 박스 채움.
+  // + "[Sync] 동기화 완료" 감지 시 _resolveSyncLog 호출 — 모바일 Safari fetch 끊겨도 완료 판정.
   let _recoveryLogPolling = false;
+  let _resolveSyncLog = null;   // sync 로그에서 완료 라인 감지 시 호출
+  let _syncLogCompletion = null;  // 이미 resolve 됐는지 (중복 방지)
+  // 이 오버레이 호출 이전에 쌓여있던 로그와 새로 쓰인 로그를 구분하기 위해 시작 시점의 라인 개수를 기록
+  let _syncLogStartTail = null;
   async function _pollRecoveryLog() {
     if (!_overlayActive || !_recoveryLogPolling) return;
     try {
-      const r = await fetch('/api/logs?tail=60&community=' + encodeURIComponent(CID));
+      const r = await fetch('/api/logs?tail=120&community=' + encodeURIComponent(CID));
       if (r.ok) {
         const data = await r.json();
+        const lines = data.lines || [];
         const logEl = document.getElementById('go-recovery-log');
         if (logEl) {
-          const filtered = (data.lines || [])
+          const filtered = lines
             .filter(l => /\[(Sync|Scan|Arrange)\]/.test(l))
             .slice(-25)
             .join('\n');
           if (logEl.textContent !== filtered) {
             logEl.textContent = filtered;
             logEl.scrollTop = logEl.scrollHeight;
+          }
+        }
+        // 시작 시점 기록 (첫 poll 에서만)
+        if (_syncLogStartTail === null) {
+          _syncLogStartTail = lines.length;
+        }
+        // 이 호출 이후 새로 추가된 라인만 검사 — 이전 sync 의 완료 라인을 잘못 잡지 않게
+        if (_resolveSyncLog && !_syncLogCompletion) {
+          const newLines = lines.slice(Math.max(0, _syncLogStartTail - 3));  // 약간 여유 (-3) 두고
+          const doneLine = newLines.find(l => /\[Sync\]\s*동기화 완료/.test(l));
+          const failLine = newLines.find(l => /\[Sync\]\s*(오류|실패|크래시)/.test(l));
+          if (doneLine) {
+            _syncLogCompletion = { ok: true, _fromLog: true, logLine: doneLine };
+            _resolveSyncLog(_syncLogCompletion);
+          } else if (failLine) {
+            _syncLogCompletion = { ok: false, error: 'sync 실패', message: failLine, _fromLog: true };
+            _resolveSyncLog(_syncLogCompletion);
           }
         }
       }
