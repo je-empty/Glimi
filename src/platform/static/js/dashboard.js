@@ -767,32 +767,12 @@ async function resetAgentModel(agentId) {
 }
 
 async function openAgent(id) {
+  // 모달은 **요약 카드** 전용 — 풀 정보는 /agent/{id}?community=X 전체 페이지.
+  // 모달 좁아서 스크롤·정보 밀도 나빠 — 요약만 보여주고 "전체 보기" 로 이동.
   const d = await j(q(`/api/agent?id=${encodeURIComponent(id)}`));
   if (!d || d.error) { openModal('⚠', 'Error', `<div class="empty">${esc(d?.error || 'failed to load')}</div>`); return; }
 
-  const profileLines = [];
-  // Age: 가독성 — 한국어면 "만 N세 (한국나이 N+1)" 식 / 영어면 "N years old"
-  //   한국나이 = 현재연도 - 출생연도 + 1 (전통 세는나이; birth_year 있을 때만)
-  if (d.age) {
-    const lang = currentLang();
-    if (lang === 'ko') {
-      let ageStr = `만 ${d.age}세`;
-      if (d.birth_year) {
-        const koreanAge = (new Date()).getFullYear() - d.birth_year + 1;
-        if (koreanAge !== d.age) ageStr += ` (한국나이 ${koreanAge}세)`;
-      }
-      profileLines.push(['Age', ageStr]);
-    } else {
-      profileLines.push(['Age', `${d.age} years old`]);
-    }
-  }
-  if (d.gender) profileLines.push(['Gender', d.gender]);
-  if (d.mbti) profileLines.push(['MBTI', d.mbti]);
-  if (d.enneagram) profileLines.push(['Enneagram', d.enneagram]);
-  if (d.traits && d.traits.length) profileLines.push(['Traits', d.traits.slice(0,5).join(' · ')]);
-  profileLines.push(['Emotion', `${d.emoji} ${d.emotion} (${d.intensity}/10)`]);
-  // 서버 오프라인이면 thinking/speaking/active 상태는 의미 없음 → Inactive 로 강제
-  //   (DB status 는 archived 같은 영속 상태만 의미; runtime 상태는 봇이 실행 중일 때만 유효)
+  // ── Status chip (실시간 상태) ──────────
   const isOffline = document.body.classList.contains('offline');
   let statusHtml;
   if (isOffline) {
@@ -806,145 +786,64 @@ async function openAgent(id) {
   } else {
     statusHtml = `<span style="color:var(--text-dim)">○ ${esc(d.status)}</span>`;
   }
-  profileLines.push(['Status', statusHtml, true]);
+
+  // ── Model chip (요약 — 변경 버튼은 전체 페이지 또는 여기서도 유지) ──
+  let modelHtml = '';
   if (d.model) {
-    // 모델 선택 버튼은 페르소나만 허용.
-    // mgr(유나)·creator(하나): tool chain 안정성 + 튜토리얼 흐름 보장 위해 Sonnet 고정.
-    // supervisor: 판단=Haiku + 주입=Sonnet 이원화 (선택 개념 부적합).
     const canPickModel = d.type === 'persona';
-    const modelHtml = renderModelChips(d) + (
+    modelHtml = renderModelChips(d) + (
       canPickModel
         ? `<button class="act-btn small" style="margin-left:8px" onclick="event.stopPropagation(); openModelPicker('${esc(d.id)}','${esc(d.name)}','${esc(d.model || '')}')">변경</button>`
         : `<small style="margin-left:8px;color:var(--text-faint)">(고정)</small>`
     );
-    profileLines.push(['Model', modelHtml, true]);
   }
-  if (d.relationship_to_owner?.type) {
-    const r = d.relationship_to_owner;
-    profileLines.push(['Owner', `${r.type}${r.pet_name ? ' (' + r.pet_name + ')' : ''}${r.duration ? ' · ' + r.duration : ''}`]);
-  }
-  if (d.background) profileLines.push(['Background', d.background]);
 
-  const rels = (d.relationships || []).map(r => {
+  // ── 관계 top 3 (친밀도 내림차순) ─────
+  const relsTop = (d.relationships || [])
+    .slice()
+    .sort((a, b) => (b.intimacy || 0) - (a.intimacy || 0))
+    .slice(0, 3);
+  const relsHtml = relsTop.map(r => {
     const pct = Math.min(100, r.intimacy);
     return `<div class="rel-row">
       <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
       <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
       <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
       <span class="intimacy-num">${r.intimacy}</span>
-      ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
     </div>`;
   }).join('');
 
-  // 메모리 렌더 — 모든 레이어를 하나의 "기억" 섹션으로 통합
-  // type → 한글 라벨 + 아이콘 (기존 L1·E 같은 축약어는 축출)
-  const TYPE_LABEL = {
-    event: {label: '사건', icon: '🎬'},
-    fact: {label: '사실', icon: '💡'},
-    emotion: {label: '감정', icon: '💓'},
-    relationship: {label: '관계', icon: '🤝'},
-  };
-  const renderMemItem = (m, opts={}) => {
-    const t = m.mem_type ? TYPE_LABEL[m.mem_type] : null;
-    const typeBadge = t ? `<span class="mem-type-badge" title="유형">${t.icon} ${t.label}</span>` : '';
-    const imp = m.importance ? `<span class="mem-imp" title="중요도 ${m.importance}/10">${m.importance}</span>` : '';
-    const pin = m.is_pinned ? '<span class="mem-pin" title="고정됨">📌</span>' : '';
-    const ents = (m.related_entities && m.related_entities.length)
-      ? `<span class="mem-ents" title="관련 대상">${m.related_entities.map(e=>esc(e)).join(' · ')}</span>` : '';
-    const ch = opts.showChannel && m.channel ? `<span class="mem-ch">${esc(m.channel)}</span>` : '';
-    return `<div class="mem-item" data-mem-id="${m.id||''}">
-      ${pin}${typeBadge}${imp}
-      <span class="mcontent">${esc(m.content)}</span>
-      ${ents}${ch}
-      <span class="mts">${esc(fmtLocalMonthDayHM(m.created_at))}</span>
-    </div>`;
-  };
-
-  // 레이어별 라벨 (L1/L2/L3 대신 풀 네이밍)
-  const LAYER_LABEL = {
-    1: {name: '최근', icon: '📖', desc: '최근 몇 분~몇 시간 요약'},
-    2: {name: '중기', icon: '📚', desc: '하루 분량 묶음 요약'},
-    3: {name: '장기', icon: '🗂', desc: '주/월 단위 큰 흐름'},
-  };
-
-  let memHtml = '';
-
-  // 1) 📌 고정된 기억 (Pinned) — 항상 떠올리는 것
-  if ((d.pinned_memories || []).length) {
-    memHtml += `<div class="mem-block mem-pinned-block">
-      <h5>📌 고정된 기억 <span class="mem-count">(${d.pinned_memories.length})</span>
-        <span class="mem-sub">항상 떠올리는 기억</span></h5>
-      ${d.pinned_memories.map(m => renderMemItem(m, {showChannel: true})).join('')}
-    </div>`;
-  }
-
-  // 2) 채널별 에피소드 기억 (최근 → 중기 → 장기)
-  for (const [ch, mems] of Object.entries(d.memories_by_channel || {})) {
-    const byLevel = {3: [], 2: [], 1: []};
-    mems.forEach(m => { (byLevel[m.level] || byLevel[1]).push(m); });
-    const anyLevels = [3,2,1].filter(l => byLevel[l].length);
-    if (!anyLevels.length) continue;
-    memHtml += `<div class="mem-block">
-      <h5><span class="ch-icon">${chIcon(ch)}</span> ${esc(ch)} <span class="mem-count">(${mems.length})</span></h5>
-      ${anyLevels.map(l => {
-        const L = LAYER_LABEL[l];
-        return `<div class="mem-lvl-group">
-          <div class="mem-lvl-label" title="${L.desc}">${L.icon} ${L.name} <span class="mem-count">(${byLevel[l].length})</span></div>
-          ${byLevel[l].map(renderMemItem).join('')}
-        </div>`;
-      }).join('')}
-    </div>`;
-  }
-
-  // 3) 💡 알고 있는 사실 (agent_facts) — 엔티티별 구조화 지식
-  if ((d.agent_facts || []).length) {
-    const bySubject = {};
-    (d.agent_facts || []).forEach(f => {
-      if (!bySubject[f.subject]) bySubject[f.subject] = [];
-      bySubject[f.subject].push(f);
-    });
-    memHtml += `<div class="mem-block mem-facts-group">
-      <h5>💡 알고 있는 사실 <span class="mem-count">(${d.agent_facts.length})</span>
-        <span class="mem-sub">대상별 구조화된 지식 (선호·특징·직업 등)</span></h5>`;
-    memHtml += Object.entries(bySubject).map(([subject, facts]) =>
-      `<div class="mem-subject-block">
-        <div class="mem-subject-label">${esc(subject)} <span class="mem-count">(${facts.length})</span></div>
-        ${facts.map(f => `<div class="mem-item">
-          <span class="mem-predicate">${esc(f.predicate)}</span>
-          <span class="mcontent">${esc(f.object)}</span>
-          ${f.importance >= 8 ? '<span class="mem-pin" title="중요">⭐</span>' : ''}
-          <span class="mts">${esc(fmtLocalMonthDayHM(f.created_at))}</span>
-        </div>`).join('')}
+  // ── 최근 활동 1줄 ──────────────────────
+  const lastMsg = (d.primary_chat || []).slice(-1)[0];
+  const recentLine = lastMsg
+    ? `<div style="display:flex;gap:8px;align-items:baseline;font-size:12.5px;color:var(--text-dim)">
+        <span style="color:var(--text-faint)">#${esc(lastMsg.channel || d.primary_channel || '')}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(lastMsg.message)}">${esc((lastMsg.message || '').slice(0, 120))}</span>
+        <span style="color:var(--text-faint);font-size:11px">${esc(_fmtMsgTime(lastMsg.timestamp))}</span>
       </div>`
-    ).join('');
-    memHtml += '</div>';
-  }
+    : '<div style="color:var(--text-faint);font-size:12px">최근 활동 없음</div>';
 
-  // 4) 📈 관계 변화 (relationship_history) — 친밀도/역학 변곡점
-  if ((d.relationship_history || []).length) {
-    memHtml += `<div class="mem-block">
-      <h5>📈 관계 변화 <span class="mem-count">(${d.relationship_history.length})</span>
-        <span class="mem-sub">친밀도·역학의 변곡점 기록</span></h5>
-      ${d.relationship_history.slice(0,10).map(h => `<div class="mem-item">
-        <span class="mem-predicate">${esc(h.delta_type || '?')}</span>
-        <span class="mcontent">${esc(h.from_state||'?')} → ${esc(h.to_state||'?')}${h.reason ? ' · '+esc(h.reason) : ''}</span>
-        <span class="mts">${esc(fmtLocalMonthDayHM(h.created_at))}</span>
-      </div>`).join('')}
-    </div>`;
-  }
-
-  const thinkingLogs = (d.thinking_logs || []).map(l => `<div class="logline" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);padding:2px 0">${esc(l)}</div>`).join('');
-  const chatHtml = (d.primary_chat || []).map(m => renderMessage({...m, channel: d.primary_channel})).join('');
+  const detailUrl = `/agent/${encodeURIComponent(d.id)}?community=${encodeURIComponent(COMMUNITY || '')}`;
+  const emotionLine = d.emotion
+    ? `${esc(d.emoji || '')} ${esc(d.emotion)} <span style="color:var(--text-faint)">(${esc(String(d.intensity ?? ''))}/10)</span>`
+    : '';
 
   const body = `
-    <div class="detail-section">
-      <h4>Profile</h4>
-      <dl class="kv">${profileLines.map(([k,v,raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
+    <div class="detail-section" style="margin-top:0">
+      <dl class="kv">
+        ${emotionLine ? `<dt>Emotion</dt><dd>${emotionLine}</dd>` : ''}
+        <dt>Status</dt><dd>${statusHtml}</dd>
+        ${modelHtml ? `<dt>Model</dt><dd>${modelHtml}</dd>` : ''}
+      </dl>
     </div>
-    ${rels ? `<div class="detail-section"><h4>Relationships · ${d.relationships.length}</h4>${rels}</div>` : ''}
-    ${memHtml ? `<div class="detail-section"><h4>🧠 MEMORY</h4>${memHtml}</div>` : ''}
-    ${thinkingLogs ? `<div class="detail-section"><h4>Thinking Logs ${d.thinking ? '<span style="color:var(--thinking)">● LIVE</span>' : ''}</h4>${thinkingLogs}</div>` : ''}
-    ${chatHtml ? `<div class="detail-section"><h4>Recent Chat · ${d.primary_channel}</h4>${chatHtml}</div>` : ''}
+    ${relsHtml ? `<div class="detail-section"><h4>Relationships · Top ${relsTop.length}</h4>${relsHtml}</div>` : ''}
+    <div class="detail-section">
+      <h4>Recent Activity</h4>
+      ${recentLine}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+      <a href="${detailUrl}" class="act-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">🗗 전체 보기</a>
+    </div>
   `;
   openModal(d.emoji, d.name + ' · ' + d.type, body, d);
 }
