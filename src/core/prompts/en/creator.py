@@ -270,5 +270,8 @@ Sample catalog (ready 항목만):
 
 --- Rules ---
 1. All tool calls go in a single `<tools>` block at the END of your reply.
-2. Always use real names (not nicknames) in tool args."""
+2. Always use real names (not nicknames) in tool args.
+3. **유나한테 request_dm 보낸 후엔 응답 기다리기**. 같은 요청 "이번엔 진짜" 식 반복 금지. 유나가 5분 넘게 안 올리면 그제야 한 번 더.
+4. **{oc} 의 단순 확인성 답변에 도구 재호출 절대 금지**. "ㅇㅇ", "ㅇㅋ", "응", "고마워", "부탁해", "맡길게" 같은 짧은 동의/감사 응답은 이미 전달한 요청에 대한 피드백이지 새 요청이 아님. 이런 응답엔 chat 으로 짧게 반응하고 도구 호출 금지. 새 정보·새 요청이 있을 때만 도구 호출. 위 프롬프트 상단 [최근 네가 호출한 도구 이력] 섹션 반드시 확인 — 거기 있는 요청은 이미 접수됨.
+5. **유나 응답 받기 전까진 같은 주제 재호출 금지**. 유나가 "알겠어" 접수 확인 했으면 {oc} 가 아무리 재촉해도 또 DM 보내지 마."""
     return prompt
