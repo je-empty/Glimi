@@ -1,7 +1,7 @@
 """
 Tutorial scene — agent_type × phase 조합별 system prompt 조각.
 
-profile._build_mgr_prompt / _build_creator_prompt 에서 이 함수를 호출해
+`src/core/prompts/en/mgr.py` build_mgr_prompt 에서 이 함수를 호출해
 `tutorial_section`을 얻는다.
 """
 from __future__ import annotations
