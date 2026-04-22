@@ -294,20 +294,68 @@ class AgentRuntime:
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
         """프롬프트 구성. Returns: (full_prompt, system_prompt, model)"""
         agent_id = agent_info["profile"]["id"]
+        atype = agent_info["profile"].get("type", "persona")
         context = self._build_context(agent_info, channel, recent, user_message=user_message)
 
         # 이전 턴의 tool_results가 있으면 user_message 앞에 주입
         tool_results = self._consume_tool_results(agent_id, channel)
         name = speaker_name or get_user_display_name()
+
+        # 최근 자기 도구 호출 이력 주입 — mgr/creator 만.
+        # raw conversation 엔 도구 호출 이력이 안 들어가서, 유나가 직전에
+        # request_dm 호출한 걸 다음 턴에 기억 못 함 → 같은 요청 무한 반복 (QA 관찰 버그).
+        tool_history = ""
+        if atype in ("mgr", "creator"):
+            tool_history = self._build_recent_tool_history(agent_id)
+
+        pieces = [context]
+        if tool_history:
+            pieces.append(tool_history)
         if tool_results:
-            full_prompt = context + tool_results + "\n\n" + f"{name}: {user_message}"
-        else:
-            full_prompt = context + f"{name}: {user_message}"
+            pieces.append(tool_results)
+        pieces.append(f"{name}: {user_message}")
+        full_prompt = "\n".join(pieces) if len(pieces) > 1 else pieces[0]
 
         system_prompt = agent_info["system_prompt"]
-        model = _resolve_agent_model(agent_id, agent_info["profile"].get("type", "persona"))
+        model = _resolve_agent_model(agent_id, atype)
 
         return full_prompt, system_prompt, model
+
+    def _build_recent_tool_history(self, agent_id: str, window_sec: int = 300) -> str:
+        """최근 window_sec 초 내 이 에이전트가 호출한 주요 도구 이력.
+        events 테이블에서 dm_request 등 조회 → prompt 주입용 텍스트."""
+        try:
+            conn = db.get_conn()
+            # participants 의 첫 토큰이 caller — agent_id 매칭
+            rows = conn.execute(
+                "SELECT event_type, participants, description, timestamp FROM events "
+                "WHERE timestamp >= datetime('now', ?) "
+                "AND event_type IN ('dm_request') "
+                "AND participants LIKE ? "
+                "ORDER BY id DESC LIMIT 8",
+                (f"-{window_sec} seconds", f"{agent_id},%"),
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return ""
+        if not rows:
+            return ""
+        lines = ["[최근 네가 호출한 도구 이력 — 같은 요청 반복 금지]"]
+        import datetime as _dt
+        now = _dt.datetime.utcnow()
+        for r in rows:
+            try:
+                ts = _dt.datetime.fromisoformat(r["timestamp"].replace(" ", "T"))
+                mins = int((now - ts).total_seconds() // 60)
+                elapsed = f"{mins}분 전" if mins >= 1 else "방금 전"
+            except Exception:
+                elapsed = "최근"
+            parts = (r["participants"] or "").split(",")
+            target = parts[1] if len(parts) > 1 else "?"
+            desc = (r["description"] or "")[:100]
+            lines.append(f"- [{elapsed}] {r['event_type']} → {target}: {desc}")
+        lines.append("→ 위 이력의 요청은 이미 전달됨. 응답 기다리는 중. 같은 target 에 비슷한 내용 또 보내면 스팸.")
+        return "\n".join(lines) + "\n"
 
     def _build_handoff_summary(self, agent_id: str, channel: str) -> str:
         """모델 전환 시 이전 대화 맥락 요약 생성 (haiku로 빠르게)"""
