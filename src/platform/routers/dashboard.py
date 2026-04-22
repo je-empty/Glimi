@@ -22,8 +22,14 @@ def _full_path(req: Request) -> str:
 
 def _ensure_community_access(req: Request, user: dict) -> None:
     cid = req.query_params.get("community")
-    if cid and not accounts.user_can_access(user, cid):
-        raise HTTPException(403, "no access")
+    if cid:
+        if not accounts.user_can_access(user, cid):
+            raise HTTPException(403, "no access")
+        # 삭제된 커뮤니티에 대한 stale 폴링 차단 — 디렉토리 없으면 하위 코드가 자동 생성해서
+        # 빈 커뮤니티 부활시킴. 존재 안 하면 여기서 끊어냄.
+        from src.community import COMMUNITIES_DIR
+        if not (COMMUNITIES_DIR / cid).exists():
+            raise HTTPException(404, f"community not found: {cid}")
 
 
 def _json_endpoint(fn):
