@@ -71,3 +71,32 @@ async def community_dashboard(
             "community_description": target.get("description") or "",
         },
     )
+
+
+@router.get("/agent/{agent_id}", response_class=HTMLResponse)
+async def agent_detail_page(
+    request: Request,
+    agent_id: str,
+    community: str,
+    user: dict = Depends(require_user),
+):
+    """에이전트 상세 전체 페이지 — 기존 모달을 풀 화면으로 확장.
+    모달은 요약 카드 + "전체 보기" 버튼만, 실제 밀도 있는 정보는 여기."""
+    if not accounts.user_can_access(user, community):
+        raise HTTPException(403, "no access to this community")
+
+    all_communities = list_communities()
+    target = next((c for c in all_communities if c["id"] == community), None)
+    if target is None:
+        raise HTTPException(404, "community not found")
+
+    return templates.env.TemplateResponse(
+        request,
+        "agent_detail.html",
+        {
+            "user": user,
+            "agent_id": agent_id,
+            "community_id": community,
+            "community_name": target.get("name") or community,
+        },
+    )
