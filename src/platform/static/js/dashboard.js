@@ -942,7 +942,7 @@ async function openAgent(id) {
       <dl class="kv">${profileLines.map(([k,v,raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>
     </div>
     ${rels ? `<div class="detail-section"><h4>Relationships · ${d.relationships.length}</h4>${rels}</div>` : ''}
-    ${memHtml ? `<div class="detail-section"><h4>🧠 기억</h4>${memHtml}</div>` : ''}
+    ${memHtml ? `<div class="detail-section"><h4>🧠 MEMORY</h4>${memHtml}</div>` : ''}
     ${thinkingLogs ? `<div class="detail-section"><h4>Thinking Logs ${d.thinking ? '<span style="color:var(--thinking)">● LIVE</span>' : ''}</h4>${thinkingLogs}</div>` : ''}
     ${chatHtml ? `<div class="detail-section"><h4>Recent Chat · ${d.primary_channel}</h4>${chatHtml}</div>` : ''}
   `;
