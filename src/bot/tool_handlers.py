@@ -229,7 +229,26 @@ async def _h_finish_profile_collection(args: dict, ctx: ToolContext):
 
 
 async def _h_finish_tutorial(args: dict, ctx: ToolContext):
-    # alias → scene_advance 위임
+    # Guard: persona 가 0 개면 '결함 있는 완료' — Hana 가 create_agent_profile 실패했는데
+    # '만들었어' 보고만 보내서 유나가 finish_tutorial 호출하는 케이스 방지.
+    try:
+        personas = db.list_agents("persona")
+    except Exception:
+        personas = []
+    if not personas:
+        log_writer.system(
+            "[finish_tutorial] 거부 — persona 0개. Hana 의 create_agent_profile 이 "
+            "실제로 성공했는지 확인하고 재시도."
+        )
+        return {
+            "rejected": True,
+            "reason": "no_persona_exists",
+            "note": (
+                "튜토리얼 완료 조건 미달: persona 에이전트가 1개도 없음. "
+                "Hana (creator) 가 create_agent_profile 을 다시 호출해야 함. "
+                "args 필드에 JSON 문자열 전달 누락 여부 확인."
+            ),
+        }
     return await _h_scene_advance(
         {"scene_id": "tutorial", "phase": "complete"}, ctx
     )
