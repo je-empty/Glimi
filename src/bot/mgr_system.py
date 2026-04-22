@@ -675,14 +675,11 @@ async def _run_and_report_yuna(report_ch, ch_name, participant_ids, send_fn, con
 
         # 유나에게 보고 + 후속 판단 (강제 CMD는 금지, 대화 트리거는 허용)
         from src.core.profile import get_owner_call_name as _get_oc
+        from src.core.prompts.en.mgr_feedback import conversation_report_prompt
         oc = _get_oc() or "오너"
-        report_prompt = (
-            f"{', '.join(names)} 대화 끝났어 (#{ch_name}, {state.turn_count}턴).\n"
-            f"마지막 대화:\n{preview}\n\n"
-            f"{oc}한테 간략하게 보고해.\n"
-            f"대화 내용에서 누군가가 {oc}한테 연락하겠다고 했거나 다른 사람한테 연락하려는 상황이면 "
-            f"[CMD:대화시작 ...]으로 이어지게 해줘.\n"
-            f"[CMD:강제]는 쓰지 마. 네가 직접 강제 지시하면 안 돼."
+        report_prompt = conversation_report_prompt(
+            names=names, channel=ch_name, turn_count=state.turn_count,
+            preview=preview, oc=oc,
         )
 
         loop = asyncio.get_event_loop()
@@ -1725,11 +1722,8 @@ async def handle_room_request_detection(
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if mgr_ch:
         # 유나가 판단해서 행동하도록 알림
-        notify_prompt = (
-            f"{agent_name}이(가) 톡방/그룹채팅을 원하는 것 같아. "
-            f"메시지: \"{message[:60]}\"\n"
-            f"필요하면 [CMD:톡방 ...] 으로 만들어줘."
-        )
+        from src.core.prompts.en.mgr_feedback import room_request_notify_prompt
+        notify_prompt = room_request_notify_prompt(agent_name=agent_name, message=message)
 
         loop = asyncio.get_event_loop()
         responses = await loop.run_in_executor(
@@ -1910,25 +1904,21 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
     action_type = parts[0].upper() if parts else ""
     action_args = parts[1] if len(parts) > 1 else ""
 
-    # 공통 판단 지침
     from src.core.profile import get_owner_call_name as _get_oc
-    oc = _get_oc() or "오너"
-    judge_guide = (
-        "판단 기준:\n"
-        f"- 자연스러운 요청이면 승인하고 {oc}한테 간략 보고 (예: '서연이가 소율이한테 DM 보내려고 해서 승인했어')\n"
-        f"- 이상하거나 판단 어려우면 거절하지 말고 {oc}한테 먼저 물어봐 (예: '{oc} 이거 승인할까?')"
+    from src.core.prompts.en.mgr_feedback import (
+        action_notify_dm_prompt,
+        action_notify_room_prompt,
+        action_notify_generic_prompt,
     )
+    oc = _get_oc() or "오너"
 
     if action_type == "DM":
         dm_parts = action_args.split(None, 1)
         target_name = dm_parts[0] if dm_parts else ""
         dm_message = dm_parts[1] if len(dm_parts) > 1 else ""
-        notify_prompt = (
-            f"[ACTION 요청]\n"
-            f"{agent_name}이(가) {target_name}한테 DM 보내고 싶대:\n"
-            f"  \"{dm_message[:100]}\"\n\n"
-            f"승인하면 [CMD:ACTION승인 DM {agent_id} {target_name} {dm_message}] 써.\n"
-            f"{judge_guide}"
+        notify_prompt = action_notify_dm_prompt(
+            agent_name=agent_name, agent_id=agent_id,
+            target_name=target_name, dm_message=dm_message, oc=oc,
         )
     elif action_type == "톡방":
         if "|" in action_args:
@@ -1938,21 +1928,13 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
         else:
             room_info = action_args
             first_msg = ""
-        notify_prompt = (
-            f"[ACTION 요청]\n"
-            f"{agent_name}이(가) 톡방 만들고 싶대:\n"
-            f"  참여자: {room_info}\n"
-            f"  첫 메시지: \"{first_msg[:100]}\"\n\n"
-            f"승인하면 [CMD:ACTION승인 톡방 {agent_id} {room_info} | {first_msg}] 써.\n"
-            f"{judge_guide}"
+        notify_prompt = action_notify_room_prompt(
+            agent_name=agent_name, agent_id=agent_id,
+            room_info=room_info, first_msg=first_msg, oc=oc,
         )
     else:
-        notify_prompt = (
-            f"[ACTION 요청]\n"
-            f"{agent_name}이(가) 행동을 요청했어:\n"
-            f"  → {action_str}\n\n"
-            f"승인하려면 적절한 CMD를 써.\n"
-            f"{judge_guide}"
+        notify_prompt = action_notify_generic_prompt(
+            agent_name=agent_name, action_str=action_str, oc=oc,
         )
 
     try:

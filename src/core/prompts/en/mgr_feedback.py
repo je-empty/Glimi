@@ -1,15 +1,116 @@
 """mgr/creator 측 inline 프롬프트 모음.
 
 src/bot/mgr_system.py 에서 분리됨 (Phase 2-B pure move — 로직 변경 없음).
-현재 이관 완료:
-  - persona_first_greeting_prompt: 새 persona 에이전트의 dm 채널 첫 인사
-
-TODO (Phase 2-B 남은 범위):
-  - report_prompt (대화 종료 후 유나 보고)
-  - room_request notify_prompt (톡방 요청 감지)
-  - action_notify_prompt (ACTION 승인 요청, DM/톡방/기타 3 variant)
+빌더 목록:
+  - persona_first_greeting_prompt: 새 persona 의 dm 채널 첫 인사
+  - conversation_report_prompt:    자율 대화 종료 후 유나 오너 보고
+  - room_request_notify_prompt:    에이전트의 톡방 요청 감지 알림
+  - action_notify_dm_prompt:       ACTION DM 승인 요청
+  - action_notify_room_prompt:     ACTION 톡방 승인 요청
+  - action_notify_generic_prompt:  기타 ACTION 승인 요청
 """
 from __future__ import annotations
+
+
+def conversation_report_prompt(
+    names: list[str],
+    channel: str,
+    turn_count: int,
+    preview: str,
+    oc: str,
+) -> str:
+    """자율 대화 종료 후 유나가 오너에게 보고 + 후속 판단.
+
+    Args:
+        names: 대화 참여 에이전트 이름 리스트
+        channel: 대화 채널명
+        turn_count: 턴 수
+        preview: 마지막 메시지 미리보기
+        oc: 오너 호칭
+
+    Returns:
+        유나에게 전달할 보고 프롬프트.
+    """
+    return (
+        f"{', '.join(names)} 대화 끝났어 (#{channel}, {turn_count}턴).\n"
+        f"마지막 대화:\n{preview}\n\n"
+        f"{oc}한테 간략하게 보고해.\n"
+        f"대화 내용에서 누군가가 {oc}한테 연락하겠다고 했거나 다른 사람한테 연락하려는 상황이면 "
+        f"[CMD:대화시작 ...]으로 이어지게 해줘.\n"
+        f"[CMD:강제]는 쓰지 마. 네가 직접 강제 지시하면 안 돼."
+    )
+
+
+def room_request_notify_prompt(agent_name: str, message: str) -> str:
+    """에이전트가 톡방 요청한 걸 유나에게 알림.
+
+    Args:
+        agent_name: 요청한 에이전트 이름
+        message: 요청 메시지 snippet
+    """
+    return (
+        f"{agent_name}이(가) 톡방/그룹채팅을 원하는 것 같아. "
+        f"메시지: \"{message[:60]}\"\n"
+        f"필요하면 [CMD:톡방 ...] 으로 만들어줘."
+    )
+
+
+def _action_judge_guide(oc: str) -> str:
+    return (
+        "판단 기준:\n"
+        f"- 자연스러운 요청이면 승인하고 {oc}한테 간략 보고 (예: '서연이가 소율이한테 DM 보내려고 해서 승인했어')\n"
+        f"- 이상하거나 판단 어려우면 거절하지 말고 {oc}한테 먼저 물어봐 (예: '{oc} 이거 승인할까?')"
+    )
+
+
+def action_notify_dm_prompt(
+    agent_name: str,
+    agent_id: str,
+    target_name: str,
+    dm_message: str,
+    oc: str,
+) -> str:
+    """ACTION DM 승인 요청 (유나에게)."""
+    return (
+        f"[ACTION 요청]\n"
+        f"{agent_name}이(가) {target_name}한테 DM 보내고 싶대:\n"
+        f"  \"{dm_message[:100]}\"\n\n"
+        f"승인하면 [CMD:ACTION승인 DM {agent_id} {target_name} {dm_message}] 써.\n"
+        f"{_action_judge_guide(oc)}"
+    )
+
+
+def action_notify_room_prompt(
+    agent_name: str,
+    agent_id: str,
+    room_info: str,
+    first_msg: str,
+    oc: str,
+) -> str:
+    """ACTION 톡방 승인 요청 (유나에게)."""
+    return (
+        f"[ACTION 요청]\n"
+        f"{agent_name}이(가) 톡방 만들고 싶대:\n"
+        f"  참여자: {room_info}\n"
+        f"  첫 메시지: \"{first_msg[:100]}\"\n\n"
+        f"승인하면 [CMD:ACTION승인 톡방 {agent_id} {room_info} | {first_msg}] 써.\n"
+        f"{_action_judge_guide(oc)}"
+    )
+
+
+def action_notify_generic_prompt(
+    agent_name: str,
+    action_str: str,
+    oc: str,
+) -> str:
+    """기타 ACTION 승인 요청 (유나에게)."""
+    return (
+        f"[ACTION 요청]\n"
+        f"{agent_name}이(가) 행동을 요청했어:\n"
+        f"  → {action_str}\n\n"
+        f"승인하려면 적절한 CMD를 써.\n"
+        f"{_action_judge_guide(oc)}"
+    )
 
 
 def persona_first_greeting_prompt(
