@@ -1647,23 +1647,10 @@ async def _greet_new_persona(guild, agent_id, agent_name, dm_name):
             return
 
         from src.core.profile import get_user_name, get_owner_call_name
+        from src.core.prompts.en.mgr_feedback import persona_first_greeting_prompt
         owner_name = get_user_name() or "user"
         call = get_owner_call_name() or owner_name
-
-        prompt = (
-            f"[상황] 이 채널(#{dm_name})은 너랑 {call} 둘만의 공간. "
-            f"{call}이 방금 들어와서 너랑 처음 대화 시작하는 순간.\n"
-            f"[지시] {call}에게 자연스럽게 첫 인사. "
-            f"네 성격·배경 살리면서 2~4 짧은 메시지로. "
-            f"자기소개 간단히 + 가벼운 한마디 (질문이나 안부).\n"
-            f"[중요] 메타 발언 금지. 다음 표현 쓰지 마:\n"
-            f"  - '방금 만들어졌다' / '누가 나를 만들었다' / '디자인됐다'\n"
-            f"  - '하나' / '윤하나' / '유나' / '서유나' / 'Creator' / 'mgr' 이름 언급\n"
-            f"  - '에이전트' / '봇' / '캐릭터' / 'AI' / '시스템' / '여기 뭐 하는 곳'\n"
-            f"너는 그냥 평범한 사람이고, 처음 보는 {call} 한테 말 거는 거.\n"
-            f"[스타일] 카톡처럼. 네 말투로. 로봇 같은 정형화된 인사 금지.\n"
-            f"[금지] <tools> 블록 쓰지 마. 지금은 chat 인사만."
-        )
+        prompt = persona_first_greeting_prompt(dm_name=dm_name, call=call)
 
         loop = _aio.get_event_loop()
         responses = await loop.run_in_executor(
