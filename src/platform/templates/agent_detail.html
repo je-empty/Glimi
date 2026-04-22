@@ -143,6 +143,7 @@
 
   <aside class="side-nav">
     <div class="nav-title">SECTIONS</div>
+    <a href="#status" class="nav-link" data-target="status">📊 상태</a>
     <a href="#profile" class="nav-link" data-target="profile">👤 프로필</a>
     <a href="#relationships" class="nav-link" data-target="relationships">🤝 관계</a>
     <a href="#memory" class="nav-link" data-target="memory">🧠 메모리</a>
@@ -238,10 +239,36 @@
       </div>
     </div>`;
   }
+  // dashboard.js 와 동일 로직 포팅 — 모델 family 별 색상 chip.
+  function _modelFamilyClass(p) {
+    const s = String(p).toLowerCase();
+    if (s.includes('haiku')) return 'm-haiku';
+    if (s.includes('sonnet')) return 'm-sonnet';
+    if (s.includes('opus')) return 'm-opus';
+    if (s.includes('gpt') || s.includes('o1') || s.includes('o3')) return 'm-gpt';
+    if (s.includes('gemini')) return 'm-gemini';
+    return '';
+  }
+  function _modelKindIcon(modelId) {
+    if (!modelId) return '';
+    const s = String(modelId).toLowerCase();
+    if (s.startsWith('claude-') || s.startsWith('gpt-') || s.startsWith('gemini-') || s.startsWith('openai')) return '☁️';
+    if (s.startsWith('ollama:') || s.startsWith('vllm:') || s.startsWith('llamacpp:') || s.startsWith('local:') || s.includes('llama') || s.includes('qwen') || s.includes('mistral')) return '🖥️';
+    return '';
+  }
   function renderModelChips(d) {
-    // Simple compact chip — 대시보드의 multi-model 파싱은 생략, 그냥 표시.
-    if (!d.model) return '';
-    return `<span class="pill neutral" style="font-family:'JetBrains Mono',monospace;font-size:11px">${esc(d.model)}</span>`;
+    if (!d || !d.model) return '';
+    const raw = String(d.model);
+    const parts = raw.split(/\s*·\s*/).map(s => s.trim()).filter(Boolean);
+    const provider = d.provider || '';
+    const override = d.model_override ? ' override' : '';
+    const title = d.model_override ? 'per-agent override' : 'default';
+    return parts.map(p => {
+      const fam = _modelFamilyClass(p);
+      const classes = ['model-tag', provider, fam, override.trim()].filter(Boolean).join(' ');
+      const icon = _modelKindIcon(p);
+      return `<span class="${classes}" title="${esc(title)}">${icon ? icon + ' ' : ''}${esc(p)}</span>`;
+    }).join('');
   }
 
   // ── 메인 로드 ─────────────────────────────────────────────────
@@ -267,21 +294,49 @@
     img.style.display = '';
     img.onerror = () => { img.style.display = 'none'; };
 
-    // Profile 섹션
+    // ── 📊 상태 섹션 (emotion / status / model) ──
+    // 모달과 동일 기준으로 분리: 실시간 상태 정보만 여기에.
+    const statusLines = [];
+    if (d.emotion) {
+      statusLines.push(['Emotion', `${d.emoji || ''} ${esc(d.emotion)} (${d.intensity}/10)`, true]);
+    }
+    if (d.status) {
+      let statusLabel;
+      if (d.thinking) statusLabel = '🧠 Thinking';
+      else if (d.speaking) statusLabel = '💬 Speaking';
+      else if (d.status === 'active') statusLabel = '● Active';
+      else statusLabel = '○ ' + esc(d.status);
+      statusLines.push(['Status', statusLabel, true]);
+    }
+    if (d.model) statusLines.push(['Model', renderModelChips(d), true]);
+
+    // ── 👤 프로필 섹션 (본질 정보 — 성격 / 직업 / 외모 / 말투 / 배경) ──
+    const joinList = (arr) => (arr || []).map(esc).join(', ');
     const profileLines = [];
-    if (d.age) profileLines.push(['Age', `${d.age} years old`]);
-    if (d.gender) profileLines.push(['Gender', d.gender]);
-    if (d.mbti) profileLines.push(['MBTI', d.mbti]);
-    if (d.enneagram) profileLines.push(['Enneagram', d.enneagram]);
-    if (d.traits && d.traits.length) profileLines.push(['Traits', d.traits.slice(0, 5).join(' · ')]);
-    if (d.emotion) profileLines.push(['Emotion', `${d.emoji || ''} ${d.emotion} (${d.intensity}/10)`]);
-    if (d.status) profileLines.push(['Status', d.status]);
-    if (d.model) profileLines.push(['Model', renderModelChips(d), true]);
+    if (d.age) profileLines.push(['나이', `${esc(String(d.age))}${d.birth_year ? ` <span style="color:var(--text-faint)">(${esc(String(d.birth_year))})</span>` : ''}`, true]);
+    if (d.gender) profileLines.push(['성별', esc(d.gender), true]);
+    if (d.mbti) profileLines.push(['MBTI', esc(d.mbti), true]);
+    if (d.enneagram) profileLines.push(['에니어그램', esc(d.enneagram), true]);
+    if (d.traits && d.traits.length) profileLines.push(['성격', joinList(d.traits), true]);
+    if (d.likes && d.likes.length) profileLines.push(['좋아함', joinList(d.likes), true]);
+    if (d.dislikes && d.dislikes.length) profileLines.push(['싫어함', joinList(d.dislikes), true]);
+    if (d.hobby) profileLines.push(['취미', esc(d.hobby), true]);
+    if (d.values) profileLines.push(['가치관', esc(d.values), true]);
+    if (d.occupation) profileLines.push(['직업', esc(d.occupation), true]);
+    if (d.routine) profileLines.push(['일상', esc(d.routine), true]);
+    if (d.frequent_places && d.frequent_places.length) profileLines.push(['자주 가는 곳', joinList(d.frequent_places), true]);
+    if (d.appearance_summary) profileLines.push(['외모', esc(d.appearance_summary), true]);
+    if (d.appearance_height) profileLines.push(['키', esc(d.appearance_height), true]);
+    if (d.appearance_hair) profileLines.push(['헤어', esc(d.appearance_hair), true]);
+    if (d.fashion_style) profileLines.push(['패션', esc(d.fashion_style), true]);
+    if (d.speech_style) profileLines.push(['말투', esc(d.speech_style), true]);
+    if (d.signature_expressions && d.signature_expressions.length) profileLines.push(['자주 쓰는 표현', joinList(d.signature_expressions), true]);
     if (d.relationship_to_owner?.type) {
       const r = d.relationship_to_owner;
-      profileLines.push(['Owner', `${r.type}${r.pet_name ? ' (' + r.pet_name + ')' : ''}${r.duration ? ' · ' + r.duration : ''}`]);
+      profileLines.push(['오너와의 관계', `${esc(r.type)}${r.pet_name ? ' (' + esc(r.pet_name) + ')' : ''}${r.duration ? ' · ' + esc(r.duration) : ''}`, true]);
+      if (r.dynamics) profileLines.push(['dynamics', esc(r.dynamics), true]);
     }
-    if (d.background) profileLines.push(['Background', d.background]);
+    if (d.background) profileLines.push(['배경', esc(d.background), true]);
 
     // Relationships
     const rels = (d.relationships || []).map(r => {
@@ -387,12 +442,15 @@
 
     // Render — 모든 섹션을 항상 렌더해 사이드바 앵커가 항상 매치되도록 함.
     // 비어있는 섹션은 안내 문구로 대체.
+    const renderKv = (lines) => `<dl class="kv">${lines.map(([k, v, raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>`;
     const body = `
+      <section id="status" class="detail-section">
+        <h4>📊 상태</h4>
+        ${statusLines.length ? renderKv(statusLines) : '<div class="empty">상태 정보가 없습니다</div>'}
+      </section>
       <section id="profile" class="detail-section">
         <h4>👤 프로필</h4>
-        ${profileLines.length
-          ? `<dl class="kv">${profileLines.map(([k, v, raw]) => `<dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>`
-          : '<div class="empty">프로필 정보가 없습니다</div>'}
+        ${profileLines.length ? renderKv(profileLines) : '<div class="empty">프로필 정보가 없습니다</div>'}
       </section>
       <section id="relationships" class="detail-section">
         <h4>🤝 관계${(d.relationships || []).length ? ` · ${d.relationships.length}` : ''}</h4>
@@ -413,8 +471,10 @@
     `;
     document.getElementById('page-body').innerHTML = body;
 
-    // Scroll-spy for side nav — 섹션 진입 시 active 표시.
-    // 기본 앵커 동작 (href="#id") 은 브라우저 native 라 observer 실패해도 네비게이션은 유지됨.
+    // Scroll-spy — scroll position 기반 (IntersectionObserver 는 여러 섹션 동시 교차 시
+    // topmost 선택해서 사용자가 "chat" 클릭했는데 바로 위 "thinking" 이 active 로 잡히는 버그).
+    // scrollY + threshold(=offset) 가 섹션 top 을 지났는지 기준으로 "가장 마지막에 지난" 섹션 active.
+    // 기본 앵커 동작 (href="#id") 은 브라우저 native 라 스크롤은 native 가 처리.
     const links = Array.from(document.querySelectorAll('aside.side-nav .nav-link'));
     const sections = links
       .map(a => document.getElementById(a.dataset.target))
@@ -422,20 +482,32 @@
     const setActive = (id) => {
       links.forEach(a => a.classList.toggle('active', a.dataset.target === id));
     };
-    if (sections.length && 'IntersectionObserver' in window) {
-      const io = new IntersectionObserver(entries => {
-        // 가장 위에 있는 intersecting 섹션을 active 로 (여러 개가 동시에 들어오면 최상단 우선)
-        const visible = entries
-          .filter(e => e.isIntersecting)
-          .map(e => e.target)
-          .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-        if (visible.length) setActive(visible[0].id);
-      }, { rootMargin: '-80px 0px -60% 0px', threshold: [0, 0.1, 0.5] });
-      sections.forEach(s => io.observe(s));
+    const THRESHOLD = 80; // scroll-margin-top(72) + 여유
+    const updateActive = () => {
+      const y = (window.scrollY || document.documentElement.scrollTop) + THRESHOLD;
+      let current = sections[0];
+      for (const sec of sections) {
+        if (sec.offsetTop <= y) current = sec;
+      }
+      if (current) setActive(current.id);
+    };
+    if (sections.length) {
+      // 클릭한 링크는 즉시 active 표시 (scroll 완료 기다리지 않고) — 사용자 피드백 즉시성.
+      links.forEach(a => {
+        a.addEventListener('click', () => {
+          setActive(a.dataset.target);
+        });
+      });
+      window.addEventListener('scroll', updateActive, { passive: true });
+      window.addEventListener('resize', updateActive);
+      // 초기 active: URL hash 또는 scroll 위치 기준
+      const hashId = (location.hash || '').replace('#', '');
+      if (hashId && sections.some(s => s.id === hashId)) {
+        setActive(hashId);
+      } else {
+        updateActive();
+      }
     }
-    // 초기 active: URL hash 있으면 그걸, 없으면 첫 섹션
-    const initial = (location.hash || '').replace('#', '') || (sections[0] && sections[0].id);
-    if (initial) setActive(initial);
   }
 
   load();

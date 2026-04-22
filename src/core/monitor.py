@@ -626,6 +626,12 @@ def get_agent_detail(agent_id: str) -> dict:
     # 주 채널 채팅
     primary_chat = get_recent_messages(limit=30, channel=primary)
 
+    # 추가 세부 프로필 필드 — 모달/상세페이지 프로필 섹션이 풍부하도록 전부 노출.
+    personality = (profile.get("personality") or {}) if profile else {}
+    daily = (profile.get("daily_life") or {}) if profile else {}
+    appearance = (profile.get("appearance") or {}) if profile else {}
+    speech = (profile.get("speech") or {}) if profile else {}
+
     return {
         "id": agent_id,
         "name": agent.get("name", agent_id),
@@ -639,8 +645,23 @@ def get_agent_detail(agent_id: str) -> dict:
         "birth_year": agent.get("birth_year", 0) or 0,
         "gender": _get_agent_gender(agent, profile),
         "enneagram": profile.get("enneagram", "") if profile else "",
-        "traits": (profile.get("personality", {}) or {}).get("traits", []) if profile else [],
+        "traits": personality.get("traits", []) or [],
+        "likes": personality.get("likes", []) or [],
+        "dislikes": personality.get("dislikes", []) or [],
+        "hobby": personality.get("hobby", "") or "",
+        "values": personality.get("values", "") or "",
         "background": profile.get("background", "") if profile else "",
+        "occupation": daily.get("occupation", "") or "",
+        "routine": daily.get("routine", "") or "",
+        "frequent_places": daily.get("frequent_places", []) or [],
+        "appearance_summary": appearance.get("summary", "") or "",
+        "appearance_height": appearance.get("height", "") or "",
+        "appearance_hair": appearance.get("hair", "") or "",
+        "fashion_style": appearance.get("fashion_style", "") or "",
+        "speech_style": speech.get("style_description", "") or speech.get("style", "") or "",
+        "speech_honorific": speech.get("honorific", "") or "",
+        "signature_expressions": speech.get("signature_expressions", []) or [],
+        "emoji_pattern": speech.get("emoji_pattern", "") or "",
         "relationship_to_owner": profile.get("relationship_to_owner", {}) if profile else {},
         "thinking": is_t,
         "speaking": is_s,
