@@ -686,6 +686,16 @@ function openModal(emoji, title, body, agent=null) {
   const titleEl = document.getElementById('d-title');
   titleEl.innerHTML = esc(title.split(' · ')[0]) + (title.includes(' · ') ? `<small>${esc(title.split(' · ').slice(1).join(' · '))}</small>` : '');
   document.getElementById('d-body').innerHTML = body;
+  // 에이전트 모달이면 상단에 전체 페이지 링크 표시 (닫기 옆). 그 외 (채널 등) 는 숨김.
+  const detailLink = document.getElementById('d-detail-link');
+  if (detailLink) {
+    if (agent && agent.id) {
+      detailLink.href = `/agent/${encodeURIComponent(agent.id)}?community=${encodeURIComponent(COMMUNITY || '')}`;
+      detailLink.style.display = '';
+    } else {
+      detailLink.style.display = 'none';
+    }
+  }
   document.getElementById('detail-backdrop').classList.add('open');
 }
 function closeModal() { document.getElementById('detail-backdrop').classList.remove('open'); }
@@ -923,7 +933,7 @@ async function openAgent(id) {
   const chatCount = (d.primary_chat || []).length;
   const chatHtml = (d.primary_chat || []).map(m => renderMessage({...m, channel: m.channel || d.primary_channel})).join('');
 
-  const detailUrl = `/agent/${encodeURIComponent(d.id)}?community=${encodeURIComponent(COMMUNITY || '')}`;
+  // 전체 보기 URL 은 이제 openModal 이 header 링크에 자동 세팅 (이 함수에선 body 구성만).
   const emotionLine = d.emotion
     ? `${esc(d.emoji || '')} ${esc(d.emotion)} <span style="color:var(--text-faint)">(${esc(String(d.intensity ?? ''))}/10)</span>`
     : '';
@@ -932,13 +942,43 @@ async function openAgent(id) {
   const sumStyle = 'cursor:pointer;list-style:none;padding:10px 14px;margin:-14px -16px;border-radius:10px;font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.2px;display:flex;align-items:center;gap:8px';
   const secInner = 'margin-top:12px';
 
+  // ── 프로필 정보 (항상 펼침 — 에이전트의 본질 정보) ──
+  const profileRows = [
+    d.age ? ['나이', `${esc(String(d.age))}`] : null,
+    d.gender ? ['성별', `${esc(d.gender)}`] : null,
+    d.mbti ? ['MBTI', `${esc(d.mbti)}`] : null,
+    d.enneagram ? ['에니어그램', `${esc(d.enneagram)}`] : null,
+    (d.traits && d.traits.length) ? ['성격', `${d.traits.map(esc).join(', ')}`] : null,
+    d.background ? ['배경', `${esc(d.background)}`] : null,
+  ].filter(Boolean);
+  const profileHtml = profileRows.length
+    ? `<dl class="kv">${profileRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
+    : '<div style="color:var(--text-faint);font-size:12px">프로필 정보 없음</div>';
+
+  // 관계 오너 정보
+  const relOwner = d.relationship_to_owner || {};
+  const relOwnerRows = [
+    relOwner.type ? ['오너와의 관계', esc(relOwner.type)] : null,
+    relOwner.pet_name ? ['호칭', esc(relOwner.pet_name)] : null,
+    relOwner.dynamics ? ['dynamics', esc(relOwner.dynamics)] : null,
+  ].filter(Boolean);
+  const relOwnerHtml = relOwnerRows.length
+    ? `<dl class="kv">${relOwnerRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
+    : '';
+
   const body = `
     <div class="detail-section" style="margin-top:0">
+      <h4>📊 상태</h4>
       <dl class="kv">
         ${emotionLine ? `<dt>Emotion</dt><dd>${emotionLine}</dd>` : ''}
         <dt>Status</dt><dd>${statusHtml}</dd>
         ${modelHtml ? `<dt>Model</dt><dd>${modelHtml}</dd>` : ''}
       </dl>
+    </div>
+    <div class="detail-section">
+      <h4>👤 프로필</h4>
+      ${profileHtml}
+      ${relOwnerHtml ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">${relOwnerHtml}</div>` : ''}
     </div>
     ${relsTopHtml ? `<div class="detail-section"><h4>🤝 관계 · Top ${relsTop.length}</h4>${relsTopHtml}</div>` : ''}
     <div class="detail-section">
@@ -961,9 +1001,6 @@ async function openAgent(id) {
       <summary style="${sumStyle}"><span>💬 최근 대화 · ${esc(d.primary_channel || '')} <span class="mem-count" style="text-transform:none;letter-spacing:0">(${chatCount})</span></span><span style="margin-left:auto;color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">클릭해서 펼치기</span></summary>
       <div class="msg-list" style="${secInner}">${chatHtml}</div>
     </details>` : ''}
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
-      <a href="${detailUrl}" class="act-btn primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">🗗 전체 보기</a>
-    </div>
   `;
   openModal(d.emoji, d.name + ' · ' + d.type, body, d);
 }
