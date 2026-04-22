@@ -341,6 +341,18 @@ async def alive_heartbeat():
         os.utime(path, None)
     except Exception:
         pass
+    # Platform supervisor 가 외부 기동 봇 (QA runner, 수동 실행 등) 을 감지할 수 있도록
+    # PID 파일 주기적 refresh — stop.sh 가 rm 하더라도 다음 heartbeat 에 재생성.
+    try:
+        from src import community
+        from pathlib import Path as _P
+        cid = community.get_community_id()
+        pid_dir = _P(__file__).resolve().parent.parent.parent / "dev"
+        pid_dir.mkdir(exist_ok=True)
+        for pf in (pid_dir / f".bot-{cid}.pid", pid_dir / ".bot.pid"):
+            pf.write_text(str(os.getpid()))
+    except Exception:
+        pass
 
 
 # ── Supervisor Pool tick ─────────────────────────────────
