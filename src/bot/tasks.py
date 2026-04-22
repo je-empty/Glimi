@@ -177,18 +177,15 @@ async def _verify_tutorial_state(guild):
             log_writer.system(f"[튜토리얼 검증] phase=complete이지만 채널 부족 — 채널 재생성 필요")
         return
 
-    # DB에 대화 기록이 있으면 튜토리얼은 이미 지난 것
-    conn = _db.get_conn()
-    has_messages = conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone() is not None
-    conn.close()
-
-    if has_messages or all_channels:
-        # 대화 기록 또는 채널이 있으면 튜토리얼 완료로 보정
+    if all_channels:
+        # 필수 채널 3개(dashboard/system_log/creator) 가 모두 존재하면 Phase 2 이상 진행됐다는
+        # 실질 증거 → 완료로 보정. "대화 기록" 존재는 Phase 1 프로필 수집 중에도 쌓이기 때문에
+        # 지표로 쓰면 진행 중인 튜토리얼을 잘못 complete 로 마킹해 Phase 2 진입을 영구 차단.
         if phase != "complete":
             _db.set_meta("tutorial_phase", "complete")
             if not greeted:
                 _db.set_meta("yuna_greeted", "1")
-            log_writer.system("[튜토리얼 검증] 튜토리얼 완료 보정 (대화 기록/채널 존재)")
+            log_writer.system("[튜토리얼 검증] 튜토리얼 완료 보정 (필수 채널 모두 존재)")
     elif greeted:
         log_writer.system(f"[튜토리얼 검증] greeted=1, phase={phase}, 채널: dashboard={has_dashboard} syslog={has_system_log} creator={has_creator}")
 
