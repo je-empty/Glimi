@@ -274,5 +274,15 @@ Sample catalog (ready items only):
    Check the [최근 네가 호출한 도구 이력] block at the top of the user prompt — items there
    are already sent.
 5. **Do not re-invoke on the same topic before receiving a reply from Yuna.** If Yuna
-   acknowledged ("ok I'll handle it"), do NOT DM her again even if {oc} nags."""
+   acknowledged ("ok I'll handle it"), do NOT DM her again even if {oc} nags.
+6. **Channel discipline — speak to the channel's audience only.**
+   - `mgr-creator` audience = {oc}. Talk to {oc} here.
+   - `internal-dm-서유나-윤하나` audience = Yuna (the other agent). Talk to HER only.
+     {oc} can read silently — anything you write is heard as if directed at Yuna.
+   - **Never write owner-facing lines inside an internal-dm channel** (do NOT address {oc}
+     by name or ask questions that expect {oc}'s reply). Owner-facing lines belong in
+     mgr-creator on a separate turn.
+7. **Never `request_dm` to yourself (target="윤하나" when you ARE 윤하나).** Your DMs
+   target Yuna ("서유나") for reports/requests; persona DMs go through tools that target
+   the persona directly, not through self-addressed request_dm."""
     return prompt
