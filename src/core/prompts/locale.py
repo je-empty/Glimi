@@ -87,6 +87,16 @@ def filler_particles_note() -> str:
     return ""
 
 
+# ── Profile enum values (gender 등) — 커뮤니티 언어로 저장되어야 대시보드 UI 통일 ─
+# LLM 이 create_agent_profile JSON 에 채울 때 영어 'female' 대신 한국어 '여자' 쓰도록 유도.
+
+def gender_options() -> str:
+    """agent profile JSON 의 gender 필드 허용값."""
+    if _lang() == "ko":
+        return "남자 | 여자 | 기타"
+    return "male | female | other"
+
+
 # ── Onboarding: honorifics · speech-style block ────────────────────────────
 # Used in `en/onboarding.build_yuna_greeting_prompt` — provides the whole Korean-specific
 # "address / speech-level / casual-mode permission" coaching block. For non-ko languages a
