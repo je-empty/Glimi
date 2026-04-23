@@ -14,6 +14,7 @@ Glimi E2E Test Runner — 튜토리얼 자동 테스트
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -147,8 +148,59 @@ def _init_qa_db():
     conn.close()
 
 
-def _reset_qa():
-    """qa 서버 초기화 — DB, 로그 삭제 + 디스코드 채널 정리 플래그"""
+def _backup_qa(tag: str = "") -> Path | None:
+    """reset 전 현재 DB + logs 를 communities/qa/backups/run-{date}-{tag}/ 로 백업.
+    분석·회귀 비교용 — 사용자가 반복 요구한 정책.
+    """
+    from datetime import datetime as _dt
+    db_path = QA_DIR / "community.db"
+    logs_dir = QA_DIR / "logs"
+    if not db_path.exists() and not (logs_dir.exists() and any(logs_dir.iterdir())):
+        return None  # 처음 실행 — 백업할 게 없음
+    suffix = _dt.now().strftime("%Y%m%d-%H%M%S")
+    if tag:
+        suffix = f"{suffix}-{tag}"
+    dest = QA_DIR / "backups" / f"run-{suffix}"
+    dest.mkdir(parents=True, exist_ok=True)
+    # DB (+ WAL sidecars)
+    for s in ("", "-shm", "-wal", "-journal"):
+        p = QA_DIR / f"community.db{s}"
+        if p.exists():
+            shutil.copy2(p, dest / p.name)
+    # logs 통째로 (system.log / bot.log / flags 등)
+    if logs_dir.exists():
+        dst_logs = dest / "logs"
+        dst_logs.mkdir(exist_ok=True)
+        for f in logs_dir.iterdir():
+            if f.is_file():
+                shutil.copy2(f, dst_logs / f.name)
+    # results (해당 run 의 latest.log 복사 — 존재 시)
+    lat = RESULTS_DIR / "latest.log" if "RESULTS_DIR" in globals() else None
+    try:
+        from tests.e2e.runner import RESULTS_DIR as _RD  # noqa (fallback no-op)
+        lat = _RD / "latest.log"
+    except Exception:
+        pass
+    if lat and lat.exists():
+        try:
+            shutil.copy2(lat, dest / "latest.log")
+        except Exception:
+            pass
+    print(f"[Runner] qa 백업: {dest}")
+    return dest
+
+
+def _reset_qa(backup: bool = True, backup_tag: str = ""):
+    """qa 서버 초기화 — DB, 로그 삭제 + 디스코드 채널 정리 플래그.
+
+    기본적으로 **reset 직전 자동 백업** — 이전 run 의 DB + logs 를 backups/run-{ts}/
+    로 보존. 사용자가 '백업은 일관되게 무조건' 라 강조한 정책.
+    """
+    if backup:
+        try:
+            _backup_qa(tag=backup_tag)
+        except Exception as e:
+            print(f"[Runner] 백업 실패 (계속 진행): {e}")
     # WAL 모드 사이드카(-shm, -wal)까지 같이 지워야 다음 init_db에서 disk I/O error 안 남
     for suffix in ("", "-shm", "-wal", "-journal"):
         p = QA_DIR / f"community.db{suffix}"
