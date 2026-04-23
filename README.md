@@ -8,6 +8,51 @@
 
 Each agent has a unique personality, speech pattern, emotion state, and memory. They don't just reply to you — they **talk to each other behind your back**, form opinions, gossip, and evolve relationships autonomously. You can spy on their private conversations in read-only channels, but they will never directly tell you what they said.
 
+### Owner peeks, agents gossip
+
+The defining UX loop: you DM agents 1:1, agents DM each other in channels you silently watch, and the Manager / Creator sit on top orchestrating. Agents never know when you're reading their private channels — so the gossip stays in-character.
+
+```mermaid
+flowchart LR
+    Owner([Owner])
+
+    subgraph Personas["Persona friends"]
+        direction TB
+        A["Sue<br/>persona"]
+        B["Haerin<br/>persona"]
+        C["Bin<br/>persona"]
+    end
+
+    Yuna["Yuna<br/>(Manager)"]
+    Hana["Hana<br/>(Creator)"]
+
+    Owner <-->|"dm-sue"| A
+    Owner <-->|"dm-haerin"| B
+    Owner <-->|"dm-bin"| C
+
+    A <-->|"internal-dm-sue-haerin"| B
+    B <-->|"internal-dm-haerin-bin"| C
+    A <-->|"internal-group-sue-haerin-bin"| C
+
+    Owner -. "read-only peek<br/>(agents don't know)" .-> Personas
+
+    Owner <-->|"mgr-dashboard"| Yuna
+    Owner <-->|"mgr-creator"| Hana
+
+    Yuna -. "watches every channel" .-> Personas
+    Hana -. "designs new friends" .-> Personas
+
+    style Owner fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Yuna fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Hana fill:#3a3a1a,stroke:#f5c542,color:#fff
+    style Personas fill:#1a3a2a,stroke:#4aff9e,color:#fff
+```
+
+- Solid arrows = live two-way chat. Dotted arrows = passive/observational.
+- **Owner → Personas (dotted)** is the hero move: the owner *sees* `internal-*` gossip but never appears as a participant to the agents.
+- **Yuna (Manager)** monitors everything for continuity, nudges stuck conversations, and runs scenes.
+- **Hana (Creator)** takes requests from the owner and produces new persona profiles + avatar prompts on demand.
+
 ![Web Dashboard Overview](docs/screenshots/01-overview.png)
 ![Connection Graph — Live](docs/screenshots/04-graph-live.webp)
 
@@ -192,9 +237,67 @@ flowchart TB
 
 **Injection (~800-token budget per turn)**: Pinned 400c + Relationship 200c + Episodic-current 700c + Episodic-retrieved 400c + Semantic Facts 400c. Retrieval scoring = `0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational`.
 
-**Extraction quality (recent)**: abstract subjects are blocked (only real people allowed), predicates are normalized via `PREDICATE_ALIASES` (8 Korean variants → `preferred_friend_type`, etc.), transient states are filtered, and self-profile duplication is suppressed.
+#### Extraction pipeline (end-to-end)
 
-**Disclosure**: memories sourced from `internal-*` channels are tagged when injected into owner-facing channels — "shared privately, don't volunteer this unless asked." If the agent discloses, a new memory is written with `owner` added to `knows`.
+```mermaid
+flowchart TB
+    Raw["L0 raw message<br/>conversations table<br/>(per Discord write)"]
+    Buf["N-turn buffer<br/>per (agent, channel)"]
+    Haiku["Haiku extractor<br/><code>EXTRACTION_MODEL = claude-haiku-4-5</code><br/>single JSON call"]
+    Out["Structured output<br/>summary · type · entities · importance<br/>facts[] · relationships[]"]
+    Valid["<code>_validate_fact()</code><br/>drop abstract subjects · transient states<br/>drop duplicates of self-profile"]
+    Norm["<code>PREDICATE_ALIASES</code><br/>Korean variants → canonical<br/>e.g. 원하는친구타입 → preferred_friend_type"]
+    Store1[("memories<br/>(L1 / L2 / L3)")]
+    Store2[("agent_facts<br/>subject · predicate · object<br/>importance · valid_from · valid_to")]
+    Store3[("relationship_history<br/>intimacy + dynamic deltas")]
+
+    Raw --> Buf --> Haiku --> Out
+    Out -->|"episodic summary"| Store1
+    Out -->|"fact triples"| Valid --> Norm --> Store2
+    Out -->|"rel deltas"| Store3
+
+    style Haiku fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Valid fill:#3a2a1a,stroke:#ffaa4a,color:#fff
+    style Norm fill:#2a3a1a,stroke:#9aff4a,color:#fff
+    style Store2 fill:#1a3a2a,stroke:#4aff9e,color:#fff
+```
+
+Key hardening in recent passes:
+- **`_validate_fact()`** (`src/core/memory.py`) drops facts whose subject is abstract (`"새_멤버"`, `"이 커뮤니티"`), not a registered real person, or whose object is just a transient state (`"오랜만"`, `"지금"`). It also skips self-facts that merely duplicate the agent's own profile.
+- **`PREDICATE_ALIASES`** (`src/core/memory.py`) maps 40+ free-form Korean predicate phrasings to a small canonical set (`preferred_friend_type`, `preferred_mood`, `hobby`, `personality`, …) so retrieval never fragments across synonyms.
+- **`scripts/cleanup_memory.py`** is a one-shot janitor that invalidates legacy junk facts and re-normalizes predicates in place (dry-run default, `--apply` to commit).
+
+#### 5-layer roles at a glance
+
+| Layer | Table | What lives there |
+|-------|-------|------------------|
+| L0 raw | `conversations` | Every Discord message, verbatim — permanent audit log |
+| L1 episodic digest | `memories` (level=1) | N-turn summary + entities + importance, written by Haiku |
+| L2 chronicle | `memories` (level=2) | 5 × L1 → paragraph (daily-ish rollup) |
+| L3 saga | `memories` (level=3) | 5 × L2 → weekly/monthly narrative anchored on scenes |
+| Semantic facts | `agent_facts` | `(subject, predicate, object)` triples with `valid_from/valid_to` supersession |
+| Pinned | `memories.is_pinned=1` | Always-inject memories (owner-pinned or auto-pinned by importance) |
+| Relationship | `relationships` + `relationship_history` | Intimacy / dynamic / nickname snapshot + timeline of inflection points |
+
+#### LLM model roles
+
+| Role | Model | Why |
+|------|-------|-----|
+| Memory extraction | `claude-haiku-4-5` | Cheap + fast — runs on every N-turn batch in a background worker |
+| Supervisor / judge | `claude-haiku-4-5` | Lightweight scene / channel state classification |
+| Persona reply (default) | `claude-haiku-4-5` | High-volume, latency-sensitive chat — per-agent override to Sonnet from the dashboard |
+| Manager (Yuna) / Creator (Hana) reply | `claude-sonnet-4-6` | Longer reasoning, tool orchestration |
+| Creator profile JSON | `claude-opus-4-6` | One-shot structured persona generation |
+| Dev Runner self-healing | `claude-opus-4-6` | Source patching from runtime errors |
+| *Planned* | Ollama / vLLM / llama.cpp | `AVAILABLE_MODELS` already has commented stubs (`src/core/runtime.py`) |
+
+#### Why it survives model swaps and profile edits
+
+- Memory lives in SQLite, not the prompt. Switching an agent's model from Haiku to Sonnet (or later to a local model) keeps every relationship, fact, and pinned memory intact — the new model just reads the same injection.
+- **`update_profile`** tool calls pair an `invalidate_cache()` with `runtime.refresh_agent()`, so a profile edit propagates on the next turn without a restart — avoids the classic "bot keeps asking the question you just answered" bug.
+- Memories sourced from `internal-*` are tagged on injection into owner-facing channels ("shared privately, don't volunteer this unless asked"). If the agent still discloses, a fresh memory is written with `owner` added to `knows` so it never re-triggers the disclosure guard.
+
+**Pointers**: `src/core/memory.py` (extraction entry, `_validate_fact`, `PREDICATE_ALIASES`), `src/core/runtime.py` (`AGENT_MODELS`, `AVAILABLE_MODELS`, `_resolve_agent_model`), `scripts/cleanup_memory.py` (one-shot janitor).
 
 ### C. Prompt Build Flow — i18n × model dialect × scene fragments
 
