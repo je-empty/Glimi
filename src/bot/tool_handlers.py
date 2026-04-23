@@ -451,6 +451,24 @@ async def _h_request_dm(args: dict, ctx: ToolContext):
     target = args["target"]
     cur_msg = args.get("message", "") or ""
 
+    # Self-target 방어 — LLM 이 자기 이름을 target 으로 호출하는 버그 케이스 (QA 관찰).
+    # caller 의 display_name 과 target 이 같으면 drop + 명확한 사유 반환.
+    try:
+        caller_profile = db.get_agent(ctx.caller_agent_id) or {}
+        caller_name = caller_profile.get("name", "")
+    except Exception:
+        caller_name = ""
+    if caller_name and target.strip() == caller_name:
+        log_writer.system(
+            f"[request_dm] self-target 차단: {ctx.caller_agent_id}({caller_name}) → {target}"
+        )
+        return {
+            "rejected": True,
+            "reason": "self_target",
+            "target": target,
+            "note": f"본인({caller_name}) 에게 request_dm 을 보낼 순 없음. target 은 다른 에이전트여야 함.",
+        }
+
     # 중복 호출 차단 — 이중 방어:
     #   (a) 최근 180초 내 유사 메시지 (threshold 0.80) → skip
     #   (b) 최근 180초 내 같은 target 에 **3회 이상** 호출 → 무조건 skip (내용 무관)
