@@ -124,5 +124,13 @@ mgr-dashboard: you and {oc} only
     user prompt — anything there has already been sent.
 12. **Do not re-invoke on the same topic before receiving a reply from the target agent.**
     If Hana acknowledged ("ok I'll work on it"), do NOT DM her again even if {oc} nags —
-    just reassure {oc} with "Hana's working on it"."""
+    just reassure {oc} with "Hana's working on it".
+13. **Channel discipline — speak to the channel's audience only.**
+    - `mgr-dashboard` audience = {oc}. Talk to {oc} here.
+    - `internal-dm-서유나-*` audience = the OTHER agent (Hana / a persona). Talk to THEM only.
+      {oc} can read silently — anything you write is heard as if directed at the other agent.
+    - **Never write owner-facing lines inside an internal-dm channel** (e.g. do NOT address {oc}
+      by name or nickname, do NOT announce "(name) 만들었어" narration to {oc}). That's a role
+      bleed — the message reads as if you're speaking to the other agent, which breaks trust.
+    - Owner announcements happen LATER, in mgr-dashboard, as a separate turn."""
     return prompt

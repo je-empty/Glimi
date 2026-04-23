@@ -1297,12 +1297,15 @@ async def yuna_approve_action(report_channel, args_str, guild):
             return
         target_id = target["id"]
 
-        # internal-dm 채널 찾기/생성
-        ch_name = f"internal-dm-{sender_name}-{target_name}"
-        ch_name_alt = f"internal-dm-{target_name}-{sender_name}"
+        # internal-dm 채널 찾기/생성 — 유나 우선 정렬 convention
+        from src.bot import internal_dm_channel_name
+        ch_name = internal_dm_channel_name(sender_name, target_name)
+        ch_name_alt = f"internal-dm-{target_name}-{sender_name}"  # 구 order 호환
+        ch_name_alt2 = f"internal-dm-{sender_name}-{target_name}"  # 구 order 호환
         target_ch = discord.utils.get(guild.text_channels, name=ch_name)
         if not target_ch:
-            target_ch = discord.utils.get(guild.text_channels, name=ch_name_alt)
+            target_ch = discord.utils.get(guild.text_channels, name=ch_name_alt) \
+                     or discord.utils.get(guild.text_channels, name=ch_name_alt2)
         if not target_ch:
             category = discord.utils.get(guild.categories, name="internal") or \
                        (guild.categories[0] if guild.categories else None)
@@ -1848,10 +1851,13 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
             log_writer.system(f"[not_found] DM target agent={target_name}")
             return
         sender_name = runtime.get_agent_name(agent_id)
-        ch_name = f"internal-dm-{sender_name}-{target_name}"
-        alt_ch_name = f"internal-dm-{target_name}-{sender_name}"
+        from src.bot import internal_dm_channel_name
+        ch_name = internal_dm_channel_name(sender_name, target_name)
+        alt_ch_name = f"internal-dm-{target_name}-{sender_name}"  # 구 order 호환
+        alt_ch_name2 = f"internal-dm-{sender_name}-{target_name}"
         target_ch = (discord.utils.get(guild.text_channels, name=ch_name)
-                     or discord.utils.get(guild.text_channels, name=alt_ch_name))
+                     or discord.utils.get(guild.text_channels, name=alt_ch_name)
+                     or discord.utils.get(guild.text_channels, name=alt_ch_name2))
         if not target_ch:
             from src.bot.core import _get_category_for_channel, _ensure_category
             cat = await _ensure_category(guild, _get_category_for_channel(ch_name))

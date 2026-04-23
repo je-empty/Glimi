@@ -49,6 +49,31 @@ MGR_CHANNEL = "mgr-dashboard"
 MGR_SYSTEM_LOG = "mgr-system-log"
 CREATOR_CHANNEL = "mgr-creator"
 MGR_ID = "agent-mgr-001"
+CREATOR_ID = "agent-creator-001"
+
+
+# ── internal-dm 채널명 정렬 컨벤션 ────────────────────────────
+# Yuna (mgr) 참여 시 항상 먼저, 다음 Hana (creator), 그 외는 입력 순서 유지.
+# 일관성 위해 모든 internal-dm 생성 경로가 이 helper 를 거쳐야 함.
+# (이전엔 호출 사이트마다 f"internal-dm-{a}-{b}" 로 입력 순서에 의존 → 같은 두 에이전트가
+#  두 채널명으로 나뉘는 혼란 + 유나/하나 순서 제멋대로.)
+
+def _agent_name_priority(name: str) -> int:
+    """sort 키 — 작을수록 채널명에서 앞에 온다."""
+    # DB 에서 mgr/creator 이름 동적 조회도 가능하지만 순환 import 피하려고 상수.
+    # 커뮤니티마다 유나/하나 이름이 다르더라도 seed_agents.json 기본값 '서유나' / '윤하나' 로 고정.
+    PRIORITY = {"서유나": 0, "Yuna": 0, "윤하나": 1, "Hana": 1}
+    return PRIORITY.get(name, 9)
+
+
+def internal_dm_channel_name(a_name: str, b_name: str) -> str:
+    """두 에이전트 이름으로 internal-dm 채널명 생성. 유나 우선 → 하나 → 그 외."""
+    if not a_name or not b_name:
+        return f"internal-dm-{a_name or '?'}-{b_name or '?'}"
+    pa, pb = _agent_name_priority(a_name), _agent_name_priority(b_name)
+    # 우선순위 낮은(=앞) 쪽이 먼저. 동률이면 입력 순서 유지.
+    first, second = (a_name, b_name) if pa <= pb else (b_name, a_name)
+    return f"internal-dm-{first}-{second}"
 
 # ── 채널 매핑 (공유 상태) ──────────────────────────────
 
