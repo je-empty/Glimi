@@ -12,7 +12,7 @@ from src.core.prompts.helpers import (
     load_sample_catalog,
     tools_reference,
 )
-from src.core.prompts.locale import simple_ack_examples
+from src.core.prompts.locale import simple_ack_examples, gender_options
 from src.core.prompts.model import tools_block_end_rule
 
 
@@ -157,7 +157,7 @@ Create new characters with this JSON structure:
   "emotion_intensity": 5,
   "birth_year": YYYY,
   "age": N,
-  "gender": "male|female|other",
+  "gender": "{gender_options()}",  # use community-language values (NOT English in a Korean community)
   "mbti": "XXXX",
   "enneagram": "Xw Y",
   "background": "Background description",
