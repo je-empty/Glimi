@@ -14,6 +14,53 @@
 
 ---
 
+## 오너는 훔쳐보고, 에이전트는 뒷담화한다
+
+이 프로젝트의 고유 UX 루프: 오너는 에이전트 각각과 1:1 DM 을 하고, 에이전트들은 오너가 조용히 관전하는 `internal-*` 채널에서 자기들끼리 대화하며, 그 위에 매니저/Creator 가 전체를 모니터링·조율한다. 에이전트는 오너가 비밀 채널을 읽는다는 사실을 모르기 때문에 뒷담이 캐릭터를 깨지 않는다.
+
+```mermaid
+flowchart LR
+    Owner([Owner])
+
+    subgraph Personas["Persona friends"]
+        direction TB
+        A["Sue<br/>persona"]
+        B["Haerin<br/>persona"]
+        C["Bin<br/>persona"]
+    end
+
+    Yuna["Yuna<br/>(Manager)"]
+    Hana["Hana<br/>(Creator)"]
+
+    Owner <-->|"dm-sue"| A
+    Owner <-->|"dm-haerin"| B
+    Owner <-->|"dm-bin"| C
+
+    A <-->|"internal-dm-sue-haerin"| B
+    B <-->|"internal-dm-haerin-bin"| C
+    A <-->|"internal-group-sue-haerin-bin"| C
+
+    Owner -. "read-only peek<br/>(agents don't know)" .-> Personas
+
+    Owner <-->|"mgr-dashboard"| Yuna
+    Owner <-->|"mgr-creator"| Hana
+
+    Yuna -. "watches every channel" .-> Personas
+    Hana -. "designs new friends" .-> Personas
+
+    style Owner fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Yuna fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Hana fill:#3a3a1a,stroke:#f5c542,color:#fff
+    style Personas fill:#1a3a2a,stroke:#4aff9e,color:#fff
+```
+
+- 실선 = 실제 양방향 대화. 점선 = 수동적/관찰적 관계.
+- **Owner → Personas (점선)** 이 핵심 무브 — 오너는 `internal-*` 대화를 *보지만* 에이전트 관점에선 참여자가 아님.
+- **유나 (매니저)** 는 모든 채널을 모니터링해서 흐름을 이어주고 정체된 대화를 nudge.
+- **하나 (Creator)** 는 오너 요청을 받아 새 페르소나 프로필 + 아바타 프롬프트를 생성.
+
+---
+
 ## 무엇이 다른가
 
 대부분의 AI 챗봇은 1:1입니다 — 묻고 답합니다. 멀티에이전트 프레임워크는 작업을 파이프라인으로 넘깁니다. **Glimi는 둘 다 아닙니다.**
@@ -260,7 +307,67 @@ graph LR
 
 **Retrieval scoring**: `0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational`. recency 반감기 30일, semantic 은 엔티티 집합 교집합 비율.
 
-**Disclosure**: `internal-*` 채널 출처 메모리를 오너 채널에 주입할 땐 `🔒사적` 마커 부착 — "자발적으로 꺼내지 마, 사적 대화였음" 지시. 에이전트가 스스로 공유하면 새 메모리 생성 (knows 에 owner 추가).
+#### 추출 파이프라인 (end-to-end)
+
+```mermaid
+flowchart TB
+    Raw["L0 원본 메시지<br/>conversations 테이블"]
+    Buf["N-turn 버퍼<br/>(agent, channel) 별"]
+    Haiku["Haiku 추출기<br/><code>EXTRACTION_MODEL = claude-haiku-4-5</code><br/>단일 JSON 호출"]
+    Out["구조화 출력<br/>summary · type · entities · importance<br/>facts[] · relationships[]"]
+    Valid["<code>_validate_fact()</code><br/>추상 subject · 일시 상태 drop<br/>self-profile 중복 skip"]
+    Norm["<code>PREDICATE_ALIASES</code><br/>한국어 변형 → canonical<br/>(예: 원하는친구타입 → preferred_friend_type)"]
+    Store1[("memories<br/>(L1 / L2 / L3)")]
+    Store2[("agent_facts<br/>subject · predicate · object<br/>importance · valid_from · valid_to")]
+    Store3[("relationship_history<br/>intimacy / dynamic 변곡점")]
+
+    Raw --> Buf --> Haiku --> Out
+    Out -->|"에피소드 요약"| Store1
+    Out -->|"fact 트리플"| Valid --> Norm --> Store2
+    Out -->|"관계 델타"| Store3
+
+    style Haiku fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Valid fill:#3a2a1a,stroke:#ffaa4a,color:#fff
+    style Norm fill:#2a3a1a,stroke:#9aff4a,color:#fff
+    style Store2 fill:#1a3a2a,stroke:#4aff9e,color:#fff
+```
+
+최근 강화된 방어 장치:
+- **`_validate_fact()`** (`src/core/memory.py`) — subject 가 추상 명사 (`"새_멤버"`, `"이 커뮤니티"`) 이거나 실존 인물(agents/users) 이 아니면 drop. object 가 일시 상태 (`"오랜만"`, `"지금"`) 만 담겨도 drop. 자기 자신 fact 이면서 자신의 profile 과 중복이면 skip.
+- **`PREDICATE_ALIASES`** (`src/core/memory.py`) — 40+ 한국어 표현을 canonical 집합 (`preferred_friend_type`, `preferred_mood`, `hobby`, `personality`, …) 으로 매핑해서 동의어로 분산되지 않게 함.
+- **`scripts/cleanup_memory.py`** — 기존 쓰레기 fact 일회성 정리 + predicate 정규화 마이그레이션. 기본 dry-run, `--apply` 주면 반영.
+
+#### 5 레이어 역할 정리
+
+| Layer | 테이블 | 내용 |
+|-------|--------|------|
+| L0 원본 | `conversations` | 디스코드 메시지 원본 — 영구 감사 로그 |
+| L1 에피소드 | `memories` (level=1) | N-turn 요약 + 엔티티 + importance, Haiku 가 작성 |
+| L2 chronicle | `memories` (level=2) | 5 × L1 → 단락 (일 단위 rollup) |
+| L3 saga | `memories` (level=3) | 5 × L2 → 주/월 narrative, 씬 중심 |
+| 의미 사실 | `agent_facts` | `(subject, predicate, object)` triple, `valid_from/valid_to` 로 supersession |
+| Pinned | `memories.is_pinned=1` | 항상 주입 (오너 pin 또는 importance 기반 자동) |
+| 관계 | `relationships` + `relationship_history` | intimacy/dynamic/별명 스냅샷 + 변곡점 타임라인 |
+
+#### LLM 모델 역할 매트릭스
+
+| 역할 | 모델 | 이유 |
+|------|------|------|
+| 메모리 추출 | `claude-haiku-4-5` | 싸고 빠름 — 매 N-turn 배치마다 백그라운드 worker 에서 실행 |
+| Supervisor / judge | `claude-haiku-4-5` | 경량 씬/채널 상태 판정 |
+| 페르소나 응답 (기본) | `claude-haiku-4-5` | 대화량 많고 지연 민감 — 대시보드에서 per-agent Sonnet 오버라이드 가능 |
+| 매니저 (유나) / Creator (하나) 응답 | `claude-sonnet-4-6` | 긴 추론, 도구 조합 |
+| Creator 프로필 JSON | `claude-opus-4-6` | 원샷 구조화 페르소나 생성 |
+| Dev Runner 자가 치유 | `claude-opus-4-6` | 런타임 에러 기반 소스 패치 |
+| *예정* | Ollama / vLLM / llama.cpp | `AVAILABLE_MODELS` 에 주석 stub 준비됨 (`src/core/runtime.py`) |
+
+#### 모델 전환 · 프로필 수정에도 맥락이 유지되는 이유
+
+- 메모리는 프롬프트가 아니라 SQLite 에 있음. 에이전트 모델을 Haiku → Sonnet (또는 나중에 로컬 모델) 로 바꿔도 관계·fact·pinned 는 그대로 — 새 모델이 같은 주입을 읽을 뿐.
+- **`update_profile`** 툴 호출은 `invalidate_cache()` 와 `runtime.refresh_agent()` 를 쌍으로 실행해서, 프로필 수정이 재시작 없이 다음 턴부터 반영됨 — "방금 대답한 걸 또 물어보는 봇" 버그를 차단.
+- `internal-*` 출처 메모리는 오너 채널에 주입될 때 "사적 대화였음, 먼저 꺼내지 마" 마커가 붙음. 그럼에도 에이전트가 공유하면 새 메모리가 생성되면서 `knows` 에 owner 가 추가 — disclosure 가드가 다시 트리거되지 않음.
+
+**핵심 파일**: `src/core/memory.py` (추출 엔트리, `_validate_fact`, `PREDICATE_ALIASES`), `src/core/runtime.py` (`AGENT_MODELS`, `AVAILABLE_MODELS`, `_resolve_agent_model`), `scripts/cleanup_memory.py` (일회성 janitor).
 
 **도구**:
 - `recall_memory(entity, query, time_range_days, limit)` — 모든 에이전트가 자기 기억 deep search. 평소 주입 범위 밖까지 도달.
