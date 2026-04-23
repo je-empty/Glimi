@@ -471,18 +471,26 @@ class AgentRuntime:
         )
 
     def _describe_channel(self, channel: str, my_agent_id: str) -> str:
-        """채널 정보를 에이전트가 이해할 수 있는 형태로 설명"""
+        """채널 정보를 에이전트가 이해할 수 있는 형태로 설명.
+
+        agent_type 별 메타 자각 수준에 맞춰 설명 분기:
+          - persona: 오너 read-only 사실 숨김 (환상 유지)
+          - mgr/creator: 오너 read-only 사실 명시 + '오너 대사 이 채널에 쓰지 말 것'
+        """
         participants = db.get_channel_participants(channel)
 
-        # 참가자 이름 변환
+        # 참가자 이름 변환 + 이 에이전트 타입 파악
         names = []
         for pid in participants:
             if pid == my_agent_id:
-                continue  # 자기 자신은 제외
+                continue
             profile = load_profile(pid)
             if profile:
                 names.append(profile["name"])
 
+        my_profile = load_profile(my_agent_id) or {}
+        my_type = my_profile.get("type", "persona")
+        is_staff = my_type in ("mgr", "creator")  # 메타 자각 있는 staff
         owner_name = get_user_display_name()
 
         # 채널 타입별 설명
@@ -500,12 +508,28 @@ class AgentRuntime:
             )
         elif channel.startswith("internal-dm-"):
             partner = names[0] if names else "?"
+            if is_staff:
+                return (
+                    f"[지금 대화 중: {partner}과(와) 둘만의 내부 DM. "
+                    f"채널 참여자 = 너 + {partner} 2명. "
+                    f"{owner_name} 는 이 채널 읽기전용(silent) 으로 훔쳐볼 수 있음 — 쓰진 못함. "
+                    f"⚠ 네 메시지는 **{partner} 에게만 들리는 발화**. {owner_name} 에게 할 말이 "
+                    f"있으면 이 채널 말고 #mgr-dashboard 에서 따로 해야 함 (여기 쓰면 {partner} "
+                    f"에게 향한 말로 오해됨).]"
+                )
             return (
                 f"[지금 대화 중: {partner}과(와) 둘만의 사적인 대화. "
                 f"여기엔 너와 {partner}만 있어. 다른 사람은 아무도 못 봐.]"
             )
         elif channel.startswith("internal-group-"):
             members = ", ".join(names) if names else "?"
+            if is_staff:
+                return (
+                    f"[지금 대화 중: {members}과(와) 단체 대화 (내부). "
+                    f"{owner_name} 는 읽기전용(silent) 으로 볼 수 있음. "
+                    f"⚠ 네 발화는 여기 있는 에이전트들에게 향함. {owner_name} 에게 할 말이 있으면 "
+                    f"이 채널 말고 #mgr-dashboard 에서.]"
+                )
             return (
                 f"[지금 대화 중: {members}과(와) 단체 대화. "
                 f"여기엔 지금 있는 멤버만 참여 중이야. 다른 사람은 아무도 못 봐. "
