@@ -233,7 +233,8 @@ class OrchestratorSupervisor(Supervisor):
         # yuna_create_room 은 기본적으로 Yuna가 mgr-dashboard에서 호출하는 루틴 —
         # 여기서는 직접 internal-dm 생성 + start_conversation 흐름 사용.
         from src.core.conversation import start_conversation
-        ch_name = f"internal-dm-{a_name}-{b_name}"
+        from src.bot import internal_dm_channel_name
+        ch_name = internal_dm_channel_name(a_name, b_name)
         try:
             # 채널 생성 (Discord + DB)
             from src.bot.core import _get_category_for_channel, _ensure_category

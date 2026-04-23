@@ -106,8 +106,10 @@ async def cmd_internal(ctx, speaker_name: str, listener_name: str, *, context: s
         await ctx.send("에이전트 이름을 확인해주세요")
         return
 
-    channel_name = f"internal-dm-{speaker_name}-{listener_name}"
-    channel_name_alt = f"internal-dm-{listener_name}-{speaker_name}"
+    from src.bot import internal_dm_channel_name
+    channel_name = internal_dm_channel_name(speaker_name, listener_name)
+    channel_name_alt = f"internal-dm-{listener_name}-{speaker_name}"  # 구 order 호환
+    channel_name_alt2 = f"internal-dm-{speaker_name}-{listener_name}"
 
     async with ctx.typing():
         loop = asyncio.get_event_loop()
@@ -119,8 +121,9 @@ async def cmd_internal(ctx, speaker_name: str, listener_name: str, *, context: s
         )
 
     # internal-dm 채널 찾기 또는 현재 채널에 출력
-    target_ch = discord.utils.get(ctx.guild.text_channels, name=channel_name) or \
-                discord.utils.get(ctx.guild.text_channels, name=channel_name_alt)
+    target_ch = (discord.utils.get(ctx.guild.text_channels, name=channel_name)
+                 or discord.utils.get(ctx.guild.text_channels, name=channel_name_alt)
+                 or discord.utils.get(ctx.guild.text_channels, name=channel_name_alt2))
     out_ch = target_ch or ctx.channel
 
     for msg in responses:
