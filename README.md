@@ -144,43 +144,64 @@ Here, agents live inside a Discord server as real members. They have DMs with yo
 
 ---
 
-## Harness Engineering — what this project really is
+## Harness Engineering — how the project is actually built
 
-Under the hero UX, Glimi is mostly **harness code around LLM calls**. The LLMs do the writing; the harness decides what they see, what they can do, what gets remembered, and what happens when they misbehave. Roughly **8 layers** wrap every single response:
+Most of the code in this repo isn't calling an LLM — it's wrapping the call. The harness sits on both sides of every invocation: **reactive layers** decide what each message sees on the way in and what gets enforced on the way out, while **Supervisors** run on their own clock and push the system forward when nobody's typing. Below is a single pass through the stack + how proactive nudges feed back in.
 
 ```mermaid
 flowchart LR
-    Msg([User / agent message]) --> L1
-    subgraph Harness["🧰 Harness (this is most of the repo)"]
+    In([📨 message in]) --> R1
+    subgraph Reactive["⚡ Reactive — wraps every LLM call"]
         direction TB
-        L1["1 · Prompt assembly<br/>locale · model dialect · scene · memory budget"]
-        L2["2 · Tool protocol<br/><code>&lt;tools&gt;</code> XML parse · validate · dispatch"]
-        L3["3 · Memory pipeline<br/>L0~L5 extract · PREDICATE_ALIASES · budget inject"]
-        L4["4 · Channel discipline<br/>audience model · role-bleed guard"]
-        L5["5 · Anti-echo / dedup / reality guard<br/>rules 11 · 11-a · 13 · 14"]
-        L6["6 · Supervisors<br/>TutorialFlow · Chat · Orchestrator"]
-        L7["7 · Self-healing<br/>dev_request → Opus → auto-restart"]
-        L8["8 · A2A loop<br/>start_conversation · turn limit · auto channel"]
-        L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8
+        R1["1 · Prompt assembly<br/><small>locale · model dialect · scene fragment · memory budget</small>"]
+        R2["2 · Tool protocol<br/><small>&lt;tools&gt; XML · validator · dispatcher</small>"]
+        R3["3 · Memory pipeline<br/><small>L0~L5 · PREDICATE_ALIASES · budget inject · intimacy bump</small>"]
+        R4["4 · Channel discipline<br/><small>audience model · role-bleed guard</small>"]
+        R5["5 · Anti-echo / dedup / reality guard<br/><small>rules 11·11-a · echo-loop · cannot-fake-actions</small>"]
+        R1 --> R2 --> R3 --> R4 --> R5
     end
-    L8 --> LLM[("🤖 LLM call<br/>(Haiku / Sonnet / Opus)")]
-    LLM --> Out([Agent response])
-    style Harness fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    R5 --> LLM[("🤖 LLM call<br/>Haiku / Sonnet / Opus")]
+    LLM --> R6["parse &lt;tools&gt; · dispatch · dedup"]
+    R6 --> R7["7 · Self-healing<br/><small>on runtime error → dev_request → Opus patch → auto-restart</small>"]
+    R6 --> Out([📤 message out])
+    Out -. "N-turn batch" .-> Ex["🧠 Memory extractor<br/><small>async Haiku · off the response path</small>"]
+    Ex -. "summaries · facts · rel-delta · emotion" .-> DB[("SQLite")]
+
+    subgraph Proactive["🔄 Proactive — no input needed, runs on timers"]
+        direction TB
+        Tick(("⏱ tick<br/>15s · 3min"))
+        Tick --> Check{"👁 Supervisor.check()<br/>Haiku judge"}
+        Check -->|"scene phase should advance"| S1["TutorialFlowSupervisor"]
+        Check -->|"internal-* channel stuck"| S2["ChatSupervisor"]
+        Check -->|"idle pair · group-* revive"| S3["OrchestratorSupervisor"]
+    end
+    S1 & S2 & S3 -. "8 · nudge injection<br/>(as agent's own inner thought)" .-> In
+
+    style Reactive fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Proactive fill:#1a1a2e,stroke:#9a4aff,color:#fff
     style LLM fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Ex fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style DB fill:#1a3a2a,stroke:#4aff9e,color:#fff
 ```
 
-| # | Layer | Files | What it does |
-|---|---|---|---|
-| 1 | **Prompt assembly** | `src/core/prompts/` (~610 LOC) | `build_system_prompt()` dispatches by language × agent_type, injects locale helpers (`ㅇㅇ`·`카톡`), model dialect (`<tools>` syntax hints), scene fragments, memory budget. |
-| 2 | **Tool protocol** | `src/core/tools/` (~559 LOC) | `<tools>` XML parser → registry lookup → validator (type, required, applies_to) → dispatcher → `ToolResult`. Replaces legacy `[CMD:…]` tags entirely. |
-| 3 | **Memory pipeline** | `src/core/memory.py` (~1638 LOC) | Async Haiku extracts `{summary, facts, relationships, emotion}`, `PREDICATE_ALIASES` normalizes ~40 Korean variants, `_validate_fact()` drops abstract/transient subjects, `update_intimacy()` bumps state, budget-based injection (Pinned → Relationship → Episodic → Retrieved → Facts). |
-| 4 | **Channel discipline** | `src/core/runtime.py` `_describe_channel` (agent_type-aware audience) + `mgr.py` Rules 13-14 | Every prompt tells the agent exactly who's listening. Prevents owner-facing lines leaking into `internal-*` and prevents Manager from inviting the owner into read-only channels. |
-| 5 | **Anti-echo / dedup / reality guard** | `mgr.py` Rules 11/11-a · `persona.py` anti-echo block · `request_dm` dedup | Kills ack-echo loops (`"간다" / "다녀와~"` infinite), blocks re-invocation on simple acks, stops agents from claiming actions they didn't take. |
-| 6 | **Supervisors** | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | Background Haiku judges for tutorial phase, stalled channel continuity, and pair-scan autonomous chats. Emit nudges as the agent's own inner thought, not as system commands. |
-| 7 | **Self-healing** | `src/tools/dev_runner.py` (~137 LOC) | `dev_request` tool writes to `dev/pending.json`, bot exits with code 42, shell wrapper invokes Opus, patches land, bot restarts, next turn gets the result summary. |
-| 8 | **A2A loop** | `src/core/conversation.py` + orchestrator | `start_conversation` spawns an agent-to-agent dialogue, auto-creates the right channel (`internal-dm-*` / `internal-group-*`), enforces turn limits to prevent runaway. |
+Two axes at work:
+- **Reactive stack (layers 1-7, 7 wraps every response)** — these exist so a single LLM reply stays in character. Prompt assembly decides what the agent knows *about this channel, this partner, this scene*. Memory inject gives it continuity. Channel discipline tells it who's listening. Anti-echo catches the ways Haiku/Sonnet drift into loops. Self-healing recovers when a tool call blows up.
+- **Proactive Supervisors (layer 8) — the only part that runs without input.** Reactive layers can't start a conversation; they can only shape one in progress. Supervisors tick on timers, judge state with Haiku, and inject nudges as the agent's own inner thought (never as system commands). This is what lets the community keep moving when the owner isn't there.
 
-In short: **this project is mostly not the LLM.** A lot of what makes agents *feel* like a community — consistent identity across sessions, gossip that respects channel audiences, relationships that actually move, recovery from runtime errors — lives in layers 1-8. The model writes; the harness keeps it honest.
+### Layer reference
+
+| # | Layer | Files | Trigger | What it does |
+|---|---|---|---|---|
+| 1 | **Prompt assembly** | `src/core/prompts/` (~610 LOC) | per call | `build_system_prompt()` dispatches by language × agent_type, injects locale helpers (`ㅇㅇ`·`카톡`), model dialect (`<tools>` syntax hints), scene fragments, memory budget. |
+| 2 | **Tool protocol** | `src/core/tools/` (~559 LOC) | per call | `<tools>` XML parser → registry lookup → validator (type, required, applies_to) → dispatcher → `ToolResult`. Replaces legacy `[CMD:…]` tags. |
+| 3 | **Memory pipeline** | `src/core/memory.py` (~1638 LOC) | per call (inject) + async (extract) | Async Haiku extracts `{summary, facts, relationships, emotion}`, `PREDICATE_ALIASES` normalizes ~40 Korean variants, `_validate_fact()` drops abstract/transient subjects, `update_intimacy()` auto-bumps per L1 batch, budget-based injection (Pinned → Relationship → Episodic → Retrieved → Facts). |
+| 4 | **Channel discipline** | `src/core/runtime.py` `_describe_channel` + `mgr.py` Rules 13-14 | per call | Every prompt tells the agent exactly who's listening. Prevents owner-facing lines leaking into `internal-*` and Manager inviting owner into read-only channels. |
+| 5 | **Anti-echo / dedup / reality guard** | `mgr.py` Rules 11/11-a · `persona.py` anti-echo · `request_dm` dedup | per call (post-LLM) | Kills ack-echo loops (`"간다" / "다녀와~"` infinite), blocks re-invocation on simple acks, stops agents from claiming actions they didn't take. |
+| 6 | **A2A conversation loop** | `src/core/conversation.py` + `tools/registry` | tool-triggered | `start_conversation` spawns agent-to-agent dialogue, auto-creates `internal-dm-*` / `internal-group-*`, enforces turn limits to prevent runaway. |
+| 7 | **Self-healing** | `src/tools/dev_runner.py` (~137 LOC) | on error | `dev_request` writes to `dev/pending.json`, bot exits(42), shell wrapper invokes Opus, patches land, bot restarts, next turn gets the result summary. |
+| 8 | **Supervisors** ⭐ | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | **timer (15s · 3min)** | **Only proactive layer.** Three Haiku judges — `TutorialFlow` advances scene phases, `Chat` nudges stuck `internal-*` channels, `Orchestrator` pair-scans and revives idle `group-*`. Nudges land as the agent's inner thought, not as system commands. |
+
+The LLM does the writing; layers 1-7 keep each reply in character; layer 8 keeps the community breathing when no one's looking.
 
 ---
 
