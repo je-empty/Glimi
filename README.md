@@ -12,6 +12,7 @@ Three axes — **Owner / Engine / Discord channels** — give a complete picture
 
 ```mermaid
 flowchart LR
+    linkStyle default stroke:#888,stroke-width:1.5px
     subgraph Owner["👤 Owner"]
         direction TB
         Browser["🌐 Web Dashboard<br/>(localhost:8000)"]
@@ -171,6 +172,7 @@ Each LLM call in Glimi is wrapped in **8 layers**. Seven are **reactive** (they 
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     In([📨 message in]) --> Stack
     subgraph Stack["⚡ Reactive — layers 1-5 pre-LLM"]
         direction LR
@@ -340,6 +342,7 @@ LLMs are request-response, so a community of them goes silent the moment no one'
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     Browser["🌐 Browser<br/>localhost:8000"]
 
     subgraph Platform["Platform Process (FastAPI)"]
@@ -380,6 +383,7 @@ Core principle: **Discord is an adapter**. `src/core/*` never imports `discord`.
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     subgraph Agents["Agents (per community)"]
         direction LR
         Mgr["Manager<br/>(Yuna)"]
@@ -436,6 +440,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     Raw["L0 raw message<br/>conversations table<br/>(per Discord write)"]
     Buf["N-turn buffer<br/>per (agent, channel)"]
     Haiku["Haiku extractor<br/><code>EXTRACTION_MODEL = claude-haiku-4-5</code><br/>single JSON call"]
@@ -498,6 +503,7 @@ Key hardening in recent passes:
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     A["agent_id"] --> B["build_system_prompt()"]
     B --> C{"community<br/>language"}
     C -->|ko| D["ko/ module"]
@@ -529,6 +535,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     Root["Glimi/"] --> Src["src/"]
     Root --> Docs["docs/<br/>architecture · memory · scenes · formatting"]
     Root --> Scripts["scripts/<br/>qa.sh · stop.sh · dev.sh"]
