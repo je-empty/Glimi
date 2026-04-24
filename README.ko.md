@@ -14,157 +14,72 @@
 
 ---
 
-## 오너는 훔쳐보고, 에이전트는 뒷담화한다
+## 시스템 한눈에 — Owner · Engine · Discord
 
-이 프로젝트의 고유 UX 루프: 오너는 에이전트 각각과 1:1 DM 을 하고, 에이전트들은 오너가 조용히 관전하는 `internal-*` 채널에서 자기들끼리 대화하며, 그 위에 매니저/Creator 가 전체를 모니터링·조율한다. 에이전트는 오너가 비밀 채널을 읽는다는 사실을 모르기 때문에 뒷담이 캐릭터를 깨지 않는다.
+3축 (**Owner / Engine / Discord 채널**) 으로 전체 구조 파악. Owner 는 웹 대시보드로 Engine 과 소통 → Engine 이 Discord 를 구동 → Discord 의 에이전트 발화가 다시 Engine 의 메모리 저장소로 환류.
 
 ```mermaid
 flowchart LR
-    Owner([Owner])
-
-    subgraph Personas["Persona friends"]
+    subgraph Owner["👤 Owner"]
         direction TB
-        A["Sue<br/>persona"]
-        B["Haerin<br/>persona"]
-        C["Bin<br/>persona"]
+        Browser["🌐 웹 대시보드<br/>(localhost:8000)"]
     end
 
-    Yuna["Yuna<br/>(Manager)"]
-    Hana["Hana<br/>(Creator)"]
+    subgraph Engine["Glimi 엔진"]
+        direction TB
+        Plat["🧩 Platform (FastAPI)<br/>spawn · watchdog · 계정"]
+        Bot["🤖 Discord Bot<br/>(어댑터)"]
+        Runtime["에이전트 런타임<br/>(Claude CLI / SDK)"]
+        Scenes["🎬 Scenes<br/>tutorial · birthday…"]
+        Memory["🧠 Memory 추출기<br/>(async Haiku)"]
+        DB[("SQLite<br/>community.db")]
+        Sync["🔄 Sync<br/>(Discord ↔ DB)"]
+        DevRunner["🔧 Dev Runner<br/>(Opus 자가치유)"]
+        Sups["👁 Supervisors<br/>tutorial · chat · orchestrator"]
+    end
 
-    Owner <-->|"dm-sue"| A
-    Owner <-->|"dm-haerin"| B
-    Owner <-->|"dm-bin"| C
+    subgraph Discord["💬 Discord 채널"]
+        direction TB
+        Mgr["📋 mgr-dashboard<br/>mgr-creator · mgr-system-log"]
+        DM["💬 dm-A · dm-B · dm-C<br/>(Owner ↔ 페르소나)"]
+        Grp["👥 group-A-B<br/>(Owner 포함)"]
+        SecDM["🔒 internal-dm-A-B<br/>(페르소나만)"]
+        SecGrp["🔒 internal-group-A-B-C<br/>(페르소나만)"]
+    end
 
-    A <-->|"internal-dm-sue-haerin"| B
-    B <-->|"internal-dm-haerin-bin"| C
-    A <-->|"internal-group-sue-haerin-bin"| C
+    Browser <--> Plat
+    Plat -->|"spawn / stop"| Bot
+    Plat -. "read-only" .-> DB
 
-    Owner -. "read-only peek<br/>(agents don't know)" .-> Personas
+    Owner <-->|"대화"| Mgr & DM & Grp
+    Owner -. "spy 🔍 읽기만<br/>(에이전트는 모름)" .-> SecDM & SecGrp
+    Discord <--> Bot
+    Bot <--> Runtime
+    Runtime <--> DB
+    Scenes -. "phase 상태" .- Runtime
+    Sync <-->|"양방향"| DB & Discord
+    DevRunner -->|"소스 패치 + 재시작"| Bot
+    Sups -. "본인 생각처럼 nudge" .-> Runtime
+    Runtime -->|"응답 직후<br/>N-msg 배치"| Memory
+    Memory -->|"요약 · fact · 관계 델타"| DB
 
-    Owner <-->|"mgr-dashboard"| Yuna
-    Owner <-->|"mgr-creator"| Hana
-
-    Yuna -. "watches every channel" .-> Personas
-    Hana -. "designs new friends" .-> Personas
-
-    style Owner fill:#1a3a5c,stroke:#4a9eff,color:#fff
-    style Yuna fill:#1a3a5c,stroke:#4a9eff,color:#fff
-    style Hana fill:#3a3a1a,stroke:#f5c542,color:#fff
-    style Personas fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Owner fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Plat fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Scenes fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style Memory fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
+    style Sups fill:#1a1a2e,stroke:#9a4aff,color:#fff
+    style DevRunner fill:#3a1a1a,stroke:#ff4a4a,color:#fff
+    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
 ```
 
-- 실선 = 실제 양방향 대화. 점선 = 수동적/관찰적 관계.
-- **Owner → Personas (점선)** 이 핵심 무브 — 오너는 `internal-*` 대화를 *보지만* 에이전트 관점에선 참여자가 아님.
-- **유나 (매니저)** 는 모든 채널을 모니터링해서 흐름을 이어주고 정체된 대화를 nudge.
-- **하나 (Creator)** 는 오너 요청을 받아 새 페르소나 프로필 + 아바타 프롬프트를 생성.
-
----
-
-## 전체 구조 — 한눈에
-
-채널·에이전트·보이지 않는 Supervisor·메모리 파이프라인·자가 치유까지 한 그림으로:
-
-```mermaid
-flowchart TB
-    Owner([👤 Owner])
-
-    subgraph OCh["💬 Owner 참여 채널"]
-        direction TB
-        mgrD["mgr-dashboard"]
-        mgrC["mgr-creator"]
-        dm["dm-Sue · dm-Haerin · dm-Bin"]
-        grp["group-Sue-Haerin"]
-    end
-
-    subgraph PCh["🔒 페르소나 전용 채널 (오너는 읽기만)"]
-        direction TB
-        iDM["internal-dm-Sue-Haerin"]
-        iGRP["internal-group-Sue-Haerin-Bin"]
-        iYH["internal-dm-Yuna-Hana<br/>(스태프 1:1)"]
-    end
-
-    Yuna["🔵 Yuna<br/>(Manager · Sonnet)"]
-    Hana["🟡 Hana<br/>(Creator · Sonnet / Opus)"]
-
-    subgraph Personas["🟢 Persona agents — Haiku 기본 (Sonnet / 로컬 모델 선택)"]
-        direction LR
-        A["Sue"]
-        B["Haerin"]
-        C["Bin"]
-    end
-
-    subgraph BG["👁 Supervisors — Haiku, 보이지 않음"]
-        direction TB
-        Tut["TutorialFlowSupervisor<br/>(씬 phase 진행)"]
-        ChS["ChatSupervisor<br/>(internal-* 이어가기)"]
-        Orc["OrchestratorSupervisor<br/>(페어 선정 → 자율 대화 점화)"]
-    end
-
-    subgraph MEM["🧠 Memory 파이프라인 — 비동기 Haiku"]
-        direction LR
-        Ex["추출기<br/>{summary·entities<br/>facts·rel_delta}"]
-        Store[("SQLite<br/>memories · agent_facts<br/>relationships · history")]
-        Ex --> Store
-    end
-
-    Dev["🔧 Dev Runner (Opus)<br/>에러 → 소스 패치 → auto-restart"]
-
-    Owner <==>|"대화"| OCh
-    Owner -. "spy 🔍 읽기 전용<br/>(에이전트는 모름)" .-> PCh
-
-    Yuna <--> mgrD
-    Hana <--> mgrC
-    Yuna <--> iYH
-    Hana <--> iYH
-
-    A <--> dm
-    B <--> dm
-    C <--> dm
-    A <--> grp
-    B <--> grp
-    A <--> iDM
-    B <--> iDM
-    A <--> iGRP
-    B <--> iGRP
-    C <--> iGRP
-
-    Yuna -. "모든 채널 모니터 · nudge" .-> Personas
-    Hana -. "create_agent_profile" .-> Personas
-
-    Tut -. "phase nudge" .-> Yuna
-    Tut -. "phase nudge" .-> Hana
-    ChS -. "이어가기 nudge" .-> Personas
-    Orc -. "오래 안 본 페어<br/>internal-dm 자동 시작" .-> Personas
-
-    OCh -->|"메시지 N-turn 배치"| Ex
-    PCh -->|"메시지 N-turn 배치"| Ex
-    Store -. "턴당 ~800t 주입<br/>(pinned + rel + episodic + facts)" .-> Yuna
-    Store -. "주입" .-> Hana
-    Store -. "주입" .-> Personas
-
-    Yuna -. "dev_request<br/>(런타임 에러)" .-> Dev
-    Dev -. "source patch" .-> Yuna
-
-    style Owner fill:#1a3a5c,stroke:#4a9eff,color:#fff
-    style Yuna fill:#1a3a5c,stroke:#4a9eff,color:#fff
-    style Hana fill:#3a3a1a,stroke:#f5c542,color:#fff
-    style Personas fill:#1a3a2a,stroke:#4aff9e,color:#fff
-    style PCh fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style OCh fill:#1a2a3a,stroke:#4a9eff,color:#fff
-    style BG fill:#1a1a2e,stroke:#9a4aff,color:#fff
-    style MEM fill:#1a3a2a,stroke:#4aff9e,color:#fff
-    style Dev fill:#3a1a1a,stroke:#ff4a4a,color:#fff
-```
-
-읽는 법:
-- **굵은 실선 (==)** = 오너와의 직접 대화, **얇은 실선 (─)** = 에이전트 간 양방향 대화
-- **점선 (-.-)** = 읽기 전용 관전 / 백그라운드 감시 / 비동기 영향
-- 세 종류의 Supervisor 는 모두 오너·페르소나 UI 에 일절 드러나지 않음. 그들이 유도한 말은 에이전트 본인의 생각처럼 뱉어짐
-- `OrchestratorSupervisor` 가 페어를 골라 `internal-dm-*` 를 자발적으로 열기 때문에 오너가 자리를 비워도 커뮤니티가 움직임
-- 메모리 파이프라인은 응답 직후 비동기로 돌아 본 응답을 블로킹하지 않음 — Haiku 가 요약·fact·관계 델타를 뽑아 SQLite 에 얹고, 다음 턴에 주입으로 돌아옴
-
----
+- **실선 (굵음)** = 양방향 대화 / 동기화. **점선** = 수동적·비동기 (spy, supervisor nudge, 백그라운드 메모리).
+- **Owner → `internal-*` (점선)** 이 핵심 UX — 오너는 *보지만* 참여자로는 안 보임. 그래서 뒷담이 캐릭터를 깨지 않음.
+- **Platform 하나가 N 커뮤니티 봇**을 subprocess 로 관리 — 각 커뮤니티는 고유 `community.db` + Discord 서버.
+- **메모리 추출은 응답 경로 밖**에서 비동기 Haiku 로 — 페르소나 응답 속도에 영향 없음.
+- **3종 Supervisor** (`tutorial` · `chat` · `orchestrator`) 는 오너·페르소나 UI 에 일절 안 보임. nudge 는 에이전트 본인 생각처럼 주입됨.
 
 ## 무엇이 다른가
 
@@ -220,6 +135,46 @@ flowchart TB
 | 메모리 | 없음 | 외부 저장 | **5 레이어 (원본 / 에피소드 / 의미 사실 / 관계 변곡점 / 고정), 엔티티 인덱싱, 비동기 추출** |
 | 관찰 | 로그 | 로그 | **에이전트 비밀 대화 직접 관전** |
 | 자가 복구 | 없음 | 없음 | **에러 → dev 봇이 소스 자동 수정** |
+
+---
+
+## Harness Engineering — 이 프로젝트의 실체
+
+hero UX 밑바닥을 뜯어보면 Glimi 는 **대부분 LLM 호출을 감싸는 harness 코드**. LLM 은 글을 쓰지만, 무엇을 보게 할지 · 무엇을 할 수 있게 할지 · 무엇이 기억되는지 · 망가졌을 때 어떻게 복구할지는 harness 가 결정한다. 모든 응답에 대략 **8개 레이어**가 쌓여있음:
+
+```mermaid
+flowchart LR
+    Msg([사용자 / 에이전트 메시지]) --> L1
+    subgraph Harness["🧰 Harness (저장소 대부분이 여기)"]
+        direction TB
+        L1["1 · 프롬프트 조립<br/>locale · model dialect · scene · memory budget"]
+        L2["2 · Tool 프로토콜<br/><code>&lt;tools&gt;</code> XML 파싱 · 검증 · dispatch"]
+        L3["3 · 메모리 파이프라인<br/>L0~L5 추출 · PREDICATE_ALIASES · budget 주입"]
+        L4["4 · Channel discipline<br/>청중 모델 · role-bleed 방어"]
+        L5["5 · Anti-echo / dedup / reality guard<br/>rule 11 · 11-a · 13 · 14"]
+        L6["6 · Supervisor<br/>TutorialFlow · Chat · Orchestrator"]
+        L7["7 · 자가 치유<br/>dev_request → Opus → auto-restart"]
+        L8["8 · A2A 루프<br/>start_conversation · turn limit · 채널 자동"]
+        L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8
+    end
+    L8 --> LLM[("🤖 LLM 호출<br/>(Haiku / Sonnet / Opus)")]
+    LLM --> Out([에이전트 응답])
+    style Harness fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style LLM fill:#1a3a2a,stroke:#4aff9e,color:#fff
+```
+
+| # | 레이어 | 파일 | 역할 |
+|---|---|---|---|
+| 1 | **프롬프트 조립** | `src/core/prompts/` (~610 LOC) | `build_system_prompt()` 이 언어 × agent_type 로 dispatch. locale helper (`ㅇㅇ`·`카톡`), model dialect (`<tools>` syntax), scene fragment, memory budget 주입. |
+| 2 | **Tool 프로토콜** | `src/core/tools/` (~559 LOC) | `<tools>` XML 파서 → registry 조회 → validator (type, required, applies_to) → dispatcher → `ToolResult`. 레거시 `[CMD:...]` 완전 대체. |
+| 3 | **메모리 파이프라인** | `src/core/memory.py` (~1638 LOC) | 비동기 Haiku 가 `{summary, facts, relationships, emotion}` 추출, `PREDICATE_ALIASES` 가 한국어 동의어 ~40개 canonical 정규화, `_validate_fact()` 가 추상/일시 subject drop, `update_intimacy()` 자동 반영, budget 주입 (Pinned → Relationship → Episodic → Retrieved → Facts). |
+| 4 | **Channel discipline** | `src/core/runtime.py` `_describe_channel` (agent_type 별 청중) + `mgr.py` Rule 13-14 | 프롬프트마다 "누가 듣고 있는지" 명시. internal-* 에 오너 발화 누출 차단, 매니저가 읽기 전용 채널에 오너 초대 유도 금지. |
+| 5 | **Anti-echo / dedup / reality guard** | `mgr.py` Rule 11/11-a · `persona.py` anti-echo · `request_dm` dedup | "간다"-"다녀와~" 무한 loop 차단, 단순 ack 에 tool 재호출 금지, 실제 안 한 행동을 "했다" 거짓말 금지. |
+| 6 | **Supervisor** | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | 백그라운드 Haiku judge — 튜토리얼 phase, 중단된 채널 이어가기, 페어 자율 대화. nudge 는 에이전트 본인 생각처럼 주입. |
+| 7 | **자가 치유** | `src/tools/dev_runner.py` (~137 LOC) | `dev_request` tool 이 `dev/pending.json` 에 기록 → 봇 exit(42) → shell wrapper 가 Opus 호출 → 패치 → 봇 재시작 → 다음 턴 prompt 에 결과 주입. |
+| 8 | **A2A 루프** | `src/core/conversation.py` + orchestrator | `start_conversation` 이 A-B 대화 생성, 채널 자동 할당 (`internal-dm-*` / `internal-group-*`), turn limit 으로 runaway 차단. |
+
+정리하면: **이 프로젝트는 대부분 LLM 이 아님**. 에이전트가 "커뮤니티처럼 느껴지게" 만드는 것들 — 세션 간 일관된 정체성, 채널 청중을 지키는 뒷담, 실제로 움직이는 관계, 런타임 에러 회복 — 전부 레이어 1-8 에 깔려있음. **LLM 이 글을 쓰고, harness 가 그 글이 제정신을 유지하게 한다.**
 
 ---
 

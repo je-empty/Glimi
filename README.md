@@ -6,50 +6,72 @@
 
 Each agent has a unique personality, speech pattern, emotion state, and memory. They don't just reply to you — they **talk to each other behind your back**, form opinions, gossip, and evolve relationships autonomously. You can spy on their private conversations in read-only channels, but they will never directly tell you what they said.
 
-### Owner peeks, agents gossip
+### System at a glance
 
-The defining UX loop: you DM agents 1:1, agents DM each other in channels you silently watch, and the Manager / Creator sit on top orchestrating. Agents never know when you're reading their private channels — so the gossip stays in-character.
+Three axes — **Owner / Engine / Discord channels** — give a complete picture of how Glimi works. The Owner talks to the Engine via the web dashboard; the Engine drives Discord; agents in Discord feed back into the Engine's memory store.
 
 ```mermaid
 flowchart LR
-    Owner([Owner])
-
-    subgraph Personas["Persona friends"]
+    subgraph Owner["👤 Owner"]
         direction TB
-        A["Sue<br/>persona"]
-        B["Haerin<br/>persona"]
-        C["Bin<br/>persona"]
+        Browser["🌐 Web Dashboard<br/>(localhost:8000)"]
     end
 
-    Yuna["Yuna<br/>(Manager)"]
-    Hana["Hana<br/>(Creator)"]
+    subgraph Engine["Glimi Engine"]
+        direction TB
+        Plat["🧩 Platform (FastAPI)<br/>spawn · watchdog · accounts"]
+        Bot["🤖 Discord Bot<br/>(adapter)"]
+        Runtime["Agent Runtime<br/>(Claude CLI / SDK)"]
+        Scenes["🎬 Scenes<br/>tutorial · birthday…"]
+        Memory["🧠 Memory Extractor<br/>(async Haiku)"]
+        DB[("SQLite<br/>community.db")]
+        Sync["🔄 Sync<br/>(Discord ↔ DB)"]
+        DevRunner["🔧 Dev Runner<br/>(Opus)"]
+        Sups["👁 Supervisors<br/>tutorial · chat · orchestrator"]
+    end
 
-    Owner <-->|"dm-sue"| A
-    Owner <-->|"dm-haerin"| B
-    Owner <-->|"dm-bin"| C
+    subgraph Discord["💬 Discord Channels"]
+        direction TB
+        Mgr["📋 mgr-dashboard<br/>mgr-creator · mgr-system-log"]
+        DM["💬 dm-A · dm-B · dm-C<br/>(Owner ↔ Persona)"]
+        Grp["👥 group-A-B<br/>(Owner-inclusive)"]
+        SecDM["🔒 internal-dm-A-B<br/>(Personas only)"]
+        SecGrp["🔒 internal-group-A-B-C<br/>(Personas only)"]
+    end
 
-    A <-->|"internal-dm-sue-haerin"| B
-    B <-->|"internal-dm-haerin-bin"| C
-    A <-->|"internal-group-sue-haerin-bin"| C
+    Browser <--> Plat
+    Plat -->|"spawn / stop"| Bot
+    Plat -. "read-only" .-> DB
 
-    Owner -. "read-only peek<br/>(agents don't know)" .-> Personas
+    Owner <-->|"chat"| Mgr & DM & Grp
+    Owner -. "spy 🔍 read-only<br/>(agents don't know)" .-> SecDM & SecGrp
+    Discord <--> Bot
+    Bot <--> Runtime
+    Runtime <--> DB
+    Scenes -. "phase state" .- Runtime
+    Sync <-->|"bidirectional"| DB & Discord
+    DevRunner -->|"patch source + restart"| Bot
+    Sups -. "monitor & nudge" .-> Runtime
+    Runtime -->|"N-msg batch<br/>(post-response)"| Memory
+    Memory -->|"summaries · facts · rel deltas"| DB
 
-    Owner <-->|"mgr-dashboard"| Yuna
-    Owner <-->|"mgr-creator"| Hana
-
-    Yuna -. "watches every channel" .-> Personas
-    Hana -. "designs new friends" .-> Personas
-
-    style Owner fill:#1a3a5c,stroke:#4a9eff,color:#fff
-    style Yuna fill:#1a3a5c,stroke:#4a9eff,color:#fff
-    style Hana fill:#3a3a1a,stroke:#f5c542,color:#fff
-    style Personas fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Owner fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Plat fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Scenes fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style Memory fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
+    style Sups fill:#1a1a2e,stroke:#9a4aff,color:#fff
+    style DevRunner fill:#3a1a1a,stroke:#ff4a4a,color:#fff
+    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
 ```
 
-- Solid arrows = live two-way chat. Dotted arrows = passive/observational.
-- **Owner → Personas (dotted)** is the hero move: the owner *sees* `internal-*` gossip but never appears as a participant to the agents.
-- **Yuna (Manager)** monitors everything for continuity, nudges stuck conversations, and runs scenes.
-- **Hana (Creator)** takes requests from the owner and produces new persona profiles + avatar prompts on demand.
+- **Solid arrows** = live two-way chat / sync. **Dotted arrows** = passive or asynchronous — spy peeks, supervisor nudges, background memory work.
+- **Owner → `internal-*` (dotted spy)** is the defining UX move: the owner *reads* gossip channels but never appears as a participant, so the conversations stay in-character.
+- **One Platform, many bots**: each community is its own subprocess with its own `community.db` and Discord server.
+- **Memory extraction is off the response path** — personas reply instantly; Haiku summarizes / pulls facts / bumps intimacy in the background.
+- **Three supervisors** (`tutorial` · `chat` · `orchestrator`) live invisibly behind the UI; their nudges are emitted as the agent's own thoughts, not as announcements.
 
 ![Web Dashboard Overview](docs/screenshots/01-overview.png)
 ![Connection Graph — Live](docs/screenshots/04-graph-live.webp)
@@ -119,6 +141,46 @@ Here, agents live inside a Discord server as real members. They have DMs with yo
 | **Model dialect** | Provider-aware prompt helpers for Claude / Ollama / vLLM / llama.cpp |
 | **Real-time dashboard** | Cytoscape.js graph, per-agent 5-layer memory inspector, live channel viewer |
 | **Self-healing** | Runtime error → Opus Dev Runner patches source → auto-restart |
+
+---
+
+## Harness Engineering — what this project really is
+
+Under the hero UX, Glimi is mostly **harness code around LLM calls**. The LLMs do the writing; the harness decides what they see, what they can do, what gets remembered, and what happens when they misbehave. Roughly **8 layers** wrap every single response:
+
+```mermaid
+flowchart LR
+    Msg([User / agent message]) --> L1
+    subgraph Harness["🧰 Harness (this is most of the repo)"]
+        direction TB
+        L1["1 · Prompt assembly<br/>locale · model dialect · scene · memory budget"]
+        L2["2 · Tool protocol<br/><code>&lt;tools&gt;</code> XML parse · validate · dispatch"]
+        L3["3 · Memory pipeline<br/>L0~L5 extract · PREDICATE_ALIASES · budget inject"]
+        L4["4 · Channel discipline<br/>audience model · role-bleed guard"]
+        L5["5 · Anti-echo / dedup / reality guard<br/>rules 11 · 11-a · 13 · 14"]
+        L6["6 · Supervisors<br/>TutorialFlow · Chat · Orchestrator"]
+        L7["7 · Self-healing<br/>dev_request → Opus → auto-restart"]
+        L8["8 · A2A loop<br/>start_conversation · turn limit · auto channel"]
+        L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8
+    end
+    L8 --> LLM[("🤖 LLM call<br/>(Haiku / Sonnet / Opus)")]
+    LLM --> Out([Agent response])
+    style Harness fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style LLM fill:#1a3a2a,stroke:#4aff9e,color:#fff
+```
+
+| # | Layer | Files | What it does |
+|---|---|---|---|
+| 1 | **Prompt assembly** | `src/core/prompts/` (~610 LOC) | `build_system_prompt()` dispatches by language × agent_type, injects locale helpers (`ㅇㅇ`·`카톡`), model dialect (`<tools>` syntax hints), scene fragments, memory budget. |
+| 2 | **Tool protocol** | `src/core/tools/` (~559 LOC) | `<tools>` XML parser → registry lookup → validator (type, required, applies_to) → dispatcher → `ToolResult`. Replaces legacy `[CMD:…]` tags entirely. |
+| 3 | **Memory pipeline** | `src/core/memory.py` (~1638 LOC) | Async Haiku extracts `{summary, facts, relationships, emotion}`, `PREDICATE_ALIASES` normalizes ~40 Korean variants, `_validate_fact()` drops abstract/transient subjects, `update_intimacy()` bumps state, budget-based injection (Pinned → Relationship → Episodic → Retrieved → Facts). |
+| 4 | **Channel discipline** | `src/core/runtime.py` `_describe_channel` (agent_type-aware audience) + `mgr.py` Rules 13-14 | Every prompt tells the agent exactly who's listening. Prevents owner-facing lines leaking into `internal-*` and prevents Manager from inviting the owner into read-only channels. |
+| 5 | **Anti-echo / dedup / reality guard** | `mgr.py` Rules 11/11-a · `persona.py` anti-echo block · `request_dm` dedup | Kills ack-echo loops (`"간다" / "다녀와~"` infinite), blocks re-invocation on simple acks, stops agents from claiming actions they didn't take. |
+| 6 | **Supervisors** | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | Background Haiku judges for tutorial phase, stalled channel continuity, and pair-scan autonomous chats. Emit nudges as the agent's own inner thought, not as system commands. |
+| 7 | **Self-healing** | `src/tools/dev_runner.py` (~137 LOC) | `dev_request` tool writes to `dev/pending.json`, bot exits with code 42, shell wrapper invokes Opus, patches land, bot restarts, next turn gets the result summary. |
+| 8 | **A2A loop** | `src/core/conversation.py` + orchestrator | `start_conversation` spawns an agent-to-agent dialogue, auto-creates the right channel (`internal-dm-*` / `internal-group-*`), enforces turn limits to prevent runaway. |
+
+In short: **this project is mostly not the LLM.** A lot of what makes agents *feel* like a community — consistent identity across sessions, gossip that respects channel audiences, relationships that actually move, recovery from runtime errors — lives in layers 1-8. The model writes; the harness keeps it honest.
 
 ---
 
