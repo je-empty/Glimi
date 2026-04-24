@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ community_name }} · Glimi{% endblock %}
 
-{# capture-mode 디폴트 ON — 전체 페이지 스크롤 캡쳐 확장 호환 #}
+{# capture-mode 디폴트 ON — html/body 양쪽에 클래스 필요. html 에 안 붙이면
+   viewport 클리핑이 살아있어서 document 스크롤 자체가 안 됨. #}
+{% block html_class %}capture-mode{% endblock %}
 {% block body_class %}capture-mode{% endblock %}
 
 {% block head %}

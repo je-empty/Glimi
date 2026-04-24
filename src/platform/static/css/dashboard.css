@@ -59,11 +59,10 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; isolation: isolate; }
 
-  /* 전체 페이지 캡쳐 모드 — body.capture-mode 클래스가 붙으면 outer overflow 잠금 해제.
-     내부 panel collapse / expand 는 건드리지 않음 (사용자가 직접 펼친 영역만 캡쳐).
-     템플릿에서 <body class="capture-mode"> 로 디폴트 ON. */
-  body.capture-mode,
-  body.capture-mode html { height: auto !important; overflow: visible !important; }
+  /* 전체 페이지 캡쳐 모드 — html + body 양쪽에 capture-mode 클래스 필요.
+     html 만 안 붙이면 viewport 클리핑이 살아있어서 document 스크롤이 막힘.
+     내부 panel collapse / expand 는 건드리지 않음 — 사용자가 직접 펼친 영역만 캡쳐. */
+  html.capture-mode, body.capture-mode { height: auto !important; overflow: visible !important; }
   body.capture-mode .app { height: auto !important; min-height: 100vh; }
   body.capture-mode main { overflow: visible !important; height: auto !important; }
   body.capture-mode .view.active { overflow: visible !important; height: auto !important; max-height: none !important; flex: none !important; }
