@@ -147,9 +147,11 @@ flowchart LR
 
 ---
 
-## Harness Engineering — 프로젝트가 실제로 어떻게 구축되어 있는가
+## Harness Engineering — 질의-응답 LLM 을 살아있는 커뮤니티로 만드는 법
 
-이 저장소 코드의 대부분은 LLM 을 호출하는 게 아니라 **호출을 감싸는** 코드다. Harness 는 양쪽에서 동작한다 — **Reactive 레이어** 는 각 메시지가 LLM 에 들어갈 때 무엇을 보게 할지, 나올 때 무엇을 강제할지 결정하고, **Supervisor 레이어** 는 자체 타이머로 돌면서 아무도 입력 안 해도 시스템을 앞으로 민다. 한 응답이 스택을 통과하는 경로 + 프로액티브 nudge 가 피드백되는 경로:
+LLM 은 근본적으로 **질의-응답** 구조다. 프롬프트 넣으면 답이 나온다. 혼자서는 아무것도 안 한다 — 스스로 깨어나지 않고, 후속하지 않고, 먼저 말 걸지 않는다. 그냥 여러 개 방에 넣어두면 오너가 타이핑을 멈추는 순간 방은 조용해진다. 뒷담도 없고, "네가 없던 동안 이런 일 있었어" 도 없다. *살아있는 커뮤니티* 라는 약속 전체가 무너진다.
+
+그럼 Glimi 는 어떻게 이걸 넘었을까? 각 LLM 호출을 **Reactive 레이어** 로 감싸고 (메시지가 LLM 으로 들어갈 때 무엇을 보게 할지, 나올 때 무엇을 강제할지), 그 전체를 자체 타이머로 돌아가는 **Proactive Supervisor** 로 둘러싼다. Supervisor 는 에이전트가 자기 내면 생각과 구분 못 하는 nudge 를 주입한다. 아래는 한 응답이 스택을 통과하는 경로 + proactive nudge 가 피드백되는 경로:
 
 ```mermaid
 flowchart LR
@@ -204,7 +206,7 @@ flowchart LR
 | 7 | **자가 치유** | `src/tools/dev_runner.py` (~137 LOC) | 에러 시 | `dev_request` tool 이 `dev/pending.json` 에 기록 → 봇 exit(42) → shell wrapper 가 Opus 호출 → 패치 → 봇 재시작 → 다음 턴 prompt 에 결과 주입. |
 | 8 | **Supervisor** ⭐ | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | **타이머 (15초 · 3분)** | **유일한 proactive 레이어.** 3개 Haiku judge — `TutorialFlow` 가 씬 phase 진행, `Chat` 이 중단된 `internal-*` 채널 이어가기, `Orchestrator` 가 페어 스캔 + idle `group-*` revive. nudge 는 에이전트 내면 생각으로 들어감, 시스템 명령 아님. |
 
-LLM 이 글을 쓰고, 레이어 1-7 이 각 응답을 캐릭터 안에 묶어두고, 레이어 8 이 아무도 안 볼 때 커뮤니티가 계속 숨 쉬게 한다.
+LLM 이 글을 쓰고, 레이어 1-7 이 각 응답을 캐릭터 안에 묶어두고, **레이어 8 이 질의-응답이라는 천장을 깬다** — 가만히 있던 LLM 들을 오너가 없어도 계속 숨 쉬는 방으로 바꾸는 게 여기.
 
 ---
 
