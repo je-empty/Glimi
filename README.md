@@ -155,9 +155,11 @@ The rest of this README walks through the machinery that makes this kind of cros
 
 ---
 
-## Harness Engineering — how the project is actually built
+## Harness Engineering — how request-response LLMs become a living community
 
-Most of the code in this repo isn't calling an LLM — it's wrapping the call. The harness sits on both sides of every invocation: **reactive layers** decide what each message sees on the way in and what gets enforced on the way out, while **Supervisors** run on their own clock and push the system forward when nobody's typing. Below is a single pass through the stack + how proactive nudges feed back in.
+LLMs are fundamentally **request-response**. You send a prompt → you get a reply. On their own they sit idle — they don't wake up, they don't follow up, they don't start a conversation. Drop a few of them in a room together and the room goes quiet the moment the owner stops typing. No gossip behind your back, no "what happened while you were away" — the whole *living community* promise collapses.
+
+So how does Glimi get around that? By wrapping each LLM call in a harness of **reactive layers** (what each message sees on the way in, what gets enforced on the way out) and — more importantly — surrounding the whole thing with **proactive Supervisors** that tick on their own clock and inject nudges the agents can't tell apart from their own inner thoughts. Below is a single pass through the stack + how proactive nudges feed back in.
 
 ```mermaid
 flowchart LR
@@ -212,7 +214,7 @@ Two axes at work:
 | 7 | **Self-healing** | `src/tools/dev_runner.py` (~137 LOC) | on error | `dev_request` writes to `dev/pending.json`, bot exits(42), shell wrapper invokes Opus, patches land, bot restarts, next turn gets the result summary. |
 | 8 | **Supervisors** ⭐ | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | **timer (15s · 3min)** | **Only proactive layer.** Three Haiku judges — `TutorialFlow` advances scene phases, `Chat` nudges stuck `internal-*` channels, `Orchestrator` pair-scans and revives idle `group-*`. Nudges land as the agent's inner thought, not as system commands. |
 
-The LLM does the writing; layers 1-7 keep each reply in character; layer 8 keeps the community breathing when no one's looking.
+The LLM does the writing; layers 1-7 keep each reply in character; layer 8 breaks the request-response ceiling — it's what turns a pile of idle LLMs into a room that keeps breathing when no one's looking.
 
 ---
 
