@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ community_name }} · Glimi{% endblock %}
 
+{# capture-mode 디폴트 ON — 전체 페이지 스크롤 캡쳐 확장 호환 #}
+{% block body_class %}capture-mode{% endblock %}
+
 {% block head %}
 <!-- 대시보드 고유 스타일 -->
 <link rel="stylesheet" href="/static/css/dashboard.css">
