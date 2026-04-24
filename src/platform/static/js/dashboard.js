@@ -2210,18 +2210,21 @@ function mountCytoscapeGraph(snap) {
   // ===== Interactivity =====
   cyInstance.on('tap', 'node.agent', (evt) => openAgent(evt.target.id()));
   cyInstance.on('tap', 'node.sup', (evt) => openAgent(evt.target.id()));
-  // 오너 노드 — QA 커뮤니티에선 test-user-bot (심재빈) 이 오너라 agent 상세뷰 있음.
-  // 일반 커뮤니티의 오너 (실제 사용자) 는 상세뷰 없지만, 일단 열어보고 에러면
-  // monitor._get_test_user_detail 반환 혹은 error fallback. 나은 UX 위해 시도.
-  cyInstance.on('tap', 'node.owner', () => openAgent('test-user-bot'));
+  // 오너 노드 — QA 커뮤니티에서만 clickable (심재빈 = LLM 주도 test user, agent 상세 있음).
+  // 일반 커뮤니티의 오너는 실제 사람이라 상세뷰 없음 → 클릭 무반응.
+  cyInstance.on('tap', 'node.owner', () => {
+    if (COMMUNITY === 'qa') openAgent('test-user-bot');
+  });
   cyInstance.on('tap', 'edge', (evt) => {
     const ch = evt.target.data('channel');
     if (ch) openChannel(ch);
   });
   // Hover 강조 — 노드 hover → 연결된 엣지 라벨 표시 / 엣지 hover → 본인 라벨 표시
   cyInstance.on('mouseover', 'node', (evt) => {
-    container.style.cursor = 'pointer';
     const n = evt.target;
+    const isOwner = n.hasClass('owner');
+    // 오너 노드: QA 에서만 clickable → 그 외엔 default cursor
+    container.style.cursor = (isOwner && COMMUNITY !== 'qa') ? 'default' : 'pointer';
     n.addClass('hl');
     n.connectedEdges().addClass('hl');
   });

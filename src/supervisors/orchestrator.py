@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 
@@ -69,7 +69,15 @@ class OrchestratorSupervisor(Supervisor):
         if running_count >= 5:
             return
 
-        # 페어 후보 스캔
+        # ① group-* 채널 revive — 페르소나가 오너 부재 시에도 group-* 에서 자발 대화.
+        # 기존: orchestrator 가 internal-dm 만 점화 → group-* 는 오너 떠나면 영원 침묵.
+        # 수정: 오래 idle 한 group-* 채널에서 페르소나끼리 먼저 수다 시작.
+        revived = await self._revive_idle_group(guild)
+        if revived:
+            self._last_started_at = _time.time()
+            return
+
+        # ② 페어 후보 스캔 (internal-dm)
         pair = self._pick_pair()
         if not pair:
             return
@@ -105,11 +113,15 @@ class OrchestratorSupervisor(Supervisor):
             return None
 
         # 신규 persona 필터 — 생성 후 grace 기간 안이면 후보에서 제거.
-        now = datetime.utcnow()
+        # UTC-aware now — DB 타임스탬프는 UTC-aware ISO 포맷. naive 와 섞으면 TypeError.
+        now = datetime.now(timezone.utc)
         mature_ids: set[str] = set()
         for p in personas:
             try:
                 created = datetime.fromisoformat(p["created_at"]) if p["created_at"] else None
+                # 레거시 naive 타임스탬프 방어 — UTC 로 취급.
+                if created and created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
             except Exception:
                 created = None
             if created is None:
@@ -128,16 +140,21 @@ class OrchestratorSupervisor(Supervisor):
             key = tuple(sorted([r["agent_a"], r["agent_b"]]))
             intimacy[key] = int(r["intimacy_score"] or 0)
 
-        # 최근 internal-dm/group 대화 시각
+        # 최근 internal-* / group-* / dm-* 대화 시각 — 페어 freshness 계산.
+        # 기존: internal-* 만. 수정: group-*, dm-* 도 포함해야 "최근 dm-A 에서 말 많이 나눔"
+        # 페어가 internal-dm 자동 개설 쿨다운에 들어감. 없으면 금방 다시 꺼냄.
         last_chat: dict[tuple[str, str], datetime] = {}
         rows = conn.execute(
             "SELECT channel, MAX(timestamp) as ts FROM conversations "
-            "WHERE channel LIKE 'internal-%' GROUP BY channel"
+            "WHERE channel LIKE 'internal-%' OR channel LIKE 'group-%' OR channel LIKE 'dm-%' "
+            "GROUP BY channel"
         ).fetchall()
         for r in rows:
             ch = r["channel"]
             try:
                 ts = datetime.fromisoformat(r["ts"]) if r["ts"] else None
+                if ts and ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
             except Exception:
                 ts = None
             if ts is None:
@@ -207,6 +224,90 @@ class OrchestratorSupervisor(Supervisor):
         except Exception:
             pass
         return []
+
+    async def _revive_idle_group(self, guild) -> bool:
+        """오래 idle 한 group-* 채널에서 페르소나들끼리 자발적 대화 재개.
+
+        조건:
+          - 채널에 페르소나 2+ 참여 (오너 제외)
+          - 마지막 메시지가 min_group_idle 이상 전
+          - 채널 status != 'running'
+        반환: revive 했으면 True, 아니면 False.
+        """
+        try:
+            conn = db.get_conn()
+            # 모든 group-* 채널 + 참여자
+            rows = conn.execute(
+                "SELECT channel, participants, status FROM channels "
+                "WHERE channel LIKE 'group-%' AND channel NOT LIKE 'group-' || '' "
+            ).fetchall()
+            now = datetime.now(timezone.utc)
+            candidates: list[tuple[float, str, list]] = []
+            for r in rows:
+                ch = r["channel"]
+                # internal- 접두사 방어 (SQL 조건이 group-% 라서 internal-group-% 포함됨)
+                if ch.startswith("internal-"):
+                    continue
+                if r["status"] == "running":
+                    continue
+                try:
+                    import json as _json
+                    parts = _json.loads(r["participants"] or "[]")
+                except Exception:
+                    parts = []
+                if not isinstance(parts, list):
+                    continue
+                # 페르소나만 추리기
+                personas = [pid for pid in parts if pid and pid.startswith("agent-persona-")]
+                if len(personas) < 2:
+                    continue
+                last = conn.execute(
+                    "SELECT MAX(timestamp) as ts FROM conversations WHERE channel=?", (ch,)
+                ).fetchone()
+                ts_raw = last["ts"] if last else None
+                hours_since = 999.0
+                if ts_raw:
+                    try:
+                        ts = datetime.fromisoformat(ts_raw)
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        hours_since = (now - ts).total_seconds() / 3600.0
+                    except Exception:
+                        pass
+                if hours_since < 1.0:
+                    continue  # 1시간 이내 대화 있으면 스킵
+                candidates.append((hours_since, ch, personas))
+            conn.close()
+            if not candidates:
+                return False
+            candidates.sort(reverse=True)
+            hours_since, ch_name, personas = candidates[0]
+            # 최대 3명까지 (그룹 규모 제한)
+            if len(personas) > 3:
+                personas = random.sample(personas, 3)
+            from src.core.conversation import start_conversation
+            from src.bot.core import send_as_agent
+
+            ch = discord.utils.get(guild.text_channels, name=ch_name)
+            if not ch:
+                return False
+
+            async def _send(agent_id: str, message: str):
+                await send_as_agent(ch, agent_id, message)
+
+            names = []
+            for pid in personas:
+                a = db.get_agent(pid)
+                names.append(a["name"] if a else pid)
+            log_writer.system(
+                f"[sup:orchestrator] ▶ group revive: #{ch_name} ({' · '.join(names)}, idle {hours_since:.1f}h)"
+            )
+            ctx_text = f"오너 없을 때 자연스럽게 모여서 수다. 공통 관심사로 가볍게. (idle {hours_since:.1f}h)"
+            asyncio.create_task(start_conversation(ch_name, personas, _send, context=ctx_text))
+            return True
+        except Exception as e:
+            log_writer.system(f"[sup:orchestrator] group revive 오류: {type(e).__name__}: {e}")
+            return False
 
     def _count_running_internal(self) -> int:
         try:

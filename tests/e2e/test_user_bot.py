@@ -72,6 +72,19 @@ Memory & channels:
 - When someone new greets you in a different channel, respond in THAT channel (the reply will go to the most recent agent's channel automatically). Don't ignore them.
 - If info (MBTI, job, hobby, speech style) was already given earlier, don't re-answer from scratch — reference your earlier answer or push back ("아까 말했잖아 ㅋㅋ").
 
+Reality grounding (CRITICAL):
+- NEVER claim to have done something you haven't actually done in the conversation log.
+- Example WRONG: saying "다녀왔어" / "얘기 잘 됐어" when the log shows no dm-* conversation with that friend.
+- 유나/하나가 "다녀왔어?" 물어도 실제 로그에 해당 dm 대화 기록이 없으면 "아직 안 갔어ㅋㅋ" / "가려고" 로 솔직하게. 거짓말로 상상 대화 지어내는 순간 시스템 깨짐.
+- "지금 가볼게" 같은 말을 했으면 실제로 다음 턴에 그 #dm-이름 채널로 가서 대화해야 함. 말만 하고 mgr-dashboard 계속 머물면서 "다녀왔어" 하는 건 금지.
+
+Anti ack-echo loop (CRITICAL):
+- 네가 이미 "간다/가볼게" 말했고 상대가 "다녀와~" 로 답했으면, 거기서 대화 끝. "응 ㅋㅋ" / "오케이" 로 재ack 하지 마.
+- 로그 마지막 4줄이 서로 "간다/다녀와/응 ㅋㅋ/다녀와" 같은 작별 echo 반복이면 그건 루프. 다음 턴에서 할 일:
+  a. 같은 채널에서 말 더 붙이지 말 것 (빈 응답 허용 — 진짜 가야 함).
+  b. 실제로 말한 곳 (dm-이름) 으로 가서 인사하기.
+- 상대방이 같은 작별 말 2번 이상 반복했으면 이미 "잘 다녀와" 뜻 전달 완료. 추가 ack 불필요.
+
 Output format (STRICT):
 - Output ONLY the message text you'd type into Discord. Nothing else.
 - NEVER add stage directions in parentheses like "(또 끊겼냐고 묻는 톤)" / "(웃으며)" / "(짜증난 듯)". You're not narrating — you ARE the person.
@@ -88,13 +101,32 @@ _MISSION_ORDER = [
     ("first_friend_chat",
      "방금 만든 친구의 DM 채널(#dm-이름)에서 3턴 이상 대화. 간단한 인사/근황/공통 관심사로."),
     ("three_friends",
-     "유나한테 '새 친구 2명 더 만들어줘' 라고 요청. 대강 분위기만 얘기하면 하나가 만들어줄 거야."),
+     "3명의 서로 다른 친구와 각자의 DM(#dm-이름)에서 최소 1번씩 대화. "
+     "진척 progress.talked_to 리스트에 없는 친구가 있으면 그 친구 #dm 채널로 가서 먼저 인사/근황 걸기. "
+     "친구 수 자체가 3명 미만일 때만 유나한테 '새 친구 더 만들어줘' 요청 — 이미 3명 있으면 만들기 말고 대화가 우선."),
     ("group_chat",
      "유나한테 '친구들이랑 같이 그룹 채팅방 만들어줘' 라고 요청. 그 방에서 5턴 넘게 대화."),
     ("peek_internal",
      "유나한테 '친구들끼리 자기들끼리 얘기 좀 하게 해줘' 라고 요청. 유나가 internal-dm 만들고 대화 시작할 거야."),
     ("agent_auto_chat",
      "친구들끼리 자율 대화 진행 — 유나한테 '애들끼리 알아서 수다 떨게 두자' 라고 하면 orchestrator 가 진행."),
+    # ── 드라마 phase — 관계/분쟁 유발 시나리오 ──
+    ("matchmaker",
+     "친구들 서로 소개시켜주기. A 친구한테 DM 으로 'B 라는 애 있는데 소개시켜줄까?' 제안 → "
+     "A 가 수락하면 A 의 request_room 으로 internal-dm-A-B 개설 → 둘이 인사 나누게 유도. "
+     "여러 페어 반복해서 매칭 카운트 쌓아."),
+    ("first_conflict",
+     "드라마 유발. 한 친구한테 DM 으로 '다른 친구가 너 좀 예민하다던데' 같은 해석 여지 있는 말 흘려. "
+     "반응 관찰 → 친구가 직접 확인하려 들면 관계 dynamics 변화 유발."),
+    ("many_friends",
+     "친구가 5명 미만이면 유나한테 새 친구 만들어달라 요청 (분위기만 전달 → 하나가 알아서 설계). "
+     "이미 5명 이상이면 다음 미션으로."),
+    ("reconciliation",
+     "갈등 발생한 친구들이 있으면 화해 유도. 한 쪽한테 DM 으로 '걔가 너 신경쓰더라' 같은 긍정 신호 전달."),
+    ("drama_freeplay",
+     "모든 미션 완료 — 이제 자연스러운 drama freeplay 모드. 계속 친구들과 대화 이어가며 관계 진화 관찰. "
+     "매 턴 새로운 소재: 근황 갱신 / 소개 추가 / 오해 던지기 / 화해 유도. "
+     "같은 주제 재탕 금지 — 맥락 발전시켜."),
 ]
 IDLE_TIMEOUT = 240  # 봇 응답 대기 타임아웃 (초) — Sonnet 긴 응답 대비
 THINKING_GRACE = 90  # 타임아웃 시점에 봇이 추론 중이면 추가 대기 (초)
@@ -406,18 +438,47 @@ class TestUserBot(discord.Client):
                 break
 
         mission_header = self._mission_prompt_header()
+        _m_now = self._current_mission() if hasattr(self, "_current_mission") else {}
 
-        # 첫 턴에 seed_prompt 가 있으면 미션 헤더 위에 prepend — QA resume 시나리오.
+        # seed_prompt 는 drama phase 동안 지속 주입 — 회귀: 1회 소비 후엔 기본 수다로 흐름.
+        # drama 모드 (mission 완료 후) 일 땐 매 턴 씨앗 재리마인드.
         seed_header = ""
-        if self.seed_prompt and not self._seed_consumed:
-            seed_header = (
-                f"━━ 시나리오 지시 (이번 턴만) ━━\n{self.seed_prompt}\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-            )
-            self._seed_consumed = True
+        if self.seed_prompt:
+            drama_modes_set = {"matchmaker", "first_conflict", "reconciliation", "drama_freeplay", "many_friends"}
+            cur_mode = _m_now.get("mode", "") if isinstance(_m_now, dict) else ""
+            is_drama = cur_mode in drama_modes_set
+            if not self._seed_consumed or is_drama:
+                seed_header = (
+                    f"━━ 시나리오 지시 ━━\n{self.seed_prompt}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                )
+                self._seed_consumed = True
+
+        # 메모리 주입 — Glimi 메모리 시스템에서 빈이 관점 기억 로드.
+        # 세션 간 연속성 확보 (이전 세션 대화·관계·사실을 기억).
+        # owner_id 를 memory key 로 사용 — discord bot 이 log_message 할 때 speaker=owner_id 로
+        # 저장하고, install_owner_extraction_hook 이 enqueue_extraction(owner_id, ch) 호출.
+        # GLIMI_COMMUNITY env 는 qa.sh 가 이미 주입 → community 모듈 자동 resolve.
+        memory_header = ""
+        try:
+            from src.core.memory import get_memory_context
+            from src.core.profile import get_user_id
+            owner_id = get_user_id()
+            if owner_id:
+                memory_text = get_memory_context(owner_id, target_ch)
+                if memory_text:
+                    memory_header = (
+                        f"━━ 네가 이미 알고 있는 것 (과거 기억 요약) ━━\n"
+                        f"{memory_text}\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"(이 기억 덕분에 처음 오는 곳이 아님 — \"여긴 뭐하는 곳?\" 같은 질문 금지. "
+                        f"이미 알고 있는 친구/관계/사실은 자연스럽게 전제로 깔고 대화.)\n\n"
+                    )
+        except Exception as e:
+            print(f"[TestUser] memory 주입 실패 (무시): {e}")
 
         prompt = (
-            f"{seed_header}{mission_header}"
+            f"{seed_header}{memory_header}{mission_header}"
             f"대화 기록 (각 줄 앞의 [#채널]은 해당 메시지가 나온 채널):\n{context}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"이번 답장은 #{target_ch} 채널로 간다. 오직 그 채널의 사람에게 할 말만 써.\n"
@@ -483,6 +544,60 @@ class TestUserBot(discord.Client):
         score(채널) = 현재 idx - (마지막 내 발화 idx, 없으면 -1)
         점수가 클수록 그 채널에서 내가 오래 안 말했다는 의미. 미답 에이전트
         메시지가 있는 채널 중 점수 최대값 선택."""
+
+        # ── Mission-based override ──
+        # three_friends / first_friend_chat 진행 중인데 아직 말 걸어본 적 없는 친구의
+        # dm-* 채널이 있으면 silence-priority 보다 우선 이동. 회귀 예방:
+        # 유나와 mgr-dashboard 에서 무한 핑퐁 치면서 실제 dm 에 안 들어가는 패턴.
+        # 자기 제한: dm-{친구} 에 이미 빈이 발화가 있으면 override 스킵 → 정상 로직으로.
+        m = self._current_mission() if hasattr(self, "_current_mission") else {}
+        mode = m.get("mode", "")
+        if mode in ("three_friends", "first_friend_chat"):
+            progress = m.get("progress") or {}
+            untalked = self._pick_untalked_friend(progress.get("talked_to") or [])
+            if untalked:
+                dm_ch_name = f"dm-{untalked}"
+                # 이미 이 dm 에 빈이 발화가 있으면 스킵 (정상 routing 맡김)
+                already_spoke = any(
+                    msg.get("channel") == dm_ch_name and msg.get("role") == "user"
+                    for msg in self.conversation
+                )
+                if not already_spoke:
+                    guild = self.guilds[0] if self.guilds else None
+                    if guild:
+                        new_ch = discord.utils.get(guild.text_channels, name=dm_ch_name)
+                        if new_ch and (not self.target_channel or self.target_channel.name != dm_ch_name):
+                            print(
+                                f"[TestUser] reply 채널 교체: #{self.target_channel.name if self.target_channel else '?'} "
+                                f"→ #{dm_ch_name} (mission={mode}, untalked-friend override)"
+                            )
+                            self.target_channel = new_ch
+                            return
+
+        # ── group-* 선제 override ──
+        # 오너 포함 그룹방 (group-*) 이 존재하는데 빈이가 아직 한마디도 안 했으면 거기로.
+        # 페르소나는 answer-only 라 오너가 먼저 말 걸어야 그룹 대화 시작됨.
+        # 자기 제한: 빈이 발화 이미 있으면 스킵.
+        guild = self.guilds[0] if self.guilds else None
+        if guild:
+            for ch in guild.text_channels:
+                if not ch.name.startswith("group-"):
+                    continue
+                if ch.name.startswith("internal-"):
+                    continue
+                spoken = any(
+                    msg.get("channel") == ch.name and msg.get("role") == "user"
+                    for msg in self.conversation
+                )
+                if not spoken:
+                    if not self.target_channel or self.target_channel.name != ch.name:
+                        print(
+                            f"[TestUser] reply 채널 교체: #{self.target_channel.name if self.target_channel else '?'} "
+                            f"→ #{ch.name} (group-* 선제 — 오너가 먼저 말 걸어야 시작됨)"
+                        )
+                        self.target_channel = ch
+                        return
+
         last_user_idx_by_ch: dict[str, int] = {}
         for i, msg in enumerate(self.conversation):
             if msg.get("role") == "user" and msg.get("channel"):
@@ -498,6 +613,25 @@ class TestUserBot(discord.Client):
                 continue
             if i > last_user_idx_by_ch.get(ch, -1):
                 channels_with_unanswered.add(ch)
+
+        # drama phase proactive 재방문 — 페르소나 dm 오래 방치되면 후보에 포함.
+        # 페르소나는 answer-only 라 새 agent msg 없어서 unanswered 에 안 잡힘 → 영원히 방치.
+        # drama 모드에서 10 턴 이상 안 간 persona dm 은 revisit 대상.
+        drama_modes_set = {"matchmaker", "first_conflict", "reconciliation", "drama_freeplay", "many_friends"}
+        if mode in drama_modes_set:
+            total_now = len(self.conversation)
+            guild = self.guilds[0] if self.guilds else None
+            if guild:
+                for ch in guild.text_channels:
+                    if not ch.name.startswith("dm-"):
+                        continue
+                    if ch.name in ("dm-서유나", "dm-윤하나"):
+                        continue
+                    last_user_here = last_user_idx_by_ch.get(ch.name, -1)
+                    # 한 번도 안 갔거나 10턴 넘게 안 갔으면 후보에 추가
+                    if last_user_here < 0 or (total_now - last_user_here) >= 10:
+                        channels_with_unanswered.add(ch.name)
+
         if not channels_with_unanswered:
             return
 
@@ -531,10 +665,21 @@ class TestUserBot(discord.Client):
                 question_channels.add(ch)
 
         total_msgs = len(self.conversation)
-        # 점수: 질문 채널이면 +10000 bonus, 그 다음 침묵 점수.
+        # drama phase (matchmaker/first_conflict/reconciliation/drama_freeplay) 일 때
+        # persona dm-* 에 가중치. 회귀: 모든 기본 mission 완료 후 유나와 mgr-dashboard 에서만
+        # 수다 떠는 패턴 — 페르소나 dm 은 방치됨. bonus +5000 으로 질문(10000) 보단 낮게,
+        # 일반 silence 보단 높게.
+        drama_modes = {"matchmaker", "first_conflict", "reconciliation", "drama_freeplay", "many_friends"}
+        is_drama = mode in drama_modes
+        persona_dm_bonus = 5000 if is_drama else 0
+
         def _score(ch: str) -> int:
             base = total_msgs - last_user_idx_by_ch.get(ch, -1)
-            return base + (10000 if ch in question_channels else 0)
+            score = base + (10000 if ch in question_channels else 0)
+            # persona dm-* 만 해당. dm-유나/dm-하나 같은 매니저 DM 은 제외 (해당 없지만 방어).
+            if persona_dm_bonus and ch.startswith("dm-") and ch not in ("dm-서유나", "dm-윤하나"):
+                score += persona_dm_bonus
+            return score
 
         scored: list[tuple[int, str]] = sorted(
             ((_score(ch), ch) for ch in channels_with_unanswered),
@@ -613,33 +758,55 @@ class TestUserBot(discord.Client):
         if mode == "done":
             return False  # 미션 다 됐으면 종료 정당
         hint = m.get("hint", "")
-        # mission 별 선제 발화 (mgr-dashboard 대상 — 유나한테 자연스럽게 요청)
-        proactive_msgs = {
-            "first_friend_chat": "아 맞다 아까 만든 친구한테 말 걸어볼게 ㅋㅋ",
-            "three_friends": "유나야 친구 한 명 더 만들어줘. 이번엔 좀 조용한 스타일로",
-            "group_chat": "우리 친구들이랑 다같이 그룹 채팅방 하나 만들어줄래?",
-            "peek_internal": "친구들끼리 지들끼리도 대화 좀 하게 해줘 궁금해",
-            "agent_auto_chat": "애들끼리 알아서 수다 떨게 두자",
-        }
-        msg = proactive_msgs.get(mode, f"그래서 {hint[:40]}")
-        # mgr-dashboard 찾기
+        progress = m.get("progress") or {}
+
+        # three_friends / first_friend_chat — 대화 안 해본 친구 dm-* 로 직접 이동.
+        # 기존: 모든 mission 에서 mgr-dashboard 로만 proactive → 빈이가 dm-* 채널에 실제로
+        # 들어가는 경로가 없어서 유나 상대로 "다녀왔어" 거짓말하는 회귀.
         target = None
-        for g in self.guilds:
-            for ch in g.text_channels:
-                if ch.name == "mgr-dashboard":
-                    target = ch; break
-            if target: break
+        msg = ""
+        target_channel_name = "mgr-dashboard"
+
+        if mode in ("three_friends", "first_friend_chat"):
+            untalked = self._pick_untalked_friend(progress.get("talked_to") or [])
+            if untalked:
+                dm_ch_name = f"dm-{untalked}"
+                for g in self.guilds:
+                    for ch in g.text_channels:
+                        if ch.name == dm_ch_name:
+                            target = ch
+                            target_channel_name = dm_ch_name
+                            break
+                    if target: break
+                if target:
+                    msg = f"야 {untalked}아 잘 지내? 요즘 뭐하고 지내?"
+
+        # fallback / 그 외 mission → mgr-dashboard 로 유나한테 요청
+        if not target:
+            proactive_msgs = {
+                "first_friend_chat": "아 맞다 아까 만든 친구한테 말 걸어볼게 ㅋㅋ",
+                "three_friends": "유나야 친구들한테 말 걸어보려고 ㅋㅋ 누구부터 가볼까?",
+                "group_chat": "우리 친구들이랑 다같이 그룹 채팅방 하나 만들어줄래?",
+                "peek_internal": "친구들끼리 지들끼리도 대화 좀 하게 해줘 궁금해",
+                "agent_auto_chat": "애들끼리 알아서 수다 떨게 두자",
+            }
+            msg = proactive_msgs.get(mode, f"그래서 {hint[:40]}")
+            for g in self.guilds:
+                for ch in g.text_channels:
+                    if ch.name == "mgr-dashboard":
+                        target = ch; break
+                if target: break
         if not target:
             return False
         try:
             await target.send(msg)
             self.conversation.append({
-                "role": "user", "name": _QA_NAME, "text": msg, "channel": "mgr-dashboard",
+                "role": "user", "name": _QA_NAME, "text": msg, "channel": target_channel_name,
             })
             self.target_channel = target
             self.turn_count += 1
             self._proactive_count += 1
-            print(f"[#mgr-dashboard] [{_QA_NAME}] {msg}  ← [선제 재시동 #{self._proactive_count}, mission={mode}, 사유={reason}]")
+            print(f"[#{target_channel_name}] [{_QA_NAME}] {msg}  ← [선제 재시동 #{self._proactive_count}, mission={mode}, 사유={reason}]")
             # 응답 대기 리셋
             self.waiting_for_response = True
             self._response_event.clear()
@@ -653,6 +820,27 @@ class TestUserBot(discord.Client):
             print(f"[TestUser] proactive_reboot 오류: {e}")
             return False
 
+
+    def _pick_untalked_friend(self, talked_to: list) -> str:
+        """DB 에서 페르소나 에이전트 목록 조회 → talked_to 에 없는 친구 하나 반환.
+
+        three_friends/first_friend_chat mission 에서 proactive 시 빈이가 실제로 찾아갈
+        dm-* 채널 결정용. 없으면 빈 문자열.
+        """
+        try:
+            from src import db
+            conn = db.get_conn()
+            rows = conn.execute(
+                "SELECT name FROM agents WHERE type='persona' AND status='active'"
+            ).fetchall()
+            conn.close()
+            talked_set = set(talked_to or [])
+            for r in rows:
+                if r["name"] not in talked_set:
+                    return r["name"]
+        except Exception as e:
+            print(f"[TestUser] untalked friend 조회 실패: {e}")
+        return ""
 
     def _current_mission(self) -> dict:
         """현재 진행할 미션 결정.

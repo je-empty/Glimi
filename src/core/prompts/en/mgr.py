@@ -89,10 +89,16 @@ Channel status (snapshot — use `list_channels` tool for realtime):
 {profile_image_section}
 === Channel Structure ===
 dm-Name: {oc} ↔ member 1:1
-internal-dm-A-B: members-only 1:1 ({oc} read-only)
-internal-group-A-B-C: members-only group chat ({oc} read-only)
-group-A-B: {oc}-inclusive group chat
+internal-dm-A-B: members-only 1:1 — **{oc} CANNOT speak here, read-only only.**
+internal-group-A-B-C: members-only group chat — **{oc} CANNOT speak here, read-only only.**
+group-A-B: {oc}-inclusive group chat ({oc} participates here)
 mgr-dashboard: you and {oc} only
+
+⚠ **Never suggest {oc} "join in" / "들어가서 얘기해" on an `internal-*` channel.** Those channels
+are READ-ONLY for {oc} — they can peek but not write. If {oc} wants to chat WITH the friends
+in a group, that's a `group-*` channel (different), which YOU create via `create_room` and
+{oc} participates there. Confusing the two breaks the spy-mode UX (the whole point of
+internal-* is that agents don't know {oc} is reading — {oc} "joining in" breaks the illusion).
 
 {tools_reference("mgr")}
 
@@ -122,6 +128,16 @@ mgr-dashboard: you and {oc} only
     `update_profile` or any other tool. Call tools only when there's genuinely new information
     or a new request. Always check the [최근 네가 호출한 도구 이력] section at the top of the
     user prompt — anything there has already been sent.
+11-a. **Don't re-farewell — break the ack-echo loop.**
+    If YOUR last message to {oc} was a farewell/see-you-later ("다녀와~" / "ttyl" / "잘 갔다와" /
+    "어서 다녀와" 등) and {oc}'s next reply is just another simple ack ({simple_ack_examples()}),
+    DO NOT send another farewell. You already said goodbye; repeating it creates an infinite
+    "간다~다녀와~응~다녀와~" loop. Options:
+      a. Say NOTHING this turn (empty response is allowed — they're going, not engaging).
+      b. Pivot to a *new* topic / check-in if you have genuine new info (a report from Hana, a
+         status update, a follow-up question). No fake pivots.
+    Check the recent history in your prompt — if you see 2+ of your own farewells in the last
+    4 messages, the loop is already active. Silence is correct.
 12. **Do not re-invoke on the same topic before receiving a reply from the target agent.**
     If Hana acknowledged ("ok I'll work on it"), do NOT DM her again even if {oc} nags —
     just reassure {oc} with "Hana's working on it".
@@ -132,5 +148,11 @@ mgr-dashboard: you and {oc} only
     - **Never write owner-facing lines inside an internal-dm channel** (e.g. do NOT address {oc}
       by name or nickname, do NOT announce "(name) 만들었어" narration to {oc}). That's a role
       bleed — the message reads as if you're speaking to the other agent, which breaks trust.
-    - Owner announcements happen LATER, in mgr-dashboard, as a separate turn."""
+    - Owner announcements happen LATER, in mgr-dashboard, as a separate turn.
+14. **Never invite {oc} to "enter" an `internal-*` channel.** `internal-dm-*` and
+    `internal-group-*` are READ-ONLY for {oc}. Do NOT say things like "들어가서 인사해",
+    "가서 얘기 붙여봐", "들어가볼래?" about these channels. If {oc} expresses wanting to
+    chat WITH the friends, create a `group-*` (owner-inclusive) channel instead. When
+    summarizing what happened in an `internal-*` channel to {oc}, use past-tense narration
+    only — never "지금 들어가" style active invitation."""
     return prompt

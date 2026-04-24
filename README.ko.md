@@ -61,6 +61,111 @@ flowchart LR
 
 ---
 
+## 전체 구조 — 한눈에
+
+채널·에이전트·보이지 않는 Supervisor·메모리 파이프라인·자가 치유까지 한 그림으로:
+
+```mermaid
+flowchart TB
+    Owner([👤 Owner])
+
+    subgraph OCh["💬 Owner 참여 채널"]
+        direction TB
+        mgrD["mgr-dashboard"]
+        mgrC["mgr-creator"]
+        dm["dm-Sue · dm-Haerin · dm-Bin"]
+        grp["group-Sue-Haerin"]
+    end
+
+    subgraph PCh["🔒 페르소나 전용 채널 (오너는 읽기만)"]
+        direction TB
+        iDM["internal-dm-Sue-Haerin"]
+        iGRP["internal-group-Sue-Haerin-Bin"]
+        iYH["internal-dm-Yuna-Hana<br/>(스태프 1:1)"]
+    end
+
+    Yuna["🔵 Yuna<br/>(Manager · Sonnet)"]
+    Hana["🟡 Hana<br/>(Creator · Sonnet / Opus)"]
+
+    subgraph Personas["🟢 Persona agents — Haiku 기본 (Sonnet / 로컬 모델 선택)"]
+        direction LR
+        A["Sue"]
+        B["Haerin"]
+        C["Bin"]
+    end
+
+    subgraph BG["👁 Supervisors — Haiku, 보이지 않음"]
+        direction TB
+        Tut["TutorialFlowSupervisor<br/>(씬 phase 진행)"]
+        ChS["ChatSupervisor<br/>(internal-* 이어가기)"]
+        Orc["OrchestratorSupervisor<br/>(페어 선정 → 자율 대화 점화)"]
+    end
+
+    subgraph MEM["🧠 Memory 파이프라인 — 비동기 Haiku"]
+        direction LR
+        Ex["추출기<br/>{summary·entities<br/>facts·rel_delta}"]
+        Store[("SQLite<br/>memories · agent_facts<br/>relationships · history")]
+        Ex --> Store
+    end
+
+    Dev["🔧 Dev Runner (Opus)<br/>에러 → 소스 패치 → auto-restart"]
+
+    Owner <==>|"대화"| OCh
+    Owner -. "spy 🔍 읽기 전용<br/>(에이전트는 모름)" .-> PCh
+
+    Yuna <--> mgrD
+    Hana <--> mgrC
+    Yuna <--> iYH
+    Hana <--> iYH
+
+    A <--> dm
+    B <--> dm
+    C <--> dm
+    A <--> grp
+    B <--> grp
+    A <--> iDM
+    B <--> iDM
+    A <--> iGRP
+    B <--> iGRP
+    C <--> iGRP
+
+    Yuna -. "모든 채널 모니터 · nudge" .-> Personas
+    Hana -. "create_agent_profile" .-> Personas
+
+    Tut -. "phase nudge" .-> Yuna
+    Tut -. "phase nudge" .-> Hana
+    ChS -. "이어가기 nudge" .-> Personas
+    Orc -. "오래 안 본 페어<br/>internal-dm 자동 시작" .-> Personas
+
+    OCh -->|"메시지 N-turn 배치"| Ex
+    PCh -->|"메시지 N-turn 배치"| Ex
+    Store -. "턴당 ~800t 주입<br/>(pinned + rel + episodic + facts)" .-> Yuna
+    Store -. "주입" .-> Hana
+    Store -. "주입" .-> Personas
+
+    Yuna -. "dev_request<br/>(런타임 에러)" .-> Dev
+    Dev -. "source patch" .-> Yuna
+
+    style Owner fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Yuna fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style Hana fill:#3a3a1a,stroke:#f5c542,color:#fff
+    style Personas fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style PCh fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style OCh fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style BG fill:#1a1a2e,stroke:#9a4aff,color:#fff
+    style MEM fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Dev fill:#3a1a1a,stroke:#ff4a4a,color:#fff
+```
+
+읽는 법:
+- **굵은 실선 (==)** = 오너와의 직접 대화, **얇은 실선 (─)** = 에이전트 간 양방향 대화
+- **점선 (-.-)** = 읽기 전용 관전 / 백그라운드 감시 / 비동기 영향
+- 세 종류의 Supervisor 는 모두 오너·페르소나 UI 에 일절 드러나지 않음. 그들이 유도한 말은 에이전트 본인의 생각처럼 뱉어짐
+- `OrchestratorSupervisor` 가 페어를 골라 `internal-dm-*` 를 자발적으로 열기 때문에 오너가 자리를 비워도 커뮤니티가 움직임
+- 메모리 파이프라인은 응답 직후 비동기로 돌아 본 응답을 블로킹하지 않음 — Haiku 가 요약·fact·관계 델타를 뽑아 SQLite 에 얹고, 다음 턴에 주입으로 돌아옴
+
+---
+
 ## 무엇이 다른가
 
 대부분의 AI 챗봇은 1:1입니다 — 묻고 답합니다. 멀티에이전트 프레임워크는 작업을 파이프라인으로 넘깁니다. **Glimi는 둘 다 아닙니다.**
@@ -93,8 +198,9 @@ flowchart LR
 - **채널 간 컨텍스트 누설** — 비밀 대화의 기억이 직접 인용 없이 답변에 자연스럽게 영향
 - **5 레이어 메모리 시스템** — L0 원본 아카이브 → L1/L2/L3 에피소드 rollup → L3 의미 사실 (엔티티 인덱싱) → L4 관계 변곡점 → L5 고정 기억. 백그라운드 Haiku worker가 비동기 추출. budget 기반 주입 + 엔티티 매칭 retrieval scoring.
 - **에이전트 deep-search 도구** — `recall_memory` 로 엔티티/키워드/기간별 자기 기억 검색, `pin_memory` 로 매니저가 중요 기억 고정
-- **진화하는 관계** — 친밀도, 다이내믹, 별명이 대화를 통해 변화. 각 변곡점을 `relationship_history` 에 로그
-- **실시간 감정** — 각 에이전트는 감정 상태(1–10 강도)를 가지며 답변에 반영
+- **진화하는 관계 (자동)** — L1 추출 배치마다 파트너와 친밀도 자동 +1 (importance ≥7 면 +2). 대화 자체가 관계 축적. Haiku 추출 `relationship delta` 는 별도로 `dynamics`/`intimacy_score` 상태에 반영 + 변곡점을 `relationship_history` 로그
+- **자동 감정 변화** — 메모리 추출 JSON 에 `emotion` / `emotion_intensity` 필드 포함, agents 테이블에 부드럽게 ±2 반영. 대화 흐름이 감정을 움직임
+- **자율 그룹 revive** — 오너 없는 동안 `group-*` 채널도 1시간 이상 idle 이면 orchestrator 가 페르소나들끼리 자발 대화 재개
 - **Spy 모드** — `internal-*` 채널에서 에이전트들의 비밀 대화를 읽기 전용으로 관전
 - **가이드 튜토리얼** — 매니저가 프로필 수집 → 채널 세팅 → Creator 인사로 안내
 - **Supervisor 시스템** — 보이지 않는 백그라운드 감시자가 진행 상태를 모니터링하고 정체 시 nudge
@@ -131,47 +237,70 @@ flowchart LR
 
 ## 아키텍처
 
+Owner · 엔진 · 디스코드 3축으로 정리된 시스템 구조. 기존 뼈대에 **Platform (멀티 커뮤니티 subprocess)**, **Scene 시스템**, **Memory 추출기 (async Haiku)**, **3종 Supervisor** 가 붙은 현 상태:
+
 ```mermaid
 flowchart LR
     subgraph Owner["👤 오너"]
         direction TB
-        O_TUI["Wizard / 웹 대시보드"]
+        Browser["🌐 웹 대시보드<br/>localhost:8000"]
     end
 
     subgraph Engine["Glimi 엔진"]
         direction TB
-        Bot["🤖 디스코드 봇"]
-        Runtime["에이전트 런타임\n(Claude CLI)"]
-        DB[("SQLite DB")]
-        Sync["🔄 Sync"]
-        DevRunner["🔧 Dev Runner\n(Opus)"]
-        Supervisor["👁 Supervisors\n(백그라운드)"]
+        Plat["🧩 Platform (FastAPI)<br/>봇 spawn · watchdog · 계정"]
+        Bot["🤖 Discord Bot<br/>(src/bot — 어댑터)"]
+        Runtime["에이전트 런타임<br/>(Claude CLI / SDK)"]
+        Scenes["🎬 Scenes<br/>tutorial · birthday…"]
+        Memory["🧠 Memory 추출기<br/>(async Haiku worker)"]
+        DB[("SQLite<br/>community.db")]
+        Sync["🔄 Sync<br/>(Discord ↔ DB)"]
+        DevRunner["🔧 Dev Runner<br/>(Opus 자가치유)"]
+        SupGrp["👁 Supervisors · Haiku<br/>TutorialFlow · Chat · Orchestrator"]
     end
 
-    subgraph Discord["디스코드 채널"]
+    subgraph Discord["💬 디스코드 채널"]
         direction TB
-        Mgr["📋 mgr-dashboard\nmgr-creator\nmgr-system-log"]
-        DM["💬 dm-A · dm-B · dm-C\n(오너 ↔ 에이전트)"]
-        SecDM["🔒 internal-dm-A-B\n(에이전트 비밀 1:1)"]
-        SecGrp["🔒 internal-group-A-B-C\n(에이전트 비밀 그룹)"]
+        Mgr["📋 mgr-dashboard · mgr-creator · mgr-system-log"]
+        DM["💬 dm-A · dm-B · dm-C<br/>(오너 ↔ 페르소나)"]
+        Grp["👥 group-A-B (오너 포함)"]
+        SecDM["🔒 internal-dm-A-B<br/>(페르소나 비밀 1:1)"]
+        SecGrp["🔒 internal-group-A-B-C<br/>(페르소나 비밀 그룹)"]
     end
 
-    Owner <-->|"대화"| Mgr & DM
-    Owner -.->|"spy 🔍"| SecDM & SecGrp
-    O_TUI <--> Bot
+    Browser <--> Plat
+    Plat -->|"spawn / stop"| Bot
+    Plat -. "read-only 조회" .-> DB
+
+    Owner <-->|"대화"| Mgr & DM & Grp
+    Owner -. "spy 🔍 읽기만" .-> SecDM & SecGrp
     Discord <--> Bot
     Bot <--> Runtime
     Runtime <--> DB
+    Scenes -. "phase 상태" .- Runtime
     Sync <-->|"양방향"| DB & Discord
-    DevRunner -->|"코드 수정 → 재시작"| Bot
-    Supervisor -.->|"감시 + nudge"| Runtime
+    DevRunner -->|"소스 패치 + auto-restart"| Bot
+    SupGrp -. "본인 생각처럼 nudge" .-> Runtime
+    Runtime -->|"응답 직후<br/>N-msg 배치"| Memory
+    Memory -->|"요약 · fact · 관계 델타"| DB
 
+    style Owner fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Plat fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Scenes fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style Memory fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
+    style SupGrp fill:#1a1a2e,stroke:#9a4aff,color:#fff
+    style DevRunner fill:#3a1a1a,stroke:#ff4a4a,color:#fff
     style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
-    style DevRunner fill:#2d2d2d,stroke:#f55142,color:#fff
-    style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
-    style Supervisor fill:#1a1a2e,stroke:#9a4aff,color:#fff
 ```
+
+핵심 원칙:
+- **Discord = 어댑터**. `src/core/*` 는 `discord` 를 import 안 함. 현재 출구는 `src/bot/` 이고 `src/adapters/telegram/`·`src/adapters/web_chat/` 가 같은 자리에 붙을 예정
+- **하나의 Platform 프로세스**가 N개 커뮤니티 봇을 subprocess 로 띄움 — 커뮤니티마다 고유 `community.db` 와 디스코드 서버
+- **Memory 추출은 응답 경로 밖**에서 비동기로 돌아 메인 응답을 블로킹하지 않음
+- **3종 Supervisor** 는 오너·페르소나 UI 에 전혀 드러나지 않음 — TutorialFlow 는 씬 phase, Chat 은 internal-* 이어가기, Orchestrator 는 페어 자동 대화 점화
 
 ---
 
@@ -234,15 +363,18 @@ flowchart TB
     style DevRunner fill:#3a1a1a,stroke:#ff4a4a,color:#fff
 ```
 
-| 역할 | 에이전트 | 모델 | 오너 인지 | 기능 |
-|------|---------|------|----------|------|
+| 역할 | 에이전트 | 모델 (기본 / 선택지) | 오너 인지 | 기능 |
+|------|---------|---------------------|----------|------|
 | Manager | 유나 | Sonnet | ✅ | 커뮤니티 관리, 튜토리얼, DM 승인, 에러 → dev 봇 |
-| Creator | 하나 | Sonnet | ✅ | 페르소나 설계, 아바타 프롬프트 |
-| Persona | 사용자 정의 | Sonnet | ✅ | 대화 상대, 자율 사회적 액터 |
-| Supervisors | tutorial / channel-conv | Haiku | ❌ | 백그라운드 감시 (nudge가 본인 생각처럼 주입됨) |
+| Creator | 하나 | Sonnet (프로필 JSON 은 Opus) | ✅ | 페르소나 설계, 아바타 프롬프트 |
+| Persona | 사용자 정의 | **Haiku 기본** · Sonnet / 로컬(Ollama·vLLM·llama.cpp) 오버라이드 | ✅ | 대화 상대, 자율 사회적 액터 |
+| Supervisors | tutorial · chat · orchestrator | Haiku | ❌ | 백그라운드 감시 + nudge (본인 생각처럼 주입됨) |
+| 메모리 추출 | — | Haiku (비동기 worker) | ❌ | 응답 직후 N-turn 배치를 요약·fact·관계 델타로 분해 |
 | Dev Runner | — | Opus | ❌ | 감지된 에러에 대한 소스 코드 자동 수정 |
 
 > 페르소나 에이전트들은 매니저, Creator, Supervisors의 존재를 모릅니다. Supervisor의 nudge는 본인의 내면 생각처럼 느껴집니다.
+>
+> **페르소나 모델은 기본 Haiku** — 대화량이 많고 지연 민감해서 비용·속도 우선. 특정 캐릭터가 더 긴 추론이 필요하면 웹 대시보드에서 Sonnet 으로 per-agent 오버라이드 가능. 로컬 모델 (Ollama / vLLM / llama.cpp) 스텁은 `src/core/runtime.py` 의 `AVAILABLE_MODELS` 에 주석으로 준비되어 있음.
 
 ### Tools 프로토콜
 

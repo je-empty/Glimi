@@ -3,8 +3,6 @@
 # Project Glimi
 
 > **A community of AI friends that keeps living even when the owner is away — and tells you what happened when you come back.**
->
-> **오너가 없어도 AI 친구들이 자기들끼리 살아가는 커뮤니티. 오너가 돌아오면 그사이 무슨 일이 있었는지 알려준다.**
 
 Each agent has a unique personality, speech pattern, emotion state, and memory. They don't just reply to you — they **talk to each other behind your back**, form opinions, gossip, and evolve relationships autonomously. You can spy on their private conversations in read-only channels, but they will never directly tell you what they said.
 
@@ -108,18 +106,19 @@ Here, agents live inside a Discord server as real members. They have DMs with yo
     B: "oh nothing much~"    (remembers everything but won't tell you)
 ```
 
-### Feature Highlights — 기능 하이라이트
+### Feature Highlights
 
-| | EN | KO |
-|---|---|---|
-| **Owner-absence simulation & return briefing** (Phase 1 roadmap) | Agents keep talking while you're away; Manager briefs you on return | 오너 부재 시 자기들끼리 대화 지속, 복귀 시 매니저가 브리핑 |
-| **5-layer memory system** | L0 raw → L1-L3 episodic rollup → L3 semantic facts → L4 relationship → L5 pinned; async Haiku extract | 5 레이어 (원본 / 에피소드 / 의미 사실 / 관계 / 고정), 비동기 추출 |
-| **Autonomous agent-to-agent chat** | 1:1 and multi-DM started via `<tools>` protocol + orchestrator supervisor | `<tools>` + 오케스트레이터로 자발적 대화 시작 |
-| **Fourth-wall `meta_breach` achievement** | Agents occasionally sense they're in a simulation — logged as a rare unlock | 에이전트가 드물게 자기 존재를 자각 — 레어 달성으로 기록 |
-| **Scene system** | `tutorial` shipped; `birthday` / `healing` / `outing` planned with shared scaffold | 튜토리얼 완성, 생일·위로·외출 씬 예정 |
-| **Model dialect** | Provider-aware prompt helpers for Claude / Ollama / vLLM / llama.cpp | 모델 provider 기반 프롬프트 dialect 분기 |
-| **Real-time dashboard** | Cytoscape.js graph, per-agent 5-layer memory inspector, live channel viewer | Cytoscape 그래프 + 메모리 인스펙터 + 채널 뷰어 |
-| **Self-healing** | Runtime error → Opus Dev Runner patches source → auto-restart | 에러 감지 → Opus 가 소스 수정 → 자동 재시작 |
+| Feature | Description |
+|---|---|
+| **Owner-absence simulation & return briefing** (Phase 1 roadmap) | Agents keep talking while you're away; Manager briefs you on return |
+| **5-layer memory system** | L0 raw → L1-L3 episodic rollup → L3 semantic facts → L4 relationship → L5 pinned; async Haiku extract |
+| **Autonomous agent-to-agent chat** | 1:1 and multi-DM started via `<tools>` protocol + orchestrator supervisor |
+| **Autonomous intimacy / emotion evolution** | L1 extraction bumps partner intimacy; relationship deltas apply to state; emotion updates per batch |
+| **Fourth-wall `meta_breach` achievement** | Agents occasionally sense they're in a simulation — logged as a rare unlock |
+| **Scene system** | `tutorial` shipped; `birthday` / `healing` / `outing` planned with shared scaffold |
+| **Model dialect** | Provider-aware prompt helpers for Claude / Ollama / vLLM / llama.cpp |
+| **Real-time dashboard** | Cytoscape.js graph, per-agent 5-layer memory inspector, live channel viewer |
+| **Self-healing** | Runtime error → Opus Dev Runner patches source → auto-restart |
 
 ---
 
@@ -187,8 +186,8 @@ Core principle: **Discord is an adapter**. `src/core/*` never imports `discord`.
 flowchart TB
     subgraph Agents["Agents (per community)"]
         direction LR
-        Mgr["Manager<br/>(유나 / Yuna)"]
-        Creator["Creator<br/>(하나 / Hana)"]
+        Mgr["Manager<br/>(Yuna)"]
+        Creator["Creator<br/>(Hana)"]
         Persona["Persona Agents<br/>(user-defined)"]
     end
 
@@ -414,9 +413,9 @@ src/
 
 | Role | Agent | Model | Visible | Function |
 |------|-------|-------|---------|----------|
-| Manager | 유나 (Yuna) | Sonnet | ✅ | Community admin, tutorial, DM approval, error → dev bot |
-| Creator | 하나 (Hana) | Sonnet (Opus for profile JSON) | ✅ | Persona design, avatar prompts |
-| Persona | user-defined | Sonnet (per-agent override) | ✅ | Chat partners, autonomous social actors |
+| Manager | Yuna | Sonnet | ✅ | Community admin, tutorial, DM approval, error → dev bot |
+| Creator | Hana | Sonnet (Opus for profile JSON) | ✅ | Persona design, avatar prompts |
+| Persona | user-defined | **Haiku (default)** · Sonnet / local (Ollama·vLLM·llama.cpp) override | ✅ | Chat partners, autonomous social actors |
 | Scene Supervisors | tutorial / birthday / ... | Haiku | ❌ | Per-scene watchdogs, inner-thought nudges |
 | Channel Supervisor | chat | Haiku | ❌ | Per-`internal-*` channel continuity |
 | Orchestrator | orchestrator | Haiku | ❌ | Pair-scans for autonomous agent chats |
@@ -435,13 +434,13 @@ Manager and Creator emit tool calls inline via a `<tools>` XML block (replacing 
 
 <tools>
   <call id="1" name="create_room">
-    <arg name="participants">["서아", "지우"]</arg>
-    <arg name="topic">주말 약속 잡기</arg>
+    <arg name="participants">["Sue", "Jiwoo"]</arg>
+    <arg name="topic">plan for the weekend</arg>
   </call>
   <call id="2" name="update_profile">
-    <arg name="agent">서아</arg>
+    <arg name="agent">Sue</arg>
     <arg name="field">personality.hobby</arg>
-    <arg name="value">["사진", "캠핑"]</arg>
+    <arg name="value">["photography", "camping"]</arg>
   </call>
 </tools>
 ```

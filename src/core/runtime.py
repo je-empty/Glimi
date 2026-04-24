@@ -1276,7 +1276,7 @@ class AgentRuntime:
                     if result and result.returncode == 0 and result.stdout.strip():
                         # <tools> 블록 먼저 파싱 → tool_calls stash, chat 텍스트만 분리
                         # (이전에는 이 경로에서 <tools> 파싱이 빠져서 internal-dm에서
-                        # 유나가 finish_onboarding 호출해도 원문이 채팅으로 새고 실행 안 됨)
+                        # 유나가 finish_tutorial 호출해도 원문이 채팅으로 새고 실행 안 됨)
                         parsed = parse_tools_in_output(result.stdout.strip())
                         self._last_tool_calls[speaker_id] = parsed.tool_calls
                         if parsed.errors:

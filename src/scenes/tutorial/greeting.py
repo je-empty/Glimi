@@ -9,14 +9,14 @@ Scene-local by design: tutorial-specific content lives in `src/scenes/tutorial/`
 (greeting.py / judge_prompts.py / prompts.py per scene).
 
 Core prompt is English. Korean-specific honorifics / speech-level / casual-mode coaching
-comes from `src.core.prompts.locale.korean_onboarding_hints` so the template stays
+comes from `src.core.prompts.locale.korean_tutorial_hints` so the template stays
 platform- and language-neutral.
 """
 from __future__ import annotations
 
 from src.core.prompts.locale import (
-    korean_onboarding_hints,
-    onboarding_name_hint,
+    korean_tutorial_hints,
+    tutorial_name_hint,
 )
 
 
@@ -50,8 +50,8 @@ def build_yuna_greeting_prompt(
     missing_str = ", ".join(missing) if missing else ""
     nick_info = f"nickname={nickname}" if nickname else "no nickname"
 
-    name_hint = onboarding_name_hint(name, lang=lang)
-    honorific_hint = korean_onboarding_hints(
+    name_hint = tutorial_name_hint(name, lang=lang)
+    honorific_hint = korean_tutorial_hints(
         name=name, age=age, gender=gender, nickname=nickname,
         p_name=p_name, yuna_age=yuna_age, older=older, lang=lang,
     )
