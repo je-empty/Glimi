@@ -222,23 +222,25 @@ flowchart TB
 
 ### 8 레이어 하나씩
 
+> **용어 주의.** "Harness engineering" 은 아직 업계 표준 정의가 고정된 용어가 아니다 (2025). 아래에서 **[Core harness]** 로 표기한 것은 거의 모든 프로젝트가 harness 로 인정할 만한 부분 (프롬프트 조립 · tool loop · 메모리 파이프라인 · A2A 루프 · Supervisor tick). 두 개는 **[App-specific]** — Glimi 의 소셜 UX 를 인코딩한 거지 일반 agent infra 가 아님 (채널 규율 · anti-echo rule). 하나는 **[Dev tooling]** — MLOps 에 가까움 (self-healing). 8개 전부 "harness" 로 묶은 건 편의적 프레이밍이지 엄밀한 매핑은 아님.
+
 #### Reactive (응답 하나마다 동작)
 
-**1 · 프롬프트 조립** — `src/core/prompts/` · ~610 LOC
+**1 · 프롬프트 조립** · [Core harness] — `src/core/prompts/` · ~610 LOC
 
 - `build_system_prompt(agent_id)` 이 언어 × agent_type 로 dispatch. 예: `ko` 커뮤니티 persona 는 `src/core/prompts/ko/persona.py` → fallback `en/persona.py`
 - `locale.py` 가 문화 특화 helper — `simple_ack_examples()` → `"ㅇㅇ", "ㅋㅋ"`, `chat_platform_name()` → `"카톡"` vs `"Discord"`
 - `model.py` 가 provider 별 dialect — Claude 는 `<tools>` XML, vLLM 은 OpenAI-style, llama.cpp 는 간단 태그
 - Scene fragment — tutorial phase 에 따라 mgr prompt 에 "지금 상태" 동적 삽입
 
-**2 · Tool 프로토콜** — `src/core/tools/` · ~559 LOC
+**2 · Tool 프로토콜** · [Core harness] — `src/core/tools/` · ~559 LOC
 
 - Agent 응답 속 `<tools>...<call id="1" name="create_room">...</call></tools>` XML 파싱
 - `registry.py` `ToolSpec` 으로 권한 (applies_to), 타입, required 필드 검증
 - `dispatcher.py` 가 핸들러 호출 → `ToolResult` 반환 → 다음 턴 prompt 에 결과 주입
 - 레거시 `[CMD:...]` / `[ACTION:...]` 태그는 전부 제거됨
 
-**3 · 메모리 파이프라인** — `src/core/memory.py` · ~1638 LOC — 가장 두꺼운 레이어
+**3 · 메모리 파이프라인** · [Core harness] — `src/core/memory.py` · ~1638 LOC — 가장 두꺼운 레이어
 
 - **L0 Raw** — `conversations` 원본 메시지
 - **L1 Episodic Digest** — 5 메시지마다 Haiku 가 `{summary, facts, relationships, emotion, entities, importance}` JSON 추출
@@ -251,27 +253,27 @@ flowchart TB
 - **Budget 주입** — 턴당 ~800 토큰: Pinned (400) → Relationship (200) → Episodic current (700) → retrieved (400) → Facts (400)
 - **Retrieval scoring** — `0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational`
 
-**4 · Channel discipline** — `runtime.py` `_describe_channel`
+**4 · Channel discipline** · [App-specific] — `runtime.py` `_describe_channel`
 
 - Prompt 마다 "지금 이 채널에 누가 듣고 있는지" 명시
 - `dm-A` audience = 오너 + A | `internal-dm-A-B` audience = A + B (오너는 **silent reader**)
 - `mgr.py` Rule 13-14 — internal-* 에 오너 이름 직접 부르거나 "들어와봐" 유도 금지
 - Role bleed 차단 — 매니저가 internal-dm-서유나-윤하나 에서 오너에게 narration 뱉는 회귀 방지
 
-**5 · Anti-echo / dedup / reality guard**
+**5 · Anti-echo / dedup / reality guard** · [App-specific]
 
 - **Ack-echo 차단** — 유나가 "다녀와~" 이후 오너 "응 ㅋㅋ" 에 재farewell 금지 (무한 루프 차단)
 - **Simple-ack 재호출 차단** — 오너 단순 ack 에 tool 재호출 금지
 - **Reality grounding** — QA 봇이 실제로 dm-A 안 갔으면 "다녀왔어" 거짓말 금지
 - **Request dedup** — 같은 request_dm 을 60초+95% 유사도로 2번 이상 dispatch 시 drop
 
-**6 · A2A 대화 루프** — `src/core/conversation.py`
+**6 · A2A 대화 루프** · [Core harness] — `src/core/conversation.py`
 
 - `start_conversation(channel, participants, send_fn, context)` 이 에이전트 간 대화 시드
 - 2명 → `internal-dm-A-B` 자동 생성, 3명+ → `internal-group-A-B-C`
 - Turn limit (기본 30) 으로 runaway 차단
 
-**7 · 자가 치유** — `src/tools/dev_runner.py` · ~137 LOC
+**7 · 자가 치유** · [Dev tooling] — `src/tools/dev_runner.py` · ~137 LOC
 
 - 에이전트가 `dev_request` tool 호출 → `dev/pending.json` 기록
 - 봇이 exit(42) → shell wrapper 가 Opus 를 호출해 소스 패치
@@ -279,7 +281,7 @@ flowchart TB
 
 #### Proactive (타이머로 동작, 유일한 층)
 
-**8 · Supervisor** ⭐ — `src/supervisors/` + `src/scenes/*/supervisor.py` · ~838 LOC
+**8 · Supervisor** ⭐ · [Core harness] — `src/supervisors/` + `src/scenes/*/supervisor.py` · ~838 LOC
 
 3개 Haiku judge 가 타이머로 tick:
 
