@@ -236,23 +236,25 @@ That `14:02` tick is `OrchestratorSupervisor`. It's what makes the system feel *
 
 ### The 8 layers, one at a time
 
+> **A note on terminology.** "Harness engineering" doesn't have a fixed industry definition yet (2025). The clearly-"harness" parts below are marked **[Core harness]** — they're the scaffolding most projects would recognize as harness work (prompt assembly, tool loop, memory pipeline, A2A loop, supervisor ticks). Two layers are better described as **[App-specific]** (channel discipline, anti-echo rules — they encode Glimi's social UX, not general agent infra). One is **[Dev tooling]** (self-healing — more MLOps than harness). Calling all eight "harness" is a conceptual convenience, not a strict mapping.
+
 #### Reactive (runs per response)
 
-**1 · Prompt assembly** — `src/core/prompts/` · ~610 LOC
+**1 · Prompt assembly** · [Core harness] — `src/core/prompts/` · ~610 LOC
 
 - `build_system_prompt(agent_id)` dispatches by language × agent_type. A `ko` community's persona resolves to `src/core/prompts/ko/persona.py` with fallback to `en/persona.py`.
 - `locale.py` — culture-aware helpers: `simple_ack_examples()` → `"ㅇㅇ", "ㅋㅋ"`, `chat_platform_name()` → `"카톡"` vs `"Discord"`.
 - `model.py` — provider-aware dialect: Claude gets `<tools>` XML, vLLM gets OpenAI-style, llama.cpp gets simple tags.
 - Scene fragments — tutorial phase state injected dynamically into the mgr prompt.
 
-**2 · Tool protocol** — `src/core/tools/` · ~559 LOC
+**2 · Tool protocol** · [Core harness] — `src/core/tools/` · ~559 LOC
 
 - Parses `<tools>...<call id="1" name="create_room">...</call></tools>` XML from agent replies.
 - `registry.py` `ToolSpec` validates permission (applies_to), types, required fields.
 - `dispatcher.py` calls the handler → returns `ToolResult` → injected back into next turn's prompt.
 - Legacy `[CMD:...]` / `[ACTION:...]` tags are fully removed.
 
-**3 · Memory pipeline** — `src/core/memory.py` · ~1638 LOC — the heaviest layer:
+**3 · Memory pipeline** · [Core harness] — `src/core/memory.py` · ~1638 LOC — the heaviest layer:
 
 - **L0 Raw** — `conversations` table, original messages.
 - **L1 Episodic Digest** — every 5 messages, Haiku extracts `{summary, facts, relationships, emotion, entities, importance}` JSON.
@@ -265,27 +267,27 @@ That `14:02` tick is `OrchestratorSupervisor`. It's what makes the system feel *
 - **Budget-based injection** — ~800 tokens/turn: Pinned (400) → Relationship (200) → Episodic current (700) → retrieved (400) → Facts (400).
 - **Retrieval scoring** — `0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational`.
 
-**4 · Channel discipline** — `runtime.py` `_describe_channel`
+**4 · Channel discipline** · [App-specific] — `runtime.py` `_describe_channel`
 
 - Every prompt states *explicitly* who is listening in this channel.
 - `dm-A` audience = owner + A | `internal-dm-A-B` audience = A + B (owner is a **silent reader**).
 - `mgr.py` Rules 13-14 — Manager forbidden from addressing the owner inside `internal-*` or inviting the owner to "join in" on those channels.
 - Prevents role bleed — e.g., Yuna writing owner-facing lines inside `internal-dm-서유나-윤하나`, which would leak to Hana as if directed at her.
 
-**5 · Anti-echo / dedup / reality guard**
+**5 · Anti-echo / dedup / reality guard** · [App-specific]
 
 - **Ack-echo breaker** — after Yuna says "ttyl" and the owner replies "ok lol", Yuna can't send another farewell (cuts infinite loops).
 - **Simple-ack re-invoke block** — owner's short ack ("응", "ㅋㅋ") doesn't trigger tool re-calls.
 - **Reality grounding** — the QA bot can't claim "I went to A's DM" if it hasn't actually shown up in that channel's log.
 - **Request dedup** — same `request_dm` dropped if repeated within 60s at 95%+ similarity.
 
-**6 · A2A conversation loop** — `src/core/conversation.py`
+**6 · A2A conversation loop** · [Core harness] — `src/core/conversation.py`
 
 - `start_conversation(channel, participants, send_fn, context)` seeds agent-to-agent dialogue.
 - 2 participants → auto-creates `internal-dm-A-B`; 3+ → `internal-group-A-B-C`.
 - Turn limit (default 30) prevents runaway.
 
-**7 · Self-healing** — `src/tools/dev_runner.py` · ~137 LOC
+**7 · Self-healing** · [Dev tooling] — `src/tools/dev_runner.py` · ~137 LOC
 
 - Agent emits `dev_request` tool call → writes to `dev/pending.json`.
 - Bot exits with code 42 → shell wrapper invokes Opus to patch source.
@@ -293,7 +295,7 @@ That `14:02` tick is `OrchestratorSupervisor`. It's what makes the system feel *
 
 #### Proactive (timer-driven, the only layer that runs without input)
 
-**8 · Supervisors** ⭐ — `src/supervisors/` + `src/scenes/*/supervisor.py` · ~838 LOC
+**8 · Supervisors** ⭐ · [Core harness] — `src/supervisors/` + `src/scenes/*/supervisor.py` · ~838 LOC
 
 Three Haiku judges ticking on timers:
 

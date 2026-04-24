@@ -267,15 +267,25 @@
         restartBtn.style.display = 'none';
         stopBtn.style.display = 'none';
       }
+      // demo 커뮤니티는 시연용 — 제어 버튼 전부 숨김 (실제 spawn 방지)
+      if (CID === 'demo') {
+        startBtn.style.display = 'none';
+        restartBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+      }
     } catch (e) {}
   }
   window.glimiServerCtrl = async function(action) {
+    // demo 커뮤니티는 시연용 mock — 실제 봇 spawn 금지 (Claude CLI 호출 방지).
+    // 서버 제어 버튼 눌러도 no-op 처리.
+    if (CID === 'demo') {
+      console.log('[demo] server control disabled — demo 는 mock 상태라 실제 bot spawn 하지 않음');
+      return;
+    }
     if (action === 'start' || action === 'restart') {
-      // 가동 전 scan → 손상 감지 → (유저 결정) → 복구 → 실제 가동 → 튜토리얼
       await _runStartupPrep(action);
       return;
     }
-    // stop 은 그냥 호출
     try {
       const r = await fetch('/api/communities/' + CID + '/' + action, { method: 'POST' });
       if (!r.ok) { alert('실패: ' + await r.text()); return; }
