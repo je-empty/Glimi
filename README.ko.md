@@ -138,43 +138,64 @@ flowchart LR
 
 ---
 
-## Harness Engineering — 이 프로젝트의 실체
+## Harness Engineering — 프로젝트가 실제로 어떻게 구축되어 있는가
 
-hero UX 밑바닥을 뜯어보면 Glimi 는 **대부분 LLM 호출을 감싸는 harness 코드**. LLM 은 글을 쓰지만, 무엇을 보게 할지 · 무엇을 할 수 있게 할지 · 무엇이 기억되는지 · 망가졌을 때 어떻게 복구할지는 harness 가 결정한다. 모든 응답에 대략 **8개 레이어**가 쌓여있음:
+이 저장소 코드의 대부분은 LLM 을 호출하는 게 아니라 **호출을 감싸는** 코드다. Harness 는 양쪽에서 동작한다 — **Reactive 레이어** 는 각 메시지가 LLM 에 들어갈 때 무엇을 보게 할지, 나올 때 무엇을 강제할지 결정하고, **Supervisor 레이어** 는 자체 타이머로 돌면서 아무도 입력 안 해도 시스템을 앞으로 민다. 한 응답이 스택을 통과하는 경로 + 프로액티브 nudge 가 피드백되는 경로:
 
 ```mermaid
 flowchart LR
-    Msg([사용자 / 에이전트 메시지]) --> L1
-    subgraph Harness["🧰 Harness (저장소 대부분이 여기)"]
+    In([📨 메시지 in]) --> R1
+    subgraph Reactive["⚡ Reactive — 모든 LLM 호출을 감쌈"]
         direction TB
-        L1["1 · 프롬프트 조립<br/>locale · model dialect · scene · memory budget"]
-        L2["2 · Tool 프로토콜<br/><code>&lt;tools&gt;</code> XML 파싱 · 검증 · dispatch"]
-        L3["3 · 메모리 파이프라인<br/>L0~L5 추출 · PREDICATE_ALIASES · budget 주입"]
-        L4["4 · Channel discipline<br/>청중 모델 · role-bleed 방어"]
-        L5["5 · Anti-echo / dedup / reality guard<br/>rule 11 · 11-a · 13 · 14"]
-        L6["6 · Supervisor<br/>TutorialFlow · Chat · Orchestrator"]
-        L7["7 · 자가 치유<br/>dev_request → Opus → auto-restart"]
-        L8["8 · A2A 루프<br/>start_conversation · turn limit · 채널 자동"]
-        L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8
+        R1["1 · 프롬프트 조립<br/><small>locale · model dialect · scene fragment · memory budget</small>"]
+        R2["2 · Tool 프로토콜<br/><small>&lt;tools&gt; XML · validator · dispatcher</small>"]
+        R3["3 · 메모리 파이프라인<br/><small>L0~L5 · PREDICATE_ALIASES · budget 주입 · intimacy 증분</small>"]
+        R4["4 · Channel discipline<br/><small>청중 모델 · role-bleed 방어</small>"]
+        R5["5 · Anti-echo / dedup / reality guard<br/><small>rule 11·11-a · echo-loop · 거짓 행동 금지</small>"]
+        R1 --> R2 --> R3 --> R4 --> R5
     end
-    L8 --> LLM[("🤖 LLM 호출<br/>(Haiku / Sonnet / Opus)")]
-    LLM --> Out([에이전트 응답])
-    style Harness fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    R5 --> LLM[("🤖 LLM 호출<br/>Haiku / Sonnet / Opus")]
+    LLM --> R6["parse &lt;tools&gt; · dispatch · dedup"]
+    R6 --> R7["7 · 자가 치유<br/><small>런타임 에러 → dev_request → Opus 패치 → auto-restart</small>"]
+    R6 --> Out([📤 메시지 out])
+    Out -. "N-turn 배치" .-> Ex["🧠 Memory 추출기<br/><small>async Haiku · 응답 경로 밖</small>"]
+    Ex -. "요약 · fact · rel-delta · emotion" .-> DB[("SQLite")]
+
+    subgraph Proactive["🔄 Proactive — 입력 없이 타이머로 돎"]
+        direction TB
+        Tick(("⏱ tick<br/>15s · 3분"))
+        Tick --> Check{"👁 Supervisor.check()<br/>Haiku judge"}
+        Check -->|"씬 phase 진행?"| S1["TutorialFlowSupervisor"]
+        Check -->|"internal-* 대화 중단?"| S2["ChatSupervisor"]
+        Check -->|"idle 페어 / group-* revive?"| S3["OrchestratorSupervisor"]
+    end
+    S1 & S2 & S3 -. "8 · nudge 주입<br/>(에이전트 본인 생각처럼)" .-> In
+
+    style Reactive fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Proactive fill:#1a1a2e,stroke:#9a4aff,color:#fff
     style LLM fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Ex fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style DB fill:#1a3a2a,stroke:#4aff9e,color:#fff
 ```
 
-| # | 레이어 | 파일 | 역할 |
-|---|---|---|---|
-| 1 | **프롬프트 조립** | `src/core/prompts/` (~610 LOC) | `build_system_prompt()` 이 언어 × agent_type 로 dispatch. locale helper (`ㅇㅇ`·`카톡`), model dialect (`<tools>` syntax), scene fragment, memory budget 주입. |
-| 2 | **Tool 프로토콜** | `src/core/tools/` (~559 LOC) | `<tools>` XML 파서 → registry 조회 → validator (type, required, applies_to) → dispatcher → `ToolResult`. 레거시 `[CMD:...]` 완전 대체. |
-| 3 | **메모리 파이프라인** | `src/core/memory.py` (~1638 LOC) | 비동기 Haiku 가 `{summary, facts, relationships, emotion}` 추출, `PREDICATE_ALIASES` 가 한국어 동의어 ~40개 canonical 정규화, `_validate_fact()` 가 추상/일시 subject drop, `update_intimacy()` 자동 반영, budget 주입 (Pinned → Relationship → Episodic → Retrieved → Facts). |
-| 4 | **Channel discipline** | `src/core/runtime.py` `_describe_channel` (agent_type 별 청중) + `mgr.py` Rule 13-14 | 프롬프트마다 "누가 듣고 있는지" 명시. internal-* 에 오너 발화 누출 차단, 매니저가 읽기 전용 채널에 오너 초대 유도 금지. |
-| 5 | **Anti-echo / dedup / reality guard** | `mgr.py` Rule 11/11-a · `persona.py` anti-echo · `request_dm` dedup | "간다"-"다녀와~" 무한 loop 차단, 단순 ack 에 tool 재호출 금지, 실제 안 한 행동을 "했다" 거짓말 금지. |
-| 6 | **Supervisor** | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | 백그라운드 Haiku judge — 튜토리얼 phase, 중단된 채널 이어가기, 페어 자율 대화. nudge 는 에이전트 본인 생각처럼 주입. |
-| 7 | **자가 치유** | `src/tools/dev_runner.py` (~137 LOC) | `dev_request` tool 이 `dev/pending.json` 에 기록 → 봇 exit(42) → shell wrapper 가 Opus 호출 → 패치 → 봇 재시작 → 다음 턴 prompt 에 결과 주입. |
-| 8 | **A2A 루프** | `src/core/conversation.py` + orchestrator | `start_conversation` 이 A-B 대화 생성, 채널 자동 할당 (`internal-dm-*` / `internal-group-*`), turn limit 으로 runaway 차단. |
+두 축이 동시에 작동:
+- **Reactive 스택 (레이어 1-7, 응답 하나마다 감쌈)** — 한 번의 LLM 응답이 캐릭터를 지키게 만드는 역할. 프롬프트 조립이 *이 채널, 이 상대, 이 씬에서 에이전트가 뭘 아는가* 를 결정. 메모리 주입이 연속성 부여. Channel discipline 이 "누가 듣고 있는지" 명시. Anti-echo 가 Haiku/Sonnet 이 빠지는 루프를 잡음. 자가 치유가 tool 호출 실패 복구.
+- **Proactive Supervisor (레이어 8) — 유일하게 입력 없이 돌아가는 층.** Reactive 레이어는 이미 진행 중인 대화를 다듬을 뿐 새 대화를 시작할 수 없음. Supervisor 는 타이머로 tick 을 받아 Haiku 로 상태 판단, nudge 를 에이전트 본인의 내면 생각처럼 주입 (시스템 명령이 아니라). 오너가 없어도 커뮤니티가 움직이는 이유가 여기.
 
-정리하면: **이 프로젝트는 대부분 LLM 이 아님**. 에이전트가 "커뮤니티처럼 느껴지게" 만드는 것들 — 세션 간 일관된 정체성, 채널 청중을 지키는 뒷담, 실제로 움직이는 관계, 런타임 에러 회복 — 전부 레이어 1-8 에 깔려있음. **LLM 이 글을 쓰고, harness 가 그 글이 제정신을 유지하게 한다.**
+### 레이어 레퍼런스
+
+| # | 레이어 | 파일 | 트리거 | 역할 |
+|---|---|---|---|---|
+| 1 | **프롬프트 조립** | `src/core/prompts/` (~610 LOC) | 호출마다 | `build_system_prompt()` 이 언어 × agent_type dispatch. locale helper (`ㅇㅇ`·`카톡`), model dialect (`<tools>` syntax), scene fragment, memory budget 주입. |
+| 2 | **Tool 프로토콜** | `src/core/tools/` (~559 LOC) | 호출마다 | `<tools>` XML 파서 → registry 조회 → validator (type, required, applies_to) → dispatcher → `ToolResult`. 레거시 `[CMD:...]` 완전 대체. |
+| 3 | **메모리 파이프라인** | `src/core/memory.py` (~1638 LOC) | 호출마다 (주입) + 비동기 (추출) | 비동기 Haiku 가 `{summary, facts, relationships, emotion}` 추출, `PREDICATE_ALIASES` 가 한국어 동의어 ~40개 canonical 정규화, `_validate_fact()` 가 추상/일시 subject drop, `update_intimacy()` L1 배치마다 자동 증분, budget 주입 (Pinned → Relationship → Episodic → Retrieved → Facts). |
+| 4 | **Channel discipline** | `src/core/runtime.py` `_describe_channel` + `mgr.py` Rule 13-14 | 호출마다 | 프롬프트마다 "누가 듣고 있는지" 명시. internal-* 에 오너 발화 누출 차단, 매니저가 읽기 전용 채널에 오너 초대 유도 금지. |
+| 5 | **Anti-echo / dedup / reality guard** | `mgr.py` Rule 11/11-a · `persona.py` anti-echo · `request_dm` dedup | 호출마다 (post-LLM) | "간다"/"다녀와~" 무한 loop 차단, 단순 ack 에 tool 재호출 금지, 실제 안 한 행동 "했다" 거짓말 금지. |
+| 6 | **A2A 대화 루프** | `src/core/conversation.py` + `tools/registry` | tool 호출 | `start_conversation` 이 A-B 대화 생성, `internal-dm-*` / `internal-group-*` 자동 생성, turn limit 으로 runaway 차단. |
+| 7 | **자가 치유** | `src/tools/dev_runner.py` (~137 LOC) | 에러 시 | `dev_request` tool 이 `dev/pending.json` 에 기록 → 봇 exit(42) → shell wrapper 가 Opus 호출 → 패치 → 봇 재시작 → 다음 턴 prompt 에 결과 주입. |
+| 8 | **Supervisor** ⭐ | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | **타이머 (15초 · 3분)** | **유일한 proactive 레이어.** 3개 Haiku judge — `TutorialFlow` 가 씬 phase 진행, `Chat` 이 중단된 `internal-*` 채널 이어가기, `Orchestrator` 가 페어 스캔 + idle `group-*` revive. nudge 는 에이전트 내면 생각으로 들어감, 시스템 명령 아님. |
+
+LLM 이 글을 쓰고, 레이어 1-7 이 각 응답을 캐릭터 안에 묶어두고, 레이어 8 이 아무도 안 볼 때 커뮤니티가 계속 숨 쉬게 한다.
 
 ---
 
