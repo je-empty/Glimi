@@ -20,6 +20,7 @@
 
 ```mermaid
 flowchart LR
+    linkStyle default stroke:#888,stroke-width:1.5px
     subgraph Owner["👤 Owner"]
         direction TB
         Browser["🌐 웹 대시보드<br/>(localhost:8000)"]
@@ -157,6 +158,7 @@ Glimi 에서 LLM 호출은 총 **8 레이어** 의 harness 로 감싸져 있다.
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     In([📨 메시지 in]) --> Stack
     subgraph Stack["⚡ Reactive — 1-5 pre-LLM"]
         direction LR
@@ -353,6 +355,7 @@ LLM 은 질의-응답이라 그 커뮤니티는 오너가 입력을 멈추는 �
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     Owner["👤 오너"]
 
     subgraph Visible["오너에게 보임"]
@@ -449,6 +452,7 @@ flowchart TB
 
 ```mermaid
 graph LR
+    linkStyle default stroke:#888,stroke-width:1.5px
     L0["📝 L0 Raw\nconversations 테이블\n(영구)"]
     L1["📋 L1 에피소드\n5 msgs → digest\nJSON: summary+type+entities+importance+facts+rel_delta"]
     L2["📦 L2 Chronicle\n5 L1s → 단락"]
@@ -488,6 +492,7 @@ graph LR
 
 ```mermaid
 flowchart TB
+    linkStyle default stroke:#888,stroke-width:1.5px
     Raw["L0 원본 메시지<br/>conversations 테이블"]
     Buf["N-turn 버퍼<br/>(agent, channel) 별"]
     Haiku["Haiku 추출기<br/><code>EXTRACTION_MODEL = claude-haiku-4-5</code><br/>단일 JSON 호출"]
