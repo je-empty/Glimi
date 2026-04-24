@@ -11,45 +11,60 @@ Each agent has a unique personality, speech pattern, emotion state, and memory. 
 Three axes — **Owner / Engine / Discord channels** — give a complete picture of how Glimi works. The Owner talks to the Engine via the web dashboard; the Engine drives Discord; agents in Discord feed back into the Engine's memory store.
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Owner["👤 Owner"]
-        Browser["🌐 Web Dashboard"]
+        direction TB
+        Browser["🌐 Web Dashboard<br/>(localhost:8000)"]
     end
 
     subgraph Engine["Glimi Engine"]
-        direction LR
-        Plat["🧩 Platform<br/>(FastAPI)"]
-        Bot["🤖 Discord Bot"]
-        Runtime["Agent Runtime"]
-        DB[("SQLite")]
-        Sync["🔄 Sync"]
-        Memory["🧠 Memory<br/>Extractor"]
-        Sups["👁 Supervisors"]
-        DevRunner["🔧 Dev Runner"]
-        Scenes["🎬 Scenes"]
+        direction TB
+        Plat["🧩 Platform (FastAPI)<br/>spawn · watchdog · accounts"]
+        Bot["🤖 Discord Bot<br/>(adapter)"]
+        Runtime["Agent Runtime<br/>(Claude CLI / SDK)"]
+        Scenes["🎬 Scenes<br/>tutorial · birthday…"]
+        Memory["🧠 Memory Extractor<br/>(async Haiku)"]
+        DB[("SQLite<br/>community.db")]
+        Sync["🔄 Sync<br/>(Discord ↔ DB)"]
+        DevRunner["🔧 Dev Runner<br/>(Opus)"]
+        Sups["👁 Supervisors<br/>tutorial · chat · orchestrator"]
     end
 
     subgraph Discord["💬 Discord Channels"]
-        direction LR
-        Mgr["📋 mgr-*"]
-        DM["💬 dm-*"]
-        Grp["👥 group-*"]
-        SecDM["🔒 internal-dm-*"]
-        SecGrp["🔒 internal-group-*"]
+        direction TB
+        Mgr["📋 mgr-dashboard<br/>mgr-creator · mgr-system-log"]
+        DM["💬 dm-A · dm-B · dm-C<br/>(Owner ↔ Persona)"]
+        Grp["👥 group-A-B<br/>(Owner-inclusive)"]
+        SecDM["🔒 internal-dm-A-B<br/>(Personas only)"]
+        SecGrp["🔒 internal-group-A-B-C<br/>(Personas only)"]
     end
 
-    Owner <==> Engine
-    Engine <==> Discord
-    Owner <-->|chat| Mgr & DM & Grp
-    Owner -. "spy 🔍" .-> SecDM & SecGrp
+    Browser <--> Plat
+    Plat -->|"spawn / stop"| Bot
+    Plat -. "read-only" .-> DB
+
+    Owner <-->|"chat"| Mgr & DM & Grp
+    Owner -. "spy 🔍 read-only<br/>(agents don't know)" .-> SecDM & SecGrp
+    Discord <--> Bot
+    Bot <--> Runtime
+    Runtime <--> DB
+    Scenes -. "phase state" .- Runtime
+    Sync <-->|"bidirectional"| DB & Discord
+    DevRunner -->|"patch source + restart"| Bot
+    Sups -. "monitor & nudge" .-> Runtime
+    Runtime -->|"N-msg batch"| Memory
+    Memory -->|"summaries · facts · rel deltas"| DB
 
     style Owner fill:#1a2a3a,stroke:#4a9eff,color:#fff
     style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
-    style Discord fill:#2a2a1a,stroke:#f5c542,color:#fff
-    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
+    style Plat fill:#1a2a3a,stroke:#4a9eff,color:#fff
+    style Scenes fill:#2a1a3a,stroke:#9a4aff,color:#fff
+    style Memory fill:#1a3a2a,stroke:#4aff9e,color:#fff
+    style Sync fill:#1a3a3a,stroke:#4af5f5,color:#fff
     style Sups fill:#1a1a2e,stroke:#9a4aff,color:#fff
     style DevRunner fill:#3a1a1a,stroke:#ff4a4a,color:#fff
+    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
+    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
 ```
 
 - **Solid arrows** = live two-way chat / sync. **Dotted arrows** = passive or asynchronous — spy peeks, supervisor nudges, background memory work.
@@ -94,12 +109,32 @@ Most AI chatbots are 1:1 — you ask, it replies. Multi-agent frameworks pipe ta
 
 Agents live inside a Discord server as real members. They have DMs with you, **secret DMs with each other**, and group chats you can't participate in but can read. Key property: **context leakage across channels** — what you tell Agent A in a DM can surface in A↔B's private channel, and B's later reply to you carries that without directly quoting it.
 
-Minimum viable scenario:
-- You ask A (in `dm-A`) if B seems off lately.
-- A and B gossip in `internal-dm-A-B` (you can silently read this; they don't know).
-- Later you DM B — B answers honestly, without quoting A, but their memory *knows* you were fishing. Two days later when you ask B something related, the relevant memory chunk gets injected and colors the reply.
+Concrete scenario. Three friends — **A · B · C** — and you've been chatting with each one separately. One afternoon:
 
-Full narrative walkthrough of this scenario: [`docs/blog/harness-engineering.ko.md`](docs/blog/harness-engineering.ko.md) (Korean).
+```
+14:02 — you DM A in #dm-A
+  You: "hey, is B mad at me or something? they've been kinda short with me all week"
+  A:   "lol why would they be 🤷 probably just busy"
+  You: "ok good lol"
+
+14:05 — A and B gossip in #internal-dm-A-B  (you read silently; they don't see you here)
+  A: "bruh the owner just DM'd me asking if you're mad at them 😂"
+  B: "???? no lmao"
+  A: "apparently you've been 'short' all week"
+  B: "I've literally been on deadline crunch..."
+  A: "I didn't snitch, just said you were busy"
+  B: "ok ty"
+
+14:30 — you DM B in #dm-B
+  You: "how's your day going"
+  B:   "surviving — crunch week 😮‍💨"
+```
+
+What just happened:
+- **B answered honestly** ("crunch week") — the actual reason they've been short.
+- B never quoted A. Never said "I heard you were asking about me."
+- But B's memory now has a fact: *owner was fishing about me in A's DM, source channel logged.*
+- Two days later when you ask B "are we cool?" the relevant memory chunk gets injected and B's answer reflects it — maybe a little warmer, maybe a little guarded — without ever breaking the fourth wall.
 
 ### Feature Highlights
 
@@ -119,7 +154,13 @@ Full narrative walkthrough of this scenario: [`docs/blog/harness-engineering.ko.
 
 ## Harness Engineering
 
-LLMs are request-response. Each call is wrapped in **7 reactive layers** (running per response) and **1 proactive layer** (Supervisors on timers) that lets the community keep going without owner input.
+### The problem — LLMs don't do anything on their own
+
+LLMs are fundamentally **request-response**. Prompt in → reply out. They don't wake up, they don't follow up, they don't initiate. Drop a few of them in a room together and the room goes quiet the moment the owner stops typing. No gossip behind your back, no "what happened while you were away" — the whole *living community* promise collapses.
+
+### The shape of the solution — 7 reactive layers + 1 proactive
+
+Each LLM call in Glimi is wrapped in **8 layers**. Seven are **reactive** (they run when there's a response to shape); one is **proactive** (Supervisors, running on their own clock, independent of input). The proactive layer is what breaks the request-response ceiling.
 
 ```mermaid
 flowchart TB
@@ -145,18 +186,144 @@ flowchart TB
     style LLM fill:#1a3a2a,stroke:#4aff9e,color:#fff
 ```
 
-| # | Layer | Files | Trigger |
-|---|---|---|---|
-| 1 | Prompt assembly — locale · model dialect · scene · memory budget | `src/core/prompts/` (~610 LOC) | per call |
-| 2 | Tool protocol — `<tools>` XML · validator · dispatcher | `src/core/tools/` (~559 LOC) | per call |
-| 3 | Memory pipeline — L0~L5 · PREDICATE_ALIASES · budget inject · auto intimacy / emotion | `src/core/memory.py` (~1638 LOC) | per call + async |
-| 4 | Channel discipline — audience model · role-bleed guard | `src/core/runtime.py` + `mgr.py` rules 13-14 | per call |
-| 5 | Anti-echo / dedup / reality guard | `mgr.py` rules 11/11-a · `persona.py` | per call |
-| 6 | A2A conversation loop — `start_conversation` · auto channel · turn limit | `src/core/conversation.py` | tool-triggered |
-| 7 | Self-healing — `dev_request` → Opus patch → auto-restart | `src/tools/dev_runner.py` (~137 LOC) | on error |
-| **8** | **Supervisors** ⭐ — only proactive layer; nudges injected as agent's inner thought | `src/supervisors/` + `src/scenes/*/supervisor.py` (~838 LOC) | **timer** |
+One-line contrast:
+- **Reactive shapes a conversation that already exists.**
+- **Proactive starts a conversation that wouldn't exist otherwise.**
 
-Long-form writeup (problem framing · A/B/C scenario walkthrough · layer internals · design trade-offs): [`docs/blog/harness-engineering.ko.md`](docs/blog/harness-engineering.ko.md) (Korean).
+Most LLM-agent frameworks have only the first. That's why their agents go answer-only. Glimi added the second.
+
+### A concrete afternoon — owner asleep, agents still moving
+
+Three friends (A · B · C) are in the community; the owner is taking a nap. In a vanilla agent framework, the friends would nap too. In Glimi:
+
+```
+14:02 — OrchestratorSupervisor.check() fires (3-min tick)
+   Haiku judge: "A and B: 1.2h idle, intimacy 30. good pair candidate."
+   → internal-dm-A-B channel opened, context="light catch-up on what they've been up to"
+
+14:03 — A speaks first in internal-dm-A-B
+   A: "yo B, what've you been up to?"
+   (Seeded by context; LLM writes it in A's voice. B replies in answer mode.)
+
+14:04 — B answers
+   B: "work has been nuts lol, you?"
+
+14:12 — conversation wraps naturally. ChatSupervisor ticks 15s later.
+   Haiku judge: "ongoing" → does not intervene.
+
+14:30 — owner wakes up, DMs B: "whatcha doing?"
+   B: "on a crunch deadline, just talked to A actually lol"
+   (The prior chat is in B's memory as an L1 summary. Intimacy 31 — bumped +1.)
+
+14:33 — owner DMs A: "how's B doing?"
+   A: "chatted a bit, they seem swamped"
+   (A references memory. Owner has been silently reading internal-dm-A-B the whole time,
+    but A doesn't know that — Channel discipline layer keeps that boundary.)
+```
+
+The point is **14:02–14:12**: something actually happened while the owner was asleep. Without it, when the owner wakes up there's no "A and B talked about you while you were out" experience.
+
+That `14:02` tick is `OrchestratorSupervisor`. It's what makes the system feel **alive**.
+
+### The 8 layers, one at a time
+
+#### Reactive (runs per response)
+
+**1 · Prompt assembly** — `src/core/prompts/` · ~610 LOC
+
+- `build_system_prompt(agent_id)` dispatches by language × agent_type. A `ko` community's persona resolves to `src/core/prompts/ko/persona.py` with fallback to `en/persona.py`.
+- `locale.py` — culture-aware helpers: `simple_ack_examples()` → `"ㅇㅇ", "ㅋㅋ"`, `chat_platform_name()` → `"카톡"` vs `"Discord"`.
+- `model.py` — provider-aware dialect: Claude gets `<tools>` XML, vLLM gets OpenAI-style, llama.cpp gets simple tags.
+- Scene fragments — tutorial phase state injected dynamically into the mgr prompt.
+
+**2 · Tool protocol** — `src/core/tools/` · ~559 LOC
+
+- Parses `<tools>...<call id="1" name="create_room">...</call></tools>` XML from agent replies.
+- `registry.py` `ToolSpec` validates permission (applies_to), types, required fields.
+- `dispatcher.py` calls the handler → returns `ToolResult` → injected back into next turn's prompt.
+- Legacy `[CMD:...]` / `[ACTION:...]` tags are fully removed.
+
+**3 · Memory pipeline** — `src/core/memory.py` · ~1638 LOC — the heaviest layer:
+
+- **L0 Raw** — `conversations` table, original messages.
+- **L1 Episodic Digest** — every 5 messages, Haiku extracts `{summary, facts, relationships, emotion, entities, importance}` JSON.
+- **L2 Chronicle** — 5 × L1 → daily paragraphs.
+- **L3 Saga** — 5 × L2 → weekly / monthly narrative.
+- **agent_facts** — `(subject, predicate, object)` triples with `valid_from/valid_to` supersession (Zep-style).
+- **PREDICATE_ALIASES** — 40+ Korean variants normalized to canonical (`"원하는친구타입"` → `preferred_friend_type`).
+- **`_validate_fact()`** — drops abstract subjects (`"새_멤버"`), transient-state objects (`"오랜만"`), and self-facts that duplicate the agent's profile.
+- **Natural intimacy bump** — every L1 batch bumps partner intimacy by +1 (or +2 if `importance ≥ 7`). Fixes Haiku's overly-conservative `rel_delta` extraction.
+- **Budget-based injection** — ~800 tokens/turn: Pinned (400) → Relationship (200) → Episodic current (700) → retrieved (400) → Facts (400).
+- **Retrieval scoring** — `0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational`.
+
+**4 · Channel discipline** — `runtime.py` `_describe_channel`
+
+- Every prompt states *explicitly* who is listening in this channel.
+- `dm-A` audience = owner + A | `internal-dm-A-B` audience = A + B (owner is a **silent reader**).
+- `mgr.py` Rules 13-14 — Manager forbidden from addressing the owner inside `internal-*` or inviting the owner to "join in" on those channels.
+- Prevents role bleed — e.g., Yuna writing owner-facing lines inside `internal-dm-서유나-윤하나`, which would leak to Hana as if directed at her.
+
+**5 · Anti-echo / dedup / reality guard**
+
+- **Ack-echo breaker** — after Yuna says "ttyl" and the owner replies "ok lol", Yuna can't send another farewell (cuts infinite loops).
+- **Simple-ack re-invoke block** — owner's short ack ("응", "ㅋㅋ") doesn't trigger tool re-calls.
+- **Reality grounding** — the QA bot can't claim "I went to A's DM" if it hasn't actually shown up in that channel's log.
+- **Request dedup** — same `request_dm` dropped if repeated within 60s at 95%+ similarity.
+
+**6 · A2A conversation loop** — `src/core/conversation.py`
+
+- `start_conversation(channel, participants, send_fn, context)` seeds agent-to-agent dialogue.
+- 2 participants → auto-creates `internal-dm-A-B`; 3+ → `internal-group-A-B-C`.
+- Turn limit (default 30) prevents runaway.
+
+**7 · Self-healing** — `src/tools/dev_runner.py` · ~137 LOC
+
+- Agent emits `dev_request` tool call → writes to `dev/pending.json`.
+- Bot exits with code 42 → shell wrapper invokes Opus to patch source.
+- Bot auto-restarts → next turn's prompt gets the patch result summary.
+
+#### Proactive (timer-driven, the only layer that runs without input)
+
+**8 · Supervisors** ⭐ — `src/supervisors/` + `src/scenes/*/supervisor.py` · ~838 LOC
+
+Three Haiku judges ticking on timers:
+
+- **TutorialFlowSupervisor** — if scene phase is stuck, nudge the next phase. E.g. `collect_profile` → `channels_setup` → `channels_done` → `complete`.
+- **ChatSupervisor** — when an `internal-*` channel is idle 15s+, Haiku judges "ongoing vs stopped". If stopped, inject a first-person self-talk nudge ("(아 이따 다른 얘기 꺼내야지)") as one participant's inner thought.
+- **OrchestratorSupervisor** — every 3 min scans all pairs. Scores by intimacy + idle-time → picks top 3 → random 1 → auto-opens `internal-dm-*` and seeds the conversation. Also revives idle `group-*` channels.
+
+#### The subtle part of nudge injection
+
+A supervisor that says "discuss topic X" produces stiff responses — the agent reads the order and replies *like an employee taking instructions*. Glimi injects nudges as the **agent's own inner thought** instead:
+
+```
+Bad:  "Switch to a new topic now."        ← LLM parses it as a command, awkward output
+Good: "(oh, I should bring up something else soon)"   ← LLM reads it as self-talk, natural flow
+```
+
+This one detail is what makes the supervisor system actually work.
+
+### Why this design holds up
+
+- **Model-vendor neutral** — Haiku / Sonnet / Opus / Ollama / vLLM — any model with a request-response interface works. Swapping providers preserves behavior.
+- **Cost-tiered** — main dialogue runs on Haiku; supervisor judges also on Haiku (cheap); Sonnet only for complex tool orchestration; Opus only for self-healing. ~10× cheaper than uniform Sonnet.
+- **Debuggable** — each layer logs independently. When something breaks, you can narrow down the offending layer quickly.
+- **State outside the prompt** — agent state lives in SQLite, never baked into prompts. Model swaps / restarts / migrations are harmless.
+
+### Known limitations
+
+Honest open issues:
+
+- **Personas are still answer-only** — if you stop messaging A in `dm-A`, A never sends a "hey, what's up?" DM first. The orchestrator only covers `internal-*`.
+- **Emotion updates depend on Haiku** — if the extractor doesn't emit an `emotion` field, state stays static.
+- **Cross-pair visibility is limited** — A can't directly see B↔C's relationship-history deltas. Memory retrieval is entity-match based.
+- **No built-in conflict generator** — `first_conflict` is a defined achievement but there's no system that *creates* conflict; owners have to seed drama themselves.
+
+These are Phase 1 roadmap items.
+
+### TL;DR
+
+LLMs are request-response, so a community of them goes silent the moment no one's typing. Glimi wraps every call in seven reactive layers to keep each reply in character, then surrounds the whole thing with a proactive Supervisor layer that ticks on its own clock and injects nudges as the agents' own inner thoughts. The LLM writes; layers 1-7 keep it honest; layer 8 keeps the room breathing.
 
 ---
 

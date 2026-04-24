@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/static/css/base.css">
   {% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   {% block topbar %}
     {% if user %}
     <header class="gp-topbar">
