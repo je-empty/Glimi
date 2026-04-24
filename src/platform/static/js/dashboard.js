@@ -697,8 +697,15 @@ function openModal(emoji, title, body, agent=null) {
     }
   }
   document.getElementById('detail-backdrop').classList.add('open');
+  // 모달 열린 동안 배경 페이지 스크롤 잠금
+  document.documentElement.classList.add('modal-open');
+  document.body.classList.add('modal-open');
 }
-function closeModal() { document.getElementById('detail-backdrop').classList.remove('open'); }
+function closeModal() {
+  document.getElementById('detail-backdrop').classList.remove('open');
+  document.documentElement.classList.remove('modal-open');
+  document.body.classList.remove('modal-open');
+}
 document.getElementById('d-close').addEventListener('click', closeModal);
 document.getElementById('detail-backdrop').addEventListener('click', (e) => {
   if (e.target.id === 'detail-backdrop') closeModal();

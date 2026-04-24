@@ -61,11 +61,16 @@
 
   /* 전체 페이지 캡쳐 모드 — html + body 양쪽에 capture-mode 클래스 필요.
      html 만 안 붙이면 viewport 클리핑이 살아있어서 document 스크롤이 막힘.
-     내부 panel collapse / expand 는 건드리지 않음 — 사용자가 직접 펼친 영역만 캡쳐. */
-  html.capture-mode, body.capture-mode { height: auto !important; overflow: visible !important; }
+     내부 panel collapse / expand 는 건드리지 않음 — 사용자가 직접 펼친 영역만 캡쳐.
+     overflow: auto 로 해서 OS 설정이 자동 숨김이면 스크롤바도 idle 시 사라짐. */
+  html.capture-mode, body.capture-mode { height: auto !important; overflow: auto !important; }
   body.capture-mode .app { height: auto !important; min-height: 100vh; }
   body.capture-mode main { overflow: visible !important; height: auto !important; }
   body.capture-mode .view.active { overflow: visible !important; height: auto !important; max-height: none !important; flex: none !important; }
+
+  /* ── 모달 열림 동안 배경 페이지 스크롤 잠금 ──
+     dashboard.js 가 openModal 시 html·body 에 .modal-open 추가 / closeModal 시 제거. */
+  html.modal-open, body.modal-open { overflow: hidden !important; }
   body {
     background: var(--bg);
     color: var(--text);
