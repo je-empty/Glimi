@@ -580,6 +580,34 @@ def check_and_summarize(agent_id: str, channel: str):
     enqueue_extraction(agent_id, channel)
 
 
+_hooks_installed = False
+
+
+def install_owner_extraction_hook():
+    """오너 발화도 메모리 추출 대상에 포함.
+
+    기존: 에이전트 응답 후에만 check_and_summarize 호출 → 오너 관점 기억 공백.
+    변경: db.log_message 훅으로 speaker == owner 인 메시지마다 enqueue.
+
+    이 훅 덕분에 외부 프로세스 (예: tests/e2e/test_user_bot 의 QA 빈이) 도 DB 공유만 하면
+    자동으로 자기 관점 memories/facts/relationships 가 쌓임 → 세션 재시작 시 연속성 확보.
+    """
+    global _hooks_installed
+    if _hooks_installed:
+        return
+
+    def _on_owner_message(channel: str, speaker: str, message: str):
+        try:
+            from src.core.profile import get_user_id
+            if speaker and speaker == get_user_id():
+                enqueue_extraction(speaker, channel)
+        except Exception as e:
+            print(f"[Memory] owner extraction hook 오류 (무시): {e}")
+
+    db.add_message_hook(_on_owner_message)
+    _hooks_installed = True
+
+
 def _run_extraction(agent_id: str, channel: str):
     """동기 버전 (worker에서만 호출). L1 → L2 → L3 파이프라인."""
     try:
@@ -733,11 +761,13 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         "- entities: 언급된 사람 **실명(이름)** 배열 (자신·오너 제외, 다른 사람만)\n"
         "- importance: 1-10 (인사/잡담=2-3, 일상공유=4-5, 중요결정/감정변화=7+)\n"
         "- facts: 새로 알게 된 개인정보/선호 배열. 각 항목 {subject, predicate, object, importance}\n"
-        "- relationships: 관계 변화 배열. 각 항목 {other, type(intimacy|dynamics|speech_style), from, to, reason}\n\n"
+        "- relationships: 관계 변화 배열. 각 항목 {other, type(intimacy|dynamics|speech_style), from, to, reason}\n"
+        f"- emotion: 이번 배치 끝에서의 {agent_name} 감정 한 단어 (예: '평온', '설렘', '짜증', '서운', '기쁨'). 변화 없으면 생략.\n"
+        "- emotion_intensity: 1-10 감정 강도 (변화 없으면 생략).\n\n"
         "예시:\n"
         '{"summary":"- 지우가 떡볶이 제안\\n- 주말 약속 보류","type":"event","entities":["지우"],"importance":5,'
         '"facts":[{"subject":"지우","predicate":"likes","object":"떡볶이","importance":4}],'
-        '"relationships":[]}\n\n'
+        '"relationships":[],"emotion":"기쁨","emotion_intensity":6}\n\n'
         "규칙:\n"
         f"- 오너({user_name}) 는 항상 실명(이름) 으로 표기. 별명·호칭·'오너'·'빈이오빠' 같은 변형 금지.\n"
         "  summary·facts·relationships·entities 어디든 오너 언급 시 실명만 사용.\n"
@@ -787,6 +817,8 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         importance = 5
     facts = data.get("facts") if isinstance(data.get("facts"), list) else []
     relationships = data.get("relationships") if isinstance(data.get("relationships"), list) else []
+    emotion = data.get("emotion") if isinstance(data.get("emotion"), str) else None
+    emotion_intensity = data.get("emotion_intensity")
 
     return {
         "summary": summary,
@@ -795,6 +827,8 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         "importance": importance,
         "facts": facts,
         "relationships": relationships,
+        "emotion": emotion,
+        "emotion_intensity": emotion_intensity,
     }
 
 
@@ -822,6 +856,23 @@ def _try_l1_extract(agent_id: str, channel: str):
 
     # related_agent_id: 주 파트너 (역호환용)
     partner_id = _resolve_partner_agent_id(agent_id, channel)
+
+    # 자연 intimacy 증분 — 같은 채널에서 N 메시지 주고받는 것 자체가 관계 축적.
+    # Haiku 가 relationships 델타를 보수적으로만 뽑아서 intimacy 변화 거의 안 뽑힘 →
+    # L1 배치 하나당 파트너와 intimacy +1 (상한 100). 대화 많이 하면 자연스레 올라감.
+    # importance 높은 배치 (감정/중요 결정 등) 는 +2 까지.
+    if partner_id and partner_id != agent_id:
+        try:
+            rel = db.get_relationship(agent_id, partner_id) or db.get_relationship(partner_id, agent_id)
+            if rel:
+                if rel["agent_a"] == agent_id:
+                    key_a, key_b = agent_id, partner_id
+                else:
+                    key_a, key_b = partner_id, agent_id
+                natural_delta = 2 if extracted.get("importance", 5) >= 7 else 1
+                db.update_intimacy(key_a, key_b, natural_delta)
+        except Exception as e:
+            print(f"[Memory] 자연 intimacy 증분 실패: {e}")
 
     mem_id = db.add_memory(
         agent_id=agent_id,
@@ -873,7 +924,9 @@ def _try_l1_extract(agent_id: str, channel: str):
     if dropped:
         print(f"[Memory] fact validation: kept={kept} dropped={dropped}")
 
-    # Relationship delta → relationship_history
+    # Relationship delta → relationship_history + intimacy_score 자동 업데이트
+    # 기존: delta 를 relationship_history 에만 로그. 그래서 수백 턴 대화해도 intimacy 고정
+    # (core bug — 관계 진화 UX 가 반쪽 짜리). 수정: delta type 별로 실제 state 업데이트.
     for r in extracted.get("relationships", []):
         if not isinstance(r, dict):
             continue
@@ -896,6 +949,89 @@ def _try_l1_extract(agent_id: str, channel: str):
             )
         except Exception as e:
             print(f"[Memory] relationship delta 저장 실패: {e}")
+
+        # 실제 state 반영 — 관계 레코드가 없으면 건너뜀 (mgr 가 명시적으로 생성해야 하는 관계 존중).
+        try:
+            rel = db.get_relationship(agent_id, other_id) or db.get_relationship(other_id, agent_id)
+            if not rel:
+                continue
+            # agent_a/agent_b 방향 맞추기
+            if rel["agent_a"] == agent_id:
+                key_a, key_b = agent_id, other_id
+            else:
+                key_a, key_b = other_id, agent_id
+
+            if dtype == "intimacy":
+                # from/to 가 숫자면 차이만큼, 아니면 소량 +3. importance 반영 (고 importance = 큰 변화).
+                frm_s = str(r.get("from") or "").strip()
+                to_s = str(r.get("to") or "").strip()
+                delta: int = 0
+                try:
+                    # 숫자 추출 시도
+                    import re as _re_num
+                    fm = _re_num.search(r"-?\d+", frm_s)
+                    tm = _re_num.search(r"-?\d+", to_s)
+                    if fm and tm:
+                        delta = int(tm.group(0)) - int(fm.group(0))
+                except Exception:
+                    delta = 0
+                if delta == 0:
+                    # 방향 추정 — 단어 기반
+                    positive_cues = ("가까워", "친해", "좋아", "편해", "신뢰", "애정", "설레")
+                    negative_cues = ("거리", "불편", "서운", "짜증", "화", "실망", "싫", "갈등")
+                    txt = f"{frm_s} {to_s} {r.get('reason') or ''}"
+                    if any(c in txt for c in negative_cues):
+                        delta = -3
+                    else:
+                        delta = 3
+                # importance 로 스케일 (5 = 기본). 3 = 반, 8+ = 배
+                imp = extracted.get("importance", 5) or 5
+                scale = max(0.5, imp / 5.0)
+                final_delta = max(-15, min(15, int(round(delta * scale))))
+                if final_delta != 0:
+                    db.update_intimacy(key_a, key_b, final_delta)
+            elif dtype == "dynamics":
+                new_dyn = str(r.get("to") or "").strip()
+                if new_dyn and len(new_dyn) < 200:
+                    try:
+                        db.set_relationship_dynamics(key_a, key_b, new_dyn)
+                    except AttributeError:
+                        # set_relationship_dynamics 없으면 직접 UPDATE
+                        conn2 = db.get_conn()
+                        conn2.execute(
+                            "UPDATE relationships SET dynamics=?, updated_at=? WHERE agent_a=? AND agent_b=?",
+                            (new_dyn, db.now_utc_iso(), key_a, key_b),
+                        )
+                        conn2.commit()
+                        conn2.close()
+        except Exception as e:
+            print(f"[Memory] relationship state 업데이트 실패: {e}")
+
+    # 감정 자동 업데이트 — 이번 배치에서 dominant 감정이 있으면 반영.
+    # type=='emotion' 이거나 importance 높은 배치일 때만. 과도한 흔들림 방지: max ±2 변화.
+    try:
+        emo = extracted.get("emotion")
+        emo_int = extracted.get("emotion_intensity")
+        if emo and isinstance(emo, str) and len(emo) < 30:
+            conn3 = db.get_conn()
+            cur = conn3.execute("SELECT current_emotion, emotion_intensity FROM agents WHERE id=?", (agent_id,)).fetchone()
+            if cur:
+                new_int = cur["emotion_intensity"] or 5
+                try:
+                    if emo_int is not None:
+                        target = max(1, min(10, int(emo_int)))
+                        # 부드럽게 — 한 배치당 ±2 까지만
+                        new_int = max(1, min(10, new_int + max(-2, min(2, target - new_int))))
+                except Exception:
+                    pass
+                conn3.execute(
+                    "UPDATE agents SET current_emotion=?, emotion_intensity=? WHERE id=?",
+                    (emo, new_int, agent_id),
+                )
+                conn3.commit()
+            conn3.close()
+    except Exception as e:
+        print(f"[Memory] emotion 업데이트 실패: {e}")
 
     print(f"[Memory] L1 추출: {agent_id} ch={channel} imp={extracted['importance']} "
           f"ents={len(extracted['entities'])} facts={len(extracted.get('facts', []))} "

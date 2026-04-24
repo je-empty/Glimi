@@ -64,8 +64,8 @@ def conversation_closer_examples() -> str:
 
 
 # ── Korean honorific / address conventions ─────────────────────────────────
-# Non-Korean languages generally skip these entirely. Used in onboarding to guide first
-# introduction — whether / when to ask about 오빠/언니/형/누나 style address.
+# Non-Korean languages generally skip these entirely. Used in the tutorial greeting to guide
+# first introduction — whether / when to ask about 오빠/언니/형/누나 style address.
 
 def honorifics_convention_note() -> str:
     if _lang() == "ko":
@@ -97,12 +97,12 @@ def gender_options() -> str:
     return "male | female | other"
 
 
-# ── Onboarding: honorifics · speech-style block ────────────────────────────
-# Used in `en/onboarding.build_yuna_greeting_prompt` — provides the whole Korean-specific
-# "address / speech-level / casual-mode permission" coaching block. For non-ko languages a
-# minimal address-style ask is returned instead.
+# ── Tutorial greeting: honorifics · speech-style block ────────────────────
+# Used in `src.scenes.tutorial.greeting.build_yuna_greeting_prompt` — provides the whole
+# Korean-specific "address / speech-level / casual-mode permission" coaching block. For
+# non-ko languages a minimal address-style ask is returned instead.
 
-def korean_onboarding_hints(
+def korean_tutorial_hints(
     name: str,
     age,
     gender: str,
@@ -148,7 +148,7 @@ def korean_onboarding_hints(
     )
 
 
-def onboarding_name_hint(name: str, lang: str | None = None) -> str:
+def tutorial_name_hint(name: str, lang: str | None = None) -> str:
     """How to address the user in the very first greeting."""
     eff = lang or _lang()
     if eff == "ko":

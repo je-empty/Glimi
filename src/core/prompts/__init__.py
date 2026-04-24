@@ -9,12 +9,14 @@
     │   ├── persona.py
     │   ├── mgr.py
     │   ├── creator.py
-    │   ├── onboarding.py
-    │   ├── mgr_feedback.py
-    │   ├── commands.py
-    │   └── supervisor_judge.py
+    │   ├── persona_events.py
+    │   ├── mgr_notifications.py
+    │   ├── commands/
+    │   └── external/        ← supervisor judge 등 영어 전용
     └── ko/                  ← 한국 문화 특화 override (존댓말 / 호칭 / 해례)
         └── ...              ← 없는 모듈은 en fallback
+
+tutorial 전용 프롬프트는 src/scenes/tutorial/ 안에 있음 — 씬 종속이라 분리.
 
 언어 dispatch:
     community.get_language() → 'ko' 면 ko/ 먼저 찾고 없으면 en/ 폴백.
@@ -38,7 +40,7 @@ def _resolve_lang() -> str:
 def _get_builder(module: str, name: str) -> Callable:
     """lang 기반 dispatch — ko/{module} 에 name 있으면 그거, 없으면 en/{module}.name.
 
-    module: 'common' | 'persona' | 'mgr' | 'creator' | 'onboarding' | 'mgr_feedback' | 'commands' | 'supervisor_judge'
+    module: 'common' | 'persona' | 'mgr' | 'creator' | 'persona_events' | 'mgr_notifications' | ...
     name:   함수명 (예: 'build_persona_prompt')
     """
     lang = _resolve_lang()

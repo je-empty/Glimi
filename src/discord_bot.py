@@ -30,6 +30,10 @@ import src.bot.tasks       # noqa: F401 — background tasks + events
 from src.achievements import engine as _ach_engine
 _ach_engine.install()
 
+# 메모리 시스템 — 오너 발화도 추출 대상에 포함 (오너 관점 memories 누적)
+from src.core.memory import install_owner_extraction_hook as _install_mem_hook
+_install_mem_hook()
+
 
 def _kill_existing_bot():
     """같은 커뮤니티의 기존 봇 프로세스 종료"""

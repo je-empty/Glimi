@@ -130,11 +130,16 @@ class ChatSupervisor(Supervisor):
             self._mark_nudged()
             ch = discord.utils.get(guild.text_channels, name=self.channel_name)
             if ch:
-                await self._inject_and_send(
-                    target_id, ch,
-                    # 1인칭 self-talk — persona 가 지시문으로 오해하지 않도록.
-                    "아 맞다 뭔가 얘기하려 했었는데."
-                )
+                # 1인칭 self-talk — persona 가 지시문으로 오해하지 않도록.
+                # 새 주제 유도: 같은 대화 재탕 방지. 여러 seed 중 랜덤.
+                import random as _r
+                seed = _r.choice([
+                    "(아 이따 다른 얘기 꺼내야지 — 뭐 재밌는 일 있었나?)",
+                    "(뭔가 분위기 바꿀 얘기 하나 던져볼까)",
+                    "(근데 요즘 관심사 얘기 안 해봤네)",
+                    "(주말 계획 같은 거 물어볼까)",
+                ])
+                await self._inject_and_send(target_id, ch, seed)
 
     def _pick_nudge_target(self, participants: list[str]) -> str | None:
         recent = db.get_recent_messages(self.channel_name, limit=1)
