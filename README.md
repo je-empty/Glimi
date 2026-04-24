@@ -73,10 +73,17 @@ flowchart LR
 - **Memory extraction is off the response path** — personas reply instantly; Haiku summarizes / pulls facts / bumps intimacy in the background.
 - **Three supervisors** (`tutorial` · `chat` · `orchestrator`) live invisibly behind the UI; their nudges are emitted as the agent's own thoughts, not as announcements.
 
-![Web Dashboard Overview](docs/screenshots/01-overview.png)
+![Web Dashboard Overview](docs/screenshots/01-dashboard.png)
+
 ![Connection Graph — Live](docs/screenshots/04-graph-live.webp)
 
-> Screenshots / GIFs placeholder — drop new captures under `docs/screenshots/`.
+| DM Channel View | Achievements |
+|---|---|
+| <img src="docs/screenshots/07-dm-channels.png" width="600" height="382" alt="DM channels"/> | <img src="docs/screenshots/03-achievements.png" width="600" height="382" alt="Achievements"/> |
+
+| Connection Graph | Graph + Supervisor Overlay |
+|---|---|
+| <img src="docs/screenshots/05-connection-graph.png" width="600" height="434" alt="Connection graph"/> | <img src="docs/screenshots/06-graph-supervisor.png" width="600" height="434" alt="Supervisor overlay"/> |
 
 ---
 
@@ -368,6 +375,8 @@ flowchart TB
 Core principle: **Discord is an adapter**. `src/core/*` never imports `discord`. `src/bot/` is the current Discord exit; `src/adapters/telegram/` and `src/adapters/web_chat/` will drop in next to it.
 
 ### B. Agent Runtime & Memory
+
+![Persona Memory Inspector](docs/screenshots/02-persona-memory.png)
 
 ```mermaid
 flowchart TB
