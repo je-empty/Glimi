@@ -58,6 +58,21 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; isolation: isolate; }
+
+  /* ── 전체 스크롤 캡쳐 모드 ──
+     기본 레이아웃은 SPA fixed-viewport 라 html/body 스크롤 없음 → 브라우저 "전체 페이지
+     캡쳐" 확장이 첫 뷰포트만 찍음. `?capture=1` 또는 Shift+Alt+C 로 이 클래스 붙이면
+     모든 overflow 잠금 해제해서 document 가 실제 콘텐츠 높이로 늘어나고 캡쳐 가능. */
+  body.capture-mode,
+  body.capture-mode html { height: auto !important; overflow: visible !important; }
+  body.capture-mode .app { height: auto !important; min-height: 100vh; }
+  body.capture-mode main,
+  body.capture-mode .view { overflow: visible !important; height: auto !important;
+    max-height: none !important; flex: none !important; }
+  body.capture-mode .view { display: none; }
+  body.capture-mode .view.active { display: block !important; }
+  body.capture-mode #graph-wrap,
+  body.capture-mode .graph-stage { height: auto !important; min-height: 600px; }
   body {
     background: var(--bg);
     color: var(--text);

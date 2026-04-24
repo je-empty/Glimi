@@ -2316,6 +2316,28 @@ document.addEventListener('keydown', (e) => {
     const p0 = document.getElementById('graph-panel');
     if (p0) ro.observe(p0);
   }
+
+  // ── 전체 스크롤 캡쳐 모드 ──
+  // URL ?capture=1 으로 진입하거나 Shift+Alt+C 로 토글.
+  // 브라우저 full-page screenshot 확장이 동작할 수 있도록 overflow 잠금 해제.
+  function _applyCaptureFromUrl() {
+    try {
+      if (new URLSearchParams(location.search).has('capture')) {
+        document.body.classList.add('capture-mode');
+      }
+    } catch (_) {}
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _applyCaptureFromUrl);
+  } else {
+    _applyCaptureFromUrl();
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.shiftKey && e.altKey && (e.key === 'C' || e.key === 'c')) {
+      document.body.classList.toggle('capture-mode');
+      console.log('[Glimi] capture-mode:', document.body.classList.contains('capture-mode'));
+    }
+  });
 })();
 
 function activeScenes(snap) {
