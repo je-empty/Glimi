@@ -16,14 +16,13 @@ import time
 from typing import Any
 
 
-# 동시에 활성화할 에이전트 수 (너무 과하지 않게)
-_ACTIVE_AGENT_COUNT = 2
+# 상태 rotation 주기 — N 초마다 활성 대상이 한 칸씩 밀림
+# (60초로 느슨하게 — 너무 자주 바뀌면 산만)
+_ROTATION_PERIOD = 60
 
-# 상태 rotation 주기 — N 초마다 활성 에이전트 셋이 한 칸씩 밀림
-_ROTATION_PERIOD = 30
-
-# 동시에 활성화할 채널 수
-_ACTIVE_CHANNEL_COUNT = 2
+# 참고: 활성중인 에이전트의 **모든** 참여 채널이 그래프에서 live 로 잡힘.
+# persona 1명만 thinking 돌려도 그 persona 의 dm-/group-/internal- 여러 개가 pulse 됨.
+# 그래서 "active agent" 는 1명 (thinking 전용) 으로 제한 + 추가 running 채널 mock 안 함.
 
 
 def _cycle_index(n: int, period: int = _ROTATION_PERIOD) -> int:
@@ -50,18 +49,15 @@ def inject(snap: dict[str, Any]) -> dict[str, Any]:
     bot["bot_alive"] = True
     snap["bot"] = bot
 
-    # ── 에이전트 thinking / speaking rotation ──
-    # persona·mgr·creator 섞어서 후보로. 동시 _ACTIVE_AGENT_COUNT 명만 활성.
-    # 한 명은 thinking, 다음 slot 은 speaking — 30초마다 밀림.
+    # ── 에이전트 thinking rotation — persona 1명만 ──
+    # 활성 에이전트의 모든 참여 채널이 graph 에서 live 로 잡히므로 1명만 해도 이미
+    # 여러 edge 가 pulse 됨. 그래서 persona 1명 + thinking 만 (speaking 생략) 으로 최소화.
+    # mgr/creator 는 너무 많은 채널에 속해있어서 활성화하면 edge 폭탄 — 제외.
     agents = snap.get("agents") or []
     if isinstance(agents, list) and agents:
-        # thinking 후보 풀: persona / mgr 우선 (creator 는 덜 활동적인 이미지)
-        pool = [a for a in agents if a.get("type") in ("persona", "mgr")]
+        pool = [a for a in agents if a.get("type") == "persona"]
         if not pool:
-            pool = agents[:]
-        n = len(pool)
-        thinking_idx = _cycle_index(n)
-        speaking_idx = (thinking_idx + 1) % n if n > 1 else -1
+            pool = [a for a in agents if a.get("type") in ("persona", "mgr")]
 
         # 모든 에이전트 상태 초기화 (mock 일관성)
         for a in agents:
@@ -70,43 +66,21 @@ def inject(snap: dict[str, Any]) -> dict[str, Any]:
             a["thinking_seconds"] = 0
             a["speaking_seconds"] = 0
 
-        # rotation 에 따라 활성화
+        n = len(pool)
         if n > 0:
+            thinking_idx = _cycle_index(n)
             t = pool[thinking_idx]
             t["thinking"] = True
             t["thinking_seconds"] = int(time.time()) % 12 + 3  # 3~14초
-        if speaking_idx >= 0:
-            s = pool[speaking_idx]
-            s["speaking"] = True
-            s["speaking_seconds"] = int(time.time()) % 8 + 2  # 2~9초
 
     # ── 채널 '활성' 표시 rotation ──
-    # internal-* / group-* / dm-* 중에서 일부만 status=running + last_ts 방금전.
-    # 채널 dict 의 이름 필드는 `name` (api_snapshot 이 이 key 로 반환).
+    # 별도 running 채널 mock 하지 않음 — 활성 persona 가 속한 채널들이 이미
+    # 그래프에서 자연스럽게 pulse 됨 (partyLive 판정). 추가하면 중복/과도.
+    # 대신 기존 DB 의 stale running 상태는 초기화해서 사용자가 통제권 유지.
     channels = snap.get("channels") or []
     if isinstance(channels, list) and channels:
-        # 기존 running 표시 초기화 (demo 는 우리가 통제)
         for c in channels:
             if c.get("status") == "running":
                 c["status"] = "idle"
-
-        candidates = [
-            i for i, c in enumerate(channels)
-            if (c.get("name") or "").startswith(("internal-", "group-", "dm-"))
-        ]
-        if candidates:
-            k = min(_ACTIVE_CHANNEL_COUNT, len(candidates))
-            base = _cycle_index(len(candidates))
-            active_set = {candidates[(base + offset) % len(candidates)] for offset in range(k)}
-            now = time.time()
-            from datetime import datetime, timezone
-            for idx in active_set:
-                c = channels[idx]
-                c["status"] = "running"
-                c["last_ts"] = datetime.fromtimestamp(
-                    now - (int(now) % 30), tz=timezone.utc
-                ).isoformat()
-                if not c.get("msg_count"):
-                    c["msg_count"] = 3
 
     return snap
