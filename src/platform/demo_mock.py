@@ -74,13 +74,62 @@ def inject(snap: dict[str, Any]) -> dict[str, Any]:
             t["thinking_seconds"] = int(time.time()) % 12 + 3  # 3~14초
 
     # ── 채널 '활성' 표시 rotation ──
-    # 별도 running 채널 mock 하지 않음 — 활성 persona 가 속한 채널들이 이미
-    # 그래프에서 자연스럽게 pulse 됨 (partyLive 판정). 추가하면 중복/과도.
-    # 대신 기존 DB 의 stale running 상태는 초기화해서 사용자가 통제권 유지.
+    # 기존 DB stale running 초기화 후, internal-* 중 1개만 rotation 으로 running.
+    # 이 running 채널에 대해 ChatSupervisor 주입 → 실제 운영처럼 감시자가 붙은 모습.
     channels = snap.get("channels") or []
+    running_channel_name: str | None = None
+    running_channel_participants: list[str] = []
     if isinstance(channels, list) and channels:
         for c in channels:
             if c.get("status") == "running":
                 c["status"] = "idle"
+
+        internal_candidates = [
+            i for i, c in enumerate(channels)
+            if (c.get("name") or "").startswith("internal-")
+        ]
+        if internal_candidates:
+            idx = internal_candidates[_cycle_index(len(internal_candidates))]
+            c = channels[idx]
+            c["status"] = "running"
+            running_channel_name = c.get("name")
+            running_channel_participants = list(c.get("participants") or [])
+            # last_ts 를 최근으로 — last_ago 는 api_snapshot 이 재계산
+            from datetime import datetime, timezone
+            now = time.time()
+            c["last_ts"] = datetime.fromtimestamp(
+                now - (int(now) % 30), tz=timezone.utc
+            ).isoformat()
+
+    # ── Supervisor 주입 — 실제 동작처럼 채팅방별 ChatSupervisor + 전역 Orchestrator ──
+    # 기존 supervisors 배열 유지하되 running 채널 에 대응하는 chat.* 항목 추가.
+    sups = list(snap.get("supervisors") or [])
+    # tutorial 완료 상태면 tutorial.flow 는 inactive 그대로 (건드리지 않음)
+    # orchestrator 는 항상 active 표시 (항상 돌아가는 전역 supervisor)
+    for s in sups:
+        if s.get("name") == "orchestrator":
+            s["active"] = True
+            s["intervening"] = False
+            # 타겟: 가장 친밀도 높은 persona 페어가 자연스러움.
+            # target_agents 빈 배열이면 그래프에 안 그려지니 persona 몇 명을 target 으로.
+            persona_ids = [a["id"] for a in (snap.get("agents") or []) if a.get("type") == "persona"]
+            s["target_agents"] = persona_ids[:3]  # 상위 3명만
+
+    # running 채널이 있으면 해당 채널 전용 ChatSupervisor 주입
+    if running_channel_name and running_channel_participants:
+        persona_targets = [
+            pid for pid in running_channel_participants
+            if pid.startswith("agent-persona-") or pid.startswith("agent-mgr-")
+        ]
+        sups.append({
+            "name": f"chat.{running_channel_name}",
+            "display_name": f"Chat · {running_channel_name}",
+            "icon": "💬",
+            "active": True,
+            "intervening": False,
+            "target_agents": persona_targets,
+        })
+
+    snap["supervisors"] = sups
 
     return snap
