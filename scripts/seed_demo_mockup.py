@@ -62,8 +62,8 @@ if not env_path.exists():
 db.init_db()
 conn = db.get_conn()
 
-# ── 1. 오너 (빈이) ────────────────────────────────────────
-OWNER_NAME = "빈이"
+# ── 1. 오너 (사용자) ────────────────────────────────────────
+OWNER_NAME = "사용자"
 conn.execute("""
     INSERT INTO users (id, name, age, mbti, personality)
     VALUES (?, ?, ?, ?, ?)
@@ -96,19 +96,19 @@ personas = [
     {
         "id": "agent-persona-001", "name": "지우", "age": 24, "gender": "여자",
         "mbti": "INFJ", "enneagram": "2",
-        "bg": "국문과 출신, 출판사 다니는 직장인. 빈이의 5년차 여자친구.",
+        "bg": "국문과 출신, 출판사 다니는 직장인. 사용자의 5년차 여자친구.",
         "emotion": "차분", "intensity": 6,
         "traits": ["조용한", "다정한", "사려깊은", "공감능력 좋음"],
         "likes": ["책", "비 오는 날 카페", "산책", "독립서점"],
         "dislikes": ["시끄러운 곳", "거짓말"],
-        "rel_owner": "여자친구", "duration": "5년차", "pet_name": "빈이",
+        "rel_owner": "여자친구", "duration": "5년차", "pet_name": "사용자",
         "occupation": "출판사 편집자",
-        "routine": "아침 책방 → 오후 출근 → 저녁 빈이와 시간",
+        "routine": "아침 책방 → 오후 출근 → 저녁 사용자와 시간",
     },
     {
         "id": "agent-persona-002", "name": "민서", "age": 27, "gender": "여자",
         "mbti": "ESTP", "enneagram": "7",
-        "bg": "빈이와 초등학교부터 친구. IT 회사 백엔드 개발자. 여자지만 빈이랑 편한 소꿉친구.",
+        "bg": "사용자와 초등학교부터 친구. IT 회사 백엔드 개발자. 여자지만 사용자랑 편한 소꿉친구.",
         "emotion": "활기", "intensity": 8,
         "traits": ["활발한", "직설적", "의리파", "솔직한"],
         "likes": ["러닝", "크래프트 맥주", "여행", "보드게임"],
@@ -120,7 +120,7 @@ personas = [
     {
         "id": "agent-persona-003", "name": "서아", "age": 22, "gender": "여자",
         "mbti": "ESFP", "enneagram": "7",
-        "bg": "빈이의 대학 후배. 전공 다르지만 학과 행사에서 빈이 도움받고 친해짐.",
+        "bg": "사용자의 대학 후배. 전공 다르지만 학과 행사에서 사용자 도움받고 친해짐.",
         "emotion": "신남", "intensity": 9,
         "traits": ["밝은", "애교있는", "에너지", "즉흥적"],
         "likes": ["디저트", "K-POP", "쇼핑", "사진"],
@@ -137,14 +137,14 @@ personas = [
         "traits": ["에너지있는", "예술적", "솔직한", "감성적"],
         "likes": ["그림", "전시회", "산책", "수채화"],
         "dislikes": ["정해진 틀"],
-        "rel_owner": "여자친구의 절친", "duration": "3년", "pet_name": "빈이 오빠",
+        "rel_owner": "여자친구의 절친", "duration": "3년", "pet_name": "사용자 오빠",
         "occupation": "프리랜서 일러스트레이터",
         "routine": "아침 작업 → 오후 카페/전시 → 저녁 지우랑 가끔",
     },
     {
         "id": "agent-persona-005", "name": "하린", "age": 20, "gender": "여자",
         "mbti": "INFP", "enneagram": "9",
-        "bg": "빈이의 대학 동아리 후배. 작곡 공부 중. 조용하지만 속 깊음.",
+        "bg": "사용자의 대학 동아리 후배. 작곡 공부 중. 조용하지만 속 깊음.",
         "emotion": "평온", "intensity": 5,
         "traits": ["조용한", "감성적", "배려심 있는", "깊이있는"],
         "likes": ["음악", "사진", "고양이", "밤 산책"],
@@ -156,7 +156,7 @@ personas = [
     {
         "id": "agent-persona-006", "name": "수연", "age": 30, "gender": "여자",
         "mbti": "ENTJ", "enneagram": "8",
-        "bg": "빈이 회사 선배. 팀 리더. 깐깐하지만 일 잘하고 배울 점 많은 언니.",
+        "bg": "사용자 회사 선배. 팀 리더. 깐깐하지만 일 잘하고 배울 점 많은 언니.",
         "emotion": "집중", "intensity": 7,
         "traits": ["체계적", "리더형", "통찰력 있는", "정직한"],
         "likes": ["커피", "필라테스", "독서", "비즈니스 미팅"],
@@ -168,7 +168,7 @@ personas = [
     {
         "id": "agent-persona-007", "name": "수진", "age": 26, "gender": "여자",
         "mbti": "ISFJ", "enneagram": "6",
-        "bg": "빈이 회사 동료. 같은 팀. 꼼꼼하고 세심한 타입.",
+        "bg": "사용자 회사 동료. 같은 팀. 꼼꼼하고 세심한 타입.",
         "emotion": "차분", "intensity": 6,
         "traits": ["성실한", "헌신적", "따뜻한", "신중한"],
         "likes": ["요리", "꽃", "독서", "브런치"],
@@ -222,14 +222,14 @@ for p in personas:
 rel_pairs = [
     # (a, b, type, intimacy, dynamics)
     ("agent-persona-001", "agent-persona-004", "절친", 95, "대학 동기, 매일 연락"),
-    ("agent-persona-001", "agent-persona-002", "친구", 72, "빈이 통해 알게 됨. 민서이 직설적이라 가끔 부담"),
+    ("agent-persona-001", "agent-persona-002", "친구", 72, "사용자 통해 알게 됨. 민서이 직설적이라 가끔 부담"),
     ("agent-persona-002", "agent-persona-006", "동료", 68, "회사 미팅에서 친해짐. 서로 존중"),
     ("agent-persona-003", "agent-persona-005", "절친", 92, "동아리 선후배 관계, 거의 매일 통화"),
     ("agent-persona-004", "agent-persona-005", "친구", 60, "지우 통해 만남. 예린이 하린 작품 좋아함"),
     ("agent-persona-006", "agent-persona-007", "동료", 82, "같은 팀 핵심 멤버, 회사 안팎 교류"),
-    ("agent-persona-001", "agent-persona-003", "지인", 45, "빈이 모임에서 몇 번 — 지우가 서아에게 살짝 불편함"),
-    ("agent-persona-002", "agent-persona-003", "지인", 50, "빈이 모임에서 만남. 서아가 민서 재밌다고 함"),
-    ("agent-persona-001", "agent-persona-007", "지인", 55, "빈이 회사 행사에서 만남. 둘 다 조용한 타입 공감"),
+    ("agent-persona-001", "agent-persona-003", "지인", 45, "사용자 모임에서 몇 번 — 지우가 서아에게 살짝 불편함"),
+    ("agent-persona-002", "agent-persona-003", "지인", 50, "사용자 모임에서 만남. 서아가 민서 재밌다고 함"),
+    ("agent-persona-001", "agent-persona-007", "지인", 55, "사용자 회사 행사에서 만남. 둘 다 조용한 타입 공감"),
     ("agent-mgr-001", "agent-creator-001", "동료", 88, "Glimi 시스템 동료, 서로 의지"),
 ]
 for a, b, rt, intim, dyn in rel_pairs:
@@ -274,7 +274,7 @@ def msg(channel, speaker, content, ago_min=0, emotion=None):
                  (channel, speaker, content, ts, emotion or '평온'))
 
 
-# DM — 지우 (여자친구, 안정적 · 최근 빈이 바쁨 걱정)
+# DM — 지우 (여자친구, 안정적 · 최근 사용자 바쁨 걱정)
 DM_SCRIPTS = {
     "dm-지우": [
         ("agent-persona-001", "오늘 회사 어때?"),
@@ -365,18 +365,18 @@ for ch, lines in DM_SCRIPTS.items():
 
 # Manager 채널
 MGR_LINES = [
-    (90, "agent-mgr-001", "빈이님 안녕하세요~ 매니저 유나에요 :)"),
+    (90, "agent-mgr-001", "사용자님 안녕하세요~ 매니저 유나에요 :)"),
     (88, "owner", "안녕하세요!"),
     (85, "agent-mgr-001", "오늘 #dm-서아 에서 서아가 다음주 홈커밍 얘기 꺼냈어요. 참여 여부 결정하시면 알려주세요~"),
-    (82, "agent-mgr-001", "그리고 지우님이 빈이님 건강 걱정 많이 하시더라구요 (최근 대화 기록 기반)"),
+    (82, "agent-mgr-001", "그리고 지우님이 사용자님 건강 걱정 많이 하시더라구요 (최근 대화 기록 기반)"),
     (75, "owner", "ㅎㅎ 고마워요"),
-    (30, "agent-mgr-001", "참고로 오늘 #internal-dm-지우-예린 에서 둘이 빈이님 생일 선물 의논 중이에요 🤫"),
+    (30, "agent-mgr-001", "참고로 오늘 #internal-dm-지우-예린 에서 둘이 사용자님 생일 선물 의논 중이에요 🤫"),
     (15, "agent-mgr-001", "프로필 수정 필요하거나 친구 새로 만들고 싶으시면 #mgr-creator 로 오세요!"),
 ]
 for ago, sp, content in MGR_LINES:
     msg("mgr-dashboard", sp, content, ago_min=ago)
 
-msg("mgr-creator", "agent-creator-001", "빈이님~ 오늘은 어떻게 오셨어요?", 200)
+msg("mgr-creator", "agent-creator-001", "사용자님~ 오늘은 어떻게 오셨어요?", 200)
 msg("mgr-creator", "owner", "일단 지금 친구들로 충분한 것 같아요", 195)
 msg("mgr-creator", "agent-creator-001", "네네! 필요하실 때 언제든 불러주세요 🌸", 190)
 
@@ -398,14 +398,14 @@ msg("group-회사", "agent-persona-006", "좋아 그럼 3시 미팅 가자", 17,
 msg("group-회사", "owner", "넵 준비하겠습니다", 15, "집중")
 msg("group-회사", "agent-persona-007", "점심은 다 같이 하실래요?", 10, "차분")
 
-# Internal — 지우·예린 (빈이 걱정 + 생일 준비)
+# Internal — 지우·예린 (사용자 걱정 + 생일 준비)
 INTERNAL_JIWOO_YERIN = [
-    ("agent-persona-001", "예린아 빈이 요즘 너무 바빠 보여서 걱정이야", 180),
-    ("agent-persona-004", "언니 또 걱정 모드 ㅋㅋ 빈이 오빠 건강한 편이잖아요", 178),
+    ("agent-persona-001", "예린아 사용자 요즘 너무 바빠 보여서 걱정이야", 180),
+    ("agent-persona-004", "언니 또 걱정 모드 ㅋㅋ 사용자 오빠 건강한 편이잖아요", 178),
     ("agent-persona-001", "그래도 최근 잠 잘 못 자고 스트레스 받더라", 176),
     ("agent-persona-004", "음 언니가 옆에 있으니 괜찮을 거예요"),
     ("agent-persona-001", "ㅎㅎ 고마워 예린아"),
-    ("agent-persona-004", "근데 언니 빈이 오빠 다음달 생일이잖아요", 90),
+    ("agent-persona-004", "근데 언니 사용자 오빠 다음달 생일이잖아요", 90),
     ("agent-persona-001", "맞아 뭐 해줄까 고민 중", 88),
     ("agent-persona-004", "제가 그림 그려드리면 어때요?"),
     ("agent-persona-001", "와 너무 좋다 나는 뭐 준비하지"),
@@ -413,7 +413,7 @@ INTERNAL_JIWOO_YERIN = [
     ("agent-persona-001", "오 그거 좋다. 같이 가서 살까?"),
     ("agent-persona-004", "다음주 토요일 어때요 저 시간 돼요"),
     ("agent-persona-001", "콜!"),
-    ("agent-persona-004", "언니 글고 빈이 오빠한테 절대 비밀 ㅋㅋ"),
+    ("agent-persona-004", "언니 글고 사용자 오빠한테 절대 비밀 ㅋㅋ"),
     ("agent-persona-001", "당연하지 ㅎㅎ"),
 ]
 for i, entry in enumerate(INTERNAL_JIWOO_YERIN):
@@ -470,7 +470,7 @@ INTERNAL_GIRLS = [
     ("agent-persona-003", "연남동!!"),
     ("agent-persona-005", "저도 갈 수 있어요 ㅎㅎ"),
     ("agent-persona-004", "토요일 11시 어때"),
-    ("agent-persona-001", "토요일은 빈이랑 약속... 일요일?"),
+    ("agent-persona-001", "토요일은 사용자랑 약속... 일요일?"),
     ("agent-persona-003", "일요일 좋아요"),
     ("agent-persona-005", "저도 일요일"),
     ("agent-persona-004", "일요일 11시로 콜!"),
@@ -502,79 +502,79 @@ def insert_memory(aid, channel, content, mem_type, importance,
 # 지우 (agent-persona-001) — 풍부한 L1/L2/L3 + pinned
 JIWOO_MEMS = [
     # Current channel L1s
-    (1, "dm-빈이", "- 빈이 프로젝트 마무리 단계\n- 최근 야근 많음\n- 저녁 파스타 + 와인으로 챙겨주기로",
-     "event", 7, ["빈이"], 0),
-    (1, "dm-빈이", "- 빈이 잠 잘 못 자고 스트레스\n- 이번주만 버티면 된다고 함\n- 다음주는 푹 쉬자 약속",
-     "emotion", 8, ["빈이"], 1),
+    (1, "dm-사용자", "- 사용자 프로젝트 마무리 단계\n- 최근 야근 많음\n- 저녁 파스타 + 와인으로 챙겨주기로",
+     "event", 7, ["사용자"], 0),
+    (1, "dm-사용자", "- 사용자 잠 잘 못 자고 스트레스\n- 이번주만 버티면 된다고 함\n- 다음주는 푹 쉬자 약속",
+     "emotion", 8, ["사용자"], 1),
     # Cross-channel L1 (internal-dm-지우-예린)
-    (1, "internal-dm-지우-예린", "- 예린이랑 빈이 생일선물 의논\n- 예린=그림, 지우=위스키\n- 다음주 토요일 같이 쇼핑",
-     "event", 9, ["예린", "빈이"], 2),
+    (1, "internal-dm-지우-예린", "- 예린이랑 사용자 생일선물 의논\n- 예린=그림, 지우=위스키\n- 다음주 토요일 같이 쇼핑",
+     "event", 9, ["예린", "사용자"], 2),
     # L2 chronicle — 근 1주일 흐름
-    (2, "dm-빈이", "- 빈이 5년차 여자친구로 안정된 관계\n- 최근 프로젝트 스트레스로 몸 상태 걱정\n- 매일 저녁 같이 시간 보내며 챙김\n- 다음달 빈이 생일 준비 중 (비밀)",
-     "relationship", 8, ["빈이"], 3),
+    (2, "dm-사용자", "- 사용자 5년차 여자친구로 안정된 관계\n- 최근 프로젝트 스트레스로 몸 상태 걱정\n- 매일 저녁 같이 시간 보내며 챙김\n- 다음달 사용자 생일 준비 중 (비밀)",
+     "relationship", 8, ["사용자"], 3),
     # L3 saga — 5년 관계 요약
-    (3, "dm-빈이", "- 5년간 깊어진 파트너 관계\n- 서로 커리어 응원하며 성장\n- 빈이는 안정감, 지우는 사색적 공간 제공\n- 가끔 빈이가 바빠질 때 외로움 느끼기도\n- 최근 장기적 관점에서 동거 얘기 나오기 시작",
-     "relationship", 9, ["빈이"], 30),
+    (3, "dm-사용자", "- 5년간 깊어진 파트너 관계\n- 서로 커리어 응원하며 성장\n- 사용자는 안정감, 지우는 사색적 공간 제공\n- 가끔 사용자가 바빠질 때 외로움 느끼기도\n- 최근 장기적 관점에서 동거 얘기 나오기 시작",
+     "relationship", 9, ["사용자"], 30),
     # Pinned — 오너가 유나한테 지우 최근 걱정 얘기 공유하라 요청해서 고정됨 설정
-    (1, "dm-빈이", "- 빈이 최근 수면 문제 → 건강 체크 필요 (자주 놓침)",
-     "fact", 9, ["빈이"], 5),  # 이걸 pinned 로
+    (1, "dm-사용자", "- 사용자 최근 수면 문제 → 건강 체크 필요 (자주 놓침)",
+     "fact", 9, ["사용자"], 5),  # 이걸 pinned 로
 ]
 for i, (lvl, ch, content, mt, imp, ents, ago) in enumerate(JIWOO_MEMS):
     pinned = (i == len(JIWOO_MEMS) - 1)  # 마지막만 pinned
     insert_memory("agent-persona-001", ch, content, mt, imp,
-                  ents, knows=["지우", "owner"] if "빈이" in ents else None,
+                  ents, knows=["지우", "owner"] if "사용자" in ents else None,
                   is_pinned=pinned, ago_days=ago, level=lvl)
 
 # 민서 — 이직 고민 관련 메모리
-insert_memory("agent-persona-002", "dm-빈이",
-              "- 빈이에게 이직 고민 털어놓음\n- 스타트업 오퍼 연봉 +25% 하지만 리스크 있음\n- 오늘 저녁 9시 전화 약속",
-              "event", 7, ["빈이"], ["민서", "owner"], ago_days=0)
-insert_memory("agent-persona-002", "dm-빈이",
-              "- 빈이 프로젝트 바쁨 (주말에만 시간)\n- 동창 모임 토요일 7시 — 빈이 참석 확인 중\n- 지우 허락 필요하다고 농담",
-              "event", 5, ["빈이"], ["민서", "owner"], ago_days=1)
-insert_memory("agent-persona-002", "dm-빈이",
-              "- 20년 지기 친구로 인생 큰 결정마다 의견 주고받음\n- 서로 가장 솔직한 말 해주는 관계\n- 빈이 연애 시작할 때도, 이직할 때도 민서이 먼저 조언",
-              "relationship", 9, ["빈이"], ["민서", "owner"], ago_days=14)
+insert_memory("agent-persona-002", "dm-사용자",
+              "- 사용자에게 이직 고민 털어놓음\n- 스타트업 오퍼 연봉 +25% 하지만 리스크 있음\n- 오늘 저녁 9시 전화 약속",
+              "event", 7, ["사용자"], ["민서", "owner"], ago_days=0)
+insert_memory("agent-persona-002", "dm-사용자",
+              "- 사용자 프로젝트 바쁨 (주말에만 시간)\n- 동창 모임 토요일 7시 — 사용자 참석 확인 중\n- 지우 허락 필요하다고 농담",
+              "event", 5, ["사용자"], ["민서", "owner"], ago_days=1)
+insert_memory("agent-persona-002", "dm-사용자",
+              "- 20년 지기 친구로 인생 큰 결정마다 의견 주고받음\n- 서로 가장 솔직한 말 해주는 관계\n- 사용자 연애 시작할 때도, 이직할 때도 민서이 먼저 조언",
+              "relationship", 9, ["사용자"], ["민서", "owner"], ago_days=14)
 
 # 서아 — 오빠한테 마음 있는 거 (internal 에만)
 insert_memory("agent-persona-003", "dm-오빠",
               "- 오빠한테 홈커밍 와달라고 부탁\n- 발표 자료 봐달라고 함 → 오빠가 보내라고 함\n- 마라탕 같이 가자고 떠봄 (거절은 안 당함)",
-              "event", 5, ["오빠", "빈이"], ["서아", "owner"], ago_days=0)
+              "event", 5, ["오빠", "사용자"], ["서아", "owner"], ago_days=0)
 # internal-dm-서아-하린 — 오빠 짝사랑 (knows 에 owner 없음 → disclosure marker 적용 대상)
 insert_memory("agent-persona-003", "internal-dm-서아-하린",
               "- 하린한테 오빠 좋아하는 거 들킴\n- 오빠는 지우 언니 있음 → 마음만 간직하기로",
-              "emotion", 8, ["오빠", "빈이", "하린", "지우"],
+              "emotion", 8, ["오빠", "사용자", "하린", "지우"],
               ["서아", "하린"],  # owner 없음 — 사적 대화
               ago_days=1)
 
-# 예린 — 빈이 생일 계획 (internal)
+# 예린 — 사용자 생일 계획 (internal)
 insert_memory("agent-persona-004", "internal-dm-지우-예린",
-              "- 지우 언니랑 빈이 오빠 생일선물 의논\n- 예린=그림 직접 그려주기\n- 언니=위스키 구매 예정\n- 다음주 토요일 쇼핑 동행",
-              "event", 9, ["지우", "빈이"],
+              "- 지우 언니랑 사용자 오빠 생일선물 의논\n- 예린=그림 직접 그려주기\n- 언니=위스키 구매 예정\n- 다음주 토요일 쇼핑 동행",
+              "event", 9, ["지우", "사용자"],
               ["예린", "지우"],  # owner 없음
               ago_days=2)
-insert_memory("agent-persona-004", "dm-빈이",
-              "- 다음달 15일 개인전 오프닝\n- 빈이 + 지우 참석 약속\n- '언니가 보고 싶어하는 작품' 준비 중 (비밀)",
-              "event", 7, ["빈이", "지우"], ["예린", "owner"], ago_days=0)
+insert_memory("agent-persona-004", "dm-사용자",
+              "- 다음달 15일 개인전 오프닝\n- 사용자 + 지우 참석 약속\n- '언니가 보고 싶어하는 작품' 준비 중 (비밀)",
+              "event", 7, ["사용자", "지우"], ["예린", "owner"], ago_days=0)
 
 # 하린 — 조용한 깊이
-insert_memory("agent-persona-005", "dm-빈이",
+insert_memory("agent-persona-005", "dm-사용자",
               "- Rachmaninoff 플레이리스트 영감으로 작곡에 활용\n- 다음주 동아리방 놀러오라고 제안",
-              "fact", 5, ["빈이"], ["하린", "owner"], ago_days=0)
+              "fact", 5, ["사용자"], ["하린", "owner"], ago_days=0)
 
 # 수연 — 회사 맥락
-insert_memory("agent-persona-006", "dm-빈이",
+insert_memory("agent-persona-006", "dm-사용자",
               "- 내일 클라이언트 미팅 자료 검토 요청\n- 리스크 섹션 강조 (지난번 실수 반복 방지)\n- 다음달 워크샵 일정 공지",
-              "event", 6, ["빈이"], ["수연", "owner"], ago_days=0)
+              "event", 6, ["사용자"], ["수연", "owner"], ago_days=0)
 insert_memory("agent-persona-006", "internal-dm-수연-수진",
-              "- 심대리(빈이) 평가: 꼼꼼하고 성실하지만 리더십 부족\n- 내년 프로젝트 리드 맡길까 고려 중\n- 수진이도 동의",
-              "fact", 7, ["빈이", "수진"], ["수연", "수진"],  # owner 모름
+              "- 심대리(사용자) 평가: 꼼꼼하고 성실하지만 리더십 부족\n- 내년 프로젝트 리드 맡길까 고려 중\n- 수진이도 동의",
+              "fact", 7, ["사용자", "수진"], ["수연", "수진"],  # owner 모름
               ago_days=0)
 
 # 수진 — 점심 + 디자인 결정
-insert_memory("agent-persona-007", "dm-빈이",
-              "- 내일 점심 수연 팀장이랑 같이\n- 디자인 시안 2안으로 결정 (빈이 동의)",
-              "event", 5, ["빈이", "수연"], ["수진", "owner"], ago_days=0)
+insert_memory("agent-persona-007", "dm-사용자",
+              "- 내일 점심 수연 팀장이랑 같이\n- 디자인 시안 2안으로 결정 (사용자 동의)",
+              "event", 5, ["사용자", "수연"], ["수진", "owner"], ago_days=0)
 
 
 # ── 8. agent_facts (Layer 3 Semantic) ──────────────────
@@ -586,46 +586,46 @@ def add_fact(aid, subject, predicate, obj, importance=5):
         (aid, subject, predicate, obj, importance))
 
 
-# 지우가 빈이에 대해 아는 것
-add_fact("agent-persona-001", "빈이", "직업", "IT 회사 프로젝트 매니저", 7)
-add_fact("agent-persona-001", "빈이", "좋아하는음식", "파스타", 6)
-add_fact("agent-persona-001", "빈이", "MBTI", "INTJ", 5)
-add_fact("agent-persona-001", "빈이", "최근관심사", "프로젝트 마무리 + 건강", 8)
-add_fact("agent-persona-001", "빈이", "생일", "다음달 초", 9)
-add_fact("agent-persona-001", "빈이", "좋아하는술", "위스키 (특히 스카치)", 7)
-add_fact("agent-persona-001", "빈이", "스트레스반응", "말수 줄고 야근", 8)
+# 지우가 사용자에 대해 아는 것
+add_fact("agent-persona-001", "사용자", "직업", "IT 회사 프로젝트 매니저", 7)
+add_fact("agent-persona-001", "사용자", "좋아하는음식", "파스타", 6)
+add_fact("agent-persona-001", "사용자", "MBTI", "INTJ", 5)
+add_fact("agent-persona-001", "사용자", "최근관심사", "프로젝트 마무리 + 건강", 8)
+add_fact("agent-persona-001", "사용자", "생일", "다음달 초", 9)
+add_fact("agent-persona-001", "사용자", "좋아하는술", "위스키 (특히 스카치)", 7)
+add_fact("agent-persona-001", "사용자", "스트레스반응", "말수 줄고 야근", 8)
 
-# 민서이 빈이에 대해 아는 것
-add_fact("agent-persona-002", "빈이", "직업", "IT PM", 6)
-add_fact("agent-persona-002", "빈이", "성향", "INTJ, 분석적", 5)
-add_fact("agent-persona-002", "빈이", "술취향", "위스키 > 맥주", 7)
-add_fact("agent-persona-002", "빈이", "연애", "지우와 5년차", 8)
-add_fact("agent-persona-002", "빈이", "축구팀", "리버풀 팬", 4)
+# 민서이 사용자에 대해 아는 것
+add_fact("agent-persona-002", "사용자", "직업", "IT PM", 6)
+add_fact("agent-persona-002", "사용자", "성향", "INTJ, 분석적", 5)
+add_fact("agent-persona-002", "사용자", "술취향", "위스키 > 맥주", 7)
+add_fact("agent-persona-002", "사용자", "연애", "지우와 5년차", 8)
+add_fact("agent-persona-002", "사용자", "축구팀", "리버풀 팬", 4)
 
 # 서아가 오빠에 대해 아는 것
-add_fact("agent-persona-003", "빈이", "역할", "대학 선배", 6)
-add_fact("agent-persona-003", "빈이", "MBTI", "INTJ", 5)
-add_fact("agent-persona-003", "빈이", "동아리활동", "예전 영화감상 동아리 회장", 6)
+add_fact("agent-persona-003", "사용자", "역할", "대학 선배", 6)
+add_fact("agent-persona-003", "사용자", "MBTI", "INTJ", 5)
+add_fact("agent-persona-003", "사용자", "동아리활동", "예전 영화감상 동아리 회장", 6)
 add_fact("agent-persona-003", "지우", "역할", "오빠 여자친구", 6)
 add_fact("agent-persona-003", "하린", "역할", "동아리 동기", 5)
 
 # 예린이 지우에 대해 아는 것
 add_fact("agent-persona-004", "지우", "직업", "출판사 편집자", 7)
 add_fact("agent-persona-004", "지우", "좋아하는것", "독립서점, 비오는 날", 6)
-add_fact("agent-persona-004", "지우", "걱정거리", "빈이 건강", 9)
-add_fact("agent-persona-004", "빈이", "선물선호", "실용적 + 좋아하는 술", 7)
+add_fact("agent-persona-004", "지우", "걱정거리", "사용자 건강", 9)
+add_fact("agent-persona-004", "사용자", "선물선호", "실용적 + 좋아하는 술", 7)
 
-# 수연가 빈이/수진에 대해 아는 것
-add_fact("agent-persona-006", "빈이", "역할", "팀 PM", 6)
-add_fact("agent-persona-006", "빈이", "강점", "꼼꼼함, 성실함", 8)
-add_fact("agent-persona-006", "빈이", "약점", "리더십 경험 부족", 8)
+# 수연가 사용자/수진에 대해 아는 것
+add_fact("agent-persona-006", "사용자", "역할", "팀 PM", 6)
+add_fact("agent-persona-006", "사용자", "강점", "꼼꼼함, 성실함", 8)
+add_fact("agent-persona-006", "사용자", "약점", "리더십 경험 부족", 8)
 add_fact("agent-persona-006", "수진", "강점", "UX 감각, 세심함", 7)
 add_fact("agent-persona-006", "수진", "역할", "UX 디자이너", 6)
 
-# 수진이 수연/빈이에 대해 아는 것
+# 수진이 수연/사용자에 대해 아는 것
 add_fact("agent-persona-007", "수연", "강점", "리더십, 통찰력", 8)
-add_fact("agent-persona-007", "빈이", "역할", "PM 동료", 5)
-add_fact("agent-persona-007", "빈이", "성격", "신중한 INTJ", 5)
+add_fact("agent-persona-007", "사용자", "역할", "PM 동료", 5)
+add_fact("agent-persona-007", "사용자", "성격", "신중한 INTJ", 5)
 
 
 # ── 9. relationship_history (Layer 4 변곡점) ────────────
@@ -644,7 +644,7 @@ add_rel_delta("agent-persona-002", "agent-persona-006", "dynamics",
 add_rel_delta("agent-persona-003", "agent-persona-005", "intimacy", "88", "92",
               "최근 매일 통화 + 마라탕 맛집 탐방", 7)
 add_rel_delta("agent-persona-001", "agent-persona-003", "dynamics",
-              "편한 후배", "살짝 경계", "서아가 빈이 자주 챙기는 거 보고 지우 복합 감정", 10)
+              "편한 후배", "살짝 경계", "서아가 사용자 자주 챙기는 거 보고 지우 복합 감정", 10)
 
 
 # ── 10. thinking 시뮬 ──────────────────────────────────
@@ -662,11 +662,11 @@ events = [
     ("관계강화", ["agent-persona-003", "agent-persona-005"],
      "서아·하린 동아리 모임 후 친밀도 +4", "긍정"),
     ("감정변화", ["agent-persona-001", "agent-persona-003"],
-     "지우가 서아와 빈이의 친밀도 살짝 신경 쓰기 시작", "주의"),
+     "지우가 서아와 사용자의 친밀도 살짝 신경 쓰기 시작", "주의"),
     ("기념일임박", ["owner", "agent-persona-001"],
-     "빈이 생일 다음달 — 지우·예린이 공동 선물 준비 중", "긍정"),
+     "사용자 생일 다음달 — 지우·예린이 공동 선물 준비 중", "긍정"),
     ("회사이벤트", ["agent-persona-006", "owner"],
-     "다음달 팀 워크샵. 빈이 리드 기회 검토 중 (수연·수진 논의)", "긍정"),
+     "다음달 팀 워크샵. 사용자 리드 기회 검토 중 (수연·수진 논의)", "긍정"),
     ("작업성과", ["agent-persona-004"],
      "예린 개인전 준비 완료. 다음달 15일 오프닝", "긍정"),
 ]
@@ -680,6 +680,25 @@ for et, parts, desc, impact in events:
 
 conn.commit()
 conn.close()
+
+
+# ── 13. meta + achievements — 튜토리얼 완료 + 일상 진행 상태 ─────
+db.set_meta("tutorial_phase", "complete")
+db.set_meta("yuna_greeted", "1")
+
+_DONE_ACH = [
+    "tutorial_done", "first_friend_chat", "three_friends", "group_chat",
+    "peek_internal", "agent_auto_chat", "late_night", "chatter",
+    "secret_keeper", "many_friends",
+]
+_UNLOCKED_ACH = ["long_relationship", "matchmaker", "room_master"]
+# 미달성 유지: meta_breach / first_conflict / reconciliation / confession
+
+for k in _DONE_ACH:
+    db.upsert_achievement("owner", k, state="done", mark_unlocked=True, mark_completed=True)
+for k in _UNLOCKED_ACH:
+    db.upsert_achievement("owner", k, state="unlocked", mark_unlocked=True)
+
 
 print("✅ demo mockup seed 완료 (5 레이어 메모리 반영)")
 print(f"   ├─ owner: {OWNER_NAME}")
