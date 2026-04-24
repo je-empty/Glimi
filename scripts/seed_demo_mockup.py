@@ -499,28 +499,30 @@ def insert_memory(aid, channel, content, mem_type, importance,
          importance, 1 if is_pinned else 0, ts, ts))
 
 
-# 지우 (agent-persona-001) — 풍부한 L1/L2/L3 + pinned
+# 지우 (agent-persona-001) — 북카페 친구, 일상/취향 중심 (사적·업무 정보 없음)
 JIWOO_MEMS = [
     # Current channel L1s
-    (1, "dm-사용자", "- 사용자 프로젝트 마무리 단계\n- 최근 야근 많음\n- 저녁 파스타 + 와인으로 챙겨주기로",
-     "event", 7, ["사용자"], 0),
-    (1, "dm-사용자", "- 사용자 잠 잘 못 자고 스트레스\n- 이번주만 버티면 된다고 함\n- 다음주는 푹 쉬자 약속",
-     "emotion", 8, ["사용자"], 1),
-    # Cross-channel L1 (internal-dm-지우-예린)
-    (1, "internal-dm-지우-예린", "- 예린이랑 사용자 생일선물 의논\n- 예린=그림, 지우=위스키\n- 다음주 토요일 같이 쇼핑",
-     "event", 9, ["예린", "사용자"], 2),
-    # L2 chronicle — 근 1주일 흐름
-    (2, "dm-사용자", "- 사용자 5년차 여자친구로 안정된 관계\n- 최근 프로젝트 스트레스로 몸 상태 걱정\n- 매일 저녁 같이 시간 보내며 챙김\n- 다음달 사용자 생일 준비 중 (비밀)",
-     "relationship", 8, ["사용자"], 3),
-    # L3 saga — 5년 관계 요약
-    (3, "dm-사용자", "- 5년간 깊어진 파트너 관계\n- 서로 커리어 응원하며 성장\n- 사용자는 안정감, 지우는 사색적 공간 제공\n- 가끔 사용자가 바빠질 때 외로움 느끼기도\n- 최근 장기적 관점에서 동거 얘기 나오기 시작",
-     "relationship", 9, ["사용자"], 30),
-    # Pinned — 오너가 유나한테 지우 최근 걱정 얘기 공유하라 요청해서 고정됨 설정
-    (1, "dm-사용자", "- 사용자 최근 수면 문제 → 건강 체크 필요 (자주 놓침)",
-     "fact", 9, ["사용자"], 5),  # 이걸 pinned 로
+    (1, "dm-사용자", "- 사용자가 얼마 전 읽은 김애란 단편집 얘기 길게 나눔\n- 다음엔 정세랑 SF 추천해줄 생각\n- 사용자 밑줄 긋는 스타일 좋아한다고",
+     "event", 6, ["사용자"], 0),
+    (1, "dm-사용자", "- 사용자가 최근 고양이 카페 처음 가봄 → 생각보다 좋았다고\n- 다음에 같이 가자고 제안\n- 사용자 은근 동물 좋아하는 타입",
+     "event", 5, ["사용자"], 1),
+    (1, "dm-사용자", "- 사용자 요즘 LP 사 모으는 중 (재즈·락 7-80년대)\n- 다음에 카페에 가져오라 함\n- 나도 턴테이블 하나 살까 고민",
+     "event", 5, ["사용자"], 2),
+    # L2 chronicle
+    (2, "dm-사용자", "- 사용자가 알바 시작할 때부터 단골 → 친구로 발전\n- 책·커피·음악 취향 비슷해서 대화 편함\n- 주 3-4번 카톡, 주말엔 가끔 만남",
+     "relationship", 8, ["사용자"], 10),
+    # Cross-channel
+    (1, "internal-dm-지우-예린", "- 예린이랑 사용자 생일 선물 아이디어\n- 예린: 일러스트 그려주기 / 지우: 사용자가 찜해둔 LP 한 장\n- 다음주 쇼핑 동행",
+     "event", 7, ["예린", "사용자"], 2),
+    # Pinned — 걱정 공유용
+    (1, "dm-사용자", "- 사용자가 요즘 잠 잘 못 자서 새벽 산책 한다고\n- 한강 쪽 걷는 루트 공유\n- 가끔 같이 나가자고 얘기",
+     "fact", 7, ["사용자"], 3),
+    (1, "dm-사용자", "- 사용자가 추천한 독립서점 '책다락' 갔다 옴 → 분위기 엄청 좋았다고\n- 같이 다시 가기로\n- 거기서 본 사진집 하나 사왔다고 자랑",
+     "event", 5, ["사용자"], 4),
 ]
 for i, (lvl, ch, content, mt, imp, ents, ago) in enumerate(JIWOO_MEMS):
-    pinned = (i == len(JIWOO_MEMS) - 1)  # 마지막만 pinned
+    # pinned: '새벽 산책' 항목만 (index 5)
+    pinned = (i == 5)
     insert_memory("agent-persona-001", ch, content, mt, imp,
                   ents, knows=["지우", "owner"] if "사용자" in ents else None,
                   is_pinned=pinned, ago_days=ago, level=lvl)
@@ -586,14 +588,18 @@ def add_fact(aid, subject, predicate, obj, importance=5):
         (aid, subject, predicate, obj, importance))
 
 
-# 지우가 사용자에 대해 아는 것
-add_fact("agent-persona-001", "사용자", "직업", "IT 회사 프로젝트 매니저", 7)
-add_fact("agent-persona-001", "사용자", "좋아하는음식", "파스타", 6)
-add_fact("agent-persona-001", "사용자", "MBTI", "INTJ", 5)
-add_fact("agent-persona-001", "사용자", "최근관심사", "프로젝트 마무리 + 건강", 8)
-add_fact("agent-persona-001", "사용자", "생일", "다음달 초", 9)
-add_fact("agent-persona-001", "사용자", "좋아하는술", "위스키 (특히 스카치)", 7)
-add_fact("agent-persona-001", "사용자", "스트레스반응", "말수 줄고 야근", 8)
+# 지우가 사용자에 대해 아는 것 — 취향/일상 중심 (업무·사적 정보 X)
+add_fact("agent-persona-001", "사용자", "좋아하는음악", "재즈·7-80년대 락 · LP 수집", 7)
+add_fact("agent-persona-001", "사용자", "좋아하는책", "김애란·박완서·정세랑", 6)
+add_fact("agent-persona-001", "사용자", "카페취향", "조용한 곳 · 아메리카노 진하게", 6)
+add_fact("agent-persona-001", "사용자", "취미", "독립서점 탐방 · 필사", 5)
+add_fact("agent-persona-001", "사용자", "동물", "고양이 좋아함 (아직 안 키움)", 5)
+add_fact("agent-persona-001", "사용자", "주말루틴", "한강 산책 · 카페 책 읽기", 6)
+add_fact("agent-persona-001", "사용자", "술취향", "위스키 스트레이트", 5)
+add_fact("agent-persona-001", "사용자", "좋아하는음식", "파스타 · 담백한 거", 5)
+add_fact("agent-persona-001", "사용자", "최근고민", "수면 부족 · 새벽 산책", 8)
+add_fact("agent-persona-001", "사용자", "생일", "다음달 초", 7)
+add_fact("agent-persona-001", "예린", "역할", "친한 친구 · 대학 동기", 6)
 
 # 민서이 사용자에 대해 아는 것
 add_fact("agent-persona-002", "사용자", "직업", "IT PM", 6)
