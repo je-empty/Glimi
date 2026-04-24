@@ -45,6 +45,11 @@ def inject(snap: dict[str, Any]) -> dict[str, Any]:
     meta.setdefault("uptime_seconds", int(time.time()) % (3600 * 24))
     snap["meta"] = meta
 
+    # ── bot_alive = True — 오프라인 안내 배너 / hero offline 표시 제거 ──
+    bot = dict(snap.get("bot") or {})
+    bot["bot_alive"] = True
+    snap["bot"] = bot
+
     # ── 에이전트 thinking / speaking rotation ──
     # persona·mgr·creator 섞어서 후보로. 동시 _ACTIVE_AGENT_COUNT 명만 활성.
     # 한 명은 thinking, 다음 slot 은 speaking — 30초마다 밀림.

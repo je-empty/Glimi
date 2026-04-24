@@ -394,7 +394,14 @@ async def restart(community_id: str, user: dict = Depends(require_user)):
 async def status(community_id: str, user: dict = Depends(require_user)):
     if not accounts.user_can_access(user, community_id):
         raise HTTPException(403, "no access")
-    return supervisor.status(community_id)
+    st = supervisor.status(community_id)
+    # demo 커뮤니티는 시연용 — 실제 봇 없어도 가동중 으로 표시.
+    if community_id == "demo":
+        import time as _t
+        st = dict(st or {})
+        st["running"] = True
+        st["uptime_sec"] = int(_t.time()) % (3600 * 24)  # 24h 주기로 돌아가는 uptime
+    return st
 
 
 @router.get("/{community_id}/log")
