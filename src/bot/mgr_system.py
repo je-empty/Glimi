@@ -40,6 +40,23 @@ from src.bot.core import (
 # ── CMD/QUERY 파싱 + 실행 ──────────────────────────────
 
 
+def _sanitize_dm_name(agent_name: str) -> str:
+    """페르소나 이름 → Discord 친화적 dm 채널 이름.
+
+    회귀: name 에 공백 (예: '유키 아스나') 있으면 Discord 가 자동으로 dash 변환 → DB/runtime
+    캐시는 공백 그대로 → 채널 lookup 미스매치 → 첫 인사 트리거 실패 + 채널 미인식.
+    공백 + 일부 특수문자를 dash 로 정규화. 한글·영문·숫자는 보존.
+    """
+    import re
+    if not agent_name:
+        return "dm-unknown"
+    # whitespace → dash, 그 외 부적합 문자 제거 (한글·영문·숫자·dash·underscore 만 보존)
+    s = re.sub(r"\s+", "-", agent_name.strip())
+    s = re.sub(r"[^\w\-가-힣ㄱ-ㅎㅏ-ㅣ]", "", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return f"dm-{s}" if s else "dm-unknown"
+
+
 async def parse_and_execute_actions(
     report_channel: discord.TextChannel,
     responses: list[str],
@@ -526,7 +543,7 @@ async def yuna_create_room(report_channel, args_str, guild):
 
     # 오너+에이전트 1명이면 dm 채널 사용 (없으면 생성)
     if has_owner and len(participants) == 1:
-        dm_name = f"dm-{participants[0]['name']}"
+        dm_name = _sanitize_dm_name(participants[0]['name'])
         dm_ch = discord.utils.get(guild.text_channels, name=dm_name)
         if not dm_ch:
             from src.bot.core import _get_category_for_channel, _ensure_category
@@ -1598,7 +1615,7 @@ async def _cmd_profile_create(report_channel, json_str):
         # dm 채널 자동 생성 (persona만)
         new_dm_name = None
         if agent_type == "persona" and report_channel.guild:
-            dm_name = f"dm-{profile['name']}"
+            dm_name = _sanitize_dm_name(profile['name'])
             from src.bot.core import _get_category_for_channel, _ensure_category
             existing = discord.utils.get(report_channel.guild.text_channels, name=dm_name)
             if not existing:
