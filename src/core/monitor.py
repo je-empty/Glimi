@@ -216,6 +216,8 @@ def get_agents() -> list[dict]:
             "last_active": a.get("last_active", ""),
             "thinking": is_t,
             "speaking": is_s,
+            "thinking_channel": log_writer.thinking_channel(aid) if is_t else "",
+            "speaking_channel": log_writer.speaking_channel(aid) if is_s else "",
             "thinking_seconds": log_writer.thinking_seconds(aid) if is_t else 0,
             "speaking_seconds": log_writer.speaking_seconds(aid) if is_s else 0,
             "model": model_info["model"],

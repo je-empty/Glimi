@@ -1690,9 +1690,15 @@ function updateGraphLiveState(snap) {
       c.last_ago.includes('초') ||
       (c.last_ago.includes('분') && parseInt(c.last_ago) < 2)
     );
+    // 채널-aware 매칭 — agent.thinking 만 보면 그 에이전트가 참여한 모든 채널이 live 로 잘못 표시.
+    // thinking_channel / speaking_channel 이 현재 채널과 일치할 때만 party live.
     const party = (c.participants || []).some(pid => {
       const ag = agentMap[pid];
-      return ag && (ag.thinking || ag.speaking);
+      if (!ag) return false;
+      if (ag.thinking && ag.thinking_channel === c.name) return true;
+      if (ag.speaking && ag.speaking_channel === c.name) return true;
+      // 옛 데이터 (thinking_channel 없는 경우) — 전체 thinking 으로 폴백 안 함. live 안 켜는 게 안전.
+      return false;
     });
     if (recent || party) liveChannels.add(c.name);
   }

@@ -204,6 +204,17 @@ MGMT: list[ToolSpec] = [
         requires_approval=True,
     ),
     ToolSpec(
+        name="revive_persona",
+        description=(
+            "메타 박살된 페르소나 부활 — self_aware=1 로 set 해서 자각 유지하며 대화 재개. "
+            "사용자가 '서윤이 다시 데려와' 같이 명시 요청할 때만 호출. "
+            "데이터(대화·메모리·팩트) 는 hard delete 안 됐으니 그대로 살아남."
+        ),
+        params={"name": _str},
+        category="management",
+        applies_to=frozenset({"mgr"}),
+    ),
+    ToolSpec(
         name="request_dev_task",
         description="봇 재시작 후 Opus가 코드 수정. args에 요청 내용",
         params={"args": {"type": "str", "required": True, "desc": "개발 요청 상세"}},
