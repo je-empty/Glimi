@@ -36,11 +36,14 @@ from src import db
 # ── 설정 ─────────────────────────────────────────────
 
 RAW_WINDOW = 15          # runtime이 직접 주입하는 원본 대화 개수
-L1_BATCH_SIZE = 5        # L1 요약 단위 (메시지 N개 → 1 L1)
+L1_BATCH_SIZE = 5        # L1 요약 단위 (메시지 N개 → 1 L1). 라이브 freshness 우선.
+L1_BACKFILL_BATCH = 25   # 백로그 클 때 자동 boost: 한 번에 더 많은 메시지 한 호출에 처리.
+L1_BACKFILL_THRESHOLD = 30  # unsummarized > 이 값이면 백필 모드 (큰 배치)
 L1_MAX_KEEP = 10         # injection 시 current-channel L1 최대 개수
 L2_BATCH_SIZE = 5        # L2 rollup 단위 (L1 N개 → 1 L2)
 L2_MAX_KEEP = 5
 L3_BATCH_SIZE = 5        # L3 rollup 단위 (L2 N개 → 1 L3)
+EXTRACT_WORKER_COUNT = int(os.environ.get("GLIMI_MEMORY_WORKERS", "3"))  # 추출 워커 풀 (병렬)
 
 STALE_L1_HOURS = 24
 STALE_L2_DAYS = 3
@@ -543,19 +546,37 @@ def _resolve_partner_agent_id(agent_id: str, channel: str) -> Optional[str]:
 _extract_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
 _worker_started = False
 _worker_lock = threading.Lock()
+# (agent_id, channel) 별 락 — 같은 키를 다중 워커가 동시에 추출하면 중복 L1·msg_id 충돌.
+_key_locks: dict[tuple[str, str], threading.Lock] = {}
+_key_locks_guard = threading.Lock()
+
+
+def _get_key_lock(key: tuple[str, str]) -> threading.Lock:
+    with _key_locks_guard:
+        lk = _key_locks.get(key)
+        if lk is None:
+            lk = threading.Lock()
+            _key_locks[key] = lk
+        return lk
 
 
 def _ensure_worker():
+    """N 개 워커 풀 lazy 시작. 첫 enqueue 때 한 번만 spawn."""
     global _worker_started
     with _worker_lock:
         if _worker_started:
             return
         _worker_started = True
-        t = threading.Thread(target=_worker_loop, daemon=True, name="memory-extractor")
-        t.start()
+        for i in range(max(1, EXTRACT_WORKER_COUNT)):
+            t = threading.Thread(target=_worker_loop, daemon=True,
+                                 name=f"memory-extractor-{i+1}")
+            t.start()
 
 
 def _worker_loop():
+    """워커 루프 — 큐에서 (agent_id, channel) 꺼내서 같은 키 락 잡고 drain.
+    같은 키가 큐에 연속 들어와 있으면 한 워커가 모두 처리 (락 보유 중) → 다른 워커는 다른 키로.
+    """
     while True:
         try:
             job = _extract_queue.get()
@@ -563,10 +584,53 @@ def _worker_loop():
             continue
         if job is None:
             break
+        agent_id, channel = job
+        key = (agent_id, channel)
+        lk = _get_key_lock(key)
+        # try-acquire: 같은 키 이미 처리 중이면 큐에 그대로 두고 (다른 워커가 이미 함) skip.
+        if not lk.acquire(blocking=False):
+            continue
         try:
-            _run_extraction(*job)
+            # Drain mode: 한 키에 대해 batch 가 있는 동안 계속 추출.
+            # check_and_summarize 가 한 번만 enqueue 하지만 큰 백로그면 N 배치 누적된 상태.
+            for _ in range(50):  # 최대 50 배치/회 (~500 메시지) 안전 상한
+                try:
+                    advanced = _run_extraction_once(agent_id, channel)
+                except Exception as e:
+                    print(f"[Memory] extraction error for {key}: {e}")
+                    break
+                if not advanced:
+                    break
+        finally:
+            lk.release()
+
+
+def _run_extraction_once(agent_id: str, channel: str) -> bool:
+    """한 배치만 추출. 실제 진척 있었으면 True (배치 크기 만큼 메시지 처리됨)."""
+    latest_l1 = db.get_latest_memory(agent_id, channel, level=1)
+    last_id = latest_l1["msg_id_to"] if latest_l1 else 0
+    unsummarized = db.count_messages_after(channel, last_id)
+    if unsummarized < L1_BATCH_SIZE:
+        # L2/L3 rollup 만 시도 (L1 충분 누적된 경우)
+        try:
+            _try_l2_rollup(agent_id, channel)
         except Exception as e:
-            print(f"[Memory] extraction error for {job}: {e}")
+            print(f"[Memory] L2 rollup 실패: {e}")
+        try:
+            _try_l3_rollup(agent_id, channel)
+        except Exception as e:
+            print(f"[Memory] L3 rollup 실패: {e}")
+        return False
+    # L1 한 배치 추출
+    before_id = last_id
+    try:
+        _try_l1_extract(agent_id, channel)
+    except Exception as e:
+        print(f"[Memory] L1 추출 실패: {e}")
+        return False
+    after_latest = db.get_latest_memory(agent_id, channel, level=1)
+    after_id = after_latest["msg_id_to"] if after_latest else 0
+    return after_id > before_id
 
 
 def enqueue_extraction(agent_id: str, channel: str):
@@ -835,14 +899,21 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
 
 
 def _try_l1_extract(agent_id: str, channel: str):
-    """L1: 미추출 메시지 5개 쌓이면 단일 패스로 추출."""
+    """L1: 미추출 메시지 ≥ L1_BATCH_SIZE 면 단일 패스로 추출.
+
+    백로그 클 때 (unsummarized > L1_BACKFILL_THRESHOLD) 자동으로 L1_BACKFILL_BATCH 만큼
+    큰 배치로 스위치 — 호출당 더 많은 메시지 처리해서 백필 빠르게 따라잡음.
+    평소엔 작은 배치로 라이브 freshness 유지.
+    """
     latest_l1 = db.get_latest_memory(agent_id, channel, level=1)
     last_id = latest_l1["msg_id_to"] if latest_l1 else 0
     unsummarized = db.count_messages_after(channel, last_id)
     if unsummarized < L1_BATCH_SIZE:
         return
 
-    msgs = db.get_messages_by_range(channel, last_id, L1_BATCH_SIZE)
+    # 백로그 모드 — 큰 배치로 빠르게 흡수
+    batch = L1_BACKFILL_BATCH if unsummarized > L1_BACKFILL_THRESHOLD else L1_BATCH_SIZE
+    msgs = db.get_messages_by_range(channel, last_id, batch)
     if len(msgs) < L1_BATCH_SIZE:
         return
 
@@ -891,6 +962,15 @@ def _try_l1_extract(agent_id: str, channel: str):
         msg_count=len(msgs),
         related_agent_id=partner_id,
     )
+
+    # 가시성 — system.log 에 추출 진행 한 줄. 사용자가 "라이브로 따라가고 있나?" 확인 가능.
+    try:
+        from src import log_writer as _lw
+        backfill_marker = " 📦백필" if batch > L1_BATCH_SIZE else ""
+        _lw.system(f"[Memory] L1 +1 {agent_id}@{channel} (msgs {msgs[0]['id']}~{msgs[-1]['id']}, "
+                   f"unsummarized 잔량 {unsummarized - len(msgs)}){backfill_marker}")
+    except Exception:
+        pass
 
     # Facts → agent_facts
     # allowed_subjects 한 번 lookup 해서 루프마다 DB 조회 안 하도록
