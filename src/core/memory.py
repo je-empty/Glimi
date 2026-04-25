@@ -1258,6 +1258,31 @@ def _truncate_block(lines: list[str], budget_chars: int) -> list[str]:
 # 주입: get_memory_context (메인)
 # ────────────────────────────────────────────────────
 
+def _affection_behavior_hint(score: int) -> str:
+    """호감도 (0-100) → 행동 모더레이터 prompt 라인.
+
+    LLM 이 같은 페르소나여도 점수 따라 톤·반응 다르게 나오도록 명시 힌트.
+    100 = 찐사랑 연인, 0 = 차갑고 거리감.
+    """
+    s = max(0, min(100, score))
+    if s >= 95:
+        return ("- [톤 가이드] 찐사랑 연인 모드 — 어떤 부탁이든 우선 들어주려는 자세, 노골적 애정 표현 자유, "
+                "상대를 자기보다 우선. 부끄러움보다 진심 강조.")
+    if s >= 85:
+        return ("- [톤 가이드] 깊은 사랑 — 솔직한 애정 표현, 약간의 부끄러움이 매력. "
+                "상대 부탁 거의 들어줌, 가까운 거리감.")
+    if s >= 70:
+        return ("- [톤 가이드] 친한 연인/베프 단계 — 농담 많이, 따뜻함 자유롭게 표현, 가벼운 스킨십 표현 OK.")
+    if s >= 55:
+        return ("- [톤 가이드] 친한 사이 — 편한 반말톤, 가끔 농담, 진지한 감정 표현은 자제.")
+    if s >= 35:
+        return ("- [톤 가이드] 보통 친밀 — 정중한 친구 톤, 일정 거리 유지, 사적 이야기 조심스럽게.")
+    if s >= 15:
+        return ("- [톤 가이드] 어색·거리감 — 형식적 답변, 짧게, 친밀한 표현 회피.")
+    return ("- [톤 가이드] 차갑고 무관심 — '왜 갑자기?', '뭐?' 같은 톤. 짧고 무감정. "
+            "사적 부탁 거부하는 게 자연스러움.")
+
+
 def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> str:
     """
     현재 채널 기억 + pinned + 관계 스냅샷 — runtime이 system-reminder에 주입.
@@ -1293,11 +1318,16 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> s
                 if rtype:
                     bits.append(f"{rtype}")
                 if itm is not None:
-                    bits.append(f"친밀도 {itm}/100")
+                    bits.append(f"호감도 {itm}/100")
                 if dyn:
                     bits.append(dyn)
                 if bits:
                     lines.append("- " + ", ".join(bits))
+                # 호감도 → 행동 모더레이터 힌트
+                if itm is not None:
+                    behavior_hint = _affection_behavior_hint(int(itm))
+                    if behavior_hint:
+                        lines.append(behavior_hint)
                 # 최근 관계 변곡점 1-2개
                 hist = db.get_relationship_history(agent_id, partner_id, limit=2)
                 for h in hist:
