@@ -244,8 +244,9 @@ class AgentRuntime:
         # 첫 발화 (이 채널 기존 메시지 2 미만) 시 cross-channel peek 주입 X.
         # Haiku 가 다른 채널 주제를 현재 대화로 끌고 오는 bleed 방지 (QA 회귀: 지아가 internal-dm-지아-소연
         # 시작 발화에서 dm-지아 의 "개발자" 주제 그대로 꺼냄).
+        # 매니저/크리에이터는 채널 간 브릿지가 본질이라 더 풍성하게 + "활용 가능" 라벨로 주입.
         if len(recent) >= 2:
-            cross_recent = self._get_cross_channel_recent(agent_id, channel)
+            cross_recent = self._get_cross_channel_recent(agent_id, channel, agent_type=agent_type)
             if cross_recent:
                 reminder_parts.append(cross_recent)
         _checkpoint("cross_channel_recent")
@@ -396,22 +397,40 @@ class AgentRuntime:
         # haiku 실패 시 최근 3턴만 직접 포함
         return "[이전 대화 (최근)] " + " / ".join(lines[-3:])
 
-    def _get_cross_channel_recent(self, agent_id: str, current_channel: str) -> str:
-        """다른 채널 근황 — 요약 없는 채널만 마지막 메시지 1줄로 보충
+    def _get_cross_channel_recent(self, agent_id: str, current_channel: str,
+                                  agent_type: str = "persona") -> str:
+        """다른 채널 근황 — 요약 없는 채널만 마지막 메시지 줄들로 보충
 
         요약(L1/L2)이 있는 채널은 cross_channel_memory가 이미 커버.
-        여기서는 요약이 아직 없는 짧은 대화만 한줄로 보여줌.
+        여기서는 요약이 아직 없는 짧은 대화만 보여줌.
+
+        agent_type 별 동작:
+          - persona: 1 줄, "끌어오지 말 것" 라벨 (drift 방지)
+          - mgr/creator: 5 줄, "활용 가능" 라벨 (채널 간 브릿지 본질)
+            예: 하나가 internal-dm 에서 유나에게 물어본 답을 mgr-creator 에 가서 사용자에게 전달.
         """
+        is_bridge = agent_type in ("mgr", "creator")
+        peek_limit = 5 if is_bridge else 1
         conn = db.get_conn()
 
-        # 이 에이전트가 참여한 채널 (현재 채널 + mgr 제외)
-        channels = conn.execute(
-            """SELECT channel, MAX(id) as last_id FROM conversations
-               WHERE speaker = ? AND channel != ? AND channel NOT LIKE 'mgr%'
-               GROUP BY channel
-               ORDER BY last_id DESC""",
-            (agent_id, current_channel)
-        ).fetchall()
+        # 이 에이전트가 참여한 채널 (현재 채널 제외)
+        # mgr/creator 는 mgr-* 채널도 봄 (브릿지 역할). persona 는 mgr 제외 (격리).
+        if is_bridge:
+            channels = conn.execute(
+                """SELECT channel, MAX(id) as last_id FROM conversations
+                   WHERE speaker = ? AND channel != ?
+                   GROUP BY channel
+                   ORDER BY last_id DESC""",
+                (agent_id, current_channel)
+            ).fetchall()
+        else:
+            channels = conn.execute(
+                """SELECT channel, MAX(id) as last_id FROM conversations
+                   WHERE speaker = ? AND channel != ? AND channel NOT LIKE 'mgr%'
+                   GROUP BY channel
+                   ORDER BY last_id DESC""",
+                (agent_id, current_channel)
+            ).fetchall()
 
         if not channels:
             conn.close()
@@ -436,13 +455,9 @@ class AgentRuntime:
             if ch_row["last_id"] <= last_covered:
                 continue
 
-            recent = db.get_recent_messages(ch_name, limit=1)
+            recent = db.get_recent_messages(ch_name, limit=peek_limit)
             if not recent:
                 continue
-
-            r = recent[0]
-            speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
-            preview = r["message"][:40]
 
             # 채널 라벨
             if ch_name.startswith("dm-"):
@@ -457,18 +472,32 @@ class AgentRuntime:
             elif ch_name.startswith("group-"):
                 names = ch_name.replace("group-", "")
                 label = f"{names} 톡방"
+            elif ch_name.startswith("mgr-"):
+                label = ch_name
             else:
                 label = ch_name
 
-            lines.append(f"- {label}: {speaker}→\"{preview}\"")
+            # 여러 줄 — 시간 순 (oldest → newest)
+            ch_lines = [f"- [{label}]"]
+            for r in recent:
+                speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+                preview = r["message"][:80]
+                ch_lines.append(f"  {speaker}: \"{preview}\"")
+            lines.extend(ch_lines)
 
         if not lines:
             return ""
-        # "다른 대화" 라벨 강화 — persona 가 현재 대화 주제로 끌어오지 않도록 명시.
-        return (
-            "[다른 채널에서 있었던 대화 — 지금 상대는 이 내용 모름. 끌어오지 말 것]\n"
-            + "\n".join(lines)
-        )
+        # 라벨 — agent_type 별 분기.
+        # persona: drift 방지용 ("끌어오지 말 것").
+        # mgr/creator: 브릿지 본질이라 활용 권장 ("이 답변을 현재 채널에 전달해도 됨").
+        if is_bridge:
+            header = (
+                "[다른 채널에서 있었던 대화 — 매니저로서 필요시 현재 채널에 전달·요약 OK. "
+                "예: internal-dm 에서 받은 답변을 사용자에게 보고.]"
+            )
+        else:
+            header = "[다른 채널에서 있었던 대화 — 지금 상대는 이 내용 모름. 끌어오지 말 것]"
+        return header + "\n" + "\n".join(lines)
 
     def _describe_channel(self, channel: str, my_agent_id: str) -> str:
         """채널 정보를 에이전트가 이해할 수 있는 형태로 설명.
