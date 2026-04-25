@@ -602,9 +602,13 @@
   function _hideOverlay() {
     _overlayActive = false;
     document.getElementById('glimi-overlay').style.display = 'none';
-    // actions 영역 복원
+    // actions 영역 복원 — 3개 버튼 (취소 / 무시하고 가동 / 복구하고 가동) 모두 항상 포함.
+    // 옛 reset 은 skip 버튼 빠뜨려서 한 번 취소 후 다음 시도에 무시 버튼 사라지는 회귀.
     const actions = document.getElementById('go-actions');
-    if (actions) actions.innerHTML = '<button onclick="_overlayDecide(\'cancel\')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소 (가동 안 함)</button><button onclick="_overlayDecide(\'recover\')" style="background:#2563eb;color:#fff;border:1px solid #2563eb;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">복구하고 가동</button>';
+    if (actions) actions.innerHTML =
+      '<button onclick="_overlayDecide(\'cancel\')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소</button>' +
+      '<button onclick="_overlayDecide(\'skip\')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">무시하고 가동</button>' +
+      '<button onclick="_overlayDecide(\'recover\')" style="background:#2563eb;color:#fff;border:1px solid #2563eb;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">복구하고 가동</button>';
   }
 
   // sync 진행 중 system.log 의 [Sync]/[Scan]/[Arrange] 라인 tail → recovery overlay 의 pre 박스 채움.
