@@ -1,11 +1,16 @@
-"""연인이 되다 💑 — persona 친구와 오너의 상호 사랑 (메타 박살된 친구 제외)."""
+"""연인이 되다 💑 — 친구(페르소나·매니저)와 오너의 상호 사랑."""
 from typing import Optional
 from src.achievements.base import Achievement
 from src.achievements.catalog._shared import check_love_exchange
 
 
 def check(user_id: str) -> Optional[dict]:
-    return check_love_exchange(user_id, "dm-%", exclude_meta_breached=True)
+    # 1:1 채널 모두 — dm-* (페르소나) + mgr-* (매니저). 메타 박살된 친구 제외.
+    for ch_pat in ("dm-%", "mgr-dashboard", "mgr-creator"):
+        result = check_love_exchange(user_id, ch_pat, exclude_meta_breached=True)
+        if result:
+            return result
+    return None
 
 
 ACHIEVEMENT = Achievement(
@@ -15,3 +20,4 @@ ACHIEVEMENT = Achievement(
     icon="💑",
     check=check,
 )
+
