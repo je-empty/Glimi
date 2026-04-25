@@ -943,19 +943,30 @@ class AgentRuntime:
                 cwd=_CLI_CWD,
             )
 
-            # Hard watchdog — Claude CLI가 stdout 안 닫고 hang 시 강제 kill (120s)
+            # Hard watchdog — Claude CLI가 stdout 안 닫고 hang 시 강제 kill.
+            # agent_type 별 차등: creator/mgr 는 풍부한 JSON·tool 블록 + reasoning 시간 더 필요.
+            # persona 는 짧은 카톡 응답이라 짧게 설정.
+            #
+            # 회귀: 120s 일률 적용 시 윤하나의 캐릭터 생성 (SAO 아스나 같은 복잡한 IP 캐릭터) 응답이
+            # 풀 JSON 다 못 뽑고 끊김 → create_agent_profile 호출 불발 → 사용자 요청 무산.
+            CLI_WATCHDOG = {
+                "persona": 180,   # 카톡 응답
+                "mgr": 300,       # 매니저 — 도구 다수 + 컨텍스트 많음
+                "creator": 360,   # 크리에이터 — 큰 JSON + 도구 + 확인카드 동시 생성
+            }
+            _watchdog_secs = CLI_WATCHDOG.get(agent_type, 180)
             import threading as _threading
             _wd_killed = {"v": False}
             _intentional_kill = False  # max_messages 초과로 의도적 kill 추적
             def _wd_kill():
                 if process.poll() is None:
                     _wd_killed["v"] = True
-                    log_writer.system(f"❌ {name} CLI 응답 120초 초과 — 강제 kill")
+                    log_writer.system(f"❌ {name} CLI 응답 {_watchdog_secs}초 초과 — 강제 kill")
                     try:
                         process.kill()
                     except Exception:
                         pass
-            _wd = _threading.Timer(120.0, _wd_kill)
+            _wd = _threading.Timer(_watchdog_secs, _wd_kill)
             _wd.daemon = True
             _wd.start()
 
