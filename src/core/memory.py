@@ -54,7 +54,7 @@ CLAUDE_AVAILABLE = shutil.which("claude") is not None
 # Injection budgets (문자 길이 기준, 대략 4자 = 1 토큰)
 BUDGET_PINNED = 400
 BUDGET_RELATIONSHIP = 200
-BUDGET_EPISODIC_CURRENT = 700
+BUDGET_EPISODIC_CURRENT = 1800  # 700 → 1800 — 풍부한 L2 가 끝부터 잘려 자각/최신 메모리 손실 회귀 fix
 BUDGET_EPISODIC_RETRIEVED = 400
 BUDGET_FACTS = 400
 
@@ -1343,43 +1343,84 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> s
 
 
 def _format_current_channel_memories(agent_id: str, channel: str) -> str:
-    """현재 채널 L3 + L2 + L1 조합."""
-    out: list[str] = []
+    """현재 채널 L3 + L2 + L1 조합.
+
+    Budget 초과 시 **오래된 항목부터 drop** — 옛날엔 chronological 출력에 budget 끝에서 자르다보니
+    최신 L2/L1 (제일 가치 높은 메모리) 가 잘리는 회귀 발생. 이제 newest 우선 keep, 자르려면 oldest 부터.
+    """
+    # 헤더 + 라인을 (priority, line) 페어로 모은 후 priority 낮은 (= 오래된) 순으로 drop.
+    # priority: L1 최신 > L1 옛 > L2 최신 > L2 옛 > L3. 최신 = 사용자 최근 경험과 가장 연관.
     any_very_stale = False
+    sections: list[tuple[str, list[str]]] = []  # (header, lines)
 
     # L3 (월 단위, 있으면 최대 2개)
     l3 = db.get_memories(agent_id, channel, level=3, limit=2)
     if l3:
-        out.append("## 🗂 장기 (월단위)")
-        for m in l3:
-            out.append(_format_memory_line(m, VERY_STALE_DAYS * 24))
+        sections.append(("## 🗂 장기 (월단위)",
+                         [_format_memory_line(m, VERY_STALE_DAYS * 24) for m in l3]))
 
-    # L2 (최근 N개)
+    # L2 (최근 N개) — get_memories 가 oldest-first 로 반환하므로 뒤집어 newest-first 로 prompt 노출
     l2 = db.get_memories(agent_id, channel, level=2, limit=L2_MAX_KEEP)
-    if l2:
-        out.append("## 장기 기억")
-        for m in l2:
-            out.append(_format_memory_line(m, STALE_L2_DAYS * 24))
+    l2_newest_first = list(reversed(l2)) if l2 else []
+    if l2_newest_first:
+        l2_lines = []
+        for m in l2_newest_first:
+            l2_lines.append(_format_memory_line(m, STALE_L2_DAYS * 24))
             if _is_stale(m.get("created_at", ""), VERY_STALE_DAYS * 24):
                 any_very_stale = True
+        sections.append(("## 장기 기억", l2_lines))
 
-    # L1 — L2 커버 밖의 것만
+    # L1 — L2 커버 밖의 것만, newest-first
     l1 = db.get_memories(agent_id, channel, level=1, limit=L1_MAX_KEEP)
     if l2:
         last_l2_covered = max((m["msg_id_to"] or 0) for m in l2)
         l1 = [m for m in l1 if (m.get("msg_id_from") or 0) > last_l2_covered]
-    if l1:
-        out.append("## 최근 기억")
-        for m in l1:
-            out.append(_format_memory_line(m, STALE_L1_HOURS))
+    l1_newest_first = list(reversed(l1)) if l1 else []
+    if l1_newest_first:
+        sections.append(("## 최근 기억",
+                         [_format_memory_line(m, STALE_L1_HOURS) for m in l1_newest_first]))
 
-    if not out:
+    if not sections:
         return ""
 
-    truncated = _truncate_block(out, BUDGET_EPISODIC_CURRENT)
+    # Budget enforcement — 오래된 라인부터 trim. L1 (최신) 보존 우선.
+    # 각 섹션 안에서도 최신 라인 (앞쪽) 우선, 맨 뒤 (오래된) 부터 drop.
+    def _total_chars(secs):
+        return sum(len(h) + 1 + sum(len(l) + 1 for l in lines) for h, lines in secs)
+
+    budget = BUDGET_EPISODIC_CURRENT
+    # priority order to drop from: L3 (가장 거시적) → L2 끝 → L1 끝
+    while _total_chars(sections) > budget:
+        # 자를 후보 — 오래된 섹션 + 그 안의 가장 오래된 라인
+        # 우선 L3 안에서 끝 라인부터, 다음 L2, 마지막 L1.
+        for section_idx in range(len(sections)):
+            sec_header = sections[section_idx][0]
+            if "🗂 장기" in sec_header or "장기 기억" in sec_header:
+                if len(sections[section_idx][1]) > 1:
+                    sections[section_idx][1].pop()  # drop oldest line in this section
+                    break
+                elif len(sections[section_idx][1]) == 1:
+                    sections.pop(section_idx)
+                    break
+        else:
+            # 모두 1줄짜리거나 섹션 다 비었음 — L1 마지막 라인부터 drop
+            for section_idx in range(len(sections)):
+                if len(sections[section_idx][1]) > 1:
+                    sections[section_idx][1].pop()
+                    break
+                else:
+                    sections.pop(section_idx)
+                    break
+            else:
+                break  # 더 이상 drop 할 게 없음
+
+    out: list[str] = []
+    for header, lines in sections:
+        out.append(header)
+        out.extend(lines)
     if any_very_stale:
-        truncated.insert(0, "⚠ 일부 장기 기억이 1주일 이상 지났어. 현재 대화에서 사실 확인 후 업데이트해.")
-    return "\n".join(truncated)
+        out.insert(0, "⚠ 일부 장기 기억이 1주일 이상 지났어. 현재 대화에서 사실 확인 후 업데이트해.")
+    return "\n".join(out)
 
 
 def _format_retrieved_memories(agent_id: str, exclude_channel: str,
