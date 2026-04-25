@@ -70,6 +70,15 @@ def main():
 
     _kill_existing_bot()
 
+    # stale thinking/speaking flag 정리 — 옛 봇이 응답 중 크래시 시 잔존하면 영구 thinking 으로 인식.
+    try:
+        from src import log_writer
+        n = log_writer.clear_runtime_flags()
+        if n:
+            log.info(f"stale runtime flags 정리: {n}건")
+    except Exception as e:
+        log.warning(f"runtime flag 정리 실패 (무시): {e}")
+
     if not TOKEN:
         env_path = community.get_env_path()
         print()
