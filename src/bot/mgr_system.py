@@ -1484,9 +1484,17 @@ async def yuna_force_agent(report_channel, args_str, guild):
 
     agent_id = target["id"]
 
-    # 채널 존재 확인
+    # 채널 존재 확인 — 공백 등 비정규화된 이름 fallback (예: 'dm-유키 아스나' ↔ 'dm-유키-아스나')
     if guild:
         target_ch = discord.utils.get(guild.text_channels, name=ch_name)
+        if not target_ch:
+            import re as _re
+            normalized = _re.sub(r"\s+", "-", ch_name.strip())
+            if normalized != ch_name:
+                target_ch = discord.utils.get(guild.text_channels, name=normalized)
+                if target_ch:
+                    log_writer.system(f"[invoke_agent] 채널명 정규화 매칭: '{ch_name}' → '{normalized}'")
+                    ch_name = normalized
         if not target_ch:
             log_writer.system(f"[not_found] kind=channel name={ch_name}")
             return
