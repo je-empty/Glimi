@@ -537,15 +537,26 @@ def get_agent_detail(agent_id: str) -> dict:
     is_s = log_writer.is_speaking(agent_id)
     model_info = _get_agent_model(agent_id, agent.get("type", "persona"))
 
-    # 관계 (relationships 테이블)
+    # 관계 (relationships 테이블) — other_id 별 dedup, owner ID 는 user_name 으로 해석.
     rels = []
     try:
+        from src.core.profile import get_user_id, get_user_name
+        owner_id = get_user_id() or ""
+        owner_name = get_user_name() or "오너"
+        seen_others: set[str] = set()
         for r in db.get_all_relationships(agent_id):
             other_id = r["agent_b"] if r["agent_a"] == agent_id else r["agent_a"]
-            other = db.get_agent(other_id)
+            if other_id in seen_others:
+                continue
+            seen_others.add(other_id)
+            if other_id == owner_id:
+                other_name = owner_name
+            else:
+                other = db.get_agent(other_id)
+                other_name = (other or {}).get("name") or other_id
             rels.append({
                 "other_id": other_id,
-                "other_name": (other or {}).get("name") or other_id,
+                "other_name": other_name,
                 "type": r.get("type", ""),
                 "intimacy": r.get("intimacy_score", 0),
                 "dynamics": r.get("dynamics", "") or "",
