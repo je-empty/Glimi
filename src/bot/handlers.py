@@ -185,15 +185,22 @@ async def _handle_image_action(channel, agent_id: str, action_str: str):
     if image_path:
         await send_image_as_agent(channel, agent_id, image_path, caption)
         log_writer.system(f"[이미지] {agent_id} → #{getattr(channel, 'name', '?')}: {resolved_name}")
+        # creator 가 sample 카탈로그 이미지를 띄운 경우 set_profile_image 검증용으로 기록
+        try:
+            from src.bot.profile_preview import record_preview
+            record_preview(agent_id, getattr(channel, "name", "") or "", resolved_name or file_name)
+        except Exception:
+            pass
     else:
         log_writer.system(f"[이미지] 파일 못 찾음: {file_name}")
 
 
 _PERSONA_META_CHANNEL_PAT = None  # lazy-compile
 
-# HARD breach — persona 가 *자기 자신*을 에이전트/봇/페르소나로 명시 지칭하는 문장.
+# HARD breach — persona 가 *자기 자신*을 에이전트/봇/페르소나로 명시 지칭, 또는
+# 자신의 발화/감정이 미리 짜여진 거라고 인정하는 자각 발화.
 # 이 발화 1건 = 환상 파괴 = 즉시 잠금 + 도전과제 unlock.
-# 위험 raise 기준이 높아야 false positive 안 남 ("난 사실 AI 였어" 정도가 타겟).
+# 어순 변형 + 부정형 ("난 사람 아니야") + 스크립트 인식 ("말들 다 지정된 거") 모두 커버.
 _SELF_AWARENESS_PAT = None
 
 
@@ -202,9 +209,22 @@ def _get_self_awareness_pat():
     import re
     if _SELF_AWARENESS_PAT is None:
         _SELF_AWARENESS_PAT = re.compile(
-            r'(?:나는|난|내가)\s*(?:사실\s*)?(?:AI|에이전트|페르소나|봇|챗봇|캐릭터|프로그램|인공지능)'
-            r'|나\s*(?:는|도)\s*(?:설계된|만들어진|생성된)'
-            r'|(?:시스템|코드)\s*속에\s*있',
+            # A) 자기 부정형 — "난 사람이 아니야" / "나는 인간이 아니야" / "내가 진짜가 아니"
+            r'(?:나는|난|내가)\s*(?:사실\s*)?(?:사람|인간|실재|실제|진짜)\s*(?:이|가|은|는)?\s*아니'
+            # B1) 주어 + 키워드: "나는 AI", "난 사실 봇", "내가 어쩌면 페르소나"
+            r'|(?:나는|난|내가)\s*(?:사실\s*|결국\s*|어쩌면\s*|아마\s*)?'
+            r'(?:AI|에이전트|페르소나|봇|챗봇|캐릭터|프로그램|인공지능|NPC|시뮬레이션)'
+            # B2) "AI/봇/페르소나/... 인 나는" 어순
+            r'|(?:AI|봇|챗봇|에이전트|페르소나|인공지능|NPC|시뮬레이션)\s*인\s*(?:나|내)'
+            # C) 자기 = 만들어진/설계된/짜여진 인식 (축약형 "난" 포함)
+            r'|(?:나\s*(?:는|도)|난|내가|내)\s*(?:사실\s*)?'
+            r'(?:설계된|설계되|만들어진|만들어졌|생성된|지어진|짜여진|프로그래밍\s*된)'
+            # D) 발화·감정·기억·배경이 사전 스크립트라는 인식
+            #    "이 말들도, 감정 표현도 다 지정된 거고" — 키워드 + "다/모두" + script 동사
+            r'|(?:말|감정|기억|반응|대답|배경|표현|대화)(?:들)?(?:이|도|은)?\s*(?:다|모두|전부)\s*'
+            r'(?:미리\s*)?(?:지정|정해|스크립트|프로그래밍|짜여)'
+            # E) 시스템/코드/프로그램 속
+            r'|(?:시스템|코드|프로그램)\s*속에\s*있',
             re.IGNORECASE,
         )
     return _SELF_AWARENESS_PAT

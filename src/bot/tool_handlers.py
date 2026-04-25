@@ -297,21 +297,34 @@ async def _h_delete_agent_profile(args: dict, ctx: ToolContext):
 
 async def _h_set_profile_image(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _apply_sample_profile_image
+    from src.bot.profile_preview import get_recent_preview, clear_preview
     # 중복 방지 — 같은 sample 로 이미 적용된 persona 면 skip.
     # 비교 대상은 `sample_source_file` (apply 성공 후에만 set) — `profile_image_filename`
     # 은 create_agent_profile JSON 에 LLM 이 sample 파일명을 그대로 집어넣는 케이스가
     # 있어서 "skip 했는데 실제 apply 는 한 번도 안 된" 회귀 발생.
-    target_agent = db.get_agent_by_name(args["name"])
-    if target_agent and target_agent.get("sample_source_file") == args["profile_image_filename"]:
+    requested = args["profile_image_filename"]
+    channel_name = getattr(ctx.channel_obj, "name", "") or ""
+    previewed = get_recent_preview(ctx.caller_agent_id or "", channel_name)
+    # creator 가 직전에 채널에 띄운 sample 과 다른 파일명을 LLM 이 넘긴 경우 preview 우선.
+    # preview 가 있으면 owner 가 이미 그 얼굴을 보고 동의한 것 — 그 파일이 진실.
+    if previewed and previewed != requested:
         log_writer.system(
-            f"[set_profile_image] skip — {args['name']} 이미 {args['profile_image_filename']} 적용됨"
+            f"[set_profile_image] preview 와 mismatch — '{requested}' → '{previewed}' 로 교정"
         )
-        return {"name": args["name"], "profile_image": args["profile_image_filename"],
+        requested = previewed
+    target_agent = db.get_agent_by_name(args["name"])
+    if target_agent and target_agent.get("sample_source_file") == requested:
+        log_writer.system(
+            f"[set_profile_image] skip — {args['name']} 이미 {requested} 적용됨"
+        )
+        clear_preview(ctx.caller_agent_id or "", channel_name)
+        return {"name": args["name"], "profile_image": requested,
                 "skipped": True, "reason": "already_set"}
-    s = f"{args['name']} {args['profile_image_filename']}"
+    s = f"{args['name']} {requested}"
     await _apply_sample_profile_image(ctx.channel_obj, s, ctx.guild,
                                caller_agent_id=ctx.caller_agent_id)
-    return {"name": args["name"], "profile_image": args["profile_image_filename"]}
+    clear_preview(ctx.caller_agent_id or "", channel_name)
+    return {"name": args["name"], "profile_image": requested}
 
 
 async def _h_approve_request(args: dict, ctx: ToolContext):
