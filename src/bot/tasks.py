@@ -112,6 +112,39 @@ async def on_ready():
     log_writer.system("Bot ready")
     log_writer.mark_bot_ready()
 
+    # 백로그 catch-up — 모든 활성 (agent, channel) 페어를 추출 큐에 enqueue.
+    # 워커 풀이 drain mode 로 백로그 흡수. 라이브 freshness 회복.
+    try:
+        from src.core.memory import enqueue_extraction
+        from src import db as _db
+        # 각 에이전트의 주 채널
+        for p in profiles:
+            atype = p.get("type", "persona")
+            name = p.get("name", "")
+            if atype == "mgr":
+                ch = "mgr-dashboard"
+            elif atype == "creator":
+                ch = "mgr-creator"
+            else:
+                ch = f"dm-{name}"
+            enqueue_extraction(p["id"], ch)
+        # 오너 관점 메모리도 — 모든 dm/mgr 채널의 오너 발화
+        from src.core.profile import get_user_id
+        oid = get_user_id()
+        if oid:
+            conn = _db.get_conn()
+            chs = [r[0] for r in conn.execute(
+                "SELECT DISTINCT channel FROM conversations WHERE speaker=? AND "
+                "(channel LIKE 'dm-%' OR channel LIKE 'mgr-%' OR channel LIKE 'group-%')",
+                (oid,),
+            ).fetchall()]
+            conn.close()
+            for ch in chs:
+                enqueue_extraction(oid, ch)
+        log_writer.system(f"[Memory] startup catch-up enqueued: {len(profiles)} agents + 오너 채널들")
+    except Exception as e:
+        log_writer.system(f"[Memory] startup enqueue 실패 (무시): {e}")
+
     try:
         # 튜토리얼 상태 검증 — 채널 기반 안전장치
         await _verify_tutorial_state(guild)
