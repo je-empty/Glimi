@@ -314,6 +314,15 @@ async def sync_community(
                     needed = [ch for ch in MGR_ORDER if ch in expected and ch not in surviving]
 
                 for ch_name in needed:
+                    # Phase 2 가 Discord 에 이미 있는 채널을 surviving 에 빠졌단 이유로 또 생성
+                    # → 중복 채널 증식 회귀. 생성 직전에 실제 길드 상태 재확인.
+                    # (fast_path 는 channels_filter 만 surviving 에 넣음 → 다른 expected 채널이
+                    # Discord 에 이미 있어도 phase 2 needed 로 빠져서 중복 생성 발생.)
+                    existing = discord_lib.utils.get(guild.text_channels, name=ch_name)
+                    if existing:
+                        surviving[ch_name] = existing
+                        _progress(f"  유지: {ch_name} (이미 존재)")
+                        continue
                     if dry_run:
                         result["channels_created"].append(ch_name)
                         _progress(f"  [dry-run] 생성 예정: {ch_name}")
@@ -416,23 +425,65 @@ async def sync_community(
                 discord_count = len(discord_msgs)
                 _progress(f"  {ch_name}: Discord {discord_count} / DB {db_count}")
 
-                # ── 순서 기반 divergence 찾기 ──
-                # 기존엔 content-set diff 로 누락분을 끝에 덧붙여 순서 깨짐 (중간 비어있으면 뒤에 붙음).
-                # 이제 oldest→newest 로 동시 walk 해서 첫 불일치 index 찾고, Discord 쪽은 거기부터 잘라버리고
-                # DB 쪽을 거기부터 순서대로 webhook 재전송 → 양쪽 순서 완벽 일치.
-                min_len = min(db_count, discord_count)
-                divergence = min_len
-                for i in range(min_len):
+                # ── 순서 기반 divergence 찾기 (lookahead 포함) ──
+                # 기존엔 strict positional walk — Discord 에 단 1건의 extra/외부 메시지만 있어도
+                # 그 지점부터 모든 후속 인덱스가 mismatch 로 판정 → 대량 삭제 캐스케이드 발생.
+                # 개선: db[i] != discord[j] 시 discord[j..j+LOOKAHEAD] 안에서 db[i] 텍스트를
+                # 찾으면 Discord-only 메시지를 skip 하고 진행. 삭제 후보는 그 skip 된 메시지들.
+                LOOKAHEAD = 5
+                discord_skip_idxs: list[int] = []  # Discord-only 로 판단되어 삭제 후보가 될 인덱스
+                i = 0  # db cursor
+                j = 0  # discord cursor
+                while i < db_count and j < discord_count:
                     db_text = db_messages_ordered[i].get("message") or ""
-                    dc_text = discord_msgs[i].content or ""
-                    if db_text != dc_text:
-                        divergence = i
+                    dc_text = discord_msgs[j].content or ""
+                    if db_text == dc_text:
+                        i += 1
+                        j += 1
+                        continue
+                    # 직접 안 맞을 때 — Discord 에서 LOOKAHEAD 안에 같은 텍스트 찾기
+                    found = -1
+                    end = min(j + 1 + LOOKAHEAD, discord_count)
+                    for k in range(j + 1, end):
+                        if (discord_msgs[k].content or "") == db_text:
+                            found = k
+                            break
+                    if found != -1:
+                        # Discord[j..found-1] 는 Discord-only — 삭제 후보로 마킹, 진행
+                        discord_skip_idxs.extend(range(j, found))
+                        j = found + 1
+                        i += 1
+                    else:
+                        # 진짜 divergence — 끝까지 다른 거. 그 자리에서 break.
                         break
 
-                discord_to_delete = discord_msgs[divergence:]
-                db_to_send = db_messages_ordered[divergence:]
+                divergence = i
+                # discord_to_delete: lookahead 로 잡은 skip 들 + 진짜 divergence 이후 모두
+                discord_to_delete = [discord_msgs[k] for k in discord_skip_idxs]
+                discord_to_delete += discord_msgs[j:]
+                db_to_send = db_messages_ordered[i:]
 
                 if not discord_to_delete and not db_to_send:
+                    result["channels_scanned"] += 1
+                    await asyncio.sleep(0.3)
+                    continue
+
+                # ── 안전 brake — 작은 divergence 가 대량 삭제로 비대화하는 경우 abort ──
+                # 회귀: 채팅 사이에 Discord-only 메시지 (수동 삽입/삭제) 1건 있으면 그 지점부터
+                # 끝까지 모든 메시지가 mismatch 로 판정 → 수십~수백건 일괄 삭제. Discord rate-limit
+                # 걸려서 force-kill 시 대화 손실. 보수적 임계: divergence 가 일찍 (<10) 이면서
+                # 삭제 대상이 50건 초과면 sync 중단 + 경고.
+                LARGE_DELETE_THRESHOLD = 50
+                EARLY_DIVERGENCE = 10
+                if (len(discord_to_delete) > LARGE_DELETE_THRESHOLD
+                        and divergence < EARLY_DIVERGENCE):
+                    msg = (f"  {ch_name}: divergence={divergence} 인데 삭제 {len(discord_to_delete)}건 — "
+                           f"안전 brake 발동, sync 중단. 수동 점검 필요.")
+                    _progress(msg)
+                    result["errors"].append(
+                        f"{ch_name}: 안전 brake (divergence={divergence}, "
+                        f"to_delete={len(discord_to_delete)})"
+                    )
                     result["channels_scanned"] += 1
                     await asyncio.sleep(0.3)
                     continue
