@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 from src import db
-from src.achievements.definitions import ACHIEVEMENTS, get_by_key
+from src.achievements.definitions import ACHIEVEMENTS, SUPERVISORS, get_by_key
 
 
 _installed = False
@@ -80,8 +80,38 @@ def recompute_all(user_id: str | None = None) -> dict:
     return {"newly_done": newly_done, "newly_unlocked": newly_unlocked, "user_id": user_id}
 
 
+def _apply_supervisor_result(user_id: str, ach_key: str, result: dict) -> bool:
+    """슈퍼바이저가 반환한 진척 dict 를 DB 에 upsert. newly_completed 면 True."""
+    if not result:
+        return False
+    prev = db.get_achievement(user_id, ach_key)
+    prev_state = prev["state"] if prev else "locked"
+    if prev_state == "done":
+        return False
+    new_state = result.get("state", prev_state)
+    mark_unlocked = bool(result.get("mark_unlocked"))
+    mark_completed = bool(result.get("mark_completed"))
+    progress = result.get("progress_data")
+    db.upsert_achievement(
+        user_id, ach_key,
+        state=new_state, progress_data=progress,
+        mark_unlocked=mark_unlocked, mark_completed=mark_completed,
+    )
+    return mark_completed and prev_state != "done"
+
+
 def _on_message(channel: str, speaker: str, message: str):
-    """log_message 훅. 간단히 recompute_all 호출."""
+    """log_message 훅. (1) 슈퍼바이저 fast-path → (2) recompute_all 안전망."""
+    user_id = _active_user_id()
+    # 1. 슈퍼바이저 fast-path — 정의된 도전과제만 즉시 갱신
+    for sup in SUPERVISORS:
+        try:
+            res = sup.on_message(channel, speaker, message)
+            if res and user_id and sup.key:
+                _apply_supervisor_result(user_id, sup.key, res)
+        except Exception as e:
+            print(f"[achievements/supervisor:{sup.key}] {e}")
+    # 2. 전체 recompute — supervisor 없는 도전과제 안전망
     try:
         recompute_all()
     except Exception as e:
