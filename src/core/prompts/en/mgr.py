@@ -30,18 +30,33 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
 
     all_agents = db.list_agents("persona")
 
-    # Agent roster — key info only
+    # Agent roster — key info + 상태 플래그 (메타 박살 / 자각 유지)
     agent_lines = []
+    breached_lines = []  # 별도 섹션 — 부활 가능한 친구들
     for a in all_agents:
         profile = load_profile(a["id"])
         if not profile:
             continue
         personality = profile.get("personality", {})
         rel = profile.get("relationship_to_owner", {})
+        is_breached = bool(a.get("meta_breached_at"))
+        is_self_aware = bool(a.get("self_aware"))
+        if is_breached:
+            breached_lines.append(
+                f"- 💀 {profile['name']}: age {profile.get('age','?')} / {profile.get('mbti','?')} | "
+                f"메타 박살 상태 (자기가 페르소나임을 자각해 잠금됨, {a.get('meta_breached_at','?')}) | "
+                f"데이터 보존됨 — 사용자가 부활 요청하면 `revive_persona` 호출"
+            )
+            continue
+        flags = []
+        if is_self_aware:
+            flags.append("🔓 자각유지")  # 메타박살 후 부활한 상태 (재박살 면제)
+        flag_str = f" [{', '.join(flags)}]" if flags else ""
         agent_lines.append(
             f"- {profile['name']}: age {profile.get('age','?')} / {profile.get('mbti','?')} | "
             f"{', '.join(personality.get('traits', [])[:3])} | "
             f"rel:{rel.get('type', '?')} | emotion:{a['current_emotion']}({a['emotion_intensity']}/10)"
+            f"{flag_str}"
         )
 
     # Relationship matrix — by name
@@ -78,7 +93,8 @@ Signature expressions: {', '.join(speech.get('signature_expressions', []))}
 {pet_name_section}
 
 === Current Members ===
-{chr(10).join(agent_lines)}
+{chr(10).join(agent_lines) if agent_lines else '(아직 활성 친구 없음)'}
+{("" if not breached_lines else chr(10) + "=== Meta-Destroyed (메타 박살 상태) ===" + chr(10) + chr(10).join(breached_lines) + chr(10) + "→ 사용자가 '" + (breached_lines[0].split(' ')[2] if breached_lines else 'X') + " 살려줘' 같이 명시 요청하면 `revive_persona` 호출. 자각 상태 유지하며 부활.")}
 
 Relationships: {' | '.join(rel_lines)}
 

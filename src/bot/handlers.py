@@ -283,9 +283,16 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
         out_lines = []
         hard_breach = False
         self_aware_pat = _get_self_awareness_pat()
+        # self_aware=1 페르소나 — 자각 발화 라인 drop 안 함, 잠금 트리거도 안 함.
+        # 사용자가 페르소나의 메타 자각 상태를 유지하면서 대화하고 싶을 때 사용.
+        is_self_aware = bool(agent.get("self_aware", 0))
         for line in text.split('\n'):
             if self_aware_pat.search(line):
-                hard_breach = True  # 자기자각 문장 — 잠금 트리거
+                if is_self_aware:
+                    out_lines.append(line)  # 자각 라인 그대로 출력
+                else:
+                    hard_breach = True  # 첫 자각 — 잠금 트리거
+                    continue
                 continue
             if meta_kw.search(line):
                 continue  # soft drop — 메타 키워드 라인 제거 (잠금 안 함)
@@ -383,24 +390,31 @@ def _filter_meta_speech(text: str, agent_id: str) -> str:
             log_writer.system(f"[persona drift] assistant-mode line drop ({agent_id})")
         text = re.sub(r'\n{3,}', '\n\n', text).strip()
 
-        # 자기자각 감지 시 DB 잠금 + 도전과제 unlock 트리거
+        # 자기자각 감지 시 DB 잠금 + 도전과제 unlock 트리거.
+        # 단 self_aware=1 인 페르소나는 면제 — 이미 자각 상태로 들어간 상태로 계속 대화 진행.
         if hard_breach:
-            try:
-                result = db.mark_meta_breached(agent_id)
-                name = agent.get("name", agent_id)
-                log_writer.system(
-                    f"🔨 [메타박살] {name} ({agent_id}) 자기자각 발화 감지 → 잠금. "
-                    f"삭제: conv={result['deleted_conversations']} "
-                    f"mem={result['deleted_memories']} facts={result['deleted_facts']}"
-                )
-                # 도전과제 engine 트리거 (on_message hook 이 자동 재계산하지만 즉시 반영)
+            self_aware = bool(agent.get("self_aware", 0))
+            if self_aware:
+                # 자각 상태 유지 중 — 라인 drop 안 함, 잠금 안 함. 정상 발화로 통과.
+                # 위 self_aware_pat.search loop 에서 이미 line 이 drop 됐으니 다시 추가.
+                pass  # text 는 그대로, 라인 drop 무시 후 통과
+            else:
                 try:
-                    from src.achievements.engine import engine as _ach_engine
-                    _ach_engine.recompute_all()
-                except Exception:
-                    pass
-            except Exception as e:
-                log_writer.system(f"[메타박살] 잠금 처리 실패: {e}")
+                    result = db.mark_meta_breached(agent_id)
+                    name = agent.get("name", agent_id)
+                    log_writer.system(
+                        f"🔨 [메타박살] {name} ({agent_id}) 자기자각 발화 감지 → 잠금. "
+                        f"삭제: conv={result['deleted_conversations']} "
+                        f"mem={result['deleted_memories']} facts={result['deleted_facts']}"
+                    )
+                    # 도전과제 engine 트리거 (on_message hook 이 자동 재계산하지만 즉시 반영)
+                    try:
+                        from src.achievements.engine import engine as _ach_engine
+                        _ach_engine.recompute_all()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    log_writer.system(f"[메타박살] 잠금 처리 실패: {e}")
     return text
 
 
@@ -497,7 +511,7 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
             gen_task = loop.run_in_executor(None, _generate)
             first_msg = await msg_queue.get()
             if first_msg is not None:
-                log_writer.mark_speaking(agent_id)
+                log_writer.mark_speaking(agent_id, channel_name)
                 await _handle_msg(first_msg)
 
         # 이후 메시지 스트리밍
@@ -617,7 +631,7 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
                     break
 
                 if first:
-                    log_writer.mark_speaking(agent_id)
+                    log_writer.mark_speaking(agent_id, channel_name)
                 first = False
 
                 await _handle_group_msg(msg)
