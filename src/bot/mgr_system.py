@@ -1813,6 +1813,27 @@ async def _apply_sample_profile_image(report_channel, args_str, guild, caller_ag
     conn.close()
 
     log_writer.system(f"✓ 샘플 프로필 이미지 적용: {agent_name} ← {sample_file}")
+
+    # Discord webhook avatar 즉시 갱신 — 안 하면 봇 startup 까지 옛/빈 avatar 그대로 사용.
+    # 회귀: 사용자가 '하나야 아스나 이미지 적용해줘' 후 dm-아스나 발화 시 webhook avatar 가
+    # bot 첫 startup 때의 상태 (= 없음) 로 남아있어 이미지 미반영. 웹 대시보드는 DB·파일 직접
+    # 읽어서 정상 표시되지만 디코는 cached webhook 으로 안 보임.
+    try:
+        from src.bot.core import update_agent_webhook_profile_image
+        if guild:
+            updated_chs = 0
+            for ch in guild.text_channels:
+                try:
+                    whs = await ch.webhooks()
+                    if any(wh.name == f"glimi-{target['id']}" for wh in whs):
+                        if await update_agent_webhook_profile_image(ch, target["id"]):
+                            updated_chs += 1
+                except Exception:
+                    pass
+            log_writer.system(f"  Webhook avatar 즉시 갱신: {updated_chs}개 채널")
+    except Exception as e:
+        log_writer.system(f"  Webhook avatar 갱신 실패 (무시): {e}")
+
     # 확인 메시지는 tool을 호출한 에이전트 (일반적으로 하나=creator)로 보낸다.
     sender_id = caller_agent_id or ("agent-creator-001" if target["type"] == "persona" else target["id"])
     await send_as_agent(report_channel, sender_id, f"{agent_name} 프로필 이미지 적용했어!")
