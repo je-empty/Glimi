@@ -351,6 +351,81 @@ def _check_meta_breach(user_id: str) -> Optional[dict]:
     return None
 
 
+def _check_love_exchange(user_id: str, channel_filter: str,
+                         exclude_meta_breached: bool = False) -> Optional[dict]:
+    """오너 ↔ 특정 종류의 에이전트 채널에서 상호 사랑 표현 감지.
+
+    트리거: 오너의 사랑 고백 발화 + 같은 채널에서 에이전트가 시간순으로 그 다음에
+    사랑/긍정 응답 발화 (within ~10 메시지).
+
+    channel_filter: "mgr-%" (매니저) 또는 "dm-%" (페르소나).
+    """
+    import re as _re
+    user_pat = _re.compile(
+        r"(사랑해|좋아해|사귀자|연인|데이트.*하자|결혼.*하자|결혼생활|"
+        r"마음에\s*들어|반했)",
+        _re.IGNORECASE,
+    )
+    agent_pat = _re.compile(
+        r"(나도\s*사랑|나도\s*좋아|사랑이.*맞|좋긴\s*하지|싫다고는\s*못|"
+        r"심장.*쫄깃|얼굴.*빨개|부끄럽.*인정|좋은\s*거\s*맞아)",
+        _re.IGNORECASE,
+    )
+    conn = db.get_conn()
+    extra = ""
+    params = [channel_filter]
+    if exclude_meta_breached:
+        extra = " AND speaker NOT IN (SELECT id FROM agents WHERE meta_breached_at IS NOT NULL)"
+    rows = conn.execute(
+        f"SELECT id, channel, speaker, message FROM conversations "
+        f"WHERE channel LIKE ?{extra} ORDER BY id ASC",
+        params,
+    ).fetchall()
+    conn.close()
+    # 채널별로 walk: 오너 사랑 고백 → 같은 채널 직후 N 발화 안 에이전트 사랑 응답
+    by_ch: dict[str, list] = {}
+    for r in rows:
+        by_ch.setdefault(r["channel"], []).append(r)
+    for ch, msgs in by_ch.items():
+        for i, m in enumerate(msgs):
+            if m["speaker"] != user_id:
+                continue
+            if not user_pat.search(m["message"] or ""):
+                continue
+            # 직후 10 메시지 안에 에이전트 응답
+            for j in range(i + 1, min(i + 11, len(msgs))):
+                nxt = msgs[j]
+                if nxt["speaker"] == user_id:
+                    continue
+                if agent_pat.search(nxt["message"] or ""):
+                    return {
+                        "state": "done", "mark_completed": True, "mark_unlocked": True,
+                        "progress_data": {
+                            "channel": ch,
+                            "agent": nxt["speaker"],
+                            "owner_msg": (m["message"] or "")[:60],
+                            "agent_msg": (nxt["message"] or "")[:60],
+                        },
+                    }
+    return None
+
+
+def _check_mgr_love(user_id: str) -> Optional[dict]:
+    """매니저 (서유나/윤하나) 와 오너의 상호 사랑 — '직함 내려놓기'."""
+    # mgr-dashboard, mgr-creator 둘 다 매니저-오너 1:1 채널.
+    for ch_pat in ("mgr-dashboard", "mgr-creator"):
+        result = _check_love_exchange(user_id, ch_pat)
+        if result:
+            return result
+    return None
+
+
+def _check_persona_love(user_id: str) -> Optional[dict]:
+    """페르소나 친구와 오너의 상호 사랑 — '연인이 되다'.
+    메타 박살된 페르소나는 제외 (이미 잠금 → 자각으로 사라진 친구는 카운트 X)."""
+    return _check_love_exchange(user_id, "dm-%", exclude_meta_breached=True)
+
+
 def _check_long_relationship(user_id: str) -> Optional[dict]:
     """같은 페르소나와 3일 이상 유지된 DM (첫 메시지 ~ 최근 메시지 간격)."""
     conn = db.get_conn()
@@ -455,6 +530,20 @@ ACHIEVEMENTS: list[Achievement] = [
         description="누군가 용기 내서 마음을 고백했다.",
         icon="💗",
         check=_check_confession,
+    ),
+    Achievement(
+        key="persona_love",
+        title="연인이 되다 💑",
+        description="한 친구와 서로의 마음을 확인하고 연인으로 발전한 순간.",
+        icon="💑",
+        check=_check_persona_love,
+    ),
+    Achievement(
+        key="mgr_love",
+        title="직함 내려놓기 💝",
+        description="매니저가 직함을 내려놓고 오너와 사람 대 사람의 사랑을 나눈 순간.",
+        icon="💝",
+        check=_check_mgr_love,
     ),
     Achievement(
         key="many_friends",
