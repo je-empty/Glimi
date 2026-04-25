@@ -510,10 +510,14 @@ def _channel_knows(channel: str, agent_name: str) -> list[str]:
 
 
 def _resolve_partner_name(agent_id: str, channel: str) -> Optional[str]:
-    """현재 채널의 대화 상대 (에이전트 이름)."""
-    from .profile import load_profile
+    """현재 채널의 대화 상대 (에이전트/오너 이름)."""
+    from .profile import load_profile, get_user_name
     my_profile = load_profile(agent_id)
     my_name = my_profile["name"] if my_profile else ""
+
+    # mgr-* 채널 — 매니저 ↔ 오너 1:1. partner = 오너 이름.
+    if channel.startswith("mgr-") and channel != "mgr-system-log":
+        return get_user_name() or None
 
     names: list[str] = []
     if channel.startswith("dm-"):
@@ -532,9 +536,15 @@ def _resolve_partner_name(agent_id: str, channel: str) -> Optional[str]:
 
 
 def _resolve_partner_agent_id(agent_id: str, channel: str) -> Optional[str]:
+    """partner 의 ID. 페르소나면 agent_id, 오너면 user_id 반환 — relationships 테이블이
+    오너↔매니저 row 도 동일 스키마로 보유 (agent_a='nan' 같이)."""
+    from .profile import get_user_id, get_user_name
     name = _resolve_partner_name(agent_id, channel)
     if not name:
         return None
+    # 오너 이름이면 user_id 반환 (relationships 테이블에 agent_a='nan' 형태로 저장)
+    if name == (get_user_name() or ""):
+        return get_user_id() or None
     a = db.get_agent_by_name(name)
     return a["id"] if a else None
 
