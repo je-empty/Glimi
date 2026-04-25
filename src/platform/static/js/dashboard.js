@@ -2512,9 +2512,10 @@ function renderAchievements(data) {
       const who = p.agent_name || agentNameById(p.agent);
       return `❤️ ${esc(who)}`;
     }
-    // 마음 열기 (confession) — 누가 첫 고백했는지
-    if (p.speaker_name && p.message) {
-      return `💗 ${esc(p.speaker_name)}: ${esc(String(p.message).slice(0, 30))}`;
+    // 마음 열기 (confession) — 친구가 마음 연 대상 = 그 친구 이름
+    if ((p.agent || p.agent_name) && p.message && !p.owner_msg) {
+      const who = p.agent_name || agentNameById(p.agent);
+      return `💗 ${esc(who)}`;
     }
     if (p.msgs != null && p.need != null) return `${p.msgs} / ${p.need}`;
     if (p.talked_to && p.need) return `${p.talked_to.length} / ${p.need}`;
