@@ -2490,8 +2490,28 @@ function renderAchievements(data) {
   const tc = document.getElementById('tc-achievements');
   if (tc) tc.textContent = `${done}/${total}`;
 
+  // agent_id (e.g. agent-mgr-001) → 이름 매핑. snapshot 의 agents 가 있으면 거기서, 없으면 raw.
+  const agentNameById = (id) => {
+    if (!id) return '';
+    if (typeof window !== 'undefined' && window._lastSnap && Array.isArray(window._lastSnap.agents)) {
+      const a = window._lastSnap.agents.find(x => x.id === id);
+      if (a) return a.name || id;
+    }
+    return id;
+  };
+
   const fmtProgress = (p) => {
     if (!p || typeof p !== 'object') return '';
+    // 메타 박살 — 누가 박살됐는지 + 시점
+    if (p.name && p.at) {
+      const when = String(p.at).slice(0, 16).replace('T', ' ');
+      return `💀 ${esc(p.name)} (${esc(when)})`;
+    }
+    // 사랑 도전과제 (mgr_love / persona_love) — 최초 달성 상대 이름 우선
+    if ((p.agent || p.agent_name) && (p.owner_msg || p.agent_msg)) {
+      const who = p.agent_name || agentNameById(p.agent);
+      return `❤️ ${esc(who)}`;
+    }
     if (p.msgs != null && p.need != null) return `${p.msgs} / ${p.need}`;
     if (p.talked_to && p.need) return `${p.talked_to.length} / ${p.need}`;
     if (p.talked_to) return p.talked_to.slice(0, 5).join(', ') + (p.talked_to.length > 5 ? ` +${p.talked_to.length - 5}` : '');
@@ -2499,6 +2519,9 @@ function renderAchievements(data) {
     if (p.channel) return esc(p.channel);
     if (p.days != null) return `${p.days}일`;
     if (p.friend) return esc(p.friend);
+    if (p.description) return esc(String(p.description).slice(0, 40));
+    if (p.count != null && p.threshold) return `${p.count} / ${p.threshold}`;
+    if (p.count != null) return `${p.count}건`;
     return '';
   };
 
