@@ -152,7 +152,12 @@ MGMT: list[ToolSpec] = [
     ),
     ToolSpec(
         name="update_relationship",
-        description="두 멤버 간 관계 필드 수정",
+        description=(
+            "두 멤버 간 관계 필드 수정. "
+            "허용 field: 'intimacy' (= 'affection') / 'type' / 'dynamics' 만. 다른 필드명 쓰면 거부됨. "
+            "value: intimacy 는 0-100 정수 또는 +N/-N 델타. type/dynamics 는 자유 문자열. "
+            "🚫 자기 자신 (caller=mgr/creator) 의 호감도/친밀도 직접 수정 금지 — 자연 누적만."
+        ),
         params={
             "name_a": _str,
             "name_b": _str,
@@ -161,6 +166,10 @@ MGMT: list[ToolSpec] = [
         },
         category="management",
         applies_to=frozenset({"mgr"}),
+        examples=[
+            '{"name_a":"장서윤","name_b":"아스나","field":"intimacy","value":"+10"}',
+            '{"name_a":"장서윤","name_b":"아스나","field":"type","value":"친구"}',
+        ],
     ),
     ToolSpec(
         name="invoke_agent",
