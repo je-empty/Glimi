@@ -425,43 +425,104 @@ async def sync_community(
                 discord_count = len(discord_msgs)
                 _progress(f"  {ch_name}: Discord {discord_count} / DB {db_count}")
 
-                # ── 순서 기반 divergence 찾기 (lookahead 포함) ──
-                # 기존엔 strict positional walk — Discord 에 단 1건의 extra/외부 메시지만 있어도
-                # 그 지점부터 모든 후속 인덱스가 mismatch 로 판정 → 대량 삭제 캐스케이드 발생.
-                # 개선: db[i] != discord[j] 시 discord[j..j+LOOKAHEAD] 안에서 db[i] 텍스트를
-                # 찾으면 Discord-only 메시지를 skip 하고 진행. 삭제 후보는 그 skip 된 메시지들.
+                # ── 순서 기반 divergence 찾기 (다층 lookahead) ──
+                # 회귀 1: strict positional walk → 1건 차이가 후속 전체 캐스케이드 mismatch 로 판정.
+                # 회귀 2: persona 응답이 Discord 에선 N개로 split 발송, DB 에는 합쳐서 1 row 저장된
+                #         경우 (구버전 logging 잔재) — 텍스트 동등 비교만 하면 1↔N 매칭 못함.
+                # 다층 매칭 순서:
+                #   (a) 정확 일치 — 가장 흔한 경로
+                #   (b) DB-1개 ↔ Discord-N개: db[i] == discord[j..j+M] 의 join (sep 다양)
+                #   (c) Discord-1개 ↔ DB-N개 (역방향): discord[j] == db[i..i+M] 의 join
+                #   (d) Discord-only (외부 발화): db[i] 가 discord[j+1..j+L] 어딘가에 그대로 등장
+                #   (e) 위 모두 실패 → 진짜 divergence, walk 종료
                 LOOKAHEAD = 5
-                discord_skip_idxs: list[int] = []  # Discord-only 로 판단되어 삭제 후보가 될 인덱스
+                JOIN_SEPS = ("\n", " ", "\n\n", "")
+                discord_skip_idxs: list[int] = []  # Discord-only → 삭제 후보
+                db_skip_idxs: list[int] = []       # DB-only → Discord 로 send 후보 (중간 누락)
                 i = 0  # db cursor
                 j = 0  # discord cursor
+
+                def _try_join_match(target: str, source_msgs, start: int, max_count: int,
+                                    text_fn) -> int:
+                    """source_msgs[start..start+k] 까지 join 했을 때 target 과 같아지는 k 반환.
+                    못 찾으면 -1."""
+                    for k in range(1, max_count + 1):
+                        if start + k > len(source_msgs):
+                            break
+                        parts = [text_fn(source_msgs[start + m]) for m in range(k + 1)]
+                        for sep in JOIN_SEPS:
+                            if sep.join(parts) == target:
+                                return k
+                    return -1
+
+                _db_text = lambda r: (r.get("message") if isinstance(r, dict) else "") or ""
+                _dc_text = lambda m: (m.content or "")
+
                 while i < db_count and j < discord_count:
-                    db_text = db_messages_ordered[i].get("message") or ""
-                    dc_text = discord_msgs[j].content or ""
+                    db_text = _db_text(db_messages_ordered[i])
+                    dc_text = _dc_text(discord_msgs[j])
+                    # (a) 정확 일치
                     if db_text == dc_text:
                         i += 1
                         j += 1
                         continue
-                    # 직접 안 맞을 때 — Discord 에서 LOOKAHEAD 안에 같은 텍스트 찾기
+                    # (b) DB 1 ↔ Discord N 매칭
+                    consume_dc = _try_join_match(db_text, discord_msgs, j,
+                                                  min(LOOKAHEAD, discord_count - j - 1),
+                                                  _dc_text)
+                    if consume_dc > 0:
+                        # discord[j..j+consume_dc] (총 consume_dc+1 개) 가 db[i] 1개에 대응.
+                        # 양쪽 다 일치하니 추가 액션 없음.
+                        i += 1
+                        j += consume_dc + 1
+                        continue
+                    # (c) Discord 1 ↔ DB N 매칭
+                    consume_db = _try_join_match(dc_text, db_messages_ordered, i,
+                                                  min(LOOKAHEAD, db_count - i - 1),
+                                                  _db_text)
+                    if consume_db > 0:
+                        i += consume_db + 1
+                        j += 1
+                        continue
+                    # (d) Discord-only — db[i] 가 discord[j+1..end] 어디든 정확히 있는지 풀스캔.
+                    # LOOKAHEAD 안에서만 찾으면 큰 갭 (e.g., 70+ 건 누락) 을 못 다리 놓음.
+                    # 대신 가장 가까운 매치 우선 — "skip 거리" 최소화 위해 첫 매치만 사용.
                     found = -1
-                    end = min(j + 1 + LOOKAHEAD, discord_count)
-                    for k in range(j + 1, end):
-                        if (discord_msgs[k].content or "") == db_text:
+                    for k in range(j + 1, discord_count):
+                        if _dc_text(discord_msgs[k]) == db_text:
                             found = k
                             break
                     if found != -1:
-                        # Discord[j..found-1] 는 Discord-only — 삭제 후보로 마킹, 진행
                         discord_skip_idxs.extend(range(j, found))
                         j = found + 1
                         i += 1
-                    else:
-                        # 진짜 divergence — 끝까지 다른 거. 그 자리에서 break.
-                        break
+                        continue
+                    # (e) DB-only — discord[j] 가 db[i+1..end] 어디든 정확히 있는지 풀스캔.
+                    found = -1
+                    for k in range(i + 1, db_count):
+                        if _db_text(db_messages_ordered[k]) == dc_text:
+                            found = k
+                            break
+                    if found != -1:
+                        db_skip_idxs.extend(range(i, found))
+                        i = found + 1
+                        j += 1
+                        continue
+                    # 진짜 divergence — 양방향 모두 매치 못 함. db[i] / discord[j] 둘 다 unique.
+                    # 하나씩만 카운팅 (db[i] = DB-only, discord[j] = Discord-only) 하고 진행.
+                    # 끝까지 못 만나면 break 인 게 맞지만, 단발성 mismatch 는 양쪽 unique 처리 후 진행.
+                    db_skip_idxs.append(i)
+                    discord_skip_idxs.append(j)
+                    i += 1
+                    j += 1
 
                 divergence = i
-                # discord_to_delete: lookahead 로 잡은 skip 들 + 진짜 divergence 이후 모두
+                # discord_to_delete: 중간 Discord-only 들 + 진짜 divergence 이후 Discord 잔여
                 discord_to_delete = [discord_msgs[k] for k in discord_skip_idxs]
                 discord_to_delete += discord_msgs[j:]
-                db_to_send = db_messages_ordered[i:]
+                # db_to_send: 중간 DB-only 들 + 진짜 divergence 이후 DB 잔여
+                db_to_send = [db_messages_ordered[k] for k in db_skip_idxs]
+                db_to_send += db_messages_ordered[i:]
 
                 if not discord_to_delete and not db_to_send:
                     result["channels_scanned"] += 1

@@ -211,7 +211,8 @@
 
     <!-- damage 상태용 버튼 영역 (평소 숨김) -->
     <div id="go-actions" style="display:none;margin-top:22px;gap:8px;justify-content:center">
-      <button onclick="_overlayDecide('cancel')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소 (가동 안 함)</button>
+      <button onclick="_overlayDecide('cancel')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소</button>
+      <button onclick="_overlayDecide('skip')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">무시하고 가동</button>
       <button onclick="_overlayDecide('recover')" style="background:#2563eb;color:#fff;border:1px solid #2563eb;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">복구하고 가동</button>
     </div>
 
@@ -338,13 +339,28 @@
           if (db !== discord) rows.push({ ch, db, discord, diff: db - discord });
         }
 
-        if (rows.length > 0) {
+        // 작은 drift 는 split mismatch (DB join ↔ Discord split) 등 알려진 비파괴 차이.
+        // 절대 차이 ≤5 AND 상대 차이 ≤5% 는 tolerance 내로 보고 damage overlay 안 띄움.
+        // (다만 "큰 drift 1개라도 있으면" overlay 띄움 — 작은 거만 있으면 자동 진행)
+        const TOL_ABS = 5;
+        const TOL_REL = 0.05;
+        const significantRows = rows.filter(r => {
+          const a = Math.abs(r.diff);
+          const denom = Math.max(r.db, r.discord, 1);
+          return a > TOL_ABS && (a / denom) > TOL_REL;
+        });
+
+        if (significantRows.length > 0) {
+          // 큰 drift — 사용자에게 결정 위임
           _setOverlayPhase('damaged', { rows });
           const decision = await new Promise(resolve => { _overlayResolver = resolve; });
           if (decision === 'cancel') {
             _hideOverlay();
             return;
           }
+          // decision === 'skip' 이면 sync 안 돌리고 곧장 booting 으로 fall-through.
+          // (아래 if 블록 안에서 recovering/recovered 단계만 skip)
+          if (decision === 'recover') {
           // recovering 진입 — 복구 대상 채널 목록을 overlay 에 넘겨서 per-channel 진행 표시.
           _setOverlayPhase('recovering', { rows });
           // 영향 받은 채널만 sync — Sync 탭의 "선택한 채널 싱크" 와 동일
@@ -385,6 +401,7 @@
           // sync 완료 — rows 에 최종 상태 표시
           _setOverlayPhase('recovered', { rows, result: finalRes && finalRes.result });
           await new Promise(r => setTimeout(r, 1200));  // 결과 잠시 보여주기
+          }  // end: decision === 'recover'
         }
       }
 
