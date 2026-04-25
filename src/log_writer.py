@@ -265,3 +265,21 @@ def clear_flags():
                 os.remove(os.path.join(log_dir, name))
             except FileNotFoundError:
                 pass
+
+
+def clear_runtime_flags():
+    """thinking/speaking 만 정리 — 봇 startup 시 호출. 옛 봇이 응답 생성 중 크래시 시 stale flag 잔존
+    → 새 봇이 그 에이전트를 영구 thinking 으로 인식하는 회귀 fix.
+    `.bot-ready`, `.tutorial*` 같은 진행 상태 마커는 보존."""
+    log_dir = _get_log_dir()
+    if not os.path.exists(log_dir):
+        return
+    removed = 0
+    for name in os.listdir(log_dir):
+        if name.startswith(".thinking-") or name.startswith(".speaking-"):
+            try:
+                os.remove(os.path.join(log_dir, name))
+                removed += 1
+            except FileNotFoundError:
+                pass
+    return removed
