@@ -796,7 +796,9 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         f"대화:\n{conv_text}"
     )
 
-    raw = _call_claude(prompt, model=EXTRACTION_MODEL, timeout=30)
+    # CLI cold-start + 동시성 경쟁으로 30s 는 페르소나 채널에서 빈번히 timeout → 메모리 적재 실패.
+    # 90s 로 확장 (Haiku 자체는 5-15s, 여유는 subprocess 오버헤드 흡수용).
+    raw = _call_claude(prompt, model=EXTRACTION_MODEL, timeout=90)
     if not raw:
         return None
     data = _extract_json_object(raw)
@@ -1059,7 +1061,7 @@ def _rollup_summarize(batch_text: str, level: int) -> str:
             "요약만 출력, 다른 텍스트 없이."
         )
     prompt = f"{instr}\n\n{batch_text}"
-    return _call_claude(prompt, model=EXTRACTION_MODEL, timeout=30)
+    return _call_claude(prompt, model=EXTRACTION_MODEL, timeout=90)
 
 
 def _try_l2_rollup(agent_id: str, channel: str):
