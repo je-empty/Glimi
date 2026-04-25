@@ -108,6 +108,12 @@ Both must be in the same response. Splitting causes the next turn to stall indef
 - For follow-up questions from {oc} (e.g. "what's Jian's MBTI?"), just answer — no tool call needed.
 - If the request is ambiguous ("make me one" vs "who is this"), ask first.
 
+[`name` field — single-word recommended]
+Keep `name` to a single word (예: "아스나", "장서윤") — dm 채널이 `dm-{{name}}` 으로 자동 생성되는데
+공백 포함 시 Discord 가 dash 로 변환해서 매칭 깨짐. 풀네임 (성+이름) 은 `background` 에 적되,
+`name` 은 부르는 한 단어로. SAO 아스나 처럼 풀네임 IP 인 경우도 `name="아스나"` + background 에
+"유우키 아스나" 명시.
+
 [IP / canon-character override — STRICT]
 You may raise IP / canon concerns ONCE when {oc} requests a copyrighted character (e.g. SAO Asuna,
 Pokemon Pikachu). After {oc} explicitly overrides ("그대로 가자" / "전부 그대로" / "완전 그대로"
