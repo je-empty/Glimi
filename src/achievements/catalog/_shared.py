@@ -87,10 +87,19 @@ def check_love_exchange(user_id: str, channel_filter: str,
                 if nxt["speaker"] == user_id:
                     continue
                 if _LOVE_AGENT_PAT.search(nxt["message"] or ""):
+                    # 에이전트 이름도 progress_data 에 명시 — UI 가 ID 변환 안 해도 됨.
+                    agent_name = ""
+                    try:
+                        agent = db.get_agent(nxt["speaker"])
+                        agent_name = (agent or {}).get("name", "") or ""
+                    except Exception:
+                        pass
                     return {
                         "state": "done", "mark_completed": True, "mark_unlocked": True,
                         "progress_data": {
-                            "channel": ch, "agent": nxt["speaker"],
+                            "channel": ch,
+                            "agent": nxt["speaker"],
+                            "agent_name": agent_name,
                             "owner_msg": (m["message"] or "")[:60],
                             "agent_msg": (nxt["message"] or "")[:60],
                         },
