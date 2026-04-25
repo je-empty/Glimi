@@ -621,7 +621,7 @@ class AgentRuntime:
         _limit = RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
-        log_writer.mark_thinking(agent_id)
+        log_writer.mark_thinking(agent_id, channel)
         log_writer.agent_thinking(agent_id, f"강제 지시 [{channel}]: {user_message[:40]}")
 
         responses: list[str] = []
@@ -710,7 +710,7 @@ class AgentRuntime:
         _limit = RAW_WINDOW
         recent = db.get_recent_messages(channel, limit=_limit)
 
-        log_writer.mark_thinking(agent_id)
+        log_writer.mark_thinking(agent_id, channel)
         log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
         # 단계별 타이밍 로그 + 하드 타임아웃 watchdog (>120초면 외부에서 stuck 알림)
@@ -878,7 +878,7 @@ class AgentRuntime:
             db.log_message(channel, get_user_id(), user_message)
             log_writer.chat(channel, get_user_name(), user_message)
 
-        log_writer.mark_thinking(agent_id)
+        log_writer.mark_thinking(agent_id, channel)
         log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
         if not CLAUDE_AVAILABLE:
@@ -1230,7 +1230,7 @@ class AgentRuntime:
         speaker_type = speaker_info["profile"].get("type", "persona")
         model = _resolve_agent_model(speaker_id, speaker_type)
 
-        log_writer.mark_thinking(speaker_id)
+        log_writer.mark_thinking(speaker_id, channel)
         try:
             if CLAUDE_AVAILABLE:
                 result = None

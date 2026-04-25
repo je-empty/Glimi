@@ -341,58 +341,68 @@ def get_agent(agent_id: str) -> Optional[dict]:
 
 
 def mark_meta_breached(agent_id: str) -> dict:
-    """persona 가 메타 자각 발화 → 잠금. 메모리 + 대화 기록 백업 후 삭제.
-    리턴: {deleted_convs, deleted_memories, deleted_facts, channel}."""
+    """persona 가 메타 자각 발화 → 잠금. **소프트 락**: 데이터 보존, 상태값으로만 관리.
+
+    이전 동작 (hard delete) 은 비가역. 사용자가 부활 요청해도 복원 불가능했음.
+    이제 데이터는 그대로 두고 status + meta_breached_at 만 set — 유나의 `revive_persona`
+    도구로 되살릴 수 있음. self_aware=1 로 부활하면 자각 유지하며 대화 가능.
+
+    리턴: {messages, memories, facts, channels} — 영향 받은 (보존된) 카운트.
+    """
     from datetime import datetime as _dt
     conn = get_conn()
     now = _dt.now().isoformat()
-    # status 는 CHECK constraint 때문에 'inactive' 사용 (locked 추가는 스키마 변경 필요).
-    # 메타 판정은 meta_breached_at 존재 여부로.
     conn.execute(
         "UPDATE agents SET meta_breached_at = ?, status = 'inactive' WHERE id = ?",
         (now, agent_id),
     )
-    # 이 에이전트가 참여한 채널 — dm/internal-dm-* 삭제 대상
+    # 영향 카운트만 — 실제 삭제 X
     chans = [r["channel"] for r in conn.execute(
         "SELECT DISTINCT channel FROM conversations WHERE speaker = ?", (agent_id,)
     ).fetchall()]
-    # 대화 기록은 trash 테이블에 백업 (roll-back 가능성)
-    if chans:
-        try:
-            for ch in chans:
-                conn.execute(
-                    "INSERT INTO trash(item_type, original_table, channel, data) "
-                    "SELECT 'meta_breach_conv', 'conversations', ?, json_group_array(json_object("
-                    " 'speaker', speaker, 'message', message, 'timestamp', timestamp))"
-                    " FROM conversations WHERE channel = ?",
-                    (ch, ch),
-                )
-        except Exception:
-            pass
-    del_convs = 0
-    if chans:
-        cur = conn.execute(
-            "DELETE FROM conversations WHERE channel IN (" + ",".join("?"*len(chans)) + ")",
-            chans,
-        )
-        del_convs = cur.rowcount
-    # 메모리 / facts / relationship history 삭제
-    cur_m = conn.execute("DELETE FROM memories WHERE agent_id = ?", (agent_id,))
-    del_mem = cur_m.rowcount
-    cur_f = conn.execute("DELETE FROM agent_facts WHERE agent_id = ?", (agent_id,))
-    del_facts = cur_f.rowcount
-    conn.execute(
-        "DELETE FROM relationship_history WHERE agent_a = ? OR agent_b = ?",
-        (agent_id, agent_id),
-    )
+    msg_count = conn.execute(
+        "SELECT COUNT(*) c FROM conversations WHERE speaker = ?", (agent_id,)
+    ).fetchone()["c"]
+    mem_count = conn.execute(
+        "SELECT COUNT(*) c FROM memories WHERE agent_id = ?", (agent_id,)
+    ).fetchone()["c"]
+    fact_count = conn.execute(
+        "SELECT COUNT(*) c FROM agent_facts WHERE agent_id = ?", (agent_id,)
+    ).fetchone()["c"]
     conn.commit()
     conn.close()
     return {
-        "deleted_conversations": del_convs,
-        "deleted_memories": del_mem,
-        "deleted_facts": del_facts,
+        "messages": msg_count,
+        "memories": mem_count,
+        "facts": fact_count,
         "channels": chans,
+        # 호환성 — old caller 가 deleted_* 키 봄
+        "deleted_conversations": 0,
+        "deleted_memories": 0,
+        "deleted_facts": 0,
     }
+
+
+def revive_meta_breached(agent_id: str) -> dict:
+    """메타 박살 페르소나 부활 — self_aware=1 로 set 해서 자각 유지 + 재박살 방지.
+
+    리턴: {restored: bool, was_breached: bool}.
+    """
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT meta_breached_at FROM agents WHERE id = ?", (agent_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return {"restored": False, "was_breached": False, "reason": "agent not found"}
+    was_breached = bool(row["meta_breached_at"])
+    conn.execute(
+        "UPDATE agents SET meta_breached_at = NULL, status = 'active', self_aware = 1 WHERE id = ?",
+        (agent_id,),
+    )
+    conn.commit()
+    conn.close()
+    return {"restored": True, "was_breached": was_breached}
 
 
 def is_meta_breached(agent_id: str) -> bool:
@@ -1135,6 +1145,9 @@ def _migrate_schema():
         # 프로필 이미지로 사용한 sample 원본 파일명 (assets/sample_profile_images/*.png).
         # Creator 가 catalog 에서 이미 쓴 sample 을 제외하고 추천하도록 추적용.
         "sample_source_file": "TEXT",
+        # 자각 상태 페르소나 — 1 이면 self-aware 발화 시 잠금 안 됨, 라인 그대로 통과.
+        # 메타 붕괴 후 사용자가 계속 대화하고 싶을 때 수동 set.
+        "self_aware": "INTEGER DEFAULT 0",
     }
     for col, col_type in new_cols.items():
         if col not in agent_cols:

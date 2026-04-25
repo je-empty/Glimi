@@ -184,6 +184,28 @@ async def _h_reset_agent(args: dict, ctx: ToolContext):
     return {"name": args["name"]}
 
 
+async def _h_revive_persona(args: dict, ctx: ToolContext):
+    """메타 박살된 페르소나 부활."""
+    target = db.get_agent_by_name(args["name"])
+    if not target:
+        return {"name": args["name"], "ok": False, "error": "agent not found"}
+    result = db.revive_meta_breached(target["id"])
+    if result.get("restored"):
+        log_writer.system(
+            f"🌱 [부활] {args['name']} ({target['id']}) — 자각 상태로 부활. "
+            f"이전 박살: {result.get('was_breached')}"
+        )
+        # runtime cache invalidate — 새 status 반영
+        try:
+            from src.core import runtime as _rt
+            if hasattr(_rt, "invalidate_cache"):
+                _rt.invalidate_cache(target["id"])
+        except Exception:
+            pass
+    return {"name": args["name"], "ok": result.get("restored", False),
+            "was_breached": result.get("was_breached", False)}
+
+
 async def _h_request_dev_task(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import yuna_dev_request
     from src.bot import MGR_ID
@@ -630,6 +652,7 @@ _MAP = {
     "reset_channel": _h_reset_channel,
     "clear_messages": _h_clear_messages,
     "reset_agent": _h_reset_agent,
+    "revive_persona": _h_revive_persona,
     "request_dev_task": _h_request_dev_task,
     "scene_advance": _h_scene_advance,
     "finish_profile_collection": _h_finish_profile_collection,
