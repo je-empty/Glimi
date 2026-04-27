@@ -58,8 +58,13 @@ def _analyze_damage(scan_result: dict) -> dict:
     orphan_in_discord: list = [ch for ch in sorted(discord_set - db_set)]
 
     # 메시지 drift — 양쪽 모두 존재하는 채널만. MSG_SYNC_EXCLUDED 는 drift 체크 스킵.
+    # Tolerance: 작은 drift 는 "split mismatch" (DB join ↔ Discord split, 1줄 vs N줄) 등 알려진
+    # 비파괴 차이라 ignore. 절대 5건 이하 AND 상대 5% 이하면 clean 처리.
+    TOL_ABS = 5
+    TOL_REL = 0.05
     msg_drift_db_more: list = []
     msg_drift_discord_more: list = []
+    minor_drifts: list = []  # tolerance 안 인 채널 (참고용 노출, clean 판정 영향 X)
     for ch in (discord_set & db_set):
         if ch in MSG_SYNC_EXCLUDED:
             continue
@@ -68,14 +73,18 @@ def _analyze_damage(scan_result: dict) -> dict:
         diff = db_count - d_count
         if diff == 0:
             continue
+        abs_diff = abs(diff)
+        denom = max(db_count, d_count, 1)
+        rel = abs_diff / denom
+        is_significant = abs_diff > TOL_ABS or rel > TOL_REL
+        entry = {"name": ch, "db": db_count, "discord": d_count, "diff": abs_diff}
+        if not is_significant:
+            minor_drifts.append({**entry, "signed_diff": diff})
+            continue
         if diff > 0:
-            msg_drift_db_more.append({
-                "name": ch, "db": db_count, "discord": d_count, "diff": diff,
-            })
+            msg_drift_db_more.append(entry)
         else:
-            msg_drift_discord_more.append({
-                "name": ch, "db": db_count, "discord": d_count, "diff": -diff,
-            })
+            msg_drift_discord_more.append(entry)
 
     # 부가 정보 — scan 이 제공하면 포함 (카테고리 오류 / glimi 밖 orphan)
     orphan_outside = list(scan_result.get("orphan_outside", []) or [])
@@ -105,10 +114,9 @@ def _analyze_damage(scan_result: dict) -> dict:
         "wrong_category": wrong_category,
         "msg_drift_db_more": msg_drift_db_more,
         "msg_drift_discord_more": msg_drift_discord_more,
+        "minor_drifts": minor_drifts,  # tolerance 안. 정보용. clean 판정 영향 X.
         "total_issues": total_issues,
-        # Sync 탭 기준 — diff != 0 채널 없으면 clean.
-        # 부가(wrong_category, orphan_outside) 는 clean 판정에서 제외해
-        # Sync 탭과 동일한 판단 유지.
+        # 'clean' = significant 한 issue 0건. minor drift 는 ignore (split mismatch 등 비파괴).
         "clean": sync_clean,
     }
 
