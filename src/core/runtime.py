@@ -231,6 +231,21 @@ class AgentRuntime:
                 reminder_parts.append(digest)
             _checkpoint("activity_digest")
 
+            # 오너 프로필 이상치 검사 — placeholder/비현실 값 있으면 자연스레 정정 요청 단서.
+            try:
+                from src.core.profile import get_user_profile
+                from src.core.profile_anomalies import (
+                    check_user_profile_anomalies, format_anomaly_hint,
+                )
+                up = get_user_profile() or {}
+                anomalies = check_user_profile_anomalies(up)
+                hint = format_anomaly_hint(anomalies)
+                if hint:
+                    reminder_parts.append(hint)
+            except Exception as e:
+                print(f"[runtime] 프로필 이상치 검사 실패 (무시): {e}")
+            _checkpoint("profile_anomalies")
+
         # ── 기억 섹션 (5 레이어 통합) ──
         # user_message + 최근 대화 텍스트를 entity 매칭용 힌트로 넘김
         focus_hint = user_message + "\n" + "\n".join(m.get("message", "") for m in recent[-5:])
