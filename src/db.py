@@ -729,11 +729,65 @@ def touch_memory_access(memory_ids: list[int]):
 
 # === Agent Facts (Layer 3) ===
 
+# predicate canonicalization — 한글/영어 변형을 한 form 으로 통일.
+# 같은 의미 다른 표현이 다른 row 로 누적되는 회귀 방지.
+_PREDICATE_CANONICAL = {
+    # hobby
+    "hobbies": "hobby", "interests": "hobby", "interest": "hobby",
+    "취미": "hobby", "관심사": "hobby", "취미·관심사": "hobby",
+    # likes / dislikes
+    "liked_things": "likes", "preferences": "likes", "preference": "likes",
+    "선호": "likes", "좋아하는것": "likes", "좋아하는 것": "likes", "좋아함": "likes",
+    "hates": "dislikes", "disliked_things": "dislikes",
+    "싫어하는것": "dislikes", "싫어하는 것": "dislikes", "싫어함": "dislikes",
+    # personality
+    "personality_traits": "personality", "traits": "personality", "character": "personality",
+    "성격": "personality", "성향": "personality", "특징": "personality",
+    # speech_style
+    "speech": "speech_style", "talking_style": "speech_style",
+    "말투": "speech_style", "말투특징": "speech_style",
+    # occupation / education
+    "job": "occupation", "work": "occupation", "profession": "occupation",
+    "직업": "occupation", "일": "occupation",
+    "school": "education", "schooling": "education",
+    "학교": "education", "학력": "education", "교육": "education",
+    "graduate_school_plans": "education_plan", "future_plan": "education_plan",
+    "진학계획": "education_plan", "대학원계획": "education_plan", "대학원 계획": "education_plan",
+    "education": "education",  # explicit canonical
+    # location / age / gender / family
+    "거주지": "location", "사는곳": "location", "사는 곳": "location", "지역": "location",
+    "생년월일": "birth", "생일": "birth",
+    "나이": "age", "연령": "age",
+    "성별": "gender",
+    "가족관계": "family", "가족": "family",
+    # mbti
+    "MBTI": "mbti", "엠비티아이": "mbti", "mbti_type": "mbti",
+    # 기타 자주 보이는 변형
+    "preferred_friend_type": "preferred_friend_type",
+    "원하는친구특성": "preferred_friend_type", "원하는 친구 유형": "preferred_friend_type",
+    "선호하는캐릭터유형": "preferred_friend_type", "원하는친구유형": "preferred_friend_type",
+}
+
+
+def _canonicalize_predicate(pred: str) -> str:
+    """동의어 predicate 를 canonical form 으로 매핑. unknown 은 그대로 (단, whitespace trim)."""
+    p = (pred or "").strip()
+    if not p:
+        return p
+    if p in _PREDICATE_CANONICAL:
+        return _PREDICATE_CANONICAL[p]
+    pl = p.lower()
+    if pl in _PREDICATE_CANONICAL:
+        return _PREDICATE_CANONICAL[pl]
+    return p
+
+
 def add_fact(agent_id: str, subject: str, predicate: str, object_value: str,
              source_channel: str = None, source_memory_id: int = None,
              confidence: float = 1.0, importance: int = 5) -> int:
     """새 fact 저장. 기존 동일 (subject, predicate) 있으면 valid_to 닫고 새로 INSERT (supersession).
-    같은 object면 no-op."""
+    같은 object면 no-op. predicate 는 canonical form 으로 자동 정규화됨."""
+    predicate = _canonicalize_predicate(predicate)
     conn = get_conn()
     # 기존 valid 체크
     existing = conn.execute(
