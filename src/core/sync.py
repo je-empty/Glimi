@@ -24,6 +24,38 @@ def _sync_error_log(msg: str):
     log_writer.error(f"[Sync] {msg}")
 
 
+def _normalize_ch_name(name: str) -> str:
+    """채널명 정규화 — 공백 → dash, 양 끝 trim. Discord 가 자동 변환하는 것과 일치시켜
+    DB·runtime cache 와 어긋나는 회귀 방지."""
+    import re as _re
+    if not name:
+        return name
+    return _re.sub(r"\s+", "-", name.strip())
+
+
+async def _ensure_unique_channel(guild, ch_name: str, category) -> tuple:
+    """채널 보장 함수 — 같은 이름 채널 있으면 재사용, 없으면 생성. **중복 생성 절대 방지**.
+
+    회귀: 여러 sync path 가 각자 create_text_channel 호출 → 같은 이름 다중 생성.
+    이 helper 거치면 always at-most-1.
+
+    Returns: (channel, created: bool)
+    """
+    normalized = _normalize_ch_name(ch_name)
+    # 1) 정규화된 이름으로 존재 확인 (Discord 측 정규화도 포함)
+    existing = discord_lib.utils.get(guild.text_channels, name=normalized)
+    if existing:
+        return existing, False
+    # 2) 원본 이름 (공백 포함) 도 확인 — Discord 가 자동변환 안 했을 가능성
+    if normalized != ch_name:
+        existing = discord_lib.utils.get(guild.text_channels, name=ch_name)
+        if existing:
+            return existing, False
+    # 3) 신규 생성 (정규화된 이름으로)
+    new_ch = await guild.create_text_channel(normalized, category=category)
+    return new_ch, True
+
+
 # 카테고리 순서
 CATEGORY_ORDER = ["glimi-mgr", "glimi-dm", "glimi-group", "glimi-internal-dm", "glimi-internal-group"]
 
@@ -240,10 +272,13 @@ async def sync_community(
                                 result["errors"].append(f"카테고리 생성 실패 ({cat_name}): {e}")
                                 continue
                         try:
-                            new_ch = await guild.create_text_channel(ch_name, category=cat)
+                            new_ch, created = await _ensure_unique_channel(guild, ch_name, cat)
                             surviving[ch_name] = new_ch
-                            result["channels_created"].append(ch_name)
-                            _progress(f"  생성: {ch_name}")
+                            if created:
+                                result["channels_created"].append(ch_name)
+                                _progress(f"  생성: {ch_name}")
+                            else:
+                                _progress(f"  유지: {ch_name} (이미 존재)")
                         except Exception as e:
                             result["errors"].append(f"생성 실패 ({ch_name}): {e}")
             else:
@@ -314,24 +349,18 @@ async def sync_community(
                     needed = [ch for ch in MGR_ORDER if ch in expected and ch not in surviving]
 
                 for ch_name in needed:
-                    # Phase 2 가 Discord 에 이미 있는 채널을 surviving 에 빠졌단 이유로 또 생성
-                    # → 중복 채널 증식 회귀. 생성 직전에 실제 길드 상태 재확인.
-                    # (fast_path 는 channels_filter 만 surviving 에 넣음 → 다른 expected 채널이
-                    # Discord 에 이미 있어도 phase 2 needed 로 빠져서 중복 생성 발생.)
-                    existing = discord_lib.utils.get(guild.text_channels, name=ch_name)
-                    if existing:
-                        surviving[ch_name] = existing
-                        _progress(f"  유지: {ch_name} (이미 존재)")
-                        continue
                     if dry_run:
                         result["channels_created"].append(ch_name)
                         _progress(f"  [dry-run] 생성 예정: {ch_name}")
                         continue
                     try:
-                        new_ch = await guild.create_text_channel(ch_name, category=cat)
+                        new_ch, created = await _ensure_unique_channel(guild, ch_name, cat)
                         surviving[ch_name] = new_ch
-                        result["channels_created"].append(ch_name)
-                        _progress(f"  생성: {ch_name}")
+                        if created:
+                            result["channels_created"].append(ch_name)
+                            _progress(f"  생성: {ch_name}")
+                        else:
+                            _progress(f"  유지: {ch_name} (이미 존재)")
                     except Exception as e:
                         result["errors"].append(f"생성 실패 ({ch_name}): {e}")
 
@@ -552,33 +581,11 @@ async def sync_community(
                 # 재생성은 DB 가 완전히 비어있을 때만 (discord 쪽 대량 삭제 개별로 하느니 채널 만드는게 빠름).
                 # 그 외엔 항상 in-place: divergence 부터 Discord 개별 삭제 + DB 앞에서부터 재전송.
                 # 이전엔 discord_to_delete > 20 이면 재생성했는데, 중간 갭 하나 때문에 채널 통째로
-                # 날리는 건 채널 ID/pin/webhook 날아가서 너무 침습적. 개별 삭제가 조금 느려도 안전함.
-                recreated = False
-                if discord_to_delete and db_count == 0:
-                    _progress(
-                        f"  {ch_name}: DB 비어있음, Discord {len(discord_to_delete)}건 — 채널 재생성"
-                    )
-                    cat = ch.category
-                    position = ch.position
-                    try:
-                        await ch.delete(reason="Glimi Sync: DB 빈 채널 정리 (재생성)")
-                        new_ch = await guild.create_text_channel(ch_name, category=cat)
-                        try:
-                            await new_ch.move(beginning=True, offset=position)
-                        except Exception:
-                            pass
-                        surviving[ch_name] = new_ch
-                        ch = new_ch
-                        total_discord_to_db += len(discord_to_delete)
-                        db_to_send = []  # DB 가 비어있으니 보낼 것도 없음
-                        discord_to_delete = []
-                        recreated = True
-                        _progress(f"  {ch_name}: 채널 재생성 완료")
-                    except Exception as e:
-                        result["errors"].append(f"채널 재생성 실패 ({ch_name}): {e}")
-
+                # 채널 재생성 path 제거 (사용자 요청). DB 가 비어있다고 채널 통째 삭제·재생성 하면
+                # 채널 ID 변경 + pin/webhook/permission 모두 날아감 — 너무 침습적.
+                # 항상 in-place: 메시지만 개별 삭제 + DB→Discord 재전송.
                 # divergence 부터 Discord 메시지 개별 삭제 (oldest→newest 순)
-                if not recreated and discord_to_delete:
+                if discord_to_delete:
                     _progress(
                         f"  {ch_name}: divergence={divergence}, Discord {len(discord_to_delete)}건 개별 삭제"
                     )

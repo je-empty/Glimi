@@ -309,9 +309,9 @@
       let skipScan = agents.length === 0;
 
       if (!skipScan) {
-        // Sync 탭이 방금 검증한 상태가 있으면 그대로 재사용 (단일 진실원) — 가동 직전
-        // 중복 scan 으로 sync 탭과 엇갈린 판정 나는 문제 방지. 없을 때만 fresh scan.
-        // _lastScanResult 는 dashboard.js 의 script-scope let — 같은 페이지 상 스크립트라 참조 가능.
+        // 단일 진실원: backend 의 _analyze_damage 가 tolerance 적용해 'clean' 필드 반환.
+        // 이전 frontend 는 자체 count 계산으로 tolerance 적용 — 두 곳 logic 갈리며 회귀 발생.
+        // 이제 backend damage 결과만 신뢰.
         let scanRes;
         const cached = (typeof _lastScanResult !== 'undefined') ? _lastScanResult : null;
         if (cached) {
@@ -324,33 +324,16 @@
           }).then(r => r.json()).catch(e => ({ ok: false, error: String(e) }));
         }
 
-        // Sync 탭의 renderScanTable + 자동선택 로직과 **동일 계산**:
-        //   allChs = keys(counts) ∪ keys(db_counts)
-        //   diff != 0 인 채널이 sync 대상
-        // MSG_SYNC_EXCLUDED — dashboard.js 의 상수 재사용 (mgr-system-log 는 drift 무시)
-        const dc = (scanRes && scanRes.result && scanRes.result.counts) || {};
-        const dbC = (scanRes && scanRes.result && scanRes.result.db_counts) || {};
-        const excluded = (typeof MSG_SYNC_EXCLUDED !== 'undefined') ? MSG_SYNC_EXCLUDED : new Set();
+        const damage = (scanRes && scanRes.result && scanRes.result.damage) || {};
+        const isClean = damage.clean !== false;  // unknown 도 clean 으로 (안전)
+        // 표시용 rows — significant drift 만. minor_drifts 는 무시.
         const rows = [];
-        for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
-          if (excluded.has(ch)) continue;
-          const db = dbC[ch] || 0;
-          const discord = dc[ch] || 0;
-          if (db !== discord) rows.push({ ch, db, discord, diff: db - discord });
-        }
+        for (const r of (damage.msg_drift_db_more || [])) rows.push({ ch: r.name, db: r.db, discord: r.discord, diff: r.diff });
+        for (const r of (damage.msg_drift_discord_more || [])) rows.push({ ch: r.name, db: r.db, discord: r.discord, diff: -r.diff });
+        for (const ch of (damage.missing_in_discord || [])) rows.push({ ch, db: '?', discord: 0, diff: 1 });
+        for (const ch of (damage.orphan_in_discord || [])) rows.push({ ch, db: 0, discord: '?', diff: -1 });
 
-        // 작은 drift 는 split mismatch (DB join ↔ Discord split) 등 알려진 비파괴 차이.
-        // 절대 차이 ≤5 AND 상대 차이 ≤5% 는 tolerance 내로 보고 damage overlay 안 띄움.
-        // (다만 "큰 drift 1개라도 있으면" overlay 띄움 — 작은 거만 있으면 자동 진행)
-        const TOL_ABS = 5;
-        const TOL_REL = 0.05;
-        const significantRows = rows.filter(r => {
-          const a = Math.abs(r.diff);
-          const denom = Math.max(r.db, r.discord, 1);
-          return a > TOL_ABS && (a / denom) > TOL_REL;
-        });
-
-        if (significantRows.length > 0) {
+        if (!isClean) {
           // 큰 drift — 사용자에게 결정 위임
           _setOverlayPhase('damaged', { rows });
           const decision = await new Promise(resolve => { _overlayResolver = resolve; });
