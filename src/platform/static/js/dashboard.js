@@ -1188,20 +1188,37 @@ function renderScanTable() {
   const dc = _lastScanResult.counts || {};
   const dbC = _lastScanResult.db_counts || {};
   const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
+  // 같은 tolerance 를 backend _analyze_damage 와 일치시킴 — startup prep 의 damage 판정과
+  // sync 탭의 "필요" 판정이 같도록. 절대 ≤5 AND 상대 ≤5% drift 는 split mismatch 등 비파괴.
+  const TOL_ABS = 5;
+  const TOL_REL = 0.05;
+  const isSignificant = (db, dcCount) => {
+    const a = Math.abs(db - dcCount);
+    if (a === 0) return false;
+    const denom = Math.max(db, dcCount, 1);
+    return a > TOL_ABS && (a / denom) > TOL_REL;
+  };
   // MSG_SYNC_EXCLUDED 채널은 테이블엔 보이지만 체크박스 비활성 + 딤처리 — 존재는 알리되
   // 유저가 싱크 대상으로 실수 선택 못하게.
-  const rows = [...allChs].map(ch => ({
-    ch,
-    db: dbC[ch] || 0,
-    dc: dc[ch] || 0,
-    diff: (dbC[ch] || 0) - (dc[ch] || 0),
-    excluded: MSG_SYNC_EXCLUDED.has(ch),
-  }));
-  // 제외 채널은 가장 아래로, 나머지는 싱크 필요 우선 + diff 큰 순
+  const rows = [...allChs].map(ch => {
+    const dbCount = dbC[ch] || 0;
+    const dcCount = dc[ch] || 0;
+    const diff = dbCount - dcCount;
+    return {
+      ch,
+      db: dbCount,
+      dc: dcCount,
+      diff,
+      needsSync: !MSG_SYNC_EXCLUDED.has(ch) && isSignificant(dbCount, dcCount),
+      isMinor: !MSG_SYNC_EXCLUDED.has(ch) && diff !== 0 && !isSignificant(dbCount, dcCount),
+      excluded: MSG_SYNC_EXCLUDED.has(ch),
+    };
+  });
+  // 제외 채널은 가장 아래로, 나머지는 needsSync 우선 → minor drift → diff 큰 순
   rows.sort((a, b) => {
     if (a.excluded !== b.excluded) return a.excluded ? 1 : -1;
-    const needA = a.diff !== 0 ? 0 : 1;
-    const needB = b.diff !== 0 ? 0 : 1;
+    const needA = a.needsSync ? 0 : (a.isMinor ? 1 : 2);
+    const needB = b.needsSync ? 0 : (b.isMinor ? 1 : 2);
     if (needA !== needB) return needA - needB;
     return Math.abs(b.diff) - Math.abs(a.diff);
   });
@@ -1210,12 +1227,12 @@ function renderScanTable() {
   const syncable = rows.filter(r => !r.excluded);
   const totalDB = syncable.reduce((s, r) => s + r.db, 0);
   const totalDC = syncable.reduce((s, r) => s + r.dc, 0);
-  const needUp = syncable.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0);
-  const needDown = syncable.filter(r => r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
-  const syncedCh = syncable.filter(r => r.diff === 0).length;
+  const needUp = syncable.filter(r => r.needsSync && r.diff > 0).reduce((s, r) => s + r.diff, 0);
+  const needDown = syncable.filter(r => r.needsSync && r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
+  const syncedCh = syncable.filter(r => !r.needsSync).length;  // minor 도 동기화됨으로 카운트
   const needCh = syncable.length - syncedCh;
 
-  const allSelected = needCh > 0 && syncable.filter(r => r.diff !== 0).every(r => _syncSelectedChannels.has(r.ch));
+  const allSelected = needCh > 0 && syncable.filter(r => r.needsSync).every(r => _syncSelectedChannels.has(r.ch));
 
   host.innerHTML = `
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 14px;background:var(--panel);border:1px solid var(--border-soft);border-radius:8px;margin-bottom:10px;font-size:12px">
@@ -1256,10 +1273,24 @@ function renderScanTable() {
             const info = _chDiffInfo(r.db, r.dc);
             const checked = _syncSelectedChannels.has(r.ch);
             // 제외 채널은 무조건 비활성 + 딤처리. 동기화된 채널도 체크 비활성.
-            const disabled = r.excluded || r.diff === 0;
-            const statusLabel = r.excluded ? '— sync 제외 (로그 채널)' : info.label;
-            const color = r.excluded ? 'var(--text-dim)' :
-                          (r.diff > 0 ? 'var(--warn)' : (r.diff < 0 ? 'var(--err)' : 'var(--text-dim)'));
+            // tolerance 안 인 minor drift 도 disabled — sync 필요 X 로 표시.
+            // 그래도 사용자가 명시 sync 원하면 dim 행 풀고 수동 체크 가능 (체크박스만 enabled).
+            const disabled = r.excluded || (!r.needsSync && !r.isMinor);
+            let statusLabel;
+            let color;
+            if (r.excluded) {
+              statusLabel = '— sync 제외 (로그 채널)';
+              color = 'var(--text-dim)';
+            } else if (r.needsSync) {
+              statusLabel = info.label;
+              color = r.diff > 0 ? 'var(--warn)' : 'var(--err)';
+            } else if (r.isMinor) {
+              statusLabel = `✓ 동기화됨 (작은 drift ${Math.abs(r.diff)}건 — split mismatch 등 비파괴)`;
+              color = 'var(--text-dim)';
+            } else {
+              statusLabel = info.label;
+              color = 'var(--text-dim)';
+            }
             const rowStyle = r.excluded ? 'opacity:0.5' : '';
             return `
               <tr style="border-top:1px solid var(--border-soft);${rowStyle}">
