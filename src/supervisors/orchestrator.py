@@ -337,15 +337,13 @@ class OrchestratorSupervisor(Supervisor):
         from src.bot import internal_dm_channel_name
         ch_name = internal_dm_channel_name(a_name, b_name)
         try:
-            # 채널 생성 (Discord + DB)
+            # 채널 생성 (Discord + DB) — ensure_unique_channel 로 중복 생성 방지
             from src.bot.core import _get_category_for_channel, _ensure_category
-            existing = discord.utils.get(guild.text_channels, name=ch_name)
-            if not existing:
-                cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
-                ch = await guild.create_text_channel(ch_name, category=cat)
+            from src.core.sync import ensure_unique_channel
+            cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
+            ch, created = await ensure_unique_channel(guild, ch_name, cat)
+            if created:
                 log_writer.system(f"[sup:orchestrator] 채널 생성: {ch_name}")
-            else:
-                ch = existing
             db.set_channel_participants(ch_name, [a_id, b_id])
             # 첫 internal 대화면 관계 레코드도 자동 생성 — 없으면 다음 스캔에서도 계속
             # "모르는 사이" 로 분류되어 skip → rapport 쌓이지 못하는 루프. 여기서 기본

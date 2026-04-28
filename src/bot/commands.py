@@ -241,12 +241,13 @@ async def cmd_create_agent(ctx, *, concept: str):
         CHANNEL_AGENT_MAP[ch_name] = new_id
         AGENT_CHANNEL_MAP[new_id] = ch_name
 
-        # 채널 생성
+        # 채널 생성 — ensure_unique_channel 로 중복 방지 (이미 있으면 재사용)
         guild = ctx.guild
         from src.bot.core import _get_category_for_channel, _ensure_category
+        from src.core.sync import ensure_unique_channel
         category = await _ensure_category(guild, _get_category_for_channel(ch_name))
-        if category and not discord.utils.get(guild.text_channels, name=ch_name):
-            await guild.create_text_channel(ch_name, category=category)
+        if category:
+            await ensure_unique_channel(guild, ch_name, category)
 
         # 서유나 보고
         await send_as_agent(ctx.channel, hana_id,
@@ -841,10 +842,8 @@ async def cmd_create_room(ctx, *args):
         await send_as_agent(ctx.channel, mgr_id, f"이미 있는 채널이야: #{ch_name}")
         return
 
-    if category:
-        new_ch = await guild.create_text_channel(ch_name, category=category)
-    else:
-        new_ch = await guild.create_text_channel(ch_name)
+    from src.core.sync import ensure_unique_channel
+    new_ch, _ = await ensure_unique_channel(guild, ch_name, category)
 
     # 채널 매핑 등록 (그룹 채널)
     participant_ids = [p["id"] for p in participants]
@@ -923,14 +922,10 @@ async def cmd_start_convo(ctx, *args):
     ch_name = f"internal-{'-'.join(names)}"
     guild = ctx.guild
     from src.bot.core import _get_category_for_channel, _ensure_category
+    from src.core.sync import ensure_unique_channel
     category = await _ensure_category(guild, _get_category_for_channel(ch_name))
-    target_ch = discord.utils.get(guild.text_channels, name=ch_name)
-
-    if not target_ch:
-        if category:
-            target_ch = await guild.create_text_channel(ch_name, category=category)
-        else:
-            target_ch = await guild.create_text_channel(ch_name)
+    target_ch, created = await ensure_unique_channel(guild, ch_name, category)
+    if created:
         await send_as_agent(ctx.channel, mgr_id, f"채널 생성: #{ch_name}")
 
     await send_as_agent(ctx.channel, mgr_id,
