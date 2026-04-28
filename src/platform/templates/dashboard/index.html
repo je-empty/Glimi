@@ -301,6 +301,20 @@
   let _overlayResolver = null;
   async function _runStartupPrep(action) {
     _showOverlay();
+    // ── 봇 먼저 종료 — scan/sync 는 봇 stopped 요구.
+    // 회귀: 재가동 시 봇 살아있는 채로 overlay 띄우면 뒤편에서 에이전트 계속 추론 → 손상 복구
+    // 와 동시에 새 메시지 적재 → race. 무조건 stop 후 prep 진행.
+    _setOverlayPhase('stopping');
+    try {
+      const stopRes = await fetch('/api/communities/' + CID + '/stop', { method: 'POST' }).then(r => r.json()).catch(() => null);
+      // stopped (또는 was_running=false) 까지 짧게 polling — 종료 race 방지
+      for (let i = 0; i < 20; i++) {
+        const st = await fetch('/api/communities/' + CID + '/status').then(r => r.json()).catch(() => ({}));
+        if (!st || !st.running) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    } catch (_) {}
+
     _setOverlayPhase('scanning');
     try {
       // 현 상태 조회 — fresh(에이전트 0) 면 scan 스킵
@@ -425,7 +439,12 @@
     dots.style.display = 'flex';
     actions.style.display = 'none';
 
-    if (phase === 'scanning') {
+    if (phase === 'stopping') {
+      emoji.textContent = '⏸';
+      title.textContent = '봇 종료 중';
+      sub.innerHTML = '복구 작업 전에 에이전트 추론을 멈추는 중...';
+      progress.textContent = '';
+    } else if (phase === 'scanning') {
       emoji.textContent = '🔍';
       title.textContent = '디스코드 상태 확인 중';
       sub.innerHTML = '현 채널 상태 빠르게 스캔 중...';
