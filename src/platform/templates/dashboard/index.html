@@ -220,7 +220,8 @@
 
     <!-- 로그 — 딤 배경에 녹아들게. 위/아래 페이드 -->
     <div style="position:relative;margin-top:20px;text-align:left">
-      <pre id="go-log" style="background:transparent;border:none;padding:0;margin:0;height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:#8b8fa3;white-space:pre-wrap;word-break:break-all;mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)"></pre>
+      <pre id="go-log" class="go-log-pane" style="background:transparent;border:none;padding:0 0 36px 0;margin:0;height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:#8b8fa3;white-space:pre-wrap;word-break:break-all;scrollbar-width:none;-ms-overflow-style:none;mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)"></pre>
+      <style>.go-log-pane::-webkit-scrollbar{display:none;width:0;height:0}</style>
       <input id="go-autoscroll" type="checkbox" checked style="display:none">
     </div>
   </div>

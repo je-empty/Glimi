@@ -27,16 +27,36 @@ def _get_db_path() -> str:
 
 def get_conn() -> sqlite3.Connection:
     # busy_timeout — 다른 writer 가 lock 잡고 있을 때 즉시 OperationalError 던지지 않고
-    # 최대 5초 대기 후 재시도. 다중 thread (memory worker · supervisor · runtime) 동시 write
-    # 시 'database is locked' 회귀 방지.
+    # 최대 30초 대기. 다중 thread (memory worker · supervisor · runtime · tutorial check)
+    # 동시 write 시 'database is locked' 회귀 방지. busy_timeout=5000 이 부족했던 회귀
+    # (large memory commit + on_ready 동시) → 30000 으로 확장.
     # WAL + synchronous=NORMAL — WAL 권장 페어 (성능 ↑, FS crash 시점 1 트랜잭션만 잃을 수 있음).
-    conn = sqlite3.connect(_get_db_path(), timeout=5.0)
+    conn = sqlite3.connect(_get_db_path(), timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def _retry_on_lock(func, *args, max_attempts: int = 5, **kwargs):
+    """database is locked 발생 시 짧은 백오프 후 재시도 헬퍼.
+
+    busy_timeout 이 SQLite 엔진 단계 1차 방어선. 그래도 실패하면 Python 단계에서
+    재시도. 5회 = 최대 ~5초 추가 대기. 이래도 안 풀리면 진짜 문제 (deadlock 등).
+    """
+    import time as _time
+    for attempt in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e).lower():
+                raise
+            if attempt == max_attempts - 1:
+                raise
+            _time.sleep(0.2 * (2 ** attempt))  # 0.2 / 0.4 / 0.8 / 1.6 / (raise)
+    return None  # unreachable
 
 
 def init_db():
@@ -1654,10 +1674,14 @@ def get_meta(key: str) -> Optional[str]:
 
 
 def set_meta(key: str, value: str):
-    conn = get_conn()
-    conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
-    conn.commit()
-    conn.close()
+    def _do():
+        conn = get_conn()
+        try:
+            conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
+            conn.commit()
+        finally:
+            conn.close()
+    _retry_on_lock(_do)
 
 
 # ══════════════════════════════════════════════════════
