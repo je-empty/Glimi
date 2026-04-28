@@ -511,8 +511,10 @@ async def ensure_channels(guild: discord.Guild):
         if MGR_CHANNEL not in names:
             cat = await _ensure_category(guild, "glimi-mgr")
             try:
-                created = await guild.create_text_channel(MGR_CHANNEL, category=cat)
-                log_writer.system(f"Channel created: {MGR_CHANNEL} (id={created.id})")
+                from src.core.sync import ensure_unique_channel
+                created, was_created = await ensure_unique_channel(guild, MGR_CHANNEL, cat)
+                if was_created:
+                    log_writer.system(f"Channel created: {MGR_CHANNEL} (id={created.id})")
             except Exception as e:
                 log_writer.system(f"❌ Channel create FAIL: {MGR_CHANNEL} ({type(e).__name__}: {e})")
                 raise
@@ -553,13 +555,15 @@ async def ensure_channels(guild: discord.Guild):
         log_writer.system(f"기존 채널 {len(existing)}개, 필요 채널 {len(needed)}개")
 
         created = []
+        from src.core.sync import ensure_unique_channel
         for ch_name in sorted(needed):
             if ch_name not in existing:
                 cat_name = _get_category_for_channel(ch_name)
                 category = await _ensure_category(guild, cat_name)
-                await guild.create_text_channel(ch_name, category=category)
-                created.append(ch_name)
-                log_writer.system(f"Channel created: {ch_name}")
+                _new_ch, was_created = await ensure_unique_channel(guild, ch_name, category)
+                if was_created:
+                    created.append(ch_name)
+                    log_writer.system(f"Channel created: {ch_name}")
 
             # DB에 참가자 등록 (없으면)
             if not db.get_channel_participants(ch_name):
@@ -624,7 +628,8 @@ async def create_tutorial_channel(guild: discord.Guild, ch_name: str, participan
         log_writer.system(f"❌ 튜토리얼 Category fail: {cat_name} ({type(e).__name__}: {e})")
         raise
     try:
-        ch = await guild.create_text_channel(ch_name, category=category)
+        from src.core.sync import ensure_unique_channel
+        ch, _created = await ensure_unique_channel(guild, ch_name, category)
     except Exception as e:
         log_writer.system(f"❌ 튜토리얼 Channel create fail: {ch_name} ({type(e).__name__}: {e})")
         raise

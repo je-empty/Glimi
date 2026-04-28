@@ -24,7 +24,7 @@ def _sync_error_log(msg: str):
     log_writer.error(f"[Sync] {msg}")
 
 
-def _normalize_ch_name(name: str) -> str:
+def normalize_channel_name(name: str) -> str:
     """채널명 정규화 — 공백 → dash, 양 끝 trim. Discord 가 자동 변환하는 것과 일치시켜
     DB·runtime cache 와 어긋나는 회귀 방지."""
     import re as _re
@@ -33,15 +33,17 @@ def _normalize_ch_name(name: str) -> str:
     return _re.sub(r"\s+", "-", name.strip())
 
 
-async def _ensure_unique_channel(guild, ch_name: str, category) -> tuple:
+async def ensure_unique_channel(guild, ch_name: str, category=None, **kwargs) -> tuple:
     """채널 보장 함수 — 같은 이름 채널 있으면 재사용, 없으면 생성. **중복 생성 절대 방지**.
 
-    회귀: 여러 sync path 가 각자 create_text_channel 호출 → 같은 이름 다중 생성.
-    이 helper 거치면 always at-most-1.
+    회귀: 여러 sync/mgr/scene path 가 각자 create_text_channel 호출 → 같은 이름 다중 생성.
+    이 helper 통과하면 always at-most-1. 모든 채널 생성 callers 가 이 함수 거쳐야 함.
+
+    kwargs 는 create_text_channel 의 추가 인자 (overwrites 등) 통과.
 
     Returns: (channel, created: bool)
     """
-    normalized = _normalize_ch_name(ch_name)
+    normalized = normalize_channel_name(ch_name)
     # 1) 정규화된 이름으로 존재 확인 (Discord 측 정규화도 포함)
     existing = discord_lib.utils.get(guild.text_channels, name=normalized)
     if existing:
@@ -52,8 +54,13 @@ async def _ensure_unique_channel(guild, ch_name: str, category) -> tuple:
         if existing:
             return existing, False
     # 3) 신규 생성 (정규화된 이름으로)
-    new_ch = await guild.create_text_channel(normalized, category=category)
+    new_ch = await guild.create_text_channel(normalized, category=category, **kwargs)
     return new_ch, True
+
+
+# 후방호환 alias — 기존 sync.py 내부 caller (이미 옮겨짐)
+_ensure_unique_channel = ensure_unique_channel
+_normalize_ch_name = normalize_channel_name
 
 
 # 카테고리 순서

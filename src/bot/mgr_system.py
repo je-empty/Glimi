@@ -547,8 +547,9 @@ async def yuna_create_room(report_channel, args_str, guild):
         dm_ch = discord.utils.get(guild.text_channels, name=dm_name)
         if not dm_ch:
             from src.bot.core import _get_category_for_channel, _ensure_category
+            from src.core.sync import ensure_unique_channel
             category = await _ensure_category(guild, _get_category_for_channel(dm_name))
-            dm_ch = await guild.create_text_channel(dm_name, category=category or guild.text_channels[0].category)
+            dm_ch, _ = await ensure_unique_channel(guild, dm_name, category or guild.text_channels[0].category)
             CHANNEL_AGENT_MAP[dm_name] = participants[0]["id"]
             AGENT_CHANNEL_MAP[participants[0]["id"]] = dm_name
             db.set_channel_participants(dm_name, [participants[0]["id"]])
@@ -587,9 +588,10 @@ async def yuna_create_room(report_channel, args_str, guild):
     # 카테고리 매핑: group-* → glimi-group, internal-* → glimi-internal-* 등.
     # 이전엔 "glimi" 로 하드코딩돼서 모든 그룹/내부 채널이 같은 기본 카테고리로 들어가는 회귀.
     from src.bot.core import _get_category_for_channel, _ensure_category
+    from src.core.sync import ensure_unique_channel
     category = await _ensure_category(guild, _get_category_for_channel(ch_name))
-    new_ch = await guild.create_text_channel(
-        ch_name, category=category or guild.text_channels[0].category
+    new_ch, _ = await ensure_unique_channel(
+        guild, ch_name, category or guild.text_channels[0].category
     )
 
     # 참여자 등록 (메모리 + DB)
@@ -660,8 +662,9 @@ async def yuna_start_conversation(report_channel, args_str, guild):
         if target_ch:
             ch_name = alt
     if not target_ch:
-        target_ch = await guild.create_text_channel(
-            ch_name, category=category or guild.text_channels[0].category
+        from src.core.sync import ensure_unique_channel
+        target_ch, _ = await ensure_unique_channel(
+            guild, ch_name, category or guild.text_channels[0].category
         )
 
     # 참여자 등록 (메모리 + DB)
@@ -1386,9 +1389,10 @@ async def yuna_approve_action(report_channel, args_str, guild):
             target_ch = discord.utils.get(guild.text_channels, name=ch_name_alt) \
                      or discord.utils.get(guild.text_channels, name=ch_name_alt2)
         if not target_ch:
+            from src.core.sync import ensure_unique_channel
             category = discord.utils.get(guild.categories, name="internal") or \
                        (guild.categories[0] if guild.categories else None)
-            target_ch = await guild.create_text_channel(ch_name, category=category)
+            target_ch, _ = await ensure_unique_channel(guild, ch_name, category)
             db.set_channel_participants(ch_name, [sender_id, target_id])
 
         # 원본 메시지를 sender로 전송
@@ -1443,12 +1447,11 @@ async def yuna_approve_action(report_channel, args_str, guild):
         ch_name = f"{prefix}-" + "-".join(part_names)
         part_ids = [p["id"] for p in participants]
 
-        # 채널 찾기/생성
-        target_ch = discord.utils.get(guild.text_channels, name=ch_name)
-        if not target_ch:
-            category = discord.utils.get(guild.categories, name="group") or \
-                       (guild.categories[0] if guild.categories else None)
-            target_ch = await guild.create_text_channel(ch_name, category=category)
+        # 채널 찾기/생성 — ensure_unique_channel 로 중복 방지
+        from src.core.sync import ensure_unique_channel
+        category = discord.utils.get(guild.categories, name="group") or \
+                   (guild.categories[0] if guild.categories else None)
+        target_ch, _ = await ensure_unique_channel(guild, ch_name, category)
 
         GROUP_PARTICIPANTS[ch_name] = part_ids
         db.set_channel_participants(ch_name, part_ids)
@@ -1687,10 +1690,10 @@ async def _cmd_profile_create(report_channel, json_str):
         if agent_type == "persona" and report_channel.guild:
             dm_name = _sanitize_dm_name(profile['name'])
             from src.bot.core import _get_category_for_channel, _ensure_category
-            existing = discord.utils.get(report_channel.guild.text_channels, name=dm_name)
-            if not existing:
-                cat = await _ensure_category(report_channel.guild, _get_category_for_channel(dm_name))
-                await report_channel.guild.create_text_channel(dm_name, category=cat)
+            from src.core.sync import ensure_unique_channel
+            cat = await _ensure_category(report_channel.guild, _get_category_for_channel(dm_name))
+            _new_ch, was_created = await ensure_unique_channel(report_channel.guild, dm_name, cat)
+            if was_created:
                 log_writer.system(f"dm 채널 생성: {dm_name}")
             db.set_channel_participants(dm_name, [profile["id"]])
             CHANNEL_AGENT_MAP[dm_name] = profile["id"]
@@ -1968,8 +1971,9 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
                      or discord.utils.get(guild.text_channels, name=alt_ch_name2))
         if not target_ch:
             from src.bot.core import _get_category_for_channel, _ensure_category
+            from src.core.sync import ensure_unique_channel
             cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
-            target_ch = await guild.create_text_channel(ch_name, category=cat)
+            target_ch, _ = await ensure_unique_channel(guild, ch_name, cat)
             db.set_channel_participants(ch_name, [agent_id, target["id"]])
         actual_ch_name = target_ch.name
         await send_as_agent(target_ch, agent_id, message)
