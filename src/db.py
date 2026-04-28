@@ -26,9 +26,15 @@ def _get_db_path() -> str:
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(_get_db_path())
+    # busy_timeout — 다른 writer 가 lock 잡고 있을 때 즉시 OperationalError 던지지 않고
+    # 최대 5초 대기 후 재시도. 다중 thread (memory worker · supervisor · runtime) 동시 write
+    # 시 'database is locked' 회귀 방지.
+    # WAL + synchronous=NORMAL — WAL 권장 페어 (성능 ↑, FS crash 시점 1 트랜잭션만 잃을 수 있음).
+    conn = sqlite3.connect(_get_db_path(), timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
