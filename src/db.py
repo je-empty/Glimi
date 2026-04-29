@@ -25,13 +25,63 @@ def _get_db_path() -> str:
     return DB_PATH
 
 
+_LOCK_MAX_ATTEMPTS = 6  # 0.1 + 0.2 + 0.4 + 0.8 + 1.6 + 3.2 ≈ 6.3 s 추가 대기
+
+
+def _is_lock_err(exc: BaseException) -> bool:
+    return isinstance(exc, sqlite3.OperationalError) and "locked" in str(exc).lower()
+
+
+def _retry_lock(call, *args, **kwargs):
+    """database is locked 발생 시 지수 백오프 + 재시도. 다른 OperationalError 는 즉시 raise."""
+    import time as _time
+    for attempt in range(_LOCK_MAX_ATTEMPTS):
+        try:
+            return call(*args, **kwargs)
+        except sqlite3.OperationalError as e:
+            if not _is_lock_err(e) or attempt == _LOCK_MAX_ATTEMPTS - 1:
+                raise
+            _time.sleep(0.1 * (2 ** attempt))
+
+
+class _RetryCursor(sqlite3.Cursor):
+    """execute/executemany 가 'database is locked' 에 자동 재시도하는 커서."""
+
+    def execute(self, sql, params=()):  # type: ignore[override]
+        return _retry_lock(super().execute, sql, params)
+
+    def executemany(self, sql, params):  # type: ignore[override]
+        return _retry_lock(super().executemany, sql, params)
+
+
+class _RetryConnection(sqlite3.Connection):
+    """execute/executemany/commit 가 lock 에 자동 재시도하는 connection.
+
+    busy_timeout 이 SQLite C 레벨에서 ~30s 양보 대기를 한 뒤에도 실패하면, 이 레이어가
+    Python 단계에서 한 번 더 백오프 + 재시도. 다중 thread 동시 write (on_ready 채널 init
+    + memory worker + supervisor + tutorial check) 동시성 충돌 대비.
+    """
+
+    def execute(self, sql, params=()):  # type: ignore[override]
+        return _retry_lock(super().execute, sql, params)
+
+    def executemany(self, sql, params):  # type: ignore[override]
+        return _retry_lock(super().executemany, sql, params)
+
+    def commit(self):  # type: ignore[override]
+        return _retry_lock(super().commit)
+
+    def cursor(self, factory=_RetryCursor):  # type: ignore[override]
+        return super().cursor(factory)
+
+
 def get_conn() -> sqlite3.Connection:
     # busy_timeout — 다른 writer 가 lock 잡고 있을 때 즉시 OperationalError 던지지 않고
-    # 최대 30초 대기. 다중 thread (memory worker · supervisor · runtime · tutorial check)
-    # 동시 write 시 'database is locked' 회귀 방지. busy_timeout=5000 이 부족했던 회귀
-    # (large memory commit + on_ready 동시) → 30000 으로 확장.
+    # 최대 30초 대기 (SQLite 엔진 단계). 그래도 실패하면 _RetryConnection 이 Python 단계에서
+    # 추가 재시도 (~6초). 다중 thread (memory worker · supervisor · runtime · tutorial check)
+    # 동시 write 시 'database is locked' 회귀 방지.
     # WAL + synchronous=NORMAL — WAL 권장 페어 (성능 ↑, FS crash 시점 1 트랜잭션만 잃을 수 있음).
-    conn = sqlite3.connect(_get_db_path(), timeout=30.0)
+    conn = sqlite3.connect(_get_db_path(), timeout=30.0, factory=_RetryConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -40,23 +90,17 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-def _retry_on_lock(func, *args, max_attempts: int = 5, **kwargs):
-    """database is locked 발생 시 짧은 백오프 후 재시도 헬퍼.
-
-    busy_timeout 이 SQLite 엔진 단계 1차 방어선. 그래도 실패하면 Python 단계에서
-    재시도. 5회 = 최대 ~5초 추가 대기. 이래도 안 풀리면 진짜 문제 (deadlock 등).
-    """
+# Backward compat — 기존 호출부가 _retry_on_lock 으로 명시 wrapping 한 곳 보존.
+def _retry_on_lock(func, *args, max_attempts: int = _LOCK_MAX_ATTEMPTS, **kwargs):
     import time as _time
     for attempt in range(max_attempts):
         try:
             return func(*args, **kwargs)
         except sqlite3.OperationalError as e:
-            if "locked" not in str(e).lower():
+            if not _is_lock_err(e) or attempt == max_attempts - 1:
                 raise
-            if attempt == max_attempts - 1:
-                raise
-            _time.sleep(0.2 * (2 ** attempt))  # 0.2 / 0.4 / 0.8 / 1.6 / (raise)
-    return None  # unreachable
+            _time.sleep(0.1 * (2 ** attempt))
+    return None
 
 
 def init_db():
@@ -65,7 +109,7 @@ def init_db():
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS agents (
             id TEXT PRIMARY KEY,
-            type TEXT NOT NULL CHECK(type IN ('persona', 'mgr', 'creator')),
+            type TEXT NOT NULL CHECK(type IN ('persona', 'mgr', 'creator', 'dev')),
             name TEXT NOT NULL,
             name_i18n TEXT,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'archived')),
@@ -284,6 +328,26 @@ def init_db():
             PRIMARY KEY (user_id, key)
         );
         CREATE INDEX IF NOT EXISTS idx_ach_user_state ON achievements(user_id, state);
+
+        -- ── Dev requests (request_dev_fix tool 호출로 적재) ──
+        -- 'dev' agent (세나) 가 pending 픽업 → 분석 → confidence 판정 →
+        -- HIGH: claude CLI (Opus) subprocess + commit/push → status='completed'
+        -- LOW (사람 판단 필요): status='needs_human_review' + result_json 에 정리된 보고서.
+        CREATE TABLE IF NOT EXISTS dev_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending', 'processing', 'completed', 'needs_human_review', 'failed')),
+            requested_by TEXT NOT NULL,            -- agent_id 또는 'owner'
+            payload_json TEXT NOT NULL,            -- {channel, severity, repro, expected, actual, notes}
+            confidence TEXT,                        -- 'high' | 'low' (NULL = 미판정)
+            result_json TEXT,                       -- 결과 보고서 (commit_sha, summary, files_changed, escalation_reason 등)
+            commit_sha TEXT,
+            requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            started_at DATETIME,
+            completed_at DATETIME,
+            error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_dev_req_status ON dev_requests(status, requested_at);
     """)
     conn.commit()
     conn.close()
@@ -1234,6 +1298,10 @@ def _migrate_schema():
             conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {col_type}")
             print(f"[DB] agents.{col} 추가")
 
+    # agents.type CHECK 제약 마이그레이션 — 'dev' 추가용 (기존 DB 는 ('persona','mgr','creator')
+    # 만 허용). SQLite 는 CHECK 변경 직접 불가 → 테이블 재생성 필요.
+    _migrate_agents_type_check(conn)
+
     conn.commit()
 
     # gender 백필 — agents.gender NULL 인 행에 한해 휴리스틱 추론 (1회성)
@@ -1383,6 +1451,74 @@ def _backfill_agent_gender(conn):
     if updated:
         conn.commit()
     print(f"[DB] gender 백필: {updated}개 추론 / {len(rows) - updated}개 미정 (수동 입력 필요)")
+
+
+def _migrate_agents_type_check(conn: sqlite3.Connection):
+    """agents.type CHECK 제약에 'dev' 가 포함되어 있지 않으면 테이블 재생성으로 추가.
+
+    SQLite 는 CHECK 제약을 ALTER TABLE 로 수정할 수 없어 INSERT-rename 패턴 사용.
+    기존 행·인덱스·트리거 보존. 'dev' 가 이미 허용되면 no-op.
+    """
+    # 빠른 감지 — 임시로 dev 행 INSERT 시도. 성공하면 이미 마이그레이션 됨.
+    try:
+        conn.execute(
+            "INSERT INTO agents (id, type, name) VALUES ('__schema_probe_dev__', 'dev', 'probe')"
+        )
+        conn.execute("DELETE FROM agents WHERE id = '__schema_probe_dev__'")
+        return
+    except sqlite3.IntegrityError as e:
+        if "CHECK constraint" not in str(e):
+            # name NOT NULL 등 다른 제약 오류면 그냥 raise — 하지만 INSERT 가 위에서 다 채웠으니
+            # 여기 도달 가능성 낮음. 안전하게 raise.
+            raise
+
+    print("[DB] agents.type CHECK 마이그레이션 시작 ('dev' 추가)")
+    # 1. 새 테이블 (init_db 의 최신 정의와 동일 — 'dev' 포함)
+    conn.execute("""
+        CREATE TABLE agents_new (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL CHECK(type IN ('persona', 'mgr', 'creator', 'dev')),
+            name TEXT NOT NULL,
+            name_i18n TEXT,
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'archived')),
+            current_emotion TEXT DEFAULT '평온',
+            emotion_intensity INTEGER DEFAULT 5 CHECK(emotion_intensity BETWEEN 1 AND 10),
+            last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
+            birth_year INTEGER,
+            age INTEGER,
+            gender TEXT,
+            mbti TEXT,
+            enneagram TEXT,
+            background TEXT,
+            profile_image_filename TEXT,
+            version INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            model_override TEXT,
+            meta_breached_at DATETIME,
+            sample_source_file TEXT,
+            self_aware INTEGER DEFAULT 0
+        )
+    """)
+    # 2. 기존 컬럼 교집합으로 데이터 복사
+    old_cols = [r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()]
+    new_cols = [r["name"] for r in conn.execute("PRAGMA table_info(agents_new)").fetchall()]
+    common = [c for c in new_cols if c in old_cols]
+    cols_csv = ", ".join(common)
+    conn.execute(f"INSERT INTO agents_new ({cols_csv}) SELECT {cols_csv} FROM agents")
+    # 3. 인덱스 백업 (agents 위 인덱스만) → 나중에 재생성. 보통은 PRIMARY KEY 외 없음.
+    indexes = conn.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='agents' AND sql IS NOT NULL"
+    ).fetchall()
+    # 4. 기존 테이블 drop + 새 테이블 rename
+    conn.execute("DROP TABLE agents")
+    conn.execute("ALTER TABLE agents_new RENAME TO agents")
+    # 5. 인덱스 재생성
+    for idx in indexes:
+        try:
+            conn.execute(idx["sql"])
+        except sqlite3.OperationalError as e:
+            print(f"[DB] index {idx['name']} 재생성 실패 (스킵): {e}")
+    print("[DB] agents.type CHECK 마이그레이션 완료")
 
 
 def _migrate_satellite_tables():

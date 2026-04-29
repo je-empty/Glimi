@@ -21,6 +21,7 @@
     --mgr: #2563eb;
     --creator: #d97706;
     --persona: #7c3aed;
+    --dev: #0891b2;
     --user: #ea580c;
     --shadow: 0 1px 3px rgba(20,22,40,0.06), 0 1px 2px rgba(20,22,40,0.04);
     --shadow-lg: 0 10px 30px rgba(20,22,40,0.08), 0 2px 8px rgba(20,22,40,0.04);
@@ -49,6 +50,7 @@
     --mgr: #93c5fd;
     --creator: #fcd34d;
     --persona: #c4b5fd;
+    --dev: #67e8f9;
     --user: #fdba74;
     --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
     --shadow-lg: 0 10px 30px rgba(0,0,0,0.4);
@@ -553,6 +555,14 @@
   .agent-card.mgr { border-left: 3px solid var(--mgr); }
   .agent-card.creator { border-left: 3px solid var(--creator); }
   .agent-card.persona { border-left: 3px solid var(--persona); }
+  .agent-card.dev { border-left: 3px solid var(--dev); }
+  /* Inactive — dev (한세나) 가 큐 비어있을 때 회색 dim. live 상태가 inactive 클래스 안 받음 (renderAgent 가드). */
+  .agent-card.inactive {
+    opacity: 0.55;
+    border-left-style: dashed;
+    background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  }
+  .agent-card.inactive:hover { opacity: 0.8; }
   .agent-card.thinking {
     grid-column: span 2;
     max-width: 760px;

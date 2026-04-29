@@ -472,7 +472,13 @@ function miniAvatarHtml(speakerId, isUser, speakerName) {
 }
 
 function renderAgent(a, clickable=true) {
-  const cls = ['agent-card', a.type, a.thinking ? 'thinking' : '', a.speaking ? 'speaking' : ''].filter(Boolean).join(' ');
+  // status 'inactive' 면 카드도 dim — dev agent 가 큐 비어있을 때.
+  // live 상태 (thinking/speaking) 가 inactive 보다 우선.
+  const isInactive = a.status === 'inactive' && !a.thinking && !a.speaking;
+  const cls = ['agent-card', a.type,
+               a.thinking ? 'thinking' : '',
+               a.speaking ? 'speaking' : '',
+               isInactive ? 'inactive' : ''].filter(Boolean).join(' ');
   const pct = Math.min(100, (a.intensity || 0) * 10);
   const elapsed = a.thinking ? a.thinking_seconds : a.speaking ? a.speaking_seconds : 0;
   const dot = a.status === 'active' ? 'active' : '';
@@ -1857,10 +1863,13 @@ function buildGraphElements(snap) {
     const a = idToAgent[aid];
     if (!a) continue;
     const liveCls = a.thinking ? 'thinking' : a.speaking ? 'speaking' : '';
+    // status 'inactive' 면 dim 처리 — dev agent (한세나) 가 큐 비어있을 때.
+    // thinking/speaking 중이면 inactive 무시 (live 가 우선).
+    const inactiveCls = (a.status === 'inactive' && !liveCls) ? 'inactive' : '';
     const avatar = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
     nodes.push({
       data: { id: a.id, label: a.name, kind: 'agent', agentType: a.type, avatar },
-      classes: ('agent ' + a.type + ' ' + liveCls).trim(),
+      classes: ('agent ' + a.type + ' ' + liveCls + ' ' + inactiveCls).trim(),
     });
   }
 
@@ -2040,6 +2049,7 @@ function mountCytoscapeGraph(snap) {
     mgr: tok('--mgr') || '#a6f',
     creator: tok('--creator') || '#fa3',
     persona: tok('--persona') || '#48f',
+    dev: tok('--dev') || '#0891b2',
     user: tok('--user') || '#fb6',
     cmd: tok('--cmd') || '#d6f',
     thinking: tok('--thinking') || '#fc6',
@@ -2095,13 +2105,25 @@ function mountCytoscapeGraph(snap) {
       { selector: 'node.agent.mgr', style: { 'border-color': C.mgr } },
       { selector: 'node.agent.creator', style: { 'border-color': C.creator } },
       { selector: 'node.agent.persona', style: { 'border-color': C.persona } },
+      { selector: 'node.agent.dev', style: { 'border-color': C.dev } },
+      {
+        // Inactive agent (dev 가 큐 비어있을 때) — 회색 테두리 + 노드/라벨 흐리게.
+        // thinking/speaking selector 보다 먼저 와야 — live 가 inactive 덮어쓰게.
+        selector: 'node.agent.inactive',
+        style: {
+          'border-color': C.textDim,
+          'border-style': 'dashed',
+          'opacity': 0.55,
+          'color': C.textDim,
+        },
+      },
       {
         selector: 'node.agent.thinking',
-        style: { 'border-color': C.accent, 'border-width': 4 },
+        style: { 'border-color': C.accent, 'border-width': 4, 'opacity': 1 },
       },
       {
         selector: 'node.agent.speaking',
-        style: { 'border-color': C.speaking, 'border-width': 4 },
+        style: { 'border-color': C.speaking, 'border-width': 4, 'opacity': 1 },
       },
       // ===== Owner node — Material person SVG, viewBox 큼 + figure 가운데에 작게 =====
       //   shape:ellipse + bg-clip 으로 잘리는 문제 방지를 위해 figure 를 inscribed circle 안에 배치
@@ -2604,7 +2626,9 @@ function syntheticTestUserAgent(snap) {
     speaking_seconds: 0,
     model: 'claude-haiku-4-5',
     provider: 'claude',
-    model_override: true,
+    // model_override 는 false — true 면 .model-tag.override 가 accent 색으로 덮어써서
+    // 페르소나 m-haiku 뱃지랑 색깔 안 맞음. test_user 는 default Haiku 라 override 아님.
+    model_override: false,
     _synthetic: true,
   };
 }

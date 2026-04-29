@@ -225,12 +225,74 @@ MGMT: list[ToolSpec] = [
     ),
     ToolSpec(
         name="request_dev_task",
-        description="봇 재시작 후 Opus가 코드 수정. args에 요청 내용",
+        description="[deprecated — use request_dev_fix] 봇 재시작 후 Opus가 코드 수정. args에 요청 내용",
         params={"args": {"type": "str", "required": True, "desc": "개발 요청 상세"}},
         category="management",
         applies_to=frozenset({"mgr"}),
         destructive=True,
         requires_approval=True,
+    ),
+    ToolSpec(
+        name="request_dev_fix",
+        description=(
+            "Dev manager (세나) 큐에 버그/이슈 보고서 적재. 세나이 분석 → "
+            "직접 수정 가능하면 Claude Code (Opus) 로 코드 변경 + 자동 commit/push, "
+            "판단 모호하면 오너 검토 큐로 에스컬레이션. mgr/creator 가 chat 에서 직접 "
+            "디버깅 / reasoning 노출 / 메타 분석하는 회귀를 막기 위한 표준 통로."
+        ),
+        params={
+            "channel": {"type": "str", "required": True, "desc": "이슈가 발생한 채널명 (예: 'dm-서하')"},
+            "severity": {"type": "str", "required": True, "desc": "'low' | 'med' | 'high'"},
+            "repro": {"type": "str", "required": True, "desc": "재현 방법 / 발생 상황 (자연어)"},
+            "expected": {"type": "str", "required": True, "desc": "기대했던 동작"},
+            "actual": {"type": "str", "required": True, "desc": "실제 발생한 동작"},
+            "notes": {"type": "str", "required": False, "desc": "추가 컨텍스트 (옵션)"},
+        },
+        category="management",
+        applies_to=frozenset({"mgr", "creator"}),
+    ),
+    ToolSpec(
+        name="dev_dispatch_fix",
+        description=(
+            "[dev 전용] HIGH-confidence 자동 수정. Claude Code (Opus) subprocess 가 "
+            "task_brief 대로 코드 수정 + auto-commit + push. 결과 (commit_sha, "
+            "files_changed, summary) 가 다음 턴 tool result 로 반환됨."
+        ),
+        params={
+            "request_id": {"type": "int", "required": True, "desc": "처리할 dev_requests row id"},
+            "task_brief": {"type": "str", "required": True, "desc": "Opus 에게 전달할 작업 지시 (3-5 줄)"},
+            "files_hint": {"type": "list", "required": False, "desc": "수정 가능성 높은 파일 경로 힌트 (옵션)"},
+        },
+        category="management",
+        applies_to=frozenset({"dev"}),
+        destructive=True,
+    ),
+    ToolSpec(
+        name="dev_escalate",
+        description=(
+            "[dev 전용] LOW-confidence — 사람(오너) 판단 필요. 정리된 보고서를 "
+            "human_review 큐로 적재. 코드 수정 안 함."
+        ),
+        params={
+            "request_id": {"type": "int", "required": True, "desc": "처리할 dev_requests row id"},
+            "summary": {"type": "str", "required": True, "desc": "이슈 요약 (1-2 줄)"},
+            "decision_points": {"type": "list", "required": True, "desc": "오너가 결정해야 할 포인트들"},
+            "suggested_options": {"type": "list", "required": False, "desc": "선택지 제안 (옵션)"},
+            "context_files": {"type": "list", "required": False, "desc": "관련 파일 경로 (옵션)"},
+            "severity": {"type": "str", "required": False, "desc": "'low' | 'med' | 'high'"},
+        },
+        category="management",
+        applies_to=frozenset({"dev"}),
+    ),
+    ToolSpec(
+        name="dev_clarify",
+        description="[dev 전용] 보고서 내용 모호 시 보고자(유나/하나)에게 추가 질문.",
+        params={
+            "request_id": {"type": "int", "required": True, "desc": "대상 dev_requests row id"},
+            "questions": {"type": "list", "required": True, "desc": "질문 목록"},
+        },
+        category="management",
+        applies_to=frozenset({"dev"}),
     ),
     ToolSpec(
         name="scene_advance",

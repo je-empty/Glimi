@@ -75,6 +75,9 @@ def build_system_prompt(agent_id: str, include_profile_image_template: bool = Fa
     elif agent_type == "creator":
         builder = _get_builder("creator", "build_creator_prompt")
         return builder(profile)
+    elif agent_type == "dev":
+        builder = _get_builder("dev", "build_dev_prompt")
+        return builder(profile)
     return ""
 
 
