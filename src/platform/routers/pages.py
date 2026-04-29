@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from src.community import list_communities
 
 from .. import accounts, templates
-from ..auth import get_current_user, require_user
+from ..auth import get_current_user, require_admin, require_user
 from ..supervisor import supervisor
 
 from .communities import _fetch_members, _visible_communities
@@ -99,4 +99,17 @@ async def agent_detail_page(
             "community_id": community,
             "community_name": target.get("name") or community,
         },
+    )
+
+
+@router.get("/admin/dev-requests", response_class=HTMLResponse)
+async def admin_dev_requests_page(
+    request: Request,
+    user: dict = Depends(require_admin),
+):
+    """글로벌 admin 페이지 — 모든 community 의 dev_requests 통합 검토 + Run."""
+    return templates.env.TemplateResponse(
+        request,
+        "admin/dev_requests.html",
+        {"user": user},
     )

@@ -329,25 +329,8 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_ach_user_state ON achievements(user_id, state);
 
-        -- ── Dev requests (request_dev_fix tool 호출로 적재) ──
-        -- 'dev' agent (세나) 가 pending 픽업 → 분석 → confidence 판정 →
-        -- HIGH: claude CLI (Opus) subprocess + commit/push → status='completed'
-        -- LOW (사람 판단 필요): status='needs_human_review' + result_json 에 정리된 보고서.
-        CREATE TABLE IF NOT EXISTS dev_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            status TEXT NOT NULL DEFAULT 'pending'
-                CHECK(status IN ('pending', 'processing', 'completed', 'needs_human_review', 'failed')),
-            requested_by TEXT NOT NULL,            -- agent_id 또는 'owner'
-            payload_json TEXT NOT NULL,            -- {channel, severity, repro, expected, actual, notes}
-            confidence TEXT,                        -- 'high' | 'low' (NULL = 미판정)
-            result_json TEXT,                       -- 결과 보고서 (commit_sha, summary, files_changed, escalation_reason 등)
-            commit_sha TEXT,
-            requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            started_at DATETIME,
-            completed_at DATETIME,
-            error TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_dev_req_status ON dev_requests(status, requested_at);
+        -- 참고: dev_requests / dev_runs 는 platform.db 글로벌 테이블 (data/platform.db).
+        -- src/platform/db.py 의 SCHEMA 에 정의됨. 이전 community-local 테이블은 사용 안 함.
     """)
     conn.commit()
     conn.close()

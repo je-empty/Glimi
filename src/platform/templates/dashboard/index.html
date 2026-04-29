@@ -75,6 +75,15 @@
 
     <div style="flex:1"></div>
 
+    <!-- Dev Requests pending badge — admin / qa·test 에서만 표시 (서버가 dev_visible=true 일 때) -->
+    <a id="dev-pending-badge" href="/admin/dev-requests" target="_self"
+       title="이 커뮤니티의 미처리 dev requests — 클릭 시 admin 페이지로 이동"
+       style="display:none;margin:0 8px;padding:4px 10px;border:1px solid var(--err);
+              border-radius:999px;font-size:11.5px;color:var(--err);text-decoration:none;
+              font-weight:600;background:color-mix(in srgb, var(--err) 8%, transparent);">
+      🔧 Dev: <span id="dev-pending-count">0</span>
+    </a>
+
     <div style="position:relative" id="lang-switcher-wrap">
       <button class="btn-icon" id="lang-toggle" title="언어">🌐</button>
       <div class="lang-menu" id="lang-menu"></div>

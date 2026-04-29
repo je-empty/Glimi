@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import accounts, templates  # noqa: F401 — 서브모듈 초기화
 from .db import init_db
-from .routers import auth, communities, dashboard, pages
+from .routers import admin_dev, auth, communities, dashboard, pages
 from .supervisor import supervisor
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -55,6 +55,7 @@ app.include_router(pages.router)
 app.include_router(communities.router)
 app.include_router(communities.avatar_router)
 app.include_router(dashboard.router)
+app.include_router(admin_dev.router)
 
 
 @app.get("/healthz")

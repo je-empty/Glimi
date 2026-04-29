@@ -32,11 +32,50 @@ def _ensure_community_access(req: Request, user: dict) -> None:
             raise HTTPException(404, f"community not found: {cid}")
 
 
+# qa/test 는 dev manager (한세나) + mgr-dev-request 항상 표시 — 개발용 특수 커뮤니티.
+# 그 외 커뮤니티에서는 admin role 만 노출. 일반 user 한테는 세나 존재 자체를 숨김.
+SPECIAL_COMMUNITIES = {"qa", "test"}
+
+
+def _should_show_dev(user: dict, community_id: str) -> bool:
+    if not community_id:
+        return False
+    if community_id in SPECIAL_COMMUNITIES:
+        return True
+    return (user or {}).get("role") == "admin"
+
+
+def _filter_dev_from_snapshot(snap: dict) -> dict:
+    """snap 에서 dev agent + mgr-dev-request 채널 제거 (in-place mutation)."""
+    if not isinstance(snap, dict):
+        return snap
+    from src.core.dev_agent import DEV_ID, DEV_CHANNEL
+    agents = snap.get("agents")
+    if isinstance(agents, list):
+        snap["agents"] = [a for a in agents if a.get("id") != DEV_ID and a.get("type") != "dev"]
+    channels = snap.get("channels")
+    if isinstance(channels, list):
+        snap["channels"] = [c for c in channels if c.get("name") != DEV_CHANNEL]
+    return snap
+
+
 def _json_endpoint(fn):
     async def _handler(request: Request, user: dict = Depends(require_user)):
         _ensure_community_access(request, user)
         try:
             data = fn(_full_path(request))
+            cid = request.query_params.get("community") or (data.get("community_id") if isinstance(data, dict) else None)
+            show_dev = _should_show_dev(user, cid)
+            if isinstance(data, dict) and not show_dev:
+                data = _filter_dev_from_snapshot(data)
+            # admin (또는 qa/test) 한테는 community 별 pending dev_request 카운트 노출 — dashboard 헤더 배지용.
+            if isinstance(data, dict) and show_dev and cid and "dev_pending_count" not in data:
+                try:
+                    from src.core.dev_agent import count_pending_for_community
+                    data["dev_pending_count"] = count_pending_for_community(cid)
+                    data["dev_visible"] = True
+                except Exception:
+                    pass
             return JSONResponse(data)
         except Exception as e:
             import traceback
