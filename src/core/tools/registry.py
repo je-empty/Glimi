@@ -252,20 +252,22 @@ MGMT: list[ToolSpec] = [
         applies_to=frozenset({"mgr", "creator"}),
     ),
     ToolSpec(
-        name="dev_dispatch_fix",
+        name="dev_organize",
         description=(
-            "[dev 전용] HIGH-confidence 자동 수정. Claude Code (Opus) subprocess 가 "
-            "task_brief 대로 코드 수정 + auto-commit + push. 결과 (commit_sha, "
-            "files_changed, summary) 가 다음 턴 tool result 로 반환됨."
+            "[dev 전용] pending 요청 분석 + 정리해서 admin 검토 대기 (analyzed) 로 전환. "
+            "세나 자체는 코드 수정 안 함 — task_brief / files_hint / confidence 작성. "
+            "admin 이 /admin/dev-requests 에서 승인하면 Claude Code 가 batch 로 처리."
         ),
         params={
             "request_id": {"type": "int", "required": True, "desc": "처리할 dev_requests row id"},
-            "task_brief": {"type": "str", "required": True, "desc": "Opus 에게 전달할 작업 지시 (3-5 줄)"},
-            "files_hint": {"type": "list", "required": False, "desc": "수정 가능성 높은 파일 경로 힌트 (옵션)"},
+            "task_brief": {"type": "str", "required": True, "desc": "Claude Code 에 전달할 작업 지시 (3-6줄, 영문)"},
+            "sera_summary": {"type": "str", "required": True, "desc": "한 줄 요약 (admin 카드 표시용)"},
+            "files_hint": {"type": "list", "required": False, "desc": "수정 가능성 높은 파일 경로 힌트"},
+            "analysis_notes": {"type": "str", "required": False, "desc": "추가 분석 메모 (admin 참고)"},
+            "confidence": {"type": "str", "required": True, "desc": "'high' (작은·명확한 수정) | 'low' (사람 판단)"},
         },
         category="management",
         applies_to=frozenset({"dev"}),
-        destructive=True,
     ),
     ToolSpec(
         name="dev_escalate",

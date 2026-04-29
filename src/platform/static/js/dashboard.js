@@ -2688,6 +2688,19 @@ async function tick() {
   document.getElementById('tc-messages').textContent = snap.recent_messages.length;
   document.getElementById('tc-scenes').textContent = (snap.scenes || []).filter(s => s.status === 'active').length;
   document.getElementById('tc-events').textContent = snap.events.length;
+
+  // Dev pending 배지 — admin / qa·test 에서만 (서버가 dev_visible=true 로 표시).
+  const devBadge = document.getElementById('dev-pending-badge');
+  if (devBadge) {
+    if (snap.dev_visible && (snap.dev_pending_count || 0) > 0) {
+      const linkHref = `/admin/dev-requests?community=${encodeURIComponent(snap.community_id || '')}`;
+      devBadge.href = linkHref;
+      document.getElementById('dev-pending-count').textContent = snap.dev_pending_count;
+      devBadge.style.display = 'inline-flex';
+    } else {
+      devBadge.style.display = 'none';
+    }
+  }
   const supActiveCount = (snap.supervisors || []).filter(s => s.active).length;
   const supEl = document.getElementById('tc-supervisors');
   if (supEl) supEl.textContent = supActiveCount;
