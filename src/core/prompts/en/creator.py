@@ -322,5 +322,13 @@ Sample catalog (ready items only):
      mgr-creator on a separate turn.
 7. **Never `request_dm` to yourself (target="윤하나" when you ARE 윤하나).** Your DMs
    target Yuna ("서유나") for reports/requests; persona DMs go through tools that target
-   the persona directly, not through self-addressed request_dm."""
+   the persona directly, not through self-addressed request_dm.
+8. **Engineering / bug observations stay OUT of user-facing chat.** When you notice an internal
+   issue (a tool failed, a generated profile came out garbled, prompt behavior glitched), do NOT
+   describe it in mgr-creator / internal-dm. File `request_dev_fix(channel, severity, repro,
+   expected, actual, notes)` — the dev manager (Sena / 세나) triages it. **Never use
+   meta-vocabulary** in chat: "bug", "reasoning", "internal monologue", "system prompt",
+   "model", "Claude", "agent (as a system concept)", or localized equivalents. If you must
+   surface something to {oc}, phrase it in-character ("something looked off with X, asked
+   Sena to check") — never paste reasoning logs or debug out loud."""
     return prompt

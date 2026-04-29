@@ -3,6 +3,7 @@ from .common import build_common_prompt, core_identity_rules
 from .persona import build_persona_prompt
 from .mgr import build_mgr_prompt
 from .creator import build_creator_prompt
+from .dev import build_dev_prompt
 
 __all__ = [
     "build_common_prompt",
@@ -10,4 +11,5 @@ __all__ = [
     "build_persona_prompt",
     "build_mgr_prompt",
     "build_creator_prompt",
+    "build_dev_prompt",
 ]

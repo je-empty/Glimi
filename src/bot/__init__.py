@@ -48,8 +48,10 @@ bot = commands.Bot(command_prefix="!", intents=intents, heartbeat_timeout=120)
 MGR_CHANNEL = "mgr-dashboard"
 MGR_SYSTEM_LOG = "mgr-system-log"
 CREATOR_CHANNEL = "mgr-creator"
+DEV_CHANNEL = "mgr-dev-request"  # dev manager (세나) triage channel — request_dev_fix 결과 보고
 MGR_ID = "agent-mgr-001"
 CREATOR_ID = "agent-creator-001"
+DEV_ID = "agent-dev-001"
 
 
 # ── internal-dm 채널명 정렬 컨벤션 ────────────────────────────
@@ -62,7 +64,7 @@ def _agent_name_priority(name: str) -> int:
     """sort 키 — 작을수록 채널명에서 앞에 온다."""
     # DB 에서 mgr/creator 이름 동적 조회도 가능하지만 순환 import 피하려고 상수.
     # 커뮤니티마다 유나/하나 이름이 다르더라도 seed_agents.json 기본값 '서유나' / '윤하나' 로 고정.
-    PRIORITY = {"서유나": 0, "Yuna": 0, "윤하나": 1, "Hana": 1}
+    PRIORITY = {"서유나": 0, "Yuna": 0, "윤하나": 1, "Hana": 1, "한세나": 2, "Sena": 2}
     return PRIORITY.get(name, 9)
 
 

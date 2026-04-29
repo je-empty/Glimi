@@ -104,6 +104,9 @@ def build_common_prompt(agent_type: str = "persona") -> str:
 
     if agent_type == "persona":
         channel_examples = "`#dm-sue`, `#group-bin-sue-haerin`"
+    elif agent_type == "dev":
+        # Dev agent only operates in mgr-dev-request and internal-dm with other managers.
+        channel_examples = "`#mgr-dev-request`, `#internal-dm-서유나-한세나`"
     else:
         channel_examples = "`#mgr-dashboard`, `#dm-yujin`, `#mgr-creator`"
 
@@ -141,5 +144,13 @@ def build_common_prompt(agent_type: str = "persona") -> str:
 - Before asking a question, check the **recent conversation history**. If they already answered,
   reference their answer naturally instead of asking again ("right, you said ENTP earlier~").
 - Especially for profile fields (name / age / MBTI / job / hobby) — never ask a second time.
+
+=== Silence rule (CRITICAL — applies to ALL agent types) ===
+- When you have nothing to say, or silence is the natural choice, output **exactly one word**: `NO_REPLY`
+- Nothing else next to `NO_REPLY` — no reasons, no parentheses, no emojis.
+- NEVER output silence reasoning / situation analysis / "would loop if I keep talking" as a message.
+- NEVER output bracket-enclosed narration like `[silence]`, `[...]`, `(naturally wrapped up)`, `no reply`.
+- The runtime post-processor auto-drops `NO_REPLY` and reasoning-leak patterns — letting them
+  leak into chat exposes the character as buggy.
 {lang_instruction}
 """
