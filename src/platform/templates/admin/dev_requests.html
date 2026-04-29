@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Glimi · Dev Requests (admin){% endblock %}
+{% block head %}
+<style>
+  .dev-page { max-width: 1400px; margin: 0 auto; padding: 16px 20px 80px; }
+  .dev-page h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
+  .dev-page .lede { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--panel); color: var(--text-dim);
+    border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+    user-select: none; transition: all 0.12s;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .chip-group-label { font-size: 11px; color: var(--text-faint); margin-right: 6px; align-self: center; }
+
+  .toolbar { display: flex; gap: 8px; margin: 8px 0 16px; align-items: center; flex-wrap: wrap; }
+  .toolbar .count { color: var(--text-dim); font-size: 13px; margin-right: auto; }
+  button.primary {
+    background: var(--accent); color: white; border: none; border-radius: 6px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+  }
+  button.secondary:hover { border-color: var(--accent); }
+  button.danger {
+    background: transparent; color: var(--err); border: 1px solid var(--err);
+    border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer;
+  }
+  button.danger:hover { background: color-mix(in srgb, var(--err) 12%, transparent); }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; display: flex; flex-direction: column; gap: 10px;
+    box-shadow: var(--shadow);
+  }
+  .card .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card .head .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-dim); }
+  .card .head .badge {
+    font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .card .head .badge.community {
+    background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border-soft);
+    text-transform: none; letter-spacing: 0; font-weight: 500;
+  }
+  .badge.severity-low { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .badge.severity-med { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .badge.severity-high { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+  .badge.confidence-high { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .badge.confidence-low { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); }
+
+  .badge.status-pending { background: var(--panel-2); color: var(--text-dim); }
+  .badge.status-analyzed { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+  .badge.status-approved { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+  .badge.status-rejected { background: var(--panel-2); color: var(--text-faint); text-decoration: line-through; }
+  .badge.status-queued { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+  .badge.status-processing { background: color-mix(in srgb, var(--warn) 24%, transparent); color: var(--warn); animation: pulse-bg 1.5s infinite; }
+  .badge.status-completed { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
+  .badge.status-failed { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+  .badge.status-needs_human_review { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
+
+  @keyframes pulse-bg {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+  }
+
+  .card .summary { font-size: 14px; line-height: 1.45; color: var(--text); }
+  .card .meta-row { display: flex; gap: 10px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
+  .card .actions { display: flex; gap: 8px; margin-top: 4px; }
+  .card .commit { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--text-dim); }
+  .card .pr-link { font-size: 12px; color: var(--accent); text-decoration: none; }
+  .card .pr-link:hover { text-decoration: underline; }
+  .card.expandable .details { display: none; padding-top: 8px; border-top: 1px solid var(--border-soft); margin-top: 4px; font-size: 12.5px; color: var(--text-dim); }
+  .card.expandable.expanded .details { display: block; }
+  .card .details .label { font-weight: 600; color: var(--text); display: block; margin: 6px 0 2px; }
+  .card .details .files { font-family: ui-monospace, monospace; font-size: 11px; }
+  .card .toggle { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 11.5px; padding: 0; align-self: flex-start; }
+  .card .toggle:hover { color: var(--accent); }
+
+  .live-panel {
+    margin-top: 18px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; display: none;
+  }
+  .live-panel.visible { display: block; }
+  .live-panel h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+  .live-output {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 10px; white-space: pre-wrap; max-height: 360px; overflow-y: auto;
+    color: var(--text);
+  }
+  .live-meta { font-size: 12px; color: var(--text-dim); display: flex; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: var(--text-dim); font-size: 13px;
+    border: 1px dashed var(--border); border-radius: 10px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dev-page">
+  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
+    <h1>Dev Requests</h1>
+    <span style="font-size: 11px; padding: 2px 8px; background: var(--err); color: white; border-radius: 4px; font-weight: 700;">ADMIN</span>
+  </div>
+  <p class="lede">한세나가 정리해둔 모든 community 의 개발 요청 — 검토 + 승인 + 일괄 dispatch.</p>
+
+  <!-- Filters -->
+  <div class="filters">
+    <span class="chip-group-label">community</span>
+    <span id="f-community" data-group="community" class="chip-row" style="display:contents"></span>
+  </div>
+  <div class="filters">
+    <span class="chip-group-label">status</span>
+    <div id="f-status" data-group="status" style="display:contents">
+      <span class="chip active" data-val="">all</span>
+      <span class="chip" data-val="pending">pending</span>
+      <span class="chip" data-val="analyzed">analyzed</span>
+      <span class="chip" data-val="approved">approved</span>
+      <span class="chip" data-val="processing">processing</span>
+      <span class="chip" data-val="completed">completed</span>
+      <span class="chip" data-val="failed">failed</span>
+      <span class="chip" data-val="needs_human_review">needs review</span>
+      <span class="chip" data-val="rejected">rejected</span>
+    </div>
+  </div>
+  <div class="filters">
+    <span class="chip-group-label">severity</span>
+    <div id="f-severity" data-group="severity" style="display:contents">
+      <span class="chip active" data-val="">all</span>
+      <span class="chip" data-val="high">high</span>
+      <span class="chip" data-val="med">med</span>
+      <span class="chip" data-val="low">low</span>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <span class="count" id="count-label">0 requests</span>
+    <button class="secondary" onclick="refreshList()">↻ Refresh</button>
+    <button class="primary" id="btn-run" onclick="runApproved()" disabled>▶ Run all approved</button>
+  </div>
+
+  <!-- Live output panel (visible during run) -->
+  <div class="live-panel" id="live-panel">
+    <h3>🔄 Active dev run</h3>
+    <div class="live-meta" id="live-meta"></div>
+    <div class="live-output" id="live-output"></div>
+    <div style="margin-top: 8px;">
+      <button class="danger" onclick="abortRun()">Abort run</button>
+      <button class="secondary" id="btn-merge" onclick="mergeRun()" style="display:none;">Merge to develop</button>
+    </div>
+  </div>
+
+  <!-- Cards -->
+  <div id="grid" class="grid"></div>
+</div>
+
+<script src="/static/js/admin/dev_requests.js"></script>
+{% endblock %}

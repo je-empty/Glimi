@@ -1,179 +1,374 @@
-"""Dev dispatch — Claude Code (Opus) subprocess + auto-commit/push.
+"""Dev batch dispatch — Claude Code (Opus) subprocess + branch + per-task commits + PR.
 
-Called by the dev manager (세나) via `dev_dispatch_fix` tool when a bug fix is
-HIGH-confidence (small, well-isolated). Spawns a `claude` CLI subprocess with the
-task brief, lets Claude Code edit files inside the project, then commits + pushes
-the result.
+Triggered by admin clicking "Run all approved" on /admin/dev-requests. Spawns Claude Code
+in a tmux session (Glimi-Claude-Code-Dev) with a single prompt containing N approved task
+briefs. Claude Code commits each task separately on a new branch
+`dev-requests/run-{YYYYMMDD-HHMMSS}` cut from develop, then pushes the branch and we
+auto-create a PR targeting develop.
 
-Safety guardrails:
-  - Only operates inside the project root (never touches paths outside).
-  - Commits with a structured message linking the dev_requests row.
-  - If subprocess exits with non-zero status, marks request as failed (no partial commit).
-  - Hard timeout — 600s (Opus may need to read multiple files + edit).
-  - Auto-push only if `dev_config.auto_push` is true (defaults true via seed).
+Output protocol (Claude Code emits these markers in stdout):
+  <<TASK_DONE id=42 sha=abc123>>     — successful per-task commit
+  <<TASK_FAILED id=43 reason=...>>    — per-task failure (others continue)
+  <<RUN_DONE>>                        — entire batch finished
+  <<RUN_ABORT reason=...>>            — fatal abort (no commits)
 
-Returns dict: {ok, commit_sha?, files_changed?, summary?, error?}.
+Status transitions handled by this module:
+  queued → processing  (mark_processing per task)
+  processing → completed (mark_completed with commit_sha)
+  processing → failed   (mark_failed with reason)
+
+Branch / PR lifecycle handled by this module:
+  - branch create from develop
+  - branch push at end of run
+  - `gh pr create` targeting develop
+  - PR URL stored on dev_runs row + each completed dev_requests row
 """
 from __future__ import annotations
 
 import asyncio
 import json as _json
 import os
+import re as _re
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from src import log_writer
+from src.core import dev_agent
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 OPUS_MODEL = "claude-opus-4-7"
-DISPATCH_TIMEOUT_SEC = 600  # 10 min
+DISPATCH_TIMEOUT_SEC = 1800  # 30 min — N개 task 처리에 충분
+TARGET_BRANCH = "develop"     # PR target
 
 
-def _build_prompt(request_id: int, task_brief: str, files_hint: list, payload: dict) -> str:
-    """Claude Code 에 전달할 단일 prompt 구성. payload 는 원래 request 의 JSON dict."""
-    payload_json = _json.dumps(payload.get("payload_json") or {}, ensure_ascii=False, indent=2) \
-        if isinstance(payload.get("payload_json"), dict) else (payload.get("payload_json") or "")
-    if not payload_json or payload_json == "{}":
-        # raw JSON string from DB
-        payload_json = payload.get("payload_json", "{}")
-    files_str = ", ".join(files_hint) if files_hint else "(none — explore as needed)"
-    return f"""You are operating as the Glimi dev assistant for request #{request_id}.
+# ── Branch + git helpers ──────────────────────────────────
 
-ORIGINAL REPORT (JSON):
-{payload_json}
-
-TASK BRIEF (from dev manager):
-{task_brief}
-
-FILES HINT: {files_str}
-
-INSTRUCTIONS:
-1. Read the relevant code (use Read / Grep / Bash tools as needed).
-2. Make the minimal change that fixes the reported issue. Do NOT refactor unrelated code.
-3. Stay within {{1, 2, 3}} files. If your change requires more, STOP and reply with
-   `<<DISPATCH_ABORT>>: <reason>` so the dev manager can escalate to human review.
-4. Do NOT modify: .env, secrets, anything in analysis/, db schema migrations.
-5. After editing, output a JSON summary on the LAST line:
-   `<<DISPATCH_RESULT>>: {{"summary": "<1-2 line plain-English summary>", "files_changed": ["..."]}}`
-6. Do NOT run git commit / push yourself — the runner handles that.
-
-Begin.
-"""
+def _run_git(*args: str, cwd: Path = PROJECT_ROOT, timeout: int = 120) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), capture_output=True, text=True, timeout=timeout,
+    )
 
 
-async def run_claude_code_fix(
-    request_id: int,
-    task_brief: str,
-    files_hint: list,
-    payload: dict,
-) -> dict:
-    """Spawn Claude Code subprocess + parse result + commit/push if successful.
+def _make_branch_name() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"dev-requests/run-{ts}"
 
-    Returns the result dict the dev_dispatch_fix tool handler stores in dev_requests.
-    """
-    prompt = _build_prompt(request_id, task_brief, files_hint, payload)
 
-    log_writer.system(f"[dev] dispatch #{request_id} → Claude Code (Opus)")
+def _checkout_new_branch(branch_name: str) -> tuple[bool, str]:
+    """develop 으로부터 새 브랜치 생성 + 체크아웃. (ok, error_msg)."""
+    # develop 최신화
+    fetch = _run_git("fetch", "origin", TARGET_BRANCH)
+    if fetch.returncode != 0:
+        return False, f"git fetch origin {TARGET_BRANCH} failed: {fetch.stderr[:200]}"
+    # 새 브랜치 생성 (origin/develop 기준)
+    co = _run_git("checkout", "-B", branch_name, f"origin/{TARGET_BRANCH}")
+    if co.returncode != 0:
+        return False, f"git checkout -B {branch_name} failed: {co.stderr[:200]}"
+    return True, ""
 
-    # subprocess.run in executor (don't block event loop).
-    loop = asyncio.get_event_loop()
-    try:
-        result = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(
-                ["claude", "-p", prompt, "--model", OPUS_MODEL, "--output-format", "text"],
-                capture_output=True,
-                text=True,
-                timeout=DISPATCH_TIMEOUT_SEC,
-                cwd=str(PROJECT_ROOT),
-                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-            ),
+
+def _push_branch(branch_name: str) -> tuple[bool, str]:
+    push = _run_git("push", "-u", "origin", branch_name)
+    if push.returncode != 0:
+        return False, push.stderr[:300]
+    return True, ""
+
+
+def _create_pr(branch_name: str, requests: list[dict]) -> tuple[Optional[str], str]:
+    """gh CLI 로 PR 생성. 반환: (pr_url 또는 None, error_msg)."""
+    body_lines = [
+        f"Auto-generated by 한세나 dev-batch run on {branch_name}.",
+        "",
+        f"## Requests ({len(requests)})",
+    ]
+    for r in requests:
+        commit = r.get("commit_sha") or "(no commit)"
+        body_lines.append(
+            f"- #{r['id']} [{r.get('community_id','?')}] {(r.get('sera_summary') or '')[:80]} — {commit}"
         )
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": f"Claude Code timeout after {DISPATCH_TIMEOUT_SEC}s"}
-    except FileNotFoundError:
-        return {"ok": False, "error": "claude CLI not found in PATH"}
-    except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    title = f"Dev batch {branch_name.split('/')[-1]} ({len(requests)} requests)"
 
-    if result.returncode != 0:
-        return {"ok": False, "error": f"Claude Code exit {result.returncode}: {result.stderr[:300]}"}
-
-    out = result.stdout.strip()
-
-    # ABORT detection
-    if "<<DISPATCH_ABORT>>" in out:
-        reason_line = next((l for l in out.splitlines() if "<<DISPATCH_ABORT>>" in l), "")
-        return {"ok": False, "error": f"abort by dispatcher: {reason_line[:200]}"}
-
-    # Result parse
-    summary = ""
-    files_changed: list[str] = []
-    for line in reversed(out.splitlines()):
-        if "<<DISPATCH_RESULT>>" in line:
-            try:
-                json_part = line.split("<<DISPATCH_RESULT>>", 1)[1].lstrip(": \t")
-                parsed = _json.loads(json_part)
-                summary = parsed.get("summary", "")
-                files_changed = parsed.get("files_changed", []) or []
-            except Exception as e:
-                log_writer.system(f"[dev] dispatch result parse 실패: {e}")
-            break
-
-    # Verify there are actual changes via git status
-    git_status = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=str(PROJECT_ROOT), capture_output=True, text=True,
-    )
-    if git_status.returncode != 0:
-        return {"ok": False, "error": f"git status failed: {git_status.stderr[:200]}"}
-    if not git_status.stdout.strip():
-        return {"ok": False, "error": "no file changes after dispatch (Claude Code may have refused)"}
-
-    # Auto-commit
-    commit_msg = f"dev: auto-fix #{request_id}"
-    if summary:
-        commit_msg = f"dev: auto-fix #{request_id} — {summary[:120]}"
-    add = subprocess.run(["git", "add", "-A"], cwd=str(PROJECT_ROOT), capture_output=True, text=True)
-    if add.returncode != 0:
-        return {"ok": False, "error": f"git add failed: {add.stderr[:200]}"}
-    commit = subprocess.run(
-        ["git", "commit", "-m", commit_msg],
-        cwd=str(PROJECT_ROOT), capture_output=True, text=True,
-    )
-    if commit.returncode != 0:
-        return {"ok": False, "error": f"git commit failed: {commit.stderr[:200]}"}
-
-    # SHA fetch
-    sha_result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(PROJECT_ROOT), capture_output=True, text=True,
-    )
-    commit_sha = sha_result.stdout.strip()[:12] if sha_result.returncode == 0 else "?"
-
-    # Auto-push (best-effort — failure here is reported but doesn't fail the dispatch)
-    push_ok = True
-    push_err = ""
-    push_result = subprocess.run(
-        ["git", "push"],
+    proc = subprocess.run(
+        ["gh", "pr", "create",
+         "--base", TARGET_BRANCH,
+         "--head", branch_name,
+         "--title", title,
+         "--body", "\n".join(body_lines)],
         cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120,
     )
-    if push_result.returncode != 0:
-        push_ok = False
-        push_err = push_result.stderr[:200]
+    if proc.returncode != 0:
+        return None, f"gh pr create failed: {proc.stderr[:300]}"
+    out = proc.stdout.strip()
+    # 출력 마지막 라인이 PR URL
+    pr_url = next((l for l in reversed(out.splitlines()) if l.startswith("http")), out)
+    return pr_url, ""
 
-    log_writer.system(
-        f"[dev] dispatch #{request_id} 완료 — commit {commit_sha}, push={'ok' if push_ok else 'fail'}"
-    )
+
+# ── Prompt building ────────────────────────────────────────
+
+def _build_batch_prompt(run_id: int, branch_name: str, requests: list[dict]) -> str:
+    """N 개 task 묶은 단일 prompt. payload_json 은 JSON string 으로 DB 에 저장돼있음."""
+    lines = [
+        f"You are Claude Code processing dev-batch run #{run_id} on branch `{branch_name}`.",
+        "",
+        "There are N approved tasks below. Process them sequentially:",
+        "  - For each task: read relevant code, make minimal changes, then `git add` and",
+        "    `git commit` with a short, conventional message.",
+        "  - After each commit, output exactly:",
+        "      <<TASK_DONE id={id} sha={short_sha}>>",
+        "    where short_sha is the first 12 chars of HEAD's sha after the commit.",
+        "  - If a task is genuinely impossible to do safely (touches DB schema, .env,",
+        "    requires architectural decision), skip it and output:",
+        "      <<TASK_FAILED id={id} reason=...>>",
+        "  - DO NOT push the branch — the runner does that after you're done.",
+        "  - DO NOT create files outside the project, modify .env, or touch analysis/.",
+        "  - Continue to next task even if one fails.",
+        "",
+        "Commit message rules (CLAUDE.md):",
+        "  - Short 1-line title. Optional 1-2 line body.",
+        "  - **NEVER include `Co-Authored-By: Claude` or any AI co-author trailer.**",
+        "  - **No `🤖 Generated with Claude Code` lines.**",
+        "  - Author = project git config (jbsim) — do not override.",
+        "",
+        "When ALL tasks are processed (success or failure), output exactly one final line:",
+        "  <<RUN_DONE>>",
+        "",
+        "If something catastrophically fails (e.g. cannot checkout branch, repo state weird),",
+        "abort with:",
+        "  <<RUN_ABORT reason=...>>",
+        "",
+        "─" * 60,
+        f"## Tasks ({len(requests)})",
+        "",
+    ]
+
+    for idx, r in enumerate(requests, 1):
+        try:
+            payload = _json.loads(r.get("payload_json") or "{}")
+        except Exception:
+            payload = {}
+        files_hint = []
+        try:
+            files_hint = _json.loads(r.get("files_hint") or "[]") or []
+        except Exception:
+            pass
+        lines.extend([
+            f"### Task {idx} — id={r['id']} (community: {r.get('community_id','?')})",
+            f"  Severity: {r.get('severity','?')} · Confidence: {r.get('confidence','?')}",
+            f"  Sera summary: {(r.get('sera_summary') or '').strip()}",
+            "",
+            "  **Original report:**",
+            f"    Channel: {payload.get('channel','?')}",
+            f"    Repro:    {payload.get('repro','?')}",
+            f"    Expected: {payload.get('expected','?')}",
+            f"    Actual:   {payload.get('actual','?')}",
+        ])
+        if payload.get("notes"):
+            lines.append(f"    Notes:    {payload['notes']}")
+        lines.extend([
+            "",
+            "  **Task brief (do this):**",
+            f"    {(r.get('task_brief') or '').strip()}",
+        ])
+        if files_hint:
+            lines.append(f"    Files hint: {', '.join(files_hint)}")
+        if r.get("analysis_notes"):
+            lines.append(f"    Analysis notes: {r['analysis_notes']}")
+        lines.append("")
+        lines.append("─" * 40)
+        lines.append("")
+
+    lines.append("Begin with Task 1.")
+    return "\n".join(lines)
+
+
+# ── Output parsing ─────────────────────────────────────────
+
+_TASK_DONE_RE = _re.compile(r"<<TASK_DONE\s+id=(\d+)\s+sha=([0-9a-fA-F]+)>>")
+_TASK_FAILED_RE = _re.compile(r"<<TASK_FAILED\s+id=(\d+)\s+reason=(.+?)>>", _re.DOTALL)
+_RUN_DONE_RE = _re.compile(r"<<RUN_DONE>>")
+_RUN_ABORT_RE = _re.compile(r"<<RUN_ABORT\s+reason=(.+?)>>", _re.DOTALL)
+
+
+def parse_run_output(text: str) -> dict:
+    """Output text 에서 마커들 추출. 부분 stream 도 OK (라이브 polling 용)."""
+    completed: list[tuple[int, str]] = []
+    failed: list[tuple[int, str]] = []
+    for m in _TASK_DONE_RE.finditer(text):
+        completed.append((int(m.group(1)), m.group(2)[:12]))
+    for m in _TASK_FAILED_RE.finditer(text):
+        failed.append((int(m.group(1)), m.group(2).strip()[:200]))
+    abort_m = _RUN_ABORT_RE.search(text)
     return {
-        "ok": True,
-        "commit_sha": commit_sha,
-        "summary": summary,
-        "files_changed": files_changed,
-        "push_ok": push_ok,
-        "push_err": push_err,
+        "completed": completed,
+        "failed": failed,
+        "run_done": bool(_RUN_DONE_RE.search(text)),
+        "run_abort": abort_m.group(1).strip()[:300] if abort_m else None,
     }
 
 
-__all__ = ["run_claude_code_fix"]
+# ── Top-level batch run ────────────────────────────────────
+
+async def run_batch(
+    run_id: int,
+    branch_name: str,
+    request_ids: list[int],
+    log_path: Optional[str] = None,
+) -> dict:
+    """approved 요청 N개 일괄 dispatch. tmux runner 가 이 함수 호출.
+
+    1) develop 에서 branch 생성
+    2) requests 로드 + 단일 prompt 빌드
+    3) Claude Code subprocess 실행 (output 을 log_path 로 tee)
+    4) 마커 파싱해서 task 별 status 업데이트
+    5) branch push + PR 생성
+    6) dev_runs row 갱신
+    """
+    dev_agent.update_run_status(run_id, "running")
+
+    # 1. branch
+    ok, err = _checkout_new_branch(branch_name)
+    if not ok:
+        dev_agent.update_run_status(run_id, "failed", error=err)
+        for rid in request_ids:
+            dev_agent.mark_failed(rid, f"branch setup: {err}")
+        return {"ok": False, "error": err}
+
+    # 2. load requests + build prompt
+    requests = [dev_agent.get_request(rid) for rid in request_ids]
+    requests = [r for r in requests if r]
+    if not requests:
+        err = "no valid requests in batch"
+        dev_agent.update_run_status(run_id, "failed", error=err)
+        return {"ok": False, "error": err}
+
+    prompt = _build_batch_prompt(run_id, branch_name, requests)
+
+    for rid in request_ids:
+        dev_agent.mark_processing(rid)
+
+    # 3. subprocess
+    log_writer.system(f"[dev] run #{run_id} starting Claude Code subprocess ({len(requests)} tasks)")
+
+    full_output = []  # for parsing at end
+
+    def _run_subprocess() -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["claude", "-p", prompt,
+             "--model", OPUS_MODEL,
+             "--permission-mode", "bypassPermissions",
+             "--output-format", "text"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=DISPATCH_TIMEOUT_SEC,
+            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+        )
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(None, _run_subprocess)
+    except subprocess.TimeoutExpired:
+        err = f"Claude Code timeout after {DISPATCH_TIMEOUT_SEC}s"
+        dev_agent.update_run_status(run_id, "failed", error=err)
+        for rid in request_ids:
+            dev_agent.mark_failed(rid, "timeout")
+        return {"ok": False, "error": err}
+    except FileNotFoundError:
+        err = "claude CLI not found in PATH"
+        dev_agent.update_run_status(run_id, "failed", error=err)
+        for rid in request_ids:
+            dev_agent.mark_failed(rid, err)
+        return {"ok": False, "error": err}
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+        dev_agent.update_run_status(run_id, "failed", error=err)
+        for rid in request_ids:
+            dev_agent.mark_failed(rid, err)
+        return {"ok": False, "error": err}
+
+    out = result.stdout or ""
+    full_output.append(out)
+    if log_path:
+        try:
+            Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(out)
+        except Exception:
+            pass
+
+    parsed = parse_run_output(out)
+
+    if parsed["run_abort"]:
+        err = f"aborted: {parsed['run_abort']}"
+        dev_agent.update_run_status(run_id, "aborted", error=err)
+        for rid in request_ids:
+            dev_agent.mark_failed(rid, err)
+        return {"ok": False, "error": err}
+
+    # 4. per-task status update
+    completed_ids = {rid for rid, _ in parsed["completed"]}
+    failed_ids = {rid for rid, _ in parsed["failed"]}
+    for rid, sha in parsed["completed"]:
+        req = dev_agent.get_request(rid)
+        result_summary = {"sha": sha, "summary": (req.get("sera_summary") or "")[:200] if req else ""}
+        dev_agent.mark_completed(rid, result_summary, commit_sha=sha)
+    for rid, reason in parsed["failed"]:
+        dev_agent.mark_failed(rid, reason)
+    # batch 안에 있던 요청 중 마커 안 나온 것은 unknown failure 로 마킹
+    for rid in request_ids:
+        if rid not in completed_ids and rid not in failed_ids:
+            dev_agent.mark_failed(rid, "no completion marker (Claude Code may have stopped early)")
+
+    if not parsed["completed"]:
+        err = "no successful tasks (all failed or no markers)"
+        dev_agent.update_run_status(run_id, "failed", error=err,
+                                    failed_count=len(request_ids))
+        return {"ok": False, "error": err}
+
+    # 5. push + PR
+    push_ok, push_err = _push_branch(branch_name)
+    if not push_ok:
+        dev_agent.update_run_status(run_id, "failed", error=f"push: {push_err}",
+                                    completed_count=len(parsed["completed"]),
+                                    failed_count=len(parsed["failed"]))
+        return {"ok": False, "error": f"push failed: {push_err}"}
+
+    # PR 생성용 — completed 된 request 들의 최신 정보 reload
+    completed_requests = [dev_agent.get_request(rid) for rid, _ in parsed["completed"]]
+    completed_requests = [r for r in completed_requests if r]
+    pr_url, pr_err = _create_pr(branch_name, completed_requests)
+    if pr_url:
+        dev_agent.update_run_status(run_id, "completed", pr_url=pr_url,
+                                    completed_count=len(parsed["completed"]),
+                                    failed_count=len(parsed["failed"]))
+        # 각 완료 task 에 PR URL 매핑
+        for rid, _sha in parsed["completed"]:
+            req = dev_agent.get_request(rid)
+            if req:
+                dev_agent.mark_completed(rid, {"sha": _sha,
+                                               "summary": (req.get("sera_summary") or "")[:200]},
+                                         commit_sha=_sha, pr_url=pr_url)
+    else:
+        dev_agent.update_run_status(run_id, "completed",
+                                    completed_count=len(parsed["completed"]),
+                                    failed_count=len(parsed["failed"]),
+                                    error=f"PR create failed: {pr_err}")
+
+    log_writer.system(
+        f"[dev] run #{run_id} done — {len(parsed['completed'])} completed, "
+        f"{len(parsed['failed'])} failed, PR: {pr_url or 'none'}"
+    )
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "branch": branch_name,
+        "pr_url": pr_url,
+        "completed": len(parsed["completed"]),
+        "failed": len(parsed["failed"]),
+    }
+
+
+__all__ = ["run_batch", "_make_branch_name", "parse_run_output", "TARGET_BRANCH"]
