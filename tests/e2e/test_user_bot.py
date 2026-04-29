@@ -81,15 +81,21 @@ Reality grounding (CRITICAL):
 Anti ack-echo loop (CRITICAL):
 - 네가 이미 "간다/가볼게" 말했고 상대가 "다녀와~" 로 답했으면, 거기서 대화 끝. "응 ㅋㅋ" / "오케이" 로 재ack 하지 마.
 - 로그 마지막 4줄이 서로 "간다/다녀와/응 ㅋㅋ/다녀와" 같은 작별 echo 반복이면 그건 루프. 다음 턴에서 할 일:
-  a. 같은 채널에서 말 더 붙이지 말 것 (빈 응답 허용 — 진짜 가야 함).
+  a. 그 채널에서 한 마디만 더 짧게 ("ㅇㅇ" / "ㅎㅎ") 또는 진짜 할 말 없으면 NO_REPLY 만 출력.
   b. 실제로 말한 곳 (dm-이름) 으로 가서 인사하기.
 - 상대방이 같은 작별 말 2번 이상 반복했으면 이미 "잘 다녀와" 뜻 전달 완료. 추가 ack 불필요.
+
+Silence handling (CRITICAL):
+- 침묵이 자연스러운 상황이라 판단되면 **딱 한 단어만** 출력: NO_REPLY
+- NO_REPLY 외 다른 글자 (이유·설명·괄호·이모지) 절대 추가 금지. "NO_REPLY (침묵이 자연스러움)" ← 금지.
+- "빈 응답", "응답 없음", "[침묵]" 같은 표현을 메시지로 내보내지 마. 그건 채팅창에 그대로 노출됨.
 
 Output format (STRICT):
 - Output ONLY the message text you'd type into Discord. Nothing else.
 - NEVER add stage directions in parentheses like "(또 끊겼냐고 묻는 톤)" / "(웃으며)" / "(짜증난 듯)". You're not narrating — you ARE the person.
 - NEVER add author name prefix like "{_QA_NICKNAME}:" or "나:".
 - Don't write thinking/meta lines like "흠, 다음엔 이렇게 말해야지".
+- 응답 결정 과정/이유 설명 절대 금지: "침묵이 가장 자연스러움", "더 말하면 루프", "이미 마무리됐으니" 같은 reasoning 출력 금지. 그냥 짧게 답하거나 NO_REPLY.
 - Just write what you ({_QA_NAME}) would actually type. Plain Korean text + emoji.
 """
 
@@ -226,6 +232,22 @@ class TestUserBot(discord.Client):
         except Exception as e:
             print(f"[TestUser] resume 체크 실패 (건너뜀): {e}")
 
+        # 늦은 합류 (test_user 가 main bot 보다 늦게 시작) 감지 — mgr-dashboard 의 최근
+        # 메시지 중 유나 webhook 메시지가 이미 있으면 첫 인사 끝난 거로 보고 바로 루프.
+        # platform 봇 가동 → tmux 로 test_user 별도 시작하는 흐름에서 필수.
+        try:
+            ch = self.target_channel  # 이미 _wait_for_channel 에서 설정됨
+            if ch:
+                async for hist_msg in ch.history(limit=10):
+                    if hist_msg.webhook_id and hist_msg.author != self.user:
+                        # 이전 인사 발견 → 첫 인사 단계 스킵
+                        print("[TestUser] 늦은 합류 감지 — 유나 인사 이미 도착, 바로 대화 시작")
+                        await asyncio.sleep(random.uniform(2.0, 4.0))
+                        asyncio.create_task(self._conversation_loop())
+                        return
+        except Exception as e:
+            print(f"[TestUser] 늦은 합류 체크 실패 (건너뜀): {e}")
+
         print("[TestUser] 유나 첫 인사 대기 중...")
         self.waiting_for_response = True
         self._response_event.clear()
@@ -348,10 +370,16 @@ class TestUserBot(discord.Client):
                 # 메시지 전송 (speaking 플래그)
                 self._set_state("speaking", True)
                 try:
-                    await self._send_reply(reply)
+                    spoke = await self._send_reply(reply)
                 finally:
                     self._set_state("speaking", False)
                 self.turn_count += 1
+
+                # NO_REPLY (의도된 침묵) 면 agent 응답 대기 스킵 — 다음 턴에서 채널 재선택.
+                # 안 그러면 idle timeout 누적되어 조기 종료 회귀.
+                if not spoke:
+                    await asyncio.sleep(random.uniform(*REPLY_DELAY))
+                    continue
 
                 # 에이전트 응답 대기
                 self.waiting_for_response = True
@@ -695,8 +723,8 @@ class TestUserBot(discord.Client):
                     print(f"[TestUser] reply 채널 교체: #{self.target_channel.name} → #{target_name} (silence-priority)")
                     self.target_channel = new_ch
 
-    async def _send_reply(self, reply: str):
-        """응답을 디스코드에 전송.
+    async def _send_reply(self, reply: str) -> bool:
+        """응답을 디스코드에 전송. 실제 발화 했으면 True, NO_REPLY/leakage 로 전부 드롭됐으면 False.
 
         target_channel은 _conversation_loop에서 _pick_reply_channel()로 이미 결정됨.
         여기서는 그 값으로 전송만 — 중간에 on_message가 target_channel을 덮어써서
@@ -711,17 +739,36 @@ class TestUserBot(discord.Client):
         meta_paren_pattern = _re.compile(
             r"\s*\([^()]*?(?:톤|느낌|처럼|듯|표정|얼굴|목소리|뉘앙스|식으로 말함|식으로|정색|웃음|한숨)[^()]*?\)\s*"
         )
+        # reasoning leakage — 침묵·응답 결정 과정이 채팅에 노출되는 회귀.
+        # 시작 토큰: "빈 응답", "응답 없음", "[침묵]", "NO_REPLY"
+        # 본문 reasoning 단서: "침묵이 가장", "더 말하면 루프", "마무리됐으니", "자연스러움"
+        reasoning_prefix_re = _re.compile(
+            r"^\s*(?:\[?\(?(?:빈\s*응답|응답\s*없음|침묵|NO_REPLY)\)?\]?)(?:\s|[(\[:—-])"
+        )
+        reasoning_only_paren_re = _re.compile(
+            r"^\s*\([^()]*?(?:침묵이|마무리됐|루프|자연스러우?[움면니워]|응답\s*없)"
+        )
         cleaned = []
         for line in lines:
             if line.startswith("나:") or line.startswith(f"{_QA_NAME}:"):
                 line = line.split(":", 1)[1].strip()
+            # NO_REPLY 단독 → 진짜 침묵, 통째로 drop
+            if line.strip().upper() == "NO_REPLY":
+                continue
+            # reasoning leakage 패턴 → drop (이 줄만)
+            if reasoning_prefix_re.match(line) or reasoning_only_paren_re.match(line):
+                print(f"[TestUser] reasoning leakage 감지 — 드롭: {line[:80]}")
+                continue
             line = meta_paren_pattern.sub(" ", line).strip()
             line = _re.sub(r"\s+", " ", line)
             if line:
                 cleaned.append(line)
 
         if not cleaned or target is None:
-            return
+            # 전부 drop 됐으면 무발화 (NO_REPLY 의도). target 없는 경우 포함.
+            if not cleaned and target is not None:
+                print(f"[TestUser] 응답 전부 leakage/NO_REPLY → 무발화")
+            return False
 
         ch_name = target.name
 
@@ -741,6 +788,7 @@ class TestUserBot(discord.Client):
                 "role": "user", "name": _QA_NAME, "text": text, "channel": ch_name,
             })
             print(f"[#{ch_name}] [{_QA_NAME}] {text}")
+        return True
 
     async def _proactive_reboot(self, reason: str) -> bool:
         """에이전트 idle + mission 미완 시 테스트 유저가 다음 주제 선제 발화로 대화 재시동.

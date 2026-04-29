@@ -39,9 +39,11 @@ AGENT_MODELS = {
     "persona": "claude-haiku-4-5",   # 대화량 많고 지연 민감 — 기본 Haiku, 필요시 대시보드에서 per-agent Sonnet override
     "mgr": "claude-sonnet-4-6",
     "creator": "claude-sonnet-4-6",  # 대화는 소넷
+    "dev": "claude-sonnet-4-6",      # triage / chat 응답은 Sonnet — 코드 수정은 별도 dev_dispatch_fix subprocess 가 Opus
 }
 AGENT_TASK_MODELS = {
     "creator": "claude-opus-4-6",  # 프로필 JSON 생성은 opus
+    "dev": "claude-opus-4-7",      # 실제 코드 수정 subprocess (dev_dispatch_fix) — 최신 Opus
 }
 
 # 대시보드에서 선택 가능한 모델 카탈로그.
@@ -79,6 +81,57 @@ OPUS_MODEL = "claude-opus-4-6"
 
 def _normalize(s):
     return re.sub(r'[.?!,~\s…·ㅋㅎㅠ]', '', s).lower()
+
+
+# Internal-monologue / silence-reasoning leak 패턴. LLM 이 침묵 결정을 채팅에 그대로
+# 출력하는 회귀 (`[침묵]`, `대화가 마무리됐으니까 응답 없음]`, `NO_REPLY (이유)` 등).
+# persona.py / mgr.py / creator.py 시스템 프롬프트가 NO_REPLY 토큰을 가르쳐도, 모델이
+# 가끔 이유를 덧붙이거나 reasoning 자체를 출력 → 후처리에서 한 번 더 차단.
+_REASONING_PREFIX_RE = re.compile(
+    # bare "침묵" 은 자연 발화 가능 ("침묵 깨고 ...") — 토픽 marker 붙은 reasoning 전용 형태만 잡음
+    r"^\s*[\[\(]?\s*(?:빈\s*응답|응답\s*없음|침묵(?:이라|이\s|이가|만\s|이$)|silence is|NO[_\s-]?REPLY)",
+    re.IGNORECASE,
+)
+# Bracket 만으로 둘러싼 짧은 메타 태그 — `[침묵]` `[silence]` `[no reply]` `[...]`
+_BRACKET_META_RE = re.compile(
+    r"^\s*[\[\(]\s*(?:침묵|silence|no\s*reply|응답\s*없음|\.{2,}|…+)\s*[\]\)]\s*$",
+    re.IGNORECASE,
+)
+_REASONING_PAREN_RE = re.compile(
+    r"^\s*[\[\(][^\[\(\]\)]*?(?:침묵이|마무리됐|루프|자연스러우?[움면니워]|응답\s*없|"
+    r"silence is|conversation\s+(?:has\s+)?(?:ended|wrapped)|naturally\s+ended)",
+    re.IGNORECASE,
+)
+# Reasoning sentence 가 닫는 `]`/`)` 만 달랑 붙은 채로 끝나는 경우
+# 예: "대화가 충분히 예쁘게 마무리됐으니까 응답 없음]"
+_REASONING_TAIL_BRACKET_RE = re.compile(
+    r"(?:응답\s*없|침묵이|마무리됐|루프|자연스러우?[움면니워])[^\[\(\]\)]*[\]\)]\s*$",
+    re.IGNORECASE,
+)
+# 단독 "..." 또는 "....." 라인 — persona 가 침묵 표현으로 점만 출력하는 회귀
+_DOTS_ONLY_RE = re.compile(r"^[\s.…]+$")
+
+
+def _is_reasoning_leak(text: str) -> bool:
+    """채팅에 새어나간 LLM 의 침묵·결정·내레이션을 감지. True 면 메시지 drop."""
+    if not text:
+        return False
+    s = text.strip()
+    if not s:
+        return False
+    if _REASONING_PREFIX_RE.match(s):
+        return True
+    if _BRACKET_META_RE.match(s):
+        return True
+    if _REASONING_PAREN_RE.match(s):
+        return True
+    if _REASONING_TAIL_BRACKET_RE.search(s):
+        return True
+    # "..." 단독 — 빈 메시지 placeholder 인 경우 _parse_response 가 별도 처리하므로
+    # 여기서는 진짜 점만 있는 짧은 라인만 잡음
+    if len(s) <= 6 and _DOTS_ONLY_RE.match(s):
+        return True
+    return False
 
 
 # Claude CLI가 stdout으로 토해내는 에러/상태 메시지 패턴.
@@ -997,6 +1050,7 @@ class AgentRuntime:
                 "persona": 180,   # 카톡 응답
                 "mgr": 300,       # 매니저 — 도구 다수 + 컨텍스트 많음
                 "creator": 360,   # 크리에이터 — 큰 JSON + 도구 + 확인카드 동시 생성
+                "dev": 300,       # dev triage — request payload 분석 + 도구 호출
             }
             _watchdog_secs = CLI_WATCHDOG.get(agent_type, 180)
             import threading as _threading
@@ -1066,6 +1120,13 @@ class AgentRuntime:
                 # (e.g. 전체 응답이 <tools>...</tools> 한 줄로 시작했는데 in_tools 트랜지션이 안 먹은 경우)
                 if "<tools>" in cleaned.lower() or "<call" in cleaned.lower() or "</tools>" in cleaned.lower():
                     log_writer.system(f"[Tools] ⚠ stream leak 차단 ({name}): {cleaned[:60]}")
+                    continue
+
+                # Internal-monologue / silence-reasoning leak 차단 (NO_REPLY, [침묵], 응답 없음 등).
+                # persona 시스템 프롬프트가 NO_REPLY 토큰을 가르쳐도 모델이 이유 덧붙이거나
+                # bracket reasoning 출력하는 회귀.
+                if _is_reasoning_leak(cleaned):
+                    log_writer.system(f"[Reasoning leak] ⚠ stream drop ({name}): {cleaned[:80]}")
                     continue
 
                 # 실시간 중복 체크 (exact match)
@@ -1145,13 +1206,15 @@ class AgentRuntime:
     # ── Response parsing ─────────────────────────────
 
     def _parse_response(self, raw: str, agent_name: str = "") -> list[str]:
+        # 빈 응답이 "..." placeholder 로 채팅에 새는 회귀 방지 — 빈 결과는 빈 리스트.
+        # 다운스트림 (generate_response, A2A 등) 이미 0-element 경우 발화 스킵 OK.
         if not raw:
-            return ["..."]
+            return []
 
         raw = raw.replace("[MSG]", "\n")
         lines = [line.strip() for line in raw.strip().split("\n") if line.strip()]
         if not lines:
-            return ["..."]
+            return []
 
         messages = []
         for line in lines:
@@ -1179,10 +1242,15 @@ class AgentRuntime:
             # 원문에 <tools> 가 남아있으면 drop (tools 는 parse_tools_in_output 이 따로 처리)
             if "<tools>" in cleaned.lower() or "<call " in cleaned.lower() or "</tools>" in cleaned.lower():
                 continue
+            # Internal-monologue / silence-reasoning leak 차단 — persona/mgr 둘 다.
+            # NO_REPLY 토큰 + bracket-enclosed reasoning + "응답 없음"/"빈 응답"/"[침묵]"
+            # 같은 회귀 패턴. 자세한 사례는 docs/edge_cases.md (reasoning leakage).
+            if _is_reasoning_leak(cleaned):
+                continue
             messages.append(cleaned)
 
         if not messages:
-            return ["..."]
+            return []
 
         # 중복 제거 (exact + substring)
         unique = []
@@ -1204,7 +1272,7 @@ class AgentRuntime:
             seen.add(key)
             unique.append(msg)
 
-        return unique if unique else ["..."]
+        return unique if unique else []
 
     def _placeholder_response(self, profile: dict, user_message: str) -> list[str]:
         """CLI 호출 실패/빈 응답 시 fallback. 몰입 보호를 위해 메타 단어 ("Claude Code" 등)

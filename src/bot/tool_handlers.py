@@ -217,6 +217,174 @@ async def _h_request_dev_task(args: dict, ctx: ToolContext):
     return {"accepted": True}
 
 
+async def _h_request_dev_fix(args: dict, ctx: ToolContext):
+    """매니저 (유나/하나) 또는 오너가 호출 — dev_requests 큐에 적재 + dev 봇 lazy seed.
+
+    args: {channel, severity ('low'|'med'|'high'), repro, expected, actual, notes?}
+    """
+    from src.core.dev_agent import (
+        ensure_dev_seeded, enqueue_dev_request, DEV_CHANNEL, DEV_ID,
+    )
+
+    # 페이로드 검증
+    required = ("channel", "severity", "repro", "expected", "actual")
+    missing = [k for k in required if not args.get(k) or not str(args[k]).strip()]
+    if missing:
+        return {"ok": False, "reason": f"missing fields: {missing}"}
+    if args["severity"] not in ("low", "med", "high"):
+        return {"ok": False, "reason": "severity must be one of low/med/high"}
+
+    payload = {
+        "channel": str(args["channel"]).strip(),
+        "severity": args["severity"],
+        "repro": str(args["repro"]).strip(),
+        "expected": str(args["expected"]).strip(),
+        "actual": str(args["actual"]).strip(),
+        "notes": str(args.get("notes", "")).strip(),
+    }
+    requested_by = ctx.caller_agent_id or "owner"
+
+    # Lazy seed dev agent
+    seeded_now = ensure_dev_seeded()
+
+    # mgr-dev-request 채널 ensure (Discord 어댑터 — guild 객체 필요).
+    # 참여자: 세나(dev) + 유나(mgr) + 오너 (오너는 mgr-* 카테고리 권한으로 자동 접근).
+    if ctx.guild is not None:
+        try:
+            from src.core.sync import ensure_unique_channel
+            from src.bot.core import _ensure_category
+            from src.bot import MGR_ID
+            category = await _ensure_category(ctx.guild, "glimi-mgr")
+            await ensure_unique_channel(
+                ctx.guild, DEV_CHANNEL, category, participants=[DEV_ID, MGR_ID]
+            )
+        except Exception as e:
+            log_writer.system(f"[dev] ⚠ {DEV_CHANNEL} 채널 ensure 실패: {type(e).__name__}: {e}")
+
+    request_id = enqueue_dev_request(requested_by, payload)
+
+    # runtime cache invalidate — dev agent 가 이번 요청 받아서 처리하도록
+    if seeded_now:
+        try:
+            from src.core import runtime as _rt
+            if hasattr(_rt, "invalidate_cache"):
+                _rt.invalidate_cache(DEV_ID)
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "request_id": request_id,
+        "dispatched_to": "한세나",
+        "channel": DEV_CHANNEL,
+    }
+
+
+async def _h_dev_dispatch_fix(args: dict, ctx: ToolContext):
+    """Dev 봇 (세나) 만 호출 — pending 요청을 HIGH-confidence 자동 수정으로 처리.
+
+    args: {request_id, task_brief, files_hint?}
+
+    runtime 이 Claude Code (Opus) subprocess 를 spawn → 해당 task_brief 로 코드 수정 +
+    auto-commit + push. 결과는 next-turn tool result 로 dev 봇한테 전달.
+    """
+    from src.core.dev_agent import DEV_ID, get_request, mark_processing, mark_completed, mark_failed
+
+    if ctx.caller_agent_id != DEV_ID:
+        return {"ok": False, "reason": "only dev agent can call dev_dispatch_fix"}
+
+    request_id = args.get("request_id")
+    task_brief = args.get("task_brief", "").strip()
+    files_hint = args.get("files_hint") or []
+    if not isinstance(request_id, int) or not task_brief:
+        return {"ok": False, "reason": "request_id (int) + task_brief required"}
+
+    req = get_request(request_id)
+    if not req:
+        return {"ok": False, "reason": f"request #{request_id} not found"}
+    if req["status"] != "pending":
+        return {"ok": False, "reason": f"request #{request_id} status is {req['status']}, not pending"}
+
+    mark_processing(request_id)
+    try:
+        from src.core.dev_dispatch import run_claude_code_fix
+        result = await run_claude_code_fix(
+            request_id=request_id,
+            task_brief=task_brief,
+            files_hint=files_hint,
+            payload=req,
+        )
+        if result.get("ok"):
+            mark_completed(request_id, result, commit_sha=result.get("commit_sha"))
+            return {"ok": True, "commit_sha": result.get("commit_sha"),
+                    "summary": result.get("summary", "")[:300],
+                    "files_changed": result.get("files_changed", [])}
+        mark_failed(request_id, result.get("error", "unknown"))
+        return {"ok": False, "reason": result.get("error", "dispatch failed")[:300]}
+    except Exception as e:
+        mark_failed(request_id, f"{type(e).__name__}: {e}")
+        return {"ok": False, "reason": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
+async def _h_dev_escalate(args: dict, ctx: ToolContext):
+    """Dev 봇만 호출 — LOW confidence 케이스를 사람(오너) 검토 큐로 전환.
+
+    args: {request_id, summary, decision_points[], suggested_options?[], context_files?[], severity}
+    """
+    from src.core.dev_agent import DEV_ID, get_request, mark_needs_human_review
+
+    if ctx.caller_agent_id != DEV_ID:
+        return {"ok": False, "reason": "only dev agent can call dev_escalate"}
+
+    request_id = args.get("request_id")
+    summary = args.get("summary", "").strip()
+    decision_points = args.get("decision_points") or []
+    if not isinstance(request_id, int) or not summary or not decision_points:
+        return {"ok": False, "reason": "request_id + summary + decision_points required"}
+
+    req = get_request(request_id)
+    if not req:
+        return {"ok": False, "reason": f"request #{request_id} not found"}
+    if req["status"] != "pending":
+        return {"ok": False, "reason": f"request #{request_id} status is {req['status']}"}
+
+    report = {
+        "summary": summary,
+        "decision_points": decision_points,
+        "suggested_options": args.get("suggested_options") or [],
+        "context_files": args.get("context_files") or [],
+        "severity": args.get("severity", "med"),
+    }
+    mark_needs_human_review(request_id, report)
+    return {"ok": True, "request_id": request_id, "status": "needs_human_review"}
+
+
+async def _h_dev_clarify(args: dict, ctx: ToolContext):
+    """Dev 봇만 호출 — 요청 페이로드가 모호할 때 보고자에게 질문.
+
+    args: {request_id, questions[]}
+    질문들은 mgr-dev-request 채널에 게시되어 보고자(유나/하나) 가 answer_dev_clarify
+    or 추가 메시지로 응답.
+    """
+    from src.core.dev_agent import DEV_ID, get_request
+
+    if ctx.caller_agent_id != DEV_ID:
+        return {"ok": False, "reason": "only dev agent can call dev_clarify"}
+
+    request_id = args.get("request_id")
+    questions = args.get("questions") or []
+    if not isinstance(request_id, int) or not questions:
+        return {"ok": False, "reason": "request_id + questions[] required"}
+
+    req = get_request(request_id)
+    if not req:
+        return {"ok": False, "reason": f"request #{request_id} not found"}
+
+    # 일단 questions 를 result_json 에 stash (status 는 pending 유지 — 답변 받으면 재처리)
+    # 채널 메시지는 dev 봇이 같은 응답 턴에 chat 으로 던지니 여기서 별도 send 안 함.
+    return {"ok": True, "request_id": request_id, "questions_count": len(questions)}
+
+
 async def _h_scene_advance(args: dict, ctx: ToolContext):
     """범용 씬 phase 전환. scene_id + phase 조합별로 적절한 handler 호출."""
     from src.scenes import get_scene
@@ -657,7 +825,11 @@ _MAP = {
     "clear_messages": _h_clear_messages,
     "reset_agent": _h_reset_agent,
     "revive_persona": _h_revive_persona,
-    "request_dev_task": _h_request_dev_task,
+    "request_dev_task": _h_request_dev_task,        # 레거시 — 봇 종료 후 외부 dev 워크플로우
+    "request_dev_fix": _h_request_dev_fix,          # 신규 — dev manager (세나) 큐에 적재
+    "dev_dispatch_fix": _h_dev_dispatch_fix,        # 세나 전용 — Claude Code subprocess + auto-commit
+    "dev_escalate": _h_dev_escalate,                # 세나 전용 — 오너 검토 큐로 전환
+    "dev_clarify": _h_dev_clarify,                  # 세나 전용 — 보고자에게 질문
     "scene_advance": _h_scene_advance,
     "finish_profile_collection": _h_finish_profile_collection,
     "finish_tutorial": _h_finish_tutorial,

@@ -185,6 +185,20 @@ def _get_agent_model(agent_id: str, agent_type: str) -> dict:
     return {"model": model, "provider": provider, "override": bool(override_model)}
 
 
+def _dev_queue_busy() -> bool:
+    """dev_requests 에 pending 또는 processing 인 row 가 있으면 True.
+    Dev manager (한세나) 는 큐가 비어있으면 inactive — 그래프·에이전트 탭에서 회색 표시."""
+    try:
+        conn = db.get_conn()
+        n = conn.execute(
+            "SELECT COUNT(*) FROM dev_requests WHERE status IN ('pending','processing')"
+        ).fetchone()[0]
+        conn.close()
+        return n > 0
+    except Exception:
+        return False
+
+
 def get_agents() -> list[dict]:
     """모든 에이전트 (mgr → creator → persona 순) + thinking/speaking 플래그."""
     try:
@@ -192,9 +206,11 @@ def get_agents() -> list[dict]:
     except Exception:
         return []
     agents.sort(key=lambda a: (
-        0 if a.get("type") == "mgr" else 1 if a.get("type") == "creator" else 2,
+        0 if a.get("type") == "mgr" else 1 if a.get("type") == "creator" else
+        2 if a.get("type") == "dev" else 3,
         a.get("id", ""),
     ))
+    dev_busy = _dev_queue_busy()
     out = []
     for a in agents:
         emo = a.get("current_emotion") or "평온"
@@ -203,11 +219,17 @@ def get_agents() -> list[dict]:
         is_t = log_writer.is_thinking(aid)
         is_s = log_writer.is_speaking(aid)
         model_info = _get_agent_model(aid, atype)
+        # Dev agent 는 큐 상태로 동적 결정 — 자기 발화 중 (thinking/speaking) 또는 큐에
+        # 처리할 게 있으면 active, 아니면 inactive (회색 표시 / 그래프 dim).
+        if atype == "dev":
+            display_status = "active" if (is_t or is_s or dev_busy) else "inactive"
+        else:
+            display_status = a.get("status", "")
         out.append({
             "id": aid,
             "type": atype,
             "name": a.get("name", aid),
-            "status": a.get("status", ""),
+            "status": display_status,
             "emotion": emo,
             "emoji": EMOTION_EMOJI.get(emo, "・"),
             "intensity": a.get("emotion_intensity", 0) or 0,

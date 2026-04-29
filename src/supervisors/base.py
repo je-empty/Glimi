@@ -208,6 +208,14 @@ class SupervisorPool:
             logging.getLogger("glimi.supervisor").warning(
                 f"OrchestratorSupervisor 등록 실패: {e}"
             )
+        try:
+            from src.supervisors.dev_queue import DevQueueSupervisor
+            self.register(DevQueueSupervisor())
+        except Exception as e:
+            import logging
+            logging.getLogger("glimi.supervisor").warning(
+                f"DevQueueSupervisor 등록 실패: {e}"
+            )
 
     # ── Tick ───────────────────────────────────────────────
 
