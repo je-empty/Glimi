@@ -99,30 +99,34 @@ function renderCard(r) {
   const sev = r.severity || 'med';
   const conf = r.confidence;
   const expanded = STATE.expanded.has(id);
-  const summary = r.sera_summary || (r.payload?.repro || '').slice(0, 120) || '(no summary)';
+  const summary = r.sera_summary || (r.payload?.repro || '').slice(0, 200) || '(no summary)';
 
+  // 액션 버튼들
   const actions = [];
   if (status === 'analyzed' || status === 'needs_human_review') {
-    actions.push(`<button class="primary" onclick="approveReq(${id})" style="padding:6px 12px;font-size:12px;">Approve</button>`);
-    actions.push(`<button class="danger" onclick="rejectReq(${id})">Reject</button>`);
+    actions.push(`<button class="approve" onclick="approveReq(${id})">✓ Approve</button>`);
+    actions.push(`<button class="reject" onclick="rejectReq(${id})">Reject</button>`);
   } else if (status === 'approved') {
-    actions.push(`<button class="danger" onclick="rejectReq(${id})">Unapprove (reject)</button>`);
+    actions.push(`<button class="unapprove" onclick="rejectReq(${id})">Unapprove</button>`);
   }
 
-  const commit = r.commit_sha ? `<span class="commit">commit ${esc(r.commit_sha)}</span>` : '';
+  // 메타 (commit / PR / 시간)
+  const commit = r.commit_sha ? `<span class="commit">${esc(r.commit_sha.slice(0,8))}</span>` : '';
   const pr = r.pr_url ? `<a class="pr-link" href="${esc(r.pr_url)}" target="_blank" rel="noopener">PR ↗</a>` : '';
+  const timeAgo = `<span>${fmtAgo(r.requested_at)} ago</span>`;
 
+  // 상세 (expanded 시)
   let details = '';
   if (expanded) {
     const p = r.payload || {};
     const files = (r.files_hint_list || []).map(f => esc(f)).join(', ') || '(none)';
     details = `
       <span class="label">Channel</span>${esc(p.channel || '?')}
-      <span class="label">Repro</span>${esc(p.repro || '?')}
+      <span class="label">Reproduce</span>${esc(p.repro || '?')}
       <span class="label">Expected</span>${esc(p.expected || '?')}
       <span class="label">Actual</span>${esc(p.actual || '?')}
       ${p.notes ? `<span class="label">Notes</span>${esc(p.notes)}` : ''}
-      ${r.task_brief ? `<span class="label">Task brief</span><pre style="white-space:pre-wrap;font-size:11.5px;">${esc(r.task_brief)}</pre>` : ''}
+      ${r.task_brief ? `<span class="label">Task brief (Claude Code 에 전달)</span><pre>${esc(r.task_brief)}</pre>` : ''}
       <span class="label">Files hint</span><span class="files">${files}</span>
       ${r.analysis_notes ? `<span class="label">Sera notes</span>${esc(r.analysis_notes)}` : ''}
       ${r.error ? `<span class="label" style="color:var(--err)">Error</span>${esc(r.error)}` : ''}
@@ -131,24 +135,35 @@ function renderCard(r) {
   }
 
   return `
-    <div class="card expandable ${expanded ? 'expanded' : ''}">
-      <div class="head">
-        <span class="id">#${id}</span>
+    <div class="card ${expanded ? 'expanded' : ''}" data-status="${esc(status)}">
+      <div class="id-col">#${id}</div>
+
+      <div class="badges">
         <span class="badge community">${esc(r.community_id || '?')}</span>
-        <span class="badge status-${esc(status)}">${esc(status)}</span>
-        <span class="badge severity-${esc(sev)}">${esc(sev)}</span>
-        ${conf ? `<span class="badge confidence-${esc(conf)}">${esc(conf)}</span>` : ''}
+        <div class="status-row">
+          <span class="badge status-${esc(status)}">${esc(status)}</span>
+        </div>
+        <div class="status-row">
+          <span class="badge severity-${esc(sev)}">${esc(sev)}</span>
+          ${conf ? `<span class="badge confidence-${esc(conf)}">${esc(conf)}</span>` : ''}
+        </div>
       </div>
+
       <div class="summary">${esc(summary)}</div>
-      <div class="meta-row">
-        ${commit}
-        ${pr}
-        ${commit || pr ? '·' : ''}
-        <span>${fmtAgo(r.requested_at)} ago</span>
-      </div>
-      <button class="toggle" onclick="toggleCard(${id})">${expanded ? '▾ Hide details' : '▸ Show details'}</button>
       <div class="details">${details}</div>
-      ${actions.length ? `<div class="actions">${actions.join('')}</div>` : ''}
+      <button class="toggle" onclick="toggleCard(${id})" style="grid-area: details; align-self: start;">
+        ${expanded ? '▾ Hide details' : '▸ Show details'}
+      </button>
+
+      <div class="meta-col">
+        ${pr}
+        ${commit}
+        ${timeAgo}
+      </div>
+
+      <div class="actions">
+        ${actions.join('') || '<span style="color:var(--text-faint);font-size:11px;">—</span>'}
+      </div>
     </div>
   `;
 }
