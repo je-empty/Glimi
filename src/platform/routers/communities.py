@@ -428,12 +428,12 @@ _PLACEHOLDER_PNG = (
 
 # 디폴트 사람 모양 SVG — 프로필 이미지 없는 에이전트(특히 test-user) 가
 # 빈 박스로 보이는 회귀 fix. 카드/hero/모달 어디서든 이걸로 fallback.
-# 그래프의 owner 노드 SVG 와 동일한 머리+몸통 실루엣 — 시각적 일관성.
+# 그래프의 owner 노드 SVG 와 동일한 머리+몸통 실루엣 (밝은 톤) — 시각적 일관성.
 _PLACEHOLDER_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">'
-    '<rect width="200" height="200" fill="#2a2d34"/>'
-    '<circle cx="100" cy="78" r="28" fill="#7a8597"/>'
-    '<path d="M40 178 Q 40 124 100 124 Q 160 124 160 178 Z" fill="#7a8597"/>'
+    '<rect width="200" height="200" fill="#fff5e6"/>'
+    '<circle cx="100" cy="78" r="28" fill="#db2777"/>'
+    '<path d="M40 178 Q 40 124 100 124 Q 160 124 160 178 Z" fill="#db2777"/>'
     '</svg>'
 ).encode("utf-8")
 
