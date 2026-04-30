@@ -559,13 +559,14 @@
   .agent-card.creator { border-left: 3px solid var(--creator); }
   .agent-card.persona { border-left: 3px solid var(--persona); }
   .agent-card.dev { border-left: 3px solid var(--dev); }
-  /* Inactive — dev (한세나) 가 큐 비어있을 때 회색 dim. live 상태가 inactive 클래스 안 받음 (renderAgent 가드). */
+  /* Inactive — dev (한세나) 가 큐 비어있을 때 dim. live 상태는 inactive 클래스 안 받음 (renderAgent 가드).
+     너무 dim 하면 세나가 거의 안 보여서 사용자가 존재 인지 못함 → opacity 0.75 로 살짝 진하게. */
   .agent-card.inactive {
-    opacity: 0.55;
+    opacity: 0.75;
     border-left-style: dashed;
-    background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+    background: color-mix(in srgb, var(--panel) 80%, var(--bg));
   }
-  .agent-card.inactive:hover { opacity: 0.8; }
+  .agent-card.inactive:hover { opacity: 1; }
   .agent-card.thinking {
     grid-column: span 2;
     max-width: 760px;
@@ -1037,8 +1038,8 @@
     .gp-server-ctrl .gp-ctrl-btn { padding: 4px 8px; font-size: 11px; }
     /* admin Dev Requests 링크는 작게 */
     #admin-dev-link { padding: 4px 8px; font-size: 11px; }
-    /* 잘 안 쓰는 토글 — 모바일에선 숨김 (필요하면 추후 햄버거 메뉴로 분리) */
-    #lang-switcher-wrap, #supervisor-toggle, #theme-toggle { display: none; }
+    /* 잘 안 쓰는 토글만 모바일에서 숨김 — supervisor 토글은 핵심 기능이라 유지 */
+    #lang-switcher-wrap, #theme-toggle { display: none; }
     .gp-user { display: none; }
 
     /* Tabs — 가로 스크롤 + 패딩 축소, momentum scroll */
