@@ -211,6 +211,7 @@ class CommitmentSupervisor(Supervisor):
     async def _nudge_agent(self, guild, agent_id: str, agent_name: str,
                             target_channel: str, commit_msg: str) -> None:
         """invoke_agent 로 강제 nudge — 해당 agent 가 target_channel 에서 약속 이행 발화."""
+        from src.supervisors.events import log_event as _log_sup_event
         try:
             from src.bot.mgr_system import yuna_force_agent
             import json as _json
@@ -224,11 +225,26 @@ class CommitmentSupervisor(Supervisor):
                 "target": target_channel,
                 "instruction": instruction,
             }, ensure_ascii=False)
-            # yuna_force_agent 가 expect 하는 channel 객체 — mgr-dashboard 가 제일 안전
             mgr_ch = next((c for c in guild.text_channels if c.name == "mgr-dashboard"), None)
             await yuna_force_agent(mgr_ch, payload, guild)
             log_writer.system(
                 f"[commitment] {agent_name} → #{target_channel} nudge 발송 (commit: {commit_msg[:80]})"
             )
+            _log_sup_event(
+                sup_id="commitment.tracker",
+                action="nudge",
+                targets=[agent_id],
+                summary=f"{agent_name} → #{target_channel} 약속 이행 강제 발화",
+                outcome="ok",
+                details={"target_channel": target_channel, "commit_msg": commit_msg[:200]},
+            )
         except Exception as e:
             log_writer.system(f"[commitment] nudge 실패 ({agent_name} → #{target_channel}): {e}")
+            _log_sup_event(
+                sup_id="commitment.tracker",
+                action="nudge",
+                targets=[agent_id],
+                summary=f"{agent_name} → #{target_channel} nudge 시도 실패",
+                outcome="failed",
+                details={"target_channel": target_channel, "error": str(e)},
+            )

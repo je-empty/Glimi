@@ -92,26 +92,41 @@ class SupervisorPool:
 
     def _dump_snapshot(self):
         """supervisor 상태를 `communities/{id}/logs/.supervisors.json` 에 기록.
-        대시보드(별도 프로세스) 가 읽어서 UI에 반영하기 위함. 실패해도 무시."""
+        대시보드(별도 프로세스) 가 읽어서 UI에 반영하기 위함. 실패해도 무시.
+
+        active 필드는 두 개로 분리:
+          - registered: pool 에 등록되어 있나 (should_exist())
+          - active: 지금 실제로 일하고 있나 (is_active() — 큐 비어있으면 False 등)
+        대시보드는 active 로 시각적 강조 (intervening/active/idle 단계).
+        """
         try:
             import json as _json, os as _os, time as _time
             from src import db as _db, community as _comm
             cid = _comm.get_community_id()
             logs_dir = _os.path.dirname(_db._get_db_path()) + "/logs"
             _os.makedirs(logs_dir, exist_ok=True)
+            items = []
+            for s in self._instances.values():
+                try:
+                    is_active = bool(s.is_active()) if hasattr(s, "is_active") else True
+                except Exception:
+                    is_active = True
+                try:
+                    registered = bool(s.should_exist()) if hasattr(s, "should_exist") else True
+                except Exception:
+                    registered = True
+                items.append({
+                    "id": s.id,
+                    "kind": s.kind,
+                    "display_name": getattr(s, "display_name", s.id),
+                    "scope": dict(getattr(s, "scope", {}) or {}),
+                    "active": is_active,
+                    "registered": registered,
+                })
             data = {
                 "community_id": cid,
                 "updated_at": _time.time(),
-                "items": [
-                    {
-                        "id": s.id,
-                        "kind": s.kind,
-                        "display_name": getattr(s, "display_name", s.id),
-                        "scope": dict(getattr(s, "scope", {}) or {}),
-                        "active": getattr(s, "should_exist", lambda: True)(),
-                    }
-                    for s in self._instances.values()
-                ],
+                "items": items,
             }
             tmp = _os.path.join(logs_dir, ".supervisors.json.tmp")
             with open(tmp, "w", encoding="utf-8") as f:
@@ -258,6 +273,14 @@ class SupervisorPool:
                 await sup.check(ctx)
             except Exception as e:
                 log_writer.system(f"[sup:{sup.id}] check 오류: {type(e).__name__}: {e}")
+        # tick 주기마다 snapshot refresh — is_active 가 시간에 따라 바뀌므로
+        # (예: dev.queue 큐 비워지면 active False) 등록/해지 시점이 아니라 매 tick 마다
+        # 디스크에 최신 상태 반영해야 대시보드 (별도 프로세스) 가 정확히 표시.
+        if not hasattr(self, "_last_snapshot_dump"):
+            self._last_snapshot_dump = 0.0
+        if now - self._last_snapshot_dump >= 10.0:  # 10초에 1회
+            self._dump_snapshot()
+            self._last_snapshot_dump = now
 
 
 # ── 싱글톤 ──────────────────────────────────────────────

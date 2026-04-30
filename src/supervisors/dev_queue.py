@@ -115,5 +115,28 @@ class DevQueueSupervisor(Supervisor):
                         await send_as_agent(ch, DEV_ID, msg)
                     except Exception as e:
                         log_writer.system(f"[dev.queue] send_as_agent 실패: {e}")
+            # 활동 이벤트 기록 — request_id 처리했음을 그래프에 가시화.
+            try:
+                from src.supervisors.events import log_event as _log_sup_event
+                _log_sup_event(
+                    sup_id="dev.queue", action="process_request",
+                    targets=[DEV_ID],
+                    summary=f"#{req['id']} 처리 (severity={req.get('severity','?')})",
+                    outcome="ok",
+                    details={"request_id": req["id"], "requested_by": req.get("requested_by", "")},
+                )
+            except Exception:
+                pass
         except Exception as e:
             log_writer.system(f"[dev.queue] dev agent invoke 오류: {type(e).__name__}: {e}")
+            try:
+                from src.supervisors.events import log_event as _log_sup_event
+                _log_sup_event(
+                    sup_id="dev.queue", action="process_request",
+                    targets=[DEV_ID],
+                    summary=f"요청 처리 실패 — {type(e).__name__}",
+                    outcome="failed",
+                    details={"error": str(e)},
+                )
+            except Exception:
+                pass
