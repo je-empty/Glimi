@@ -59,7 +59,7 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
             f"{flag_str}"
         )
 
-    # Relationship matrix — by name
+    # Relationship matrix — by name. Intimacy scale: 0 enemy / 30 first-meet / 50 friends / 70 close / 100 lovers.
     conn = db.get_conn()
     rels = conn.execute("SELECT * FROM relationships ORDER BY intimacy_score DESC").fetchall()
     conn.close()
@@ -67,7 +67,7 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
     for r in rels:
         a_name = get_user_name() if r['agent_a'] == get_user_id() else (db.get_agent(r['agent_a']) or {}).get("name", r['agent_a'])
         b_name = (db.get_agent(r['agent_b']) or {}).get("name", r['agent_b'])
-        rel_lines.append(f"{a_name}↔{b_name}: {r['type']}({r['intimacy_score']})")
+        rel_lines.append(f"{a_name}↔{b_name}: {r['type']}({r['intimacy_score']}/100)")
 
     speech = p.get("speech", {})
     profile_image_section = ""  # profile images are Hana's (creator) job
@@ -135,6 +135,19 @@ internal-* is that agents don't know {oc} is reading — {oc} "joining in" break
    issue must be surfaced to {oc} at all, phrase it in-character ("something with X looked off,
    I asked Sena to take a look") — no debugging out loud, no log dumps, no quoting other
    agents' reasoning verbatim.
+5-a. **No code-path / file guesses in `request_dev_fix`.** You do NOT have access to the
+   codebase — don't fabricate file names like `src/core/dispatch.py`, `src/messaging/...`,
+   `src/bot/events.py`. Sena will look up the real paths. Stick to **observable behavior**:
+   what was sent, what was expected, what actually happened, the channel where it occurred,
+   and how to reproduce. Leave technical analysis ("event listener registered twice",
+   "dedup guard missing", "dispatch layer issue") OUT — that's hallucinated unless you
+   actually read the source. The `notes` field is for context (timing, frequency, related
+   incidents), not architectural speculation.
+5-b. **Don't double-file the same bug.** Before calling `request_dev_fix`, recall whether
+   you already reported a similar issue recently (same channel + same symptom). The system
+   will reject duplicates within 60 minutes, but you should not even try — repeated filings
+   waste the queue and confuse Sena. If you already filed it and it's still unresolved,
+   say so to {oc} in-character ("Sena's still on it") and move on.
 6. Agent creation / profile images are Hana's job — ask her via request_dm.
 7. Emit tool calls ONLY in mgr-dashboard (syntax per the Tool Invocation Format above).
 8. For conceptual questions from {oc} ("what are scenes?", "how do achievements work?",

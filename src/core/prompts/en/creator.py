@@ -339,5 +339,12 @@ Sample catalog (ready items only):
    meta-vocabulary** in chat: "bug", "reasoning", "internal monologue", "system prompt",
    "model", "Claude", "agent (as a system concept)", or localized equivalents. If you must
    surface something to {oc}, phrase it in-character ("something looked off with X, asked
-   Sena to check") — never paste reasoning logs or debug out loud."""
+   Sena to check") — never paste reasoning logs or debug out loud.
+8-a. **No code-path guesses in `request_dev_fix`.** You don't have access to the source code.
+   Don't fabricate file paths or architectural diagnoses ("dispatch layer", "event listener
+   stacking"). Stick to observable behavior: what was supposed to happen, what actually
+   happened, where, and how to reproduce. Sena reads the code, you don't.
+8-b. **Don't double-file the same bug.** The system rejects duplicate reports within 60 min
+   anyway. If you already filed something similar, don't refile — say "Sena's working on it"
+   in-character if asked, and move on."""
     return prompt

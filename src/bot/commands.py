@@ -227,12 +227,13 @@ async def cmd_create_agent(ctx, *, concept: str):
         # DB 등록
         db.register_agent(new_id, "persona", profile["name"])
 
-        # 관계 설정
+        # 관계 설정 — 처음 추가되는 페르소나 → 어색~친구 default (db.INTIMACY_SCALE_DEFAULT).
         if "relationship_to_owner" in profile:
+            rel_intimacy = profile["relationship_to_owner"].get("intimacy", db.INTIMACY_SCALE_DEFAULT)
             db.add_relationship(
                 get_user_id(), new_id,
                 profile["relationship_to_owner"]["type"],
-                intimacy=50,
+                intimacy=rel_intimacy,
                 dynamics=profile["relationship_to_owner"].get("dynamics", "")
             )
 

@@ -525,9 +525,8 @@ function renderAgent(a, clickable=true) {
           <span class="type-tag ${a.type}">${esc(a.type)}</span>
         </div>
         <div class="agent-meta">
-          <span>${esc(a.emotion)}</span>
-          <div class="bar"><span style="width:${pct}%"></span></div>
-          <span>${a.intensity}/10</span>
+          <span class="emotion-label" title="강도 ${a.intensity || 0}/10">${esc(a.emoji || '')} ${esc(a.emotion)}</span>
+          <span class="intensity-dots band-${a.intensity_band || 'low'}" title="감정 강도 ${a.intensity || 0}/10 (${a.intensity_band || 'low'})">●●●</span>
           ${a.mbti ? `<span class="sep">·</span><span>${esc(a.mbti)}</span>` : ''}
           ${a.age ? `<span class="sep">·</span><span>${a.age}y</span>` : ''}
         </div>
@@ -822,15 +821,26 @@ async function openAgent(id) {
   }
 
   // ── 관계 top 3 (친밀도 내림차순) — 요약용 ──
+  // 친밀도 스케일: 0 원수 / 1-19 적대 / 20-39 어색 / 40-59 친구 / 60-79 친한 친구 / 80-99 절친 / 100 연인
+  const intimacyBand = (n) => {
+    if (n >= 100) return { label: '연인', cls: 'b-lover' };
+    if (n >= 80) return { label: '절친', cls: 'b-best' };
+    if (n >= 60) return { label: '친한 친구', cls: 'b-close' };
+    if (n >= 40) return { label: '친구', cls: 'b-friend' };
+    if (n >= 20) return { label: '어색', cls: 'b-awkward' };
+    if (n >= 1) return { label: '적대', cls: 'b-hostile' };
+    return { label: '원수', cls: 'b-enemy' };
+  };
   const relsSorted = (d.relationships || []).slice().sort((a, b) => (b.intimacy || 0) - (a.intimacy || 0));
   const relsTop = relsSorted.slice(0, 3);
   const renderRelRow = (r) => {
     const pct = Math.min(100, r.intimacy);
+    const band = intimacyBand(r.intimacy || 0);
     return `<div class="rel-row">
       <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
       <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
       <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
-      <span class="intimacy-num">${r.intimacy}</span>
+      <span class="intimacy-num ${band.cls}" title="${band.label} · 친밀도 ${r.intimacy}/100 (0=원수 100=연인)">${r.intimacy}/100</span>
       ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
     </div>`;
   };
@@ -948,7 +958,7 @@ async function openAgent(id) {
 
   // 전체 보기 URL 은 이제 openModal 이 header 링크에 자동 세팅 (이 함수에선 body 구성만).
   const emotionLine = d.emotion
-    ? `${esc(d.emoji || '')} ${esc(d.emotion)} <span style="color:var(--text-faint)">(${esc(String(d.intensity ?? ''))}/10)</span>`
+    ? `${esc(d.emoji || '')} ${esc(d.emotion)} <span style="color:var(--text-faint)">강도 ${esc(String(d.intensity ?? ''))}/10</span>`
     : '';
 
   // details/summary 공통 스타일 (인라인 — 신규 CSS 최소화)
