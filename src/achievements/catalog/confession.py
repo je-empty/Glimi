@@ -1,27 +1,31 @@
-"""마음 열기 — 에이전트가 오너에게 처음 마음 연 발화 (= 친구의 첫 고백)."""
+"""마음 열기 — persona 가 오너에게 처음 마음 연 발화 (= 친구의 첫 고백).
+
+Tier 2 (LLM judge):
+  1. events 테이블 명시 기록 우선 (Tier 3 — scene·supervisor 가 기록)
+  2. 없으면 candidate_pre_filter 로 confession 키워드 매치한 persona 발화 후보 좁힘
+  3. Haiku judge 가 진짜 1인칭 직접 고백인지 batch 판정 (false-positive 차단)
+
+이전 회귀: pure regex 가 "마음에 들어" 같은 generic phrase 까지 매치해서 매니저 (윤하나)
+의 평범한 발화 ("빈이가 마음에 들어하니까") 가 confession 으로 잘못 trigger 됨.
+"""
 import re as _re
 from typing import Optional
 from src import db
 from src.achievements.base import Achievement
 
 
-# 에이전트의 고백/마음 열기 발화. 1인칭 직접 고백조 한정.
-# 단순 "좋아해" 단어만으론 trigger 안 함 (의문문·일반 발화 false positive 차단).
-# `마음에 들어`/`마음에 들었어` 같은 generic phrase 제외 (Yuna 가 "빈이가 마음에 들어하니까"
-# 같이 말해도 confession 아님). 1인칭 + 너 대상 직접 고백만.
-_CONFESS_PAT = _re.compile(
-    r"(사랑해|반했|"
-    r"고백할게|고백하고|고백한다|"
-    r"(?:나|내가|나도)\s*(?:너|당신)?\s*(?:를|이|가|에게)?\s*(?:사랑해|좋아해)|"
-    r"(?:너|당신|니가|네가|니|네)\s*(?:를|에게|이|만)?\s*좋아해|"
-    r"너밖에|마음을?\s*(?:줘|받아)|진심이야)",
+# pre-filter 용 wide regex — LLM 호출 비용 통제 위해 후보 좁히기. 정밀 판정은 Haiku.
+_CONFESS_KEYWORDS = _re.compile(
+    r"(사랑|좋아해|반했|고백|마음.*(?:열|줘|받|들|와)|"
+    r"너밖에|진심|짝사랑|혼자만 보고)",
     _re.IGNORECASE,
 )
 
 
 def check(user_id: str) -> Optional[dict]:
+    """Tier 3 only — events 테이블에 명시 기록 있으면 즉시 done. 없으면 None
+    (engine 이 candidate_pre_filter + judge_prompt 로 계속 진행)."""
     conn = db.get_conn()
-    # 1) events 테이블 (정통 trigger — Scene·supervisor 가 명시 기록한 경우)
     try:
         row = conn.execute(
             "SELECT participants, description FROM events "
@@ -29,22 +33,26 @@ def check(user_id: str) -> Optional[dict]:
         ).fetchone()
     except Exception:
         row = None
-    if row:
+    finally:
         conn.close()
+    if row:
         return {"state": "done", "mark_completed": True, "mark_unlocked": True,
                 "progress_data": {
                     "description": (row["description"] or "")[:80],
                     "source": "event",
                 }}
+    return None
 
-    # 2) 대화 fallback — **persona** 의 첫 고백 발화 1건. **오너·mgr·creator·dev 제외**.
-    # 이 도전과제는 친구(persona)가 나한테 마음 연 순간이지 매니저가 챙겨주는 거랑 무관.
-    # 메타 박살된 페르소나도 제외 (자각으로 사라진 친구는 카운트 X).
-    # 채널은 dm-* / group-* 한정 (mgr-* 채널은 매니저 영역이라 confession 맥락 아님).
+
+def candidate_pre_filter(user_id: str) -> list[dict]:
+    """persona 발화 중 confession 키워드 매치한 후보 (의문문 제외).
+    judge 가 정밀 판정. mgr/creator/dev 는 제외 — 친구의 마음 열기 한정.
+    """
+    conn = db.get_conn()
     try:
         rows = conn.execute(
-            "SELECT c.id, c.channel, c.speaker, c.message FROM conversations c "
-            "JOIN agents a ON a.id = c.speaker "
+            "SELECT c.id, c.channel, c.speaker, c.message, c.timestamp, a.name as speaker_name "
+            "FROM conversations c JOIN agents a ON a.id = c.speaker "
             "WHERE c.speaker != ? "
             "AND a.type = 'persona' "
             "AND a.meta_breached_at IS NULL "
@@ -54,24 +62,39 @@ def check(user_id: str) -> Optional[dict]:
         ).fetchall()
     except Exception:
         rows = []
-    conn.close()
+    finally:
+        conn.close()
+    candidates = []
     for r in rows:
-        msg = r["message"] or ""
-        # 의문문 제외 — "혼자 있는 거 좋아해?" 같은 false positive 방지
+        msg = (r["message"] or "").strip()
+        if not msg:
+            continue
+        # 의문문 제외 (질문은 confession 아님)
         if msg.rstrip().endswith("?") or msg.rstrip().endswith("?"):
             continue
-        if _CONFESS_PAT.search(msg):
-            agent = db.get_agent(r["speaker"])
-            agent_name = (agent or {}).get("name", "") or r["speaker"]
-            return {"state": "done", "mark_completed": True, "mark_unlocked": True,
-                    "progress_data": {
-                        "agent": r["speaker"],
-                        "agent_name": agent_name,
-                        "channel": r["channel"],
-                        "message": msg[:80],
-                        "source": "conversation",
-                    }}
-    return None
+        # 키워드 매치 안 하면 skip (LLM 호출 비용 절약)
+        if not _CONFESS_KEYWORDS.search(msg):
+            continue
+        candidates.append({
+            "id": r["id"],
+            "channel": r["channel"],
+            "speaker": r["speaker"],
+            "speaker_name": r["speaker_name"] or r["speaker"],
+            "message": msg,
+            "timestamp": r["timestamp"],
+        })
+        if len(candidates) >= 8:  # batch 비용 통제
+            break
+    return candidates
+
+
+_JUDGE_PROMPT = """You are classifying Korean Discord chat messages.
+
+Question: Is this message a Korean character's **first-person direct emotional confession** to another person — saying things like "(나) 너 좋아해" / "사랑해" / "마음 열렸어" / "너밖에 없어" / a clear love or deep-affection confession to a specific you?
+
+Yes if: 1인칭이 너/당신/오빠/이름 대상으로 직접 사랑·좋아해·반함·진심·짝사랑·마음을 줘/열다 같은 표현. 진짜 confession 한 컷.
+
+No if: 일반 친근감 표현 ("X가 마음에 들어", "맘에 든다", "좋아 좋아"), 의문문, 다른 사람 얘기 ("○○이 너 좋대"), 가벼운 칭찬, 농담, 영화·노래·음식 같은 외부 주제, 매니저가 챙겨주는 발화."""
 
 
 ACHIEVEMENT = Achievement(
@@ -80,4 +103,6 @@ ACHIEVEMENT = Achievement(
     description="누군가 용기 내서 마음을 고백했다.",
     icon="💗",
     check=check,
+    candidate_pre_filter=candidate_pre_filter,
+    judge_prompt=_JUDGE_PROMPT,
 )
