@@ -118,6 +118,28 @@ async def on_ready():
     except Exception as _e:
         log_writer.system(f"[startup] dev auto-seed 실패 (skip): {_e}")
 
+    # 매니저류 (mgr/creator/dev) 와 오너 사이 관계 row 가 없으면 default 로 생성.
+    # 이전엔 합성 (synthetic) row 만 API 응답에 끼워넣어서 dynamics 가 고정 텍스트였음.
+    # 실제 row 가 있어야 L1 메모리 분석기가 대화 보고 dynamics / intimacy 를 동적으로 업데이트.
+    try:
+        from src.core.profile import get_user_id
+        owner_id = get_user_id()
+        if owner_id:
+            seed_rels = [
+                ("agent-mgr-001",     "매니저",     "매니저 — 커뮤니티 운영 도와줌"),
+                ("agent-creator-001", "크리에이터", "크리에이터 — 친구 만들어주는 역할"),
+                ("agent-dev-001",     "개발 담당",  "개발 담당 — 시스템 이슈 처리"),
+            ]
+            for aid, rtype, rdyn in seed_rels:
+                if not db.get_agent(aid):
+                    continue
+                existing = db.get_relationship(owner_id, aid) or db.get_relationship(aid, owner_id)
+                if not existing:
+                    db.add_relationship(owner_id, aid, rtype, intimacy=db.INTIMACY_SCALE_DEFAULT, dynamics=rdyn)
+                    log_writer.system(f"[startup] 매니저류 관계 시드: {aid} ({rtype})")
+    except Exception as _e:
+        log_writer.system(f"[startup] 매니저 관계 시드 실패 (skip): {_e}")
+
     log.info("Glimi Bot ready")
     log_writer.system("Bot ready")
     log_writer.mark_bot_ready()
