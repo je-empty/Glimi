@@ -875,6 +875,35 @@
   .rel-row .intimacy-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .rel-row .intimacy-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
   .rel-row .intimacy-num { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-dim); text-align: right; }
+  /* Emotion bar — emoji+label 이 바 내부에 들어가는 통합 표시.
+     모달/상세페이지/카드 어디에서든 동일 스타일. fill 너비 = 강도 비례. */
+  .emotion-bar {
+    position: relative;
+    display: inline-block;
+    width: 180px; max-width: 100%; height: 26px;
+    background: var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    vertical-align: middle;
+  }
+  .emotion-bar-fill {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 0.4s;
+    opacity: 0.85;
+  }
+  .emotion-bar-text {
+    position: relative;
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12.5px; font-weight: 500;
+    color: var(--text);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    z-index: 1;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+
   /* 오너 row — 항상 최상단, 살짝 강조 (다른 관계와 시각적 구분) */
   .rel-row.rel-owner {
     background: color-mix(in srgb, var(--accent) 8%, transparent);
