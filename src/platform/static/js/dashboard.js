@@ -2163,7 +2163,7 @@ function mountCytoscapeGraph(snap) {
           'text-background-shape': 'roundrectangle',
         },
       },
-      // ===== Supervisor nodes (다이아몬드, dashed border, 아이콘 이미지) =====
+      // ===== Supervisor nodes (다이아몬드, 상태에 따른 styling) =====
       {
         selector: 'node.sup',
         style: {
@@ -2173,16 +2173,17 @@ function mountCytoscapeGraph(snap) {
           'background-color': C.panel,
           'background-image': 'data(iconSvg)',
           'background-fit': 'contain',
-          'background-image-opacity': 1,
+          'background-image-opacity': 0.55,  // 기본 idle — 흐릿
           'background-image-containment': 'inside',
           'border-width': 2,
           'border-style': 'dashed',
-          'border-color': C.warn,
+          'border-color': C.textDim,        // idle: 회색
+          'opacity': 0.55,                   // 전체 dim
           'label': 'data(label)',
           'text-valign': 'bottom',
           'text-halign': 'center',
           'text-margin-y': 6,
-          'color': C.textDim,
+          'color': C.textFaint,
           'font-size': 10,
           'font-weight': 600,
           'text-background-color': C.panel,
@@ -2191,7 +2192,14 @@ function mountCytoscapeGraph(snap) {
           'text-background-shape': 'roundrectangle',
         },
       },
-      { selector: 'node.sup.active', style: { 'border-style': 'solid' } },
+      // active — 감시 대상 있고 일 처리 중. solid + warn 색
+      { selector: 'node.sup.active', style: {
+          'border-style': 'solid',
+          'border-color': C.warn,
+          'opacity': 1,
+          'background-image-opacity': 1,
+          'color': C.text,
+      }},
       {
         selector: 'node.sup.intervening',
         style: {
@@ -2242,21 +2250,32 @@ function mountCytoscapeGraph(snap) {
           'line-color': C.accent,
         },
       },
+      // supervisor → target 감시 엣지. dim (idle), active, intervening 3 단계.
       {
         selector: 'edge.sup-edge',
         style: {
           'line-style': 'dashed',
-          'line-dash-pattern': [5, 4],
-          'line-color': C.warn,
-          'opacity': 0.65,
-          'width': 1.6,
+          'line-dash-pattern': [3, 5],
+          'line-color': C.textDim,
+          'opacity': 0.28,
+          'width': 1.0,
           'label': '',
+          'curve-style': 'unbundled-bezier',
         },
       },
-      { selector: 'edge.sup-edge.active', style: { 'opacity': 0.95, 'width': 2 } },
+      // active — supervisor 가 현재 감시 중 (큐에 일 있거나 이벤트 있음)
+      { selector: 'edge.sup-edge.active', style: {
+          'opacity': 0.7, 'width': 1.6, 'line-color': C.warn,
+          'line-dash-pattern': [4, 4],
+      }},
+      // intervening — 방금 nudge / 강제 지시 / 트리거 발생 (10s 내)
       {
         selector: 'edge.sup-edge.intervening',
-        style: { 'opacity': 1, 'width': 2.5, 'line-dash-pattern': [4, 3] },
+        style: {
+          'opacity': 1, 'width': 2.6, 'line-color': C.accent,
+          'line-dash-pattern': [6, 3],
+          'line-dash-offset': 0,
+        },
       },
       // Hover — 엣지 직접 hover 또는 연결된 노드 hover 시 라벨/엣지 강조
       { selector: 'edge.hl', style: {
