@@ -114,7 +114,9 @@ class CommitmentSupervisor(Supervisor):
     # ── helpers ───────────────────────────────────────────────
 
     def _scan_recent_commitments(self) -> list[dict]:
-        """최근 1시간 내 internal-dm/internal-group 에서 commitment 발화 추출.
+        """최근 12시간 내 internal-dm/internal-group 에서 commitment 발화 추출.
+        12h 윈도우는 봇 재시작·overnight 이후에도 미처리 stall 회복하기 위함.
+        Cooldown (15min) 이 중복 nudge 차단.
         반환: [{agent_id, agent_name, target_channel, commit_msg, commit_ts}, ...]
         """
         out = []
@@ -125,8 +127,8 @@ class CommitmentSupervisor(Supervisor):
                 "  a.name as agent_name, a.type as agent_type "
                 "FROM conversations c JOIN agents a ON a.id = c.speaker "
                 "WHERE (c.channel LIKE 'internal-dm-%' OR c.channel LIKE 'internal-group-%') "
-                "AND c.timestamp >= datetime('now', '-1 hour') "
-                "ORDER BY c.id DESC LIMIT 100"
+                "AND c.timestamp >= datetime('now', '-12 hours') "
+                "ORDER BY c.id DESC LIMIT 200"
             ).fetchall()
             conn.close()
         except Exception as e:
