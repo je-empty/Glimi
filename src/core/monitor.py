@@ -1473,8 +1473,28 @@ def get_supervisors() -> list[dict]:
             return ["agent-mgr-001", "agent-creator-001"]
         return []
 
-    def _system_targets() -> list[str]:
-        return []   # system supervisor는 target 없음 (전역)
+    def _system_targets(sup_id: str) -> list[str]:
+        """system supervisor 별로 감시 대상 명시 — 그래프에서 엣지로 시각화.
+
+        - orchestrator: 모든 활성 agent (전역 conversation pool 관리)
+        - dev.queue: 한세나 (dev) — 큐 처리 담당
+        - commitment.tracker: mgr + creator + dev (internal-dm 약속 발화 대상)
+        """
+        try:
+            agents = db.list_agents() or []
+        except Exception:
+            agents = []
+        if sup_id == "orchestrator":
+            return [a["id"] for a in agents
+                    if a.get("type") in ("mgr", "creator", "persona")
+                    and a.get("status") == "active"]
+        if sup_id == "dev.queue":
+            return [a["id"] for a in agents if a.get("type") == "dev"]
+        if sup_id == "commitment.tracker":
+            return [a["id"] for a in agents
+                    if a.get("type") in ("mgr", "creator", "dev")
+                    and a.get("status") == "active"]
+        return []
 
     all_logs = get_recent_system_logs(tail_lines=500)
     out = []
@@ -1487,7 +1507,7 @@ def get_supervisors() -> list[dict]:
         elif sup.kind == "scene":
             targets = _scene_targets(sup.scope)
         else:
-            targets = _system_targets()
+            targets = _system_targets(name)
 
         # 로그 추출 (id + 레거시 name 둘 다 매칭)
         sup_logs = [
