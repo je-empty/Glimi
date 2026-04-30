@@ -7,11 +7,14 @@ from src.achievements.base import Achievement
 
 # 에이전트의 고백/마음 열기 발화. 1인칭 직접 고백조 한정.
 # 단순 "좋아해" 단어만으론 trigger 안 함 (의문문·일반 발화 false positive 차단).
+# `마음에 들어`/`마음에 들었어` 같은 generic phrase 제외 (Yuna 가 "빈이가 마음에 들어하니까"
+# 같이 말해도 confession 아님). 1인칭 + 너 대상 직접 고백만.
 _CONFESS_PAT = _re.compile(
-    r"(사랑해|고백|반했|"
-    r"(?:나|내가|나도)\s*(?:너|당신)?\s*(?:를|이|가|에게)?\s*(?:사랑|좋아)|"
-    r"(?:너|당신|니가|네가|니|네)\s*(?:를|에게|이|만)?\s*좋아\s*해|"
-    r"너밖에|마음을?\s*(?:줘|받아)|진심이야|마음에\s*들어)",
+    r"(사랑해|반했|"
+    r"고백할게|고백하고|고백한다|"
+    r"(?:나|내가|나도)\s*(?:너|당신)?\s*(?:를|이|가|에게)?\s*(?:사랑해|좋아해)|"
+    r"(?:너|당신|니가|네가|니|네)\s*(?:를|에게|이|만)?\s*좋아해|"
+    r"너밖에|마음을?\s*(?:줘|받아)|진심이야)",
     _re.IGNORECASE,
 )
 
@@ -34,16 +37,19 @@ def check(user_id: str) -> Optional[dict]:
                     "source": "event",
                 }}
 
-    # 2) 대화 fallback — 에이전트의 첫 고백 발화 1건. **오너 (user_id) 발화는 제외**
-    # (이 도전과제는 친구가 나한테 마음 연 순간 — 반대 방향은 무관).
-    # 메타 박살된 페르소나 발화도 제외 (자각으로 사라진 친구는 카운트 X).
+    # 2) 대화 fallback — **persona** 의 첫 고백 발화 1건. **오너·mgr·creator·dev 제외**.
+    # 이 도전과제는 친구(persona)가 나한테 마음 연 순간이지 매니저가 챙겨주는 거랑 무관.
+    # 메타 박살된 페르소나도 제외 (자각으로 사라진 친구는 카운트 X).
+    # 채널은 dm-* / group-* 한정 (mgr-* 채널은 매니저 영역이라 confession 맥락 아님).
     try:
         rows = conn.execute(
-            "SELECT id, channel, speaker, message FROM conversations "
-            "WHERE speaker != ? "
-            "AND (channel LIKE 'dm-%' OR channel LIKE 'mgr-%' OR channel LIKE 'group-%') "
-            "AND speaker NOT IN (SELECT id FROM agents WHERE meta_breached_at IS NOT NULL) "
-            "ORDER BY id ASC",
+            "SELECT c.id, c.channel, c.speaker, c.message FROM conversations c "
+            "JOIN agents a ON a.id = c.speaker "
+            "WHERE c.speaker != ? "
+            "AND a.type = 'persona' "
+            "AND a.meta_breached_at IS NULL "
+            "AND (c.channel LIKE 'dm-%' OR c.channel LIKE 'group-%') "
+            "ORDER BY c.id ASC",
             (user_id,),
         ).fetchall()
     except Exception:
