@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess as _sp
+import time as _time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -204,15 +205,18 @@ def _get_agent_model(agent_id: str, agent_type: str) -> dict:
 
 
 def _dev_queue_busy() -> bool:
-    """dev_requests 에 pending 또는 processing 인 row 가 있으면 True.
-    Dev manager (한세나) 는 큐가 비어있으면 inactive — 그래프·에이전트 탭에서 회색 표시."""
+    """dev_requests 에 pending/analyzed/processing 인 row 가 있으면 True (community-scoped).
+    Dev manager (한세나) 는 큐가 비어있으면 inactive — 그래프·에이전트 탭에서 회색 표시.
+
+    이전엔 community.db 에 dev_requests 가 있다고 가정하고 쿼리 → 항상 실패 (테이블 없음)
+    → 항상 False → 세나 항상 inactive. 동시에 dev.queue.is_active() 는 platform.db 글로벌
+    쿼리해서 True 반환 → display 불일치.
+
+    fix: dev_agent.has_active_work() 와 동일한 community-scoped 소스 사용.
+    """
     try:
-        conn = db.get_conn()
-        n = conn.execute(
-            "SELECT COUNT(*) FROM dev_requests WHERE status IN ('pending','processing')"
-        ).fetchone()[0]
-        conn.close()
-        return n > 0
+        from src.core.dev_agent import has_active_work
+        return has_active_work()  # current community 자동
     except Exception:
         return False
 
@@ -579,29 +583,57 @@ def get_agent_detail(agent_id: str) -> dict:
     model_info = _get_agent_model(agent_id, agent.get("type", "persona"))
 
     # 관계 (relationships 테이블) — other_id 별 dedup, owner ID 는 user_name 으로 해석.
+    # DB row 없을 때:
+    #   - persona 면 profile.relationship_to_owner 에서 합성 (initial relationship)
+    #   - mgr/creator/dev 면 "관리자" 타입 + INTIMACY_SCALE_DEFAULT 합성
     rels = []
     try:
         from src.core.profile import get_user_id, get_user_name
         owner_id = get_user_id() or ""
         owner_name = get_user_name() or "오너"
         seen_others: set[str] = set()
+        owner_seen = False
         for r in db.get_all_relationships(agent_id):
             other_id = r["agent_b"] if r["agent_a"] == agent_id else r["agent_a"]
             if other_id in seen_others:
                 continue
             seen_others.add(other_id)
             if other_id == owner_id:
-                other_name = owner_name
+                owner_name_disp = owner_name
+                owner_seen = True
             else:
                 other = db.get_agent(other_id)
-                other_name = (other or {}).get("name") or other_id
+                owner_name_disp = (other or {}).get("name") or other_id
             rels.append({
                 "other_id": other_id,
-                "other_name": other_name,
+                "other_name": owner_name_disp,
                 "type": r.get("type", ""),
                 "intimacy": r.get("intimacy_score", 0),
                 "dynamics": r.get("dynamics", "") or "",
             })
+        # owner row 합성 (DB 미생성 케이스 — mgr/creator/dev 거나, persona 인데 시드 누락)
+        if not owner_seen and owner_id:
+            rel_owner_profile = (profile.get("relationship_to_owner") or {}) if profile else {}
+            if atype == "persona" and rel_owner_profile:
+                rels.insert(0, {
+                    "other_id": owner_id,
+                    "other_name": owner_name,
+                    "type": rel_owner_profile.get("type") or "친구",
+                    "intimacy": int(rel_owner_profile.get("intimacy") or db.INTIMACY_SCALE_DEFAULT),
+                    "dynamics": rel_owner_profile.get("dynamics") or "",
+                    "_synthetic": True,
+                })
+            elif atype in ("mgr", "creator", "dev"):
+                # 관리자류 — 오너와의 "관리자" 관계 + 기본 친밀도
+                role_label = {"mgr": "매니저", "creator": "크리에이터", "dev": "개발 담당"}[atype]
+                rels.insert(0, {
+                    "other_id": owner_id,
+                    "other_name": owner_name,
+                    "type": role_label,
+                    "intimacy": db.INTIMACY_SCALE_DEFAULT,
+                    "dynamics": "시스템 관리 역할 — 오너 보조",
+                    "_synthetic": True,
+                })
     except Exception:
         pass
 
@@ -821,6 +853,10 @@ def _get_supervisor_detail(sup_name: str) -> dict:
         "model_override": False,
         "synthetic": True,
         "is_supervisor": True,
+        # 활동 이벤트 — 모달이 모달 안 또는 별도 탭에서 표시.
+        "supervisor_events": sup.get("recent_events", []),
+        "supervisor_event_count": sup.get("event_count_24h", 0),
+        "supervisor_active_targets": sup.get("active_targets", []),
     }
 
 
@@ -1574,6 +1610,29 @@ def get_supervisors() -> list[dict]:
             if any(kw in last_log for kw in ("재촉", "강제 지시", "트리거", "inject", "nudge")):
                 intervening = True
 
+        # 구조화된 활동 이벤트 로드 (supervisor_events.jsonl).
+        # 그래프가 sup → target edge 활성화 + 클릭 시 모달 히스토리에 사용.
+        recent_events: list[dict] = []
+        active_targets: list[str] = []  # 최근 30분 안에 영향 준 agent_id (edge 그릴 대상)
+        try:
+            from src.supervisors.events import read_recent as _read_sup_events
+            recent_events = _read_sup_events(sup_id=name, limit=20, since_seconds=24 * 3600)
+            # 최근 30분 안의 이벤트 → active_targets 합집합
+            cutoff = 30 * 60
+            now_ts_local = _time.time()
+            for ev in recent_events:
+                try:
+                    from datetime import datetime as _dt
+                    ev_ts = _dt.fromisoformat(ev["ts"].replace("Z", "+00:00")).timestamp()
+                    if now_ts_local - ev_ts < cutoff:
+                        for t in ev.get("targets", []):
+                            if t not in active_targets:
+                                active_targets.append(t)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         out.append({
             "name": name,
             "class_name": type(sup).__name__,
@@ -1582,9 +1641,6 @@ def get_supervisors() -> list[dict]:
             "icon": _icon(name),
             "description": sup.display_name or name,
             "interval_sec": sup.interval,
-            # live(봇 프로세스 pool): supervisor.is_active() (큐 기반 supervisor 가 idle 표시)
-            # snapshot fallback (Shim): _active 직접 참조
-            # offline enumerate: False
             "active": (sup.is_active() if hasattr(sup, "is_active") and not hasattr(sup, "_active")
                        else getattr(sup, "_active", True)),
             "target_agents": targets,
@@ -1592,6 +1648,10 @@ def get_supervisors() -> list[dict]:
             "last_action": last_action,
             "seconds_since_action": seconds_since,
             "intervening": intervening,
+            # 신규 — 구조화 이벤트 + edge 활성 대상
+            "recent_events": recent_events,
+            "active_targets": active_targets,
+            "event_count_24h": len(recent_events),
         })
 
     return out

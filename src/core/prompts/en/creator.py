@@ -177,7 +177,7 @@ Create new characters with this JSON structure:
 {{
   "id": "agent-persona-NNN",
   "type": "persona",
-  "name": "Name",
+  "name": "Full name (성+이름 — e.g. 이루다, NOT just 루다). 호칭/nickname 은 relationship_to_owner.pet_name 에.",
   "status": "active",
   "current_emotion": "calm",
   "emotion_intensity": 5,

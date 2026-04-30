@@ -161,6 +161,17 @@ class TutorialFlowSupervisor(Supervisor):
         if judgment in ("미응답", "no_response", "unanswered"):
             log_writer.system(f"[sup:tutorial] 판단: {judgment} — 유나 응답 유도")
             self._mark_nudged()
+            try:
+                from src.supervisors.events import log_event as _log_sup_event
+                _log_sup_event(
+                    sup_id="tutorial.flow", action="nudge_yuna",
+                    targets=["agent-mgr-001"],
+                    summary=f"유나 응답 유도 ({judgment})",
+                    outcome="ok",
+                    details={"reason": "no_response", "judgment": judgment},
+                )
+            except Exception:
+                pass
             await self._nudge_yuna(guild,
                 "유저가 방금 뭔가 말했는데 아직 반응을 안 한 것 같다. "
                 "자연스럽게 대답해주자."
@@ -168,6 +179,17 @@ class TutorialFlowSupervisor(Supervisor):
         elif judgment in ("잡담", "chatting"):
             log_writer.system(f"[sup:tutorial] 판단: {judgment} — 유나 복귀 유도")
             self._mark_nudged()
+            try:
+                from src.supervisors.events import log_event as _log_sup_event
+                _log_sup_event(
+                    sup_id="tutorial.flow", action="nudge_yuna",
+                    targets=["agent-mgr-001"],
+                    summary=f"잡담 → 프로필 질문 복귀 유도 ({judgment})",
+                    outcome="ok",
+                    details={"reason": "chatting", "judgment": judgment},
+                )
+            except Exception:
+                pass
             await self._nudge_yuna(guild,
                 "잡담이 길어진 것 같다. "
                 "자연스럽게 화제를 돌려서 다음 프로필 질문으로 넘어가자. "
@@ -293,6 +315,17 @@ class TutorialFlowSupervisor(Supervisor):
         if judgment in ("충분", "enough", "done") and self._can_nudge():
             log_writer.system(f"[sup:tutorial] 하나 판단: {judgment} — 재촉")
             self._mark_nudged()
+            try:
+                from src.supervisors.events import log_event as _log_sup_event
+                _log_sup_event(
+                    sup_id="tutorial.flow", action="nudge_creator",
+                    targets=["agent-creator-001"],
+                    summary=f"하나 — 아이스브레이킹 → 페르소나 생성 단계로 재촉 ({judgment})",
+                    outcome="ok",
+                    details={"reason": "icebreak_done", "judgment": judgment},
+                )
+            except Exception:
+                pass
             await self._nudge_agent(guild, CREATOR_ID, CREATOR_CHANNEL,
                 "아이스브레이킹이 충분했으면 에이전트 생성 얘기 꺼내고 유나한테 보고. "
                 "이미 보고했으면 다시 보내지 마."

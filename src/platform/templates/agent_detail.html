@@ -382,11 +382,12 @@
       const pct = Math.min(100, r.intimacy || 0);
       const band = intimacyBand(r.intimacy || 0);
       const ownerTag = opts.isOwner ? `<span style="color:var(--accent);font-size:10px;font-weight:600;margin-right:4px">OWNER</span>` : '';
+      const synthTag = r._synthetic ? `<span style="color:var(--text-faint);font-size:10px;margin-left:4px" title="DB 에 row 없어서 프로필/기본값으로 합성된 관계">≈</span>` : '';
       return `<div class="rel-row${opts.isOwner ? ' rel-owner' : ''}">
-        <span class="rname" title="${esc(r.other_name)}">${ownerTag}${esc(r.other_name)}</span>
+        <span class="rname" title="${esc(r.other_name)}">${ownerTag}${esc(r.other_name)}${synthTag}</span>
         <span class="rtype" title="${esc(r.type)}">${esc(r.type || '—')}</span>
         <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
-        <span class="intimacy-num ${band.cls}" title="${band.label} · 친밀도 ${r.intimacy}/100 (0=원수 100=연인)">${r.intimacy}/100</span>
+        <span class="intimacy-num ${band.cls}" title="친밀도 ${r.intimacy}/100 (0=원수 100=연인)">${r.intimacy}/100 <span style="font-weight:400;opacity:0.85">${band.label}</span></span>
         ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
       </div>`;
     };
