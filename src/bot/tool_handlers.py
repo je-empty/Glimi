@@ -135,9 +135,18 @@ async def _h_recover_channel(args: dict, ctx: ToolContext):
 
 async def _h_set_emotion(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import yuna_change_emotion
-    s = f"{args['name']} {args['emotion']} {args['intensity']}"
+    from src.core.emotion_emoji import register_emoji_for
+    # emoji 가 같이 들어오면 community-local emotion→emoji 매핑에 등록 (idempotent — 첫 등록만)
+    emoji = (args.get("emoji") or "").strip()
+    emotion = (args.get("emotion") or "").strip()
+    if emoji and emotion:
+        try:
+            register_emoji_for(emotion, emoji)
+        except Exception:
+            pass
+    s = f"{args['name']} {emotion} {args['intensity']}"
     await yuna_change_emotion(ctx.channel_obj, s)
-    return {"name": args["name"], "emotion": args["emotion"], "intensity": args["intensity"]}
+    return {"name": args["name"], "emotion": emotion, "intensity": args["intensity"], "emoji": emoji}
 
 
 async def _h_update_profile(args: dict, ctx: ToolContext):
@@ -221,9 +230,20 @@ async def _h_request_dev_fix(args: dict, ctx: ToolContext):
     """매니저 (유나/하나) 또는 오너가 호출 — dev_requests 큐에 적재 + dev 봇 lazy seed.
 
     args: {channel, severity ('low'|'med'|'high'), repro, expected, actual, notes?}
+
+    동작 흐름:
+      1. payload 검증
+      2. **dedup 체크** — 같은 community + 같은 channel + 같은 severity 의 pending/analyzed
+         가 60분 안에 있으면 거절하고 기존 request_id 알려줌 (회귀 방지: 매니저가 같은 버그
+         반복 보고하는 경우)
+      3. mgr-dev-request 채널 ensure
+      4. dev_requests INSERT
+      5. **mgr-dev-request 채널에 caller 명의로 보고 한 줄 post** (1인극 해소)
+      6. dev agent lazy seed + runtime invalidate
     """
     from src.core.dev_agent import (
-        ensure_dev_seeded, enqueue_dev_request, DEV_CHANNEL, DEV_ID,
+        ensure_dev_seeded, enqueue_dev_request, find_similar_recent_request,
+        DEV_CHANNEL, DEV_ID,
     )
     from src import community as _community
 
@@ -246,26 +266,57 @@ async def _h_request_dev_fix(args: dict, ctx: ToolContext):
     requested_by = ctx.caller_agent_id or "owner"
     community_id = _community.get_community_id() or "unknown"
 
+    # ── dedup gate ──────────────────────────────────────────
+    # 같은 채널·같은 severity 의 pending/analyzed 가 60분 안에 있으면 새로 만들지 않음.
+    # 이미 큐에 들어가 있는 동일 이슈를 중복 보고하는 회귀 (2026-04-30 유나 7회 동일 보고) 차단.
+    existing = find_similar_recent_request(community_id, payload, window_minutes=60)
+    if existing:
+        log_writer.system(
+            f"[dev] dedup hit — 기존 #{existing['id']} 와 같은 channel/severity, 새 요청 거절"
+        )
+        return {
+            "ok": False,
+            "reason": "duplicate_recent_request",
+            "existing_request_id": existing["id"],
+            "existing_status": existing["status"],
+            "hint": "같은 채널·심각도의 최근 요청이 이미 큐에 있어. 추가 정보 있으면 그 요청에 코멘트로 붙이거나 시간 두고 다시 봐.",
+        }
+
     # Lazy seed dev agent (community-local 시드 — agent 자체는 community DB 에 살음)
     seeded_now = ensure_dev_seeded()
 
     # mgr-dev-request 채널 ensure (Discord 어댑터 — guild 객체 필요).
-    # 참여자: 세나(dev) + 유나(mgr) + 오너 (오너는 mgr-* 카테고리 권한으로 자동 접근).
+    dev_channel_obj = None
     if ctx.guild is not None:
         try:
             from src.core.sync import ensure_unique_channel
             from src.bot.core import _ensure_category
             from src.bot import MGR_ID
             category = await _ensure_category(ctx.guild, "glimi-mgr")
-            # ensure_unique_channel 은 (channel, created) 튜플 — kwargs 는 create_text_channel
-            # 으로 직접 forward 되므로 participants 같은 사용자 정의 키 넘기면 안 됨.
-            await ensure_unique_channel(ctx.guild, DEV_CHANNEL, category)
-            # DB 참여자 등록 (세나 + 유나)
+            dev_channel_obj, _created = await ensure_unique_channel(ctx.guild, DEV_CHANNEL, category)
             db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
         except Exception as e:
             log_writer.system(f"[dev] ⚠ {DEV_CHANNEL} 채널 ensure 실패: {type(e).__name__}: {e}")
 
     request_id = enqueue_dev_request(community_id, requested_by, payload)
+
+    # ── caller 명의로 mgr-dev-request 채널에 보고 한 줄 post ──
+    # 이전엔 INSERT 만 하고 채널엔 아무 발화 없음 → 세나만 일방적으로 분석 떠드는 1인극.
+    # 채널 컨텍스트에 보고 자체가 보여야 세나의 분석이 맥락 안에서 읽힘.
+    if dev_channel_obj is not None and requested_by != "owner":
+        try:
+            from src.bot.core import send_as_agent
+            sev_label = {"low": "낮음", "med": "보통", "high": "높음"}.get(payload["severity"], payload["severity"])
+            short_repro = payload["repro"][:80] + ("…" if len(payload["repro"]) > 80 else "")
+            short_actual = payload["actual"][:80] + ("…" if len(payload["actual"]) > 80 else "")
+            report_msg = (
+                f"[버그 #{request_id}] {sev_label} · #{payload['channel']}\n"
+                f"증상: {short_repro}\n"
+                f"실제: {short_actual}"
+            )
+            await send_as_agent(dev_channel_obj, requested_by, report_msg, paced=False)
+        except Exception as e:
+            log_writer.system(f"[dev] ⚠ 보고 post 실패 (#{request_id}): {type(e).__name__}: {e}")
 
     # runtime cache invalidate — dev agent 가 이번 요청 받아서 처리하도록
     if seeded_now:
@@ -291,8 +342,14 @@ async def _h_dev_organize(args: dict, ctx: ToolContext):
     args: {request_id, task_brief, files_hint?, analysis_notes, sera_summary, confidence}
         confidence: 'high' | 'low' — admin 가 우선순위 정할 때 시그널.
         세나가 직접 코드 수정 X — 정리만 함. 실제 dispatch 는 admin 이 별도 페이지에서 트리거.
+
+    files_hint 안전장치 (2026-04-30 회귀 방지):
+      세나가 코드베이스 안 보고 환각 경로 (`src/core/dispatch.py` 등 실존 X) 를 적는 회귀.
+      각 경로를 PROJECT_ROOT 기준으로 존재 검증 → 없는 건 strip + analysis_notes 에 기록.
+      모든 경로가 환각이면 confidence=low 강제 + escalate 권고.
     """
     from src.core.dev_agent import DEV_ID, get_request, mark_analyzed
+    from pathlib import Path as _Path
 
     if ctx.caller_agent_id != DEV_ID:
         return {"ok": False, "reason": "only dev agent can call dev_organize"}
@@ -314,8 +371,54 @@ async def _h_dev_organize(args: dict, ctx: ToolContext):
     if req["status"] != "pending":
         return {"ok": False, "reason": f"request #{request_id} status is {req['status']}, not pending"}
 
-    mark_analyzed(request_id, task_brief, files_hint, analysis_notes, sera_summary, confidence)
-    return {"ok": True, "request_id": request_id, "status": "analyzed", "confidence": confidence}
+    # ── files_hint 환각 검증 ──────────────────────────────
+    project_root = _Path(__file__).resolve().parent.parent.parent  # src/bot/X.py → glimi/
+    real_files: list[str] = []
+    hallucinated: list[str] = []
+    for p in files_hint:
+        if not isinstance(p, str) or not p.strip():
+            continue
+        rel = p.strip().lstrip("./")
+        # 절대 경로면 거절 (보안 + 사고 예방)
+        if rel.startswith("/"):
+            hallucinated.append(p)
+            continue
+        full = project_root / rel
+        if full.exists() and full.is_file():
+            real_files.append(rel)
+        else:
+            hallucinated.append(p)
+
+    extra_notes = ""
+    if hallucinated:
+        extra_notes = (
+            f"\n\n[validator] files_hint 검증 — 존재하지 않는 경로 strip 됨: "
+            f"{', '.join(hallucinated)}. 세나가 추측한 환각 경로일 가능성 높음. "
+            f"admin 검토 시 실제 코드베이스 grep 필수."
+        )
+        log_writer.system(
+            f"[dev] #{request_id} files_hint 환각 {len(hallucinated)}건 strip "
+            f"(real={len(real_files)}, hallucinated={hallucinated})"
+        )
+
+    # 모든 경로가 환각 → confidence=low 강제 (admin 한테 신호)
+    if files_hint and not real_files:
+        confidence = "low"
+        extra_notes += (
+            "\n[validator] 모든 files_hint 경로가 환각 — confidence 강제 down. "
+            "admin 이 직접 코드베이스 검색 후 진행 권장."
+        )
+
+    final_notes = (analysis_notes + extra_notes).strip()
+    mark_analyzed(request_id, task_brief, real_files, final_notes, sera_summary, confidence)
+    return {
+        "ok": True,
+        "request_id": request_id,
+        "status": "analyzed",
+        "confidence": confidence,
+        "files_hint_real": real_files,
+        "files_hint_hallucinated": hallucinated,
+    }
 
 
 async def _h_dev_escalate(args: dict, ctx: ToolContext):

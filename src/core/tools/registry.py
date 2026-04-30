@@ -126,14 +126,19 @@ MGMT: list[ToolSpec] = [
     ),
     ToolSpec(
         name="set_emotion",
-        description="특정 멤버의 현재 감정 세팅",
+        description="특정 멤버의 현재 감정 세팅. 새 감정 라벨이면 emoji 도 같이 제안 권장 (한 번 매핑되면 같은 emoji 가 일관되게 재사용됨).",
         params={
             "name": _str,
             "emotion": _str,
             "intensity": {"type": "int", "required": True, "desc": "1~10"},
+            "emoji": {"type": "str", "required": False, "desc": "이 감정을 시각화할 1글자 이모지 (선택). 처음 등장한 감정이면 이게 영구 매핑됨."},
         },
         category="management",
         applies_to=frozenset({"mgr"}),
+        examples=[
+            '{"name": "지안", "emotion": "안도", "intensity": 6, "emoji": "🫂"}',
+            '{"name": "서연", "emotion": "평온", "intensity": 4}',
+        ],
     ),
     ToolSpec(
         name="update_profile",

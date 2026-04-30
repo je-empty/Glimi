@@ -93,12 +93,12 @@ class CommitmentSupervisor(Supervisor):
             if now - last < RENUDGE_COOLDOWN_SEC:
                 continue
 
-            # 5 분 안 지났으면 skip
-            try:
-                from src.core.timeutil import parse_aware
-                ts_dt = parse_aware(commit_ts)
-                elapsed = now - ts_dt.timestamp()
-            except Exception:
+            # 5 분 안 지났으면 skip.
+            # commit_ts 포맷: "YYYY-MM-DD HH:MM:SS" (DB CURRENT_TIMESTAMP, naive UTC)
+            # 또는 ISO+tz. 둘 다 처리.
+            elapsed = self._elapsed_since(commit_ts, now)
+            if elapsed is None:
+                log_writer.system(f"[commitment] ts parse 실패 — skip ({commit_ts!r})")
                 continue
             if elapsed < NUDGE_AFTER_SEC:
                 continue
@@ -112,6 +112,31 @@ class CommitmentSupervisor(Supervisor):
             self._last_nudge[key] = now
 
     # ── helpers ───────────────────────────────────────────────
+
+    @staticmethod
+    def _elapsed_since(ts: str, now_posix: float) -> Optional[float]:
+        """DB timestamp (UTC naive 'YYYY-MM-DD HH:MM:SS' 또는 ISO with tz) → 경과초.
+        실패 시 None."""
+        if not ts:
+            return None
+        from datetime import datetime as _dt, timezone as _tz
+        s = ts.strip().replace("T", " ")
+        # tz 정보가 있으면 fromisoformat 으로 그대로 처리
+        try:
+            if "+" in s or s.endswith("Z") or "-" in s[10:]:
+                iso = ts.replace("Z", "+00:00")
+                dt = _dt.fromisoformat(iso)
+                return now_posix - dt.timestamp()
+        except Exception:
+            pass
+        # naive — UTC 로 가정 (SQLite CURRENT_TIMESTAMP 기본)
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+            try:
+                dt = _dt.strptime(s, fmt).replace(tzinfo=_tz.utc)
+                return now_posix - dt.timestamp()
+            except ValueError:
+                continue
+        return None
 
     def _scan_recent_commitments(self) -> list[dict]:
         """최근 12시간 내 internal-dm/internal-group 에서 commitment 발화 추출.

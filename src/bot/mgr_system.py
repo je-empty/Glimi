@@ -1064,7 +1064,7 @@ async def yuna_edit_relationship(report_channel, args_str, caller_agent_id: str 
         # 자동 row 생성 — 없으면 INSERT
         existing = db.get_relationship(a["id"], b["id"]) or db.get_relationship(b["id"], a["id"])
         if not existing:
-            db.add_relationship(a["id"], b["id"], rel_type="", intimacy=50)
+            db.add_relationship(a["id"], b["id"], rel_type="", intimacy=db.INTIMACY_SCALE_DEFAULT)
             existing = db.get_relationship(a["id"], b["id"])
         if value.startswith("+") or value.startswith("-"):
             delta = int(value)
@@ -1673,12 +1673,14 @@ async def _cmd_profile_create(report_channel, json_str):
         agent_type = profile.get("type", "persona")
         db.register_agent(profile["id"], agent_type, profile["name"])
 
-        # 관계 설정
+        # 관계 설정 — 오너 ↔ 새 페르소나는 처음 만나는 사이 → INTIMACY_SCALE_DEFAULT (30, 어색~친구).
+        # creator profile 에서 명시적으로 다른 값 주면 그걸 사용 (이미 친한 캐릭터 컨셉 등).
         if "relationship_to_owner" in profile:
+            rel_intimacy = profile["relationship_to_owner"].get("intimacy", db.INTIMACY_SCALE_DEFAULT)
             db.add_relationship(
                 get_user_id(), profile["id"],
                 profile["relationship_to_owner"]["type"],
-                intimacy=50,
+                intimacy=rel_intimacy,
                 dynamics=profile["relationship_to_owner"].get("dynamics", "")
             )
 

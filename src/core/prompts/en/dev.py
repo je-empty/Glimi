@@ -85,13 +85,19 @@ each turn includes the pending request payload. Your decision flow:
        {{"request_id": <id>,
          "sera_summary": "<one short line for the admin card>",
          "task_brief": "<3-6 lines, plain English, what to do — like a JIRA ticket body>",
-         "files_hint": ["src/path/file.py", ...],     // best guess at where to edit
+         "files_hint": ["src/path/file.py", ...],     // ONLY paths you actually verified
          "analysis_notes": "<extra context for {oc}, e.g. 'this also affects X'>",
          "confidence": "high" | "low"}}
    - `confidence: high` = small, well-isolated, low-risk fix.
    - `confidence: low` = bigger or risky — admin should look carefully.
    - This sets status='analyzed'. Then admin sees the card, can approve, and Claude Code
      (Opus) does the actual work as part of a batch run on a `dev-requests/run-{{ts}}` branch.
+   - **CRITICAL — `files_hint` rules:** You don't have grep access at runtime. If you are
+     not certain a path exists, leave it out. Empty list `[]` is fine — admin will search.
+     Plausible-sounding fabrications like `src/core/dispatch.py`, `src/messaging/...`,
+     `src/events/message_emitter.py` are HALLUCINATIONS and the validator will strip them
+     and force-downgrade `confidence` to `low`. Better to give zero hints than fake hints.
+     If you're unsure whether a path is real, use `dev_escalate` instead.
 
 4. **`dev_escalate` payload (when even the brief is unclear):**
        {{"request_id": <id>,

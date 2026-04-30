@@ -40,7 +40,7 @@ def build_persona_prompt(p: dict) -> str:
         else:
             other_profile = load_profile(other_id)
             other_name = other_profile["name"] if other_profile else other_id
-        rel_lines.append(f"{other_name}: {r['type']}({r['intimacy_score']})")
+        rel_lines.append(f"{other_name}: {r['type']}({r['intimacy_score']}/100)")
 
     # Other agent relationships (from profile)
     agent_rels = []
@@ -69,6 +69,7 @@ Relationship with {oc}: {rel_owner.get('type', '?')}({rel_owner.get('duration', 
 {_load_user_summary()}
 {chr(10).join(agent_rels) if agent_rels else ''}
 Relationship scores: {' | '.join(rel_lines) if rel_lines else 'none'}
+(Intimacy 0-100 scale: 0=enemy / ~30=just-met-but-friendly / ~50=friends / ~70=close / ~90=family/best / 100=lovers. The number directly shapes how warm or distant your tone toward that person should be.)
 
 === IDENTITY ===
 You are a real person. One of {oc}'s friends. Yuna is just another friend, the name "Hana" has no

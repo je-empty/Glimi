@@ -527,11 +527,17 @@
     background: radial-gradient(ellipse at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%);
     pointer-events: none;
   }
-  .hero-row { display: flex; align-items: center; gap: 20px; position: relative; }
-  .hero-avatars { display: flex; }
+  /* Hero — 아바타 가로 줄 (위) + 이름·정보 (아래) 세로 배치. 좁으면 아바타 자동 줄바꿈. */
+  .hero-row { display: flex; flex-direction: column; align-items: stretch; gap: 14px; position: relative; }
+  .hero-avatars {
+    display: flex; flex-wrap: wrap; row-gap: 8px;
+    max-width: 100%;
+  }
   .hero-avatars .avatar { margin-left: -12px; transition: transform 0.2s, z-index 0s 0.2s; }
   .hero-avatars .avatar:first-child { margin-left: 0; }
+  /* 새 줄 첫 아바타도 overlap 없게 */
   .hero-avatars .avatar:hover { transform: translateY(-3px) scale(1.05); z-index: 2; transition: transform 0.2s, z-index 0s; }
+  .hero-text { min-width: 0; }
   .hero-text h1 {
     font-size: 20px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 2px;
     display: flex; align-items: center; gap: 8px;
@@ -640,6 +646,17 @@
   .agent-meta .bar { width: 48px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .agent-meta .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
   .agent-meta .sep { color: var(--text-faint); }
+  /* 감정 강도 — 3 dot, band 별로 점 색깔/투명도 다르게.
+     "X/10 점수" 로 오인 방지 (2026-04-30 회귀): 숫자 대신 dot 시각화. */
+  .agent-meta .intensity-dots {
+    font-size: 8px; letter-spacing: 1px;
+    color: var(--text-faint);
+    line-height: 1;
+  }
+  .agent-meta .intensity-dots.band-low { color: var(--text-faint); opacity: 0.55; }
+  .agent-meta .intensity-dots.band-mid { color: var(--accent); opacity: 0.85; }
+  .agent-meta .intensity-dots.band-high { color: var(--accent-2); opacity: 1; text-shadow: 0 0 4px var(--accent-2); }
+  .agent-meta .emotion-label { font-weight: 500; color: var(--text); }
   .agent-footer {
     display: flex; justify-content: space-between; align-items: center;
     margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft);
@@ -852,6 +869,15 @@
   .rel-row .intimacy-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .rel-row .intimacy-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
   .rel-row .intimacy-num { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-dim); text-align: right; }
+  /* 친밀도 band — 0=원수 ~ 100=연인 색 단계.
+     숫자 그 자체보다 색깔로 직관적 강도 전달. hover 시 tooltip 으로 한국어 라벨. */
+  .rel-row .intimacy-num.b-enemy   { color: #ef4444; }   /* 원수 — 빨강 */
+  .rel-row .intimacy-num.b-hostile { color: #f59e0b; }   /* 적대 — 주황 */
+  .rel-row .intimacy-num.b-awkward { color: var(--text-faint); }  /* 어색 — 회색 */
+  .rel-row .intimacy-num.b-friend  { color: var(--text-dim); }    /* 친구 — 기본 */
+  .rel-row .intimacy-num.b-close   { color: var(--accent); font-weight: 600; }  /* 친한 친구 */
+  .rel-row .intimacy-num.b-best    { color: var(--accent-2); font-weight: 600; }  /* 절친/가족 */
+  .rel-row .intimacy-num.b-lover   { color: #ec4899; font-weight: 700; }  /* 연인 — 핑크 */
   .rel-row .dynamics {
     grid-column: 1 / -1;
     color: var(--text-faint); font-size: 10.5px;
@@ -1055,18 +1081,8 @@
     .view { padding: 12px 12px; overflow-x: hidden; }
     main { overflow-x: hidden; }
 
-    /* Hero (상단 커뮤니티 헤더) — 모바일에선 아바타 줄 줄바꿈 + 작은 사이즈 + min-width 0 으로
-       gallery 가 viewport 옆으로 늘어나는 거 차단 (demo/private 9 agents 옆으로 잘리던 회귀). */
-    .hero-row { flex-wrap: wrap; gap: 12px; }
-    .hero-avatars {
-      flex-wrap: wrap;
-      max-width: 100%;
-      overflow: hidden;
-    }
-    .hero-text { flex-basis: 100%; min-width: 0; }
-    .avatar.xl {
-      width: 44px; height: 44px; border-width: 2px;
-    }
+    /* Hero — 모바일에선 아바타 사이즈만 작게 (column + flex-wrap 은 base 에서 이미 적용) */
+    .avatar.xl { width: 44px; height: 44px; border-width: 2px; }
     .avatar.xl .emoji-badge {
       width: 18px; height: 18px; font-size: 11px; bottom: -3px; right: -3px;
     }
