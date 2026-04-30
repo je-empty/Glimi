@@ -839,11 +839,12 @@ async function openAgent(id) {
   const renderRelRow = (r) => {
     const pct = Math.min(100, r.intimacy);
     const band = intimacyBand(r.intimacy || 0);
+    const synthTag = r._synthetic ? `<span style="color:var(--text-faint);font-size:10px;margin-left:4px" title="DB row 없어서 합성된 관계">≈</span>` : '';
     return `<div class="rel-row">
-      <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
+      <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}${synthTag}</span>
       <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
       <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
-      <span class="intimacy-num ${band.cls}" title="${band.label} · 친밀도 ${r.intimacy}/100 (0=원수 100=연인)">${r.intimacy}/100</span>
+      <span class="intimacy-num ${band.cls}" title="친밀도 ${r.intimacy}/100 (0=원수 100=연인)">${r.intimacy}/100 <span style="font-weight:400;opacity:0.85">${band.label}</span></span>
       ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
     </div>`;
   };
@@ -1004,7 +1005,50 @@ async function openAgent(id) {
     ? `<dl class="kv">${relOwnerRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
     : '';
 
+  // ── Supervisor 이벤트 히스토리 ──
+  // is_supervisor 면 활동 로그 섹션을 모달 상단에 노출 (감시 횟수 + 최근 액션).
+  let supEventsHtml = '';
+  if (d.is_supervisor) {
+    const events = d.supervisor_events || [];
+    const totalCount = d.supervisor_event_count || events.length;
+    if (events.length) {
+      const fmtTs = (iso) => {
+        try {
+          const dt = _parseServerTs(iso);
+          if (!dt || isNaN(dt.getTime())) return iso;
+          const secs = (Date.now() - dt.getTime()) / 1000;
+          if (secs < 60) return `${Math.floor(secs)}s ago`;
+          if (secs < 3600) return `${Math.floor(secs/60)}m ago`;
+          if (secs < 86400) return `${Math.floor(secs/3600)}h ago`;
+          return `${Math.floor(secs/86400)}d ago`;
+        } catch { return iso; }
+      };
+      const evRows = events.slice(0, 30).map(ev => {
+        const outcomeColor = ev.outcome === 'failed' ? '#ef4444' : (ev.outcome === 'skipped' ? 'var(--text-faint)' : 'var(--ok,#10b981)');
+        const targets = (ev.targets || []).map(t => esc(t)).join(', ');
+        return `<div style="padding:6px 0;border-bottom:1px dashed var(--border-soft);font-size:12px">
+          <div style="display:flex;gap:8px;align-items:baseline">
+            <span style="color:${outcomeColor};font-weight:600;font-family:monospace;font-size:11px">${esc(ev.action)}</span>
+            <span style="color:var(--text-dim);flex:1">${esc(ev.summary || '')}</span>
+            <span style="color:var(--text-faint);font-size:10px">${fmtTs(ev.ts)}</span>
+          </div>
+          ${targets ? `<div style="color:var(--text-faint);font-size:10.5px;margin-top:2px">→ ${targets}</div>` : ''}
+        </div>`;
+      }).join('');
+      supEventsHtml = `<div class="detail-section">
+        <h4>📋 감시 활동 <span class="mem-count">(${totalCount} · 24h)</span></h4>
+        <div style="max-height:280px;overflow-y:auto">${evRows}</div>
+      </div>`;
+    } else {
+      supEventsHtml = `<div class="detail-section">
+        <h4>📋 감시 활동</h4>
+        <div class="empty" style="font-size:12px">최근 24시간 내 기록된 개입 없음 — 조용히 감시 중</div>
+      </div>`;
+    }
+  }
+
   const body = `
+    ${supEventsHtml}
     <div class="detail-section" style="margin-top:0">
       <h4>📊 상태</h4>
       <dl class="kv">
@@ -1907,10 +1951,16 @@ function buildGraphElements(snap) {
         data: { id: supId, label: supDisplayName(s.name), kind: 'sup', icon: iconChar, iconSvg },
         classes: cls.join(' '),
       });
+      const activeTargets = new Set(s.active_targets || []);
       for (const aid of (s.target_agents || [])) {
         if (!involvedAgentIds.has(aid)) continue;
         let ec = 'sup-edge ';
-        if (s.intervening) ec += 'intervening';
+        // 우선순위: 최근 30분 내 실제 이벤트 → 'recent' (가장 강조)
+        //          intervening (현 진행) → 'intervening'
+        //          active (활성) → 'active'
+        //          그 외 → 'idle'
+        if (activeTargets.has(aid)) ec += 'recent';
+        else if (s.intervening) ec += 'intervening';
         else if (s.active) ec += 'active';
         else ec += 'idle';
         supEdges.push({
@@ -2288,6 +2338,16 @@ function mountCytoscapeGraph(snap) {
           'opacity': 1, 'width': 2.6, 'line-color': C.accent,
           'line-dash-pattern': [6, 3],
           'line-dash-offset': 0,
+        },
+      },
+      // recent — 최근 30분 내 이벤트 (구조화 supervisor_events 기록).
+      // intervening 만큼 강하지 않지만 idle/active 보다 명확히 강조 → 사용자가 어떤
+      // 슈퍼바이저가 누구한테 최근 영향 줬는지 한눈에 파악 가능.
+      {
+        selector: 'edge.sup-edge.recent',
+        style: {
+          'opacity': 0.92, 'width': 2.2, 'line-color': C.ok || '#10b981',
+          'line-dash-pattern': [5, 4],
         },
       },
       // Hover — 엣지 직접 hover 또는 연결된 노드 hover 시 라벨/엣지 강조

@@ -205,14 +205,33 @@ def count_pending_for_community(community_id: str) -> int:
     return n
 
 
-def has_active_work() -> bool:
-    """현재 큐에 작업/검토 중인 항목이 있는지 — agent display status 동적 결정."""
+def has_active_work(community_id: Optional[str] = None) -> bool:
+    """현재 큐에 작업/검토 중인 항목이 있는지 — agent display status 동적 결정.
+
+    community_id 미지정 시 current community 사용 (community 미설정이면 글로벌).
+    이전엔 항상 글로벌 → 다른 community 의 pending 이 있으면 모든 community 의 Sena 가
+    active 로 보이는 회귀. community-scoped 가 정상.
+    """
+    if community_id is None:
+        try:
+            from src import community as _comm
+            community_id = _comm.get_community_id()
+        except Exception:
+            community_id = None
+
     conn = _platform_conn()
     try:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM dev_requests "
-            "WHERE status IN ('pending','analyzed','approved','queued','processing')"
-        ).fetchone()[0]
+        if community_id:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dev_requests "
+                "WHERE community_id=? AND status IN ('pending','analyzed','approved','queued','processing')",
+                (community_id,),
+            ).fetchone()[0]
+        else:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dev_requests "
+                "WHERE status IN ('pending','analyzed','approved','queued','processing')"
+            ).fetchone()[0]
     finally:
         conn.close()
     return n > 0

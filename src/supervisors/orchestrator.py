@@ -92,6 +92,17 @@ class OrchestratorSupervisor(Supervisor):
         log_writer.system(
             f"[sup:orchestrator] 페어 선정: {a_name} ↔ {b_name} ({reason})"
         )
+        try:
+            from src.supervisors.events import log_event as _log_sup_event
+            _log_sup_event(
+                sup_id="orchestrator", action="pair_start",
+                targets=[a_id, b_id],
+                summary=f"{a_name} ↔ {b_name} 대화 시작 ({reason})",
+                outcome="ok",
+                details={"reason": reason},
+            )
+        except Exception:
+            pass
         self._last_started_at = _time.time()
         await self._start_internal_conv(guild, a_id, b_id, reason)
 
@@ -302,6 +313,17 @@ class OrchestratorSupervisor(Supervisor):
             log_writer.system(
                 f"[sup:orchestrator] ▶ group revive: #{ch_name} ({' · '.join(names)}, idle {hours_since:.1f}h)"
             )
+            try:
+                from src.supervisors.events import log_event as _log_sup_event
+                _log_sup_event(
+                    sup_id="orchestrator", action="group_revive",
+                    targets=list(personas),
+                    summary=f"#{ch_name} 그룹 부활 ({', '.join(names)}, idle {hours_since:.1f}h)",
+                    outcome="ok",
+                    details={"channel": ch_name, "idle_hours": round(hours_since, 1)},
+                )
+            except Exception:
+                pass
             ctx_text = f"오너 없을 때 자연스럽게 모여서 수다. 공통 관심사로 가볍게. (idle {hours_since:.1f}h)"
             asyncio.create_task(start_conversation(ch_name, personas, _send, context=ctx_text))
             return True
