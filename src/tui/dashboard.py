@@ -56,10 +56,46 @@ from src.i18n import t
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PID_FILE = os.path.join(PROJECT_ROOT, "dev", ".bot.pid")
 
+# TUI 모드 — 항상 attach-only.
+# Glimi 플랫폼 (FastAPI 서버 + community bot subprocesses) 가 별도로 가동되어 있어야 하고,
+# TUI 는 그 상태를 파일·DB·HTTP 로 읽어서 보여주기만 한다 (웹 대시보드와 동일 패턴).
+# 이전: TUI 가 자체적으로 src.discord_bot subprocess 를 띄우고 lifecycle 관리 → 단일 머신
+# 단일 인스턴스 가정. 플랫폼 분리 후엔 N 커뮤니티를 platform 이 관리하므로 충돌 발생.
+#
+# 이제 시작/정지/재가동 은 모두 platform HTTP API (`POST /api/communities/{id}/start` 등) 호출.
+GLIMI_PLATFORM_URL = os.environ.get("GLIMI_PLATFORM_URL", "http://127.0.0.1:8000")
+
+
 def _venv_python() -> str:
     """프로젝트 venv의 Python 경로 (sys.executable이 conda 등일 수 있음)"""
     venv = os.path.join(PROJECT_ROOT, ".venv", "bin", "python")
     return venv if os.path.exists(venv) else sys.executable
+
+
+def _platform_call(method: str, path: str, timeout: float = 10.0):
+    """Glimi platform HTTP API 호출. 실패 시 None 반환 (TUI 는 작동 계속)."""
+    import urllib.request
+    import urllib.error
+    import json as _json
+    cookie = os.environ.get("GLIMI_TUI_COOKIE", "")
+    url = f"{GLIMI_PLATFORM_URL}{path}"
+    try:
+        req = urllib.request.Request(url, method=method, data=b"" if method == "POST" else None)
+        if cookie:
+            req.add_header("Cookie", cookie)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read()
+        try:
+            return _json.loads(body)
+        except Exception:
+            return body.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+
+def _platform_alive() -> bool:
+    """플랫폼 서버 healthz 체크."""
+    return _platform_call("GET", "/healthz", timeout=2.0) is not None
 
 
 # ══════════════════════════════════════════════════════════
@@ -423,35 +459,18 @@ class DashboardScreen(Screen):
         yield Footer()
 
     def on_mount(self):
+        # attach-only 모드 — DB 는 read-only 로 접근 (platform 이 write 책임).
+        # 로그 정리·flag clear 등 전역 상태 mutation 은 더 이상 안 함 (platform 영역).
         db.init_db()
-        log_writer.clear_flags()
         os.makedirs(os.path.join(PROJECT_ROOT, "logs", "agents"), exist_ok=True)
         os.makedirs(os.path.join(PROJECT_ROOT, "logs", "chat"), exist_ok=True)
-        os.makedirs(os.path.join(PROJECT_ROOT, "dev"), exist_ok=True)
-        # 이전 봇 프로세스 정리 (다른 커뮤니티 봇이 남아있을 수 있음)
-        if _is_bot_running():
-            try:
-                with open(PID_FILE) as f:
-                    old_pid = int(f.read().strip())
-                os.kill(old_pid, signal.SIGTERM)
-            except Exception:
-                pass
-            try:
-                os.remove(PID_FILE)
-            except FileNotFoundError:
-                pass
-        # 이전 로그 정리
-        _log_path = os.path.join(log_writer.get_log_dir(), "system.log")
-        try:
-            open(_log_path, "w").close()
-        except OSError:
-            pass
 
-        self._check_first_run_cleanup()
-        self._start_bot()
-        self._init_loading = LoadingOverlay(t("dashboard.loading_discord"))
-        self.app.push_screen(self._init_loading)
-        self._wait_bot_ready()
+        # platform 가동 여부 안내 — 안 떠있으면 사용자에게 알리고 view 만 보여준다.
+        if not _platform_alive():
+            log_writer.system(
+                f"[TUI] ⚠ Glimi platform 미가동 — `python -m src.platform` 으로 띄워야 봇 가동 가능 ({GLIMI_PLATFORM_URL})"
+            )
+
         _cache.refresh()
         self._refresh_all()
         self.set_interval(1.0, self._tick)
@@ -463,81 +482,45 @@ class DashboardScreen(Screen):
         # 대시보드에서 미리 제거하면 위저드에서 설정한 플래그가 사라짐
         pass
 
-    # ── Bot / Dev 프로세스 관리 ──────────────────────────
+    # ── Bot 제어 — attach-only (platform API 호출) ──────────────────────────
+    #
+    # 이전: TUI 가 직접 src.discord_bot subprocess 띄우고 lifecycle 관리.
+    # 현재: Glimi platform 이 N 커뮤니티 봇을 관리. TUI 는 그저 attach 하는 클라이언트.
+    # _bot_proc / _dev_proc 필드는 호환 위해 남기되 실제 subprocess 는 사용 안 함.
 
     def _start_bot(self):
-        if self._bot_proc and self._bot_proc.poll() is None:
-            return
-        # 이미 외부에서 봇이 돌고 있으면 새로 시작하지 않음
-        if _is_bot_running():
-            log_writer.system("Bot already running — connecting")
-            return
-        log_writer.system("Bot starting")
-        env = os.environ.copy()
+        """Platform API 로 community bot 가동 요청."""
         cid = os.environ.get("GLIMI_COMMUNITY", "")
-        if cid:
-            env["GLIMI_COMMUNITY"] = cid
-        self._bot_proc = subprocess.Popen(
-            [_venv_python(), "-u", "-m", "src.discord_bot"],
-            cwd=PROJECT_ROOT, env=env,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        try:
-            with open(PID_FILE, "w") as f:
-                f.write(str(self._bot_proc.pid))
-        except OSError:
-            pass
+        if not cid:
+            log_writer.system("[TUI] community 미설정 — 가동 skip")
+            return
+        if not _platform_alive():
+            log_writer.system(
+                f"[TUI] platform 미가동 — 먼저 'python -m src.platform' 실행 필요 ({GLIMI_PLATFORM_URL})"
+            )
+            return
+        result = _platform_call("POST", f"/api/communities/{cid}/start")
+        if result and result.get("ok"):
+            log_writer.system(f"[TUI] community {cid} 가동 요청됨 (pid={result.get('pid')})")
+        else:
+            log_writer.system(f"[TUI] community {cid} 가동 실패 — platform 응답: {result}")
 
     def _stop_bot(self):
-        if self._bot_proc and self._bot_proc.poll() is None:
-            self._bot_proc.terminate()
-            try:
-                self._bot_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._bot_proc.kill()
-        self._bot_proc = None
-        try:
-            os.remove(PID_FILE)
-        except FileNotFoundError:
-            pass
+        """Platform API 로 community bot 정지 요청."""
+        cid = os.environ.get("GLIMI_COMMUNITY", "")
+        if not cid or not _platform_alive():
+            return
+        _platform_call("POST", f"/api/communities/{cid}/stop")
+        log_writer.system(f"[TUI] community {cid} 정지 요청됨")
 
     def _run_dev_runner(self):
-        log_writer.system("Dev runner started")
-        dev_log = open(os.path.join(PROJECT_ROOT, "logs", "dev_stdout.log"), "a")
-        self._dev_log_file = dev_log
-        self._dev_proc = subprocess.Popen(
-            [_venv_python(), "-u", "-m", "src.tools.dev_runner"],
-            cwd=PROJECT_ROOT,
-            stdout=dev_log, stderr=dev_log,
-        )
+        """레거시 — dev workflow 는 글로벌 admin 페이지(/admin/dev-requests) 로 이전됨.
+        TUI 는 더 이상 자체적으로 dev runner 를 띄우지 않는다."""
+        log_writer.system("[TUI] dev workflow 는 /admin/dev-requests (글로벌) 로 이전됨")
 
     def _check_bot_status(self):
-        if self._bot_proc is None:
-            return
-        exit_code = self._bot_proc.poll()
-        if exit_code is None:
-            return
-
-        self._bot_proc = None
-        try:
-            os.remove(PID_FILE)
-        except FileNotFoundError:
-            pass
-
-        if exit_code == 42:
-            log_writer.system(f"Bot exit (dev request, exit={exit_code})")
-            self._run_dev_runner()
-        elif exit_code == 0:
-            log_writer.system("Bot stopped normally")
-        else:
-            log_writer.system(f"Bot crashed (exit={exit_code}) — restarting in 5s")
-            self.set_timer(5.0, self._start_bot)
-
-        if self._dev_proc and self._dev_proc.poll() is not None:
-            log_writer.system("Dev runner done — full restart")
-            self._dev_proc = None
-            self.set_timer(2.0, self._do_full_restart)
+        """attach-only 모드 — TUI 는 봇 status 를 platform API 에서 polling 으로만 확인."""
+        return
 
     # ── Tick / Refresh ──────────────────────────────────
 
@@ -2411,19 +2394,12 @@ class DashboardScreen(Screen):
 
     @work(thread=True)
     def _run_dev_runner_for_fix(self):
-        """개발봇 실행 후 전체 재시작"""
-        import time
-        log_writer.system("[AutoFix] 개발봇 실행 중...")
-        self._dev_proc = subprocess.Popen(
-            [_venv_python(), "-u", "-m", "src.tools.dev_runner"],
-            cwd=PROJECT_ROOT,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        """레거시 — 자동 fix 흐름은 이제 글로벌 admin 페이지(/admin/dev-requests)에서 진행.
+        TUI 에서는 직접 실행 X."""
+        log_writer.system(
+            "[AutoFix] dev workflow 는 /admin/dev-requests (글로벌 admin) 로 이전됨 — "
+            "거기서 검토·승인·Run."
         )
-        self._dev_proc.wait()  # 완료 대기
-        log_writer.system("[AutoFix] 개발봇 완료 — 재시작")
-        self._dev_proc = None
-        time.sleep(1)
-        self.app.call_from_thread(self._do_full_restart)
 
     def _render_sync_view(self):
         """Sync 탭 메인 뷰"""
@@ -2567,17 +2543,19 @@ class DashboardScreen(Screen):
         self.action_restart()
 
     def action_restart(self):
-        """이 커뮤니티 재시작 — 봇 + 대시보드를 재실행 (코드 변경 반영)"""
-        self._stop_bot()
-        if self._dev_proc and self._dev_proc.poll() is None:
-            self._dev_proc.terminate()
-        log_writer.system("Dashboard restart")
+        """이 커뮤니티 재시작 — platform API 로 봇 stop+start 요청 (TUI 자체는 살아있음)."""
         cid = os.environ.get("GLIMI_COMMUNITY", "")
-        py = _venv_python()
-        args = [py, "-m", "src.tui.dashboard"]
-        if cid:
-            args.append(cid)
-        os.execvp(py, args)
+        if not cid:
+            log_writer.system("[TUI] community 미설정 — restart skip")
+            return
+        if not _platform_alive():
+            log_writer.system(f"[TUI] platform 미가동 — restart 불가 ({GLIMI_PLATFORM_URL})")
+            return
+        result = _platform_call("POST", f"/api/communities/{cid}/restart")
+        if result and result.get("ok"):
+            log_writer.system(f"[TUI] community {cid} 재가동 요청됨 (pid={result.get('pid')})")
+        else:
+            log_writer.system(f"[TUI] community {cid} 재가동 실패: {result}")
 
     def action_go_wizard(self):
         """대시보드 종료 → Switching to Wizard (봇은 유지)"""
