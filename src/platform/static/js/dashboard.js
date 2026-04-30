@@ -679,8 +679,28 @@ function renderChannelsGrouped(channels) {
 }
 
 function renderEvent(e) {
-  return `<div class="event">
+  // impact 별 색상: 긍정=초록, 주의=주황, 마일스톤=accent, 기본=텍스트
+  const impactCls = {
+    '긍정': 'impact-positive',
+    '주의': 'impact-warn',
+    '마일스톤': 'impact-milestone',
+  }[e.impact] || '';
+  const participants = Array.isArray(e.participants) ? e.participants : [];
+  // owner / agent ID → 표시용 이름 (snap.agents 에서 lookup)
+  const lookupName = (id) => {
+    if (id === 'owner' || id === 'jaebin') {
+      const cur = window.__GLIMI_LAST_SNAP__ || {};
+      return cur.meta?.user_name || (id === 'jaebin' ? '심재빈' : '오너');
+    }
+    const ag = (window.__GLIMI_LAST_SNAP__?.agents || []).find(a => a.id === id);
+    return ag?.name || id;
+  };
+  const partsHtml = participants.length
+    ? `<span class="parts">${participants.map(p => `<span class="part">${esc(lookupName(p))}</span>`).join('')}</span>`
+    : '';
+  return `<div class="event ${impactCls}">
     <span class="type">${esc(e.type)}</span>
+    ${partsHtml}
     <span class="desc">${esc(e.description)}</span>
     <span class="ts">${esc(fmtLocalHMS(e.timestamp))}</span>
   </div>`;
@@ -2847,6 +2867,8 @@ async function tick() {
     j(q('/api/usage')),
   ]);
   if (!snap) return;
+  // 전역에 snap 캐시 — renderEvent 등 다른 헬퍼가 user_name/agents 조회 시 사용.
+  window.__GLIMI_LAST_SNAP__ = snap;
 
   COMMUNITY = snap.community_id;
   const b = snap.bot, m = snap.meta;
