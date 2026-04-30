@@ -910,6 +910,90 @@
     white-space: nowrap;
   }
 
+  /* Intimacy bar v2 — emotion bar 와 동일 형태. 타입+밴드 라벨이 바 안에. */
+  .rel-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 0; min-height: 28px;
+  }
+  .rel-row .rname {
+    flex: 0 0 auto; min-width: 0; max-width: 120px;
+    font-size: 12px; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rel-row .dynamics {
+    color: var(--text-faint); font-size: 10.5px; font-style: italic;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 0; flex: 1;
+  }
+  .intimacy-bar-v2 {
+    position: relative;
+    flex: 1; min-width: 80px; max-width: 280px; height: 24px;
+    background: var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .intimacy-bar-v2 .intimacy-bar-fill {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 0.4s, background 0.3s;
+    opacity: 0.85;
+  }
+  /* band 별 fill 색깔 */
+  .intimacy-bar-v2.band-b-enemy   .intimacy-bar-fill { background: #ef4444; }
+  .intimacy-bar-v2.band-b-hostile .intimacy-bar-fill { background: #f59e0b; }
+  .intimacy-bar-v2.band-b-awkward .intimacy-bar-fill { background: linear-gradient(90deg, var(--text-faint), var(--text-dim)); opacity: 0.55; }
+  .intimacy-bar-v2.band-b-friend  .intimacy-bar-fill { background: linear-gradient(90deg, var(--accent), var(--accent)); opacity: 0.7; }
+  .intimacy-bar-v2.band-b-close   .intimacy-bar-fill { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .intimacy-bar-v2.band-b-best    .intimacy-bar-fill { background: linear-gradient(90deg, var(--accent-2), #ec4899); }
+  .intimacy-bar-v2.band-b-lover   .intimacy-bar-fill { background: linear-gradient(90deg, #ec4899, #f472b6); }
+  .intimacy-bar-v2 .intimacy-bar-text {
+    position: relative; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 500; color: var(--text);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    z-index: 1; padding: 0 8px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Thinking/Speaking 상태 — 카드에서 emotion-bar 와 같은 큰 바로 표시.
+     기존 작은 state-badge 대신 카드 내부에 가로 바 + 라벨/이모지. */
+  .agent-card .state-bar {
+    display: none;
+    margin-top: 8px;
+    position: relative;
+    width: 100%; height: 24px;
+    background: var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .agent-card .state-bar > .state-bar-fill {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, var(--thinking,#f59e0b), var(--thinking,#f59e0b));
+    width: 100%;
+    animation: state-pulse 1.4s ease-in-out infinite;
+  }
+  .agent-card.thinking .state-bar { display: block; }
+  .agent-card.thinking .state-bar > .state-bar-fill {
+    background: linear-gradient(90deg, var(--thinking,#f59e0b) 0%, color-mix(in srgb, var(--thinking,#f59e0b) 50%, transparent) 100%);
+  }
+  .agent-card.speaking .state-bar { display: block; }
+  .agent-card.speaking .state-bar > .state-bar-fill {
+    background: linear-gradient(90deg, var(--speaking,#3b82f6) 0%, color-mix(in srgb, var(--speaking,#3b82f6) 50%, transparent) 100%);
+  }
+  .agent-card .state-bar > .state-bar-text {
+    position: relative; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    z-index: 1; gap: 6px;
+  }
+  @keyframes state-pulse {
+    0%, 100% { opacity: 0.85; }
+    50% { opacity: 1; }
+  }
+
   /* 오너 row — 항상 최상단, 살짝 강조 (다른 관계와 시각적 구분) */
   .rel-row.rel-owner {
     background: color-mix(in srgb, var(--accent) 8%, transparent);

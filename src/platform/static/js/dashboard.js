@@ -533,12 +533,17 @@ function renderAgent(a, clickable=true) {
           ${a.age ? `<span class="sep">·</span><span>${a.age}y</span>` : ''}
         </div>
       </div>
-      <span class="state-badge thinking">thinking</span>
-      <span class="state-badge speaking">speaking</span>
+    </div>
+    <div class="state-bar">
+      <div class="state-bar-fill"></div>
+      <div class="state-bar-text">
+        ${a.thinking ? '🧠 추론 중…' : (a.speaking ? '💬 응답 중…' : '')}
+        ${(a.thinking || a.speaking) ? `<span style="opacity:0.7;font-weight:400;font-size:11px">${fmtElapsed(elapsed)}</span>` : ''}
+      </div>
     </div>
     <div class="agent-footer">
       ${a.model ? renderModelChips(a, true) : '<span></span>'}
-      ${agoText ? `<span title="last active">${agoText} ago</span>` : ''}
+      ${agoText ? `<span title="마지막 활동">${agoText} ago</span>` : ''}
     </div>
     ${expanded}
   </div>`;
@@ -840,11 +845,14 @@ async function openAgent(id) {
     const pct = Math.min(100, r.intimacy);
     const band = intimacyBand(r.intimacy || 0);
     const synthTag = r._synthetic ? `<span style="color:var(--text-faint);font-size:10px;margin-left:4px" title="DB row 없어서 합성된 관계">≈</span>` : '';
+    // 친밀도 바 — emotion bar 와 동일 스타일. 안에 "타입 · 라벨" 표시.
+    const innerLabel = `${esc(r.type || '—')} · ${band.label}`;
     return `<div class="rel-row">
       <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}${synthTag}</span>
-      <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
-      <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
-      <span class="intimacy-num ${band.cls}" title="친밀도 ${r.intimacy}/100 (0=원수 100=연인)">${r.intimacy}/100 <span style="font-weight:400;opacity:0.85">${band.label}</span></span>
+      <div class="intimacy-bar-v2 band-${band.cls}" title="친밀도 ${r.intimacy}/100 (0=원수 100=연인)">
+        <div class="intimacy-bar-fill" style="width:${pct}%"></div>
+        <div class="intimacy-bar-text">${innerLabel} <span style="opacity:0.7;font-weight:400;font-size:11px">${r.intimacy}/100</span></div>
+      </div>
       ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
     </div>`;
   };
