@@ -851,7 +851,9 @@ def _get_test_user_detail() -> dict:
         "primary_chat": primary_chat,
         "model": "claude-haiku-4-5",
         "provider": "claude",
-        "model_override": True,
+        # test-user 는 default Haiku 라 override 아님 — true 로 박으면 .model-tag.override
+        # 가 accent 색으로 페르소나 m-haiku 뱃지랑 색깔 안 맞음 (modal·상세 페이지 회귀).
+        "model_override": False,
         "synthetic": True,
     }
 
