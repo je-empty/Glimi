@@ -961,8 +961,15 @@ async function openAgent(id) {
   const chatHtml = (d.primary_chat || []).map(m => renderMessage({...m, channel: m.channel || d.primary_channel})).join('');
 
   // 전체 보기 URL 은 이제 openModal 이 header 링크에 자동 세팅 (이 함수에선 body 구성만).
+  // 감정 바 — emoji+라벨이 바 안에, 강도가 fill 너비로. 점수 인상 회피 + 한눈 가독.
   const emotionLine = d.emotion
-    ? `${esc(d.emoji || '')} ${esc(d.emotion)} <span style="color:var(--text-faint)">강도 ${esc(String(d.intensity ?? ''))}/10</span>`
+    ? (() => {
+        const pct = Math.min(100, (d.intensity || 0) * 10);
+        return `<div class="emotion-bar" title="강도 ${esc(String(d.intensity ?? '?'))}/10">
+          <div class="emotion-bar-fill" style="width:${pct}%"></div>
+          <div class="emotion-bar-text">${esc(d.emoji || '')} ${esc(d.emotion)}</div>
+        </div>`;
+      })()
     : '';
 
   // details/summary 공통 스타일 (인라인 — 신규 CSS 최소화)
