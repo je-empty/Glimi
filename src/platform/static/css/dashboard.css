@@ -1036,12 +1036,10 @@
   .rel-row .intimacy-num.b-close   { color: var(--accent); font-weight: 600; }  /* 친한 친구 */
   .rel-row .intimacy-num.b-best    { color: var(--accent-2); font-weight: 600; }  /* 절친/가족 */
   .rel-row .intimacy-num.b-lover   { color: #ec4899; font-weight: 700; }  /* 연인 — 핑크 */
-  .rel-row .dynamics {
-    grid-column: 1 / -1;
-    color: var(--text-faint); font-size: 10.5px;
-    padding-left: 120px; padding-top: 2px; padding-bottom: 4px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
+  /* dynamics — flex layout 으로 통합되며 위쪽 정의 (line 914) 가 진짜 사용됨.
+     이전 grid 레이아웃 잔재 (grid-column: 1/-1, padding-left: 120px) 가 아직 살아있어서
+     mgr/creator 처럼 dynamics 가 있는 row 만 padding-left 120px 으로 밀려 깨지던 회귀 fix.
+     no-op block 으로 두어 명시적 비활성화. */
 
   .mem-block { margin-bottom: 14px; }
   .mem-block h5 { font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text); display: flex; align-items: center; gap: 6px; }

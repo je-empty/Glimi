@@ -830,13 +830,28 @@ async function openAgent(id) {
   // ── 관계 top 3 (친밀도 내림차순) — 요약용 ──
   // 친밀도 스케일: 0 원수 / 1-19 적대 / 20-39 어색 / 40-59 친구 / 60-79 친한 친구 / 80-99 절친 / 100 연인
   const intimacyBand = (n) => {
-    if (n >= 100) return { label: '연인', cls: 'b-lover' };
-    if (n >= 80) return { label: '절친', cls: 'b-best' };
-    if (n >= 60) return { label: '친한 친구', cls: 'b-close' };
-    if (n >= 40) return { label: '친구', cls: 'b-friend' };
-    if (n >= 20) return { label: '어색', cls: 'b-awkward' };
-    if (n >= 1) return { label: '적대', cls: 'b-hostile' };
-    return { label: '원수', cls: 'b-enemy' };
+    if (n >= 100) return { label: '연인', cls: 'b-lover', emoji: '💖' };
+    if (n >= 80) return { label: '절친', cls: 'b-best', emoji: '💞' };
+    if (n >= 60) return { label: '친한 친구', cls: 'b-close', emoji: '🤝' };
+    if (n >= 40) return { label: '친구', cls: 'b-friend', emoji: '🙂' };
+    if (n >= 20) return { label: '어색', cls: 'b-awkward', emoji: '😶' };
+    if (n >= 1) return { label: '적대', cls: 'b-hostile', emoji: '😠' };
+    return { label: '원수', cls: 'b-enemy', emoji: '🔥' };
+  };
+  // 관계 타입 이모지 — 자유 텍스트지만 자주 등장하는 키워드 매핑
+  const relTypeEmoji = (t) => {
+    if (!t) return '';
+    if (/매니저|관리/.test(t)) return '🛡️';
+    if (/크리에이터|creator/.test(t)) return '🎨';
+    if (/개발/.test(t)) return '🛠️';
+    if (/연인|애인/.test(t)) return '💖';
+    if (/가족|엄마|아빠|형|누나|언니|오빠|동생/.test(t)) return '👨‍👩‍👧';
+    if (/친구/.test(t)) return '🙂';
+    if (/라이벌/.test(t)) return '⚔️';
+    if (/멘토|선생/.test(t)) return '🎓';
+    if (/짝사랑/.test(t)) return '💗';
+    if (/원수|적/.test(t)) return '🔥';
+    return '·';
   };
   const relsSorted = (d.relationships || []).slice().sort((a, b) => (b.intimacy || 0) - (a.intimacy || 0));
   const relsTop = relsSorted.slice(0, 3);
@@ -844,8 +859,9 @@ async function openAgent(id) {
     const pct = Math.min(100, r.intimacy);
     const band = intimacyBand(r.intimacy || 0);
     const synthTag = r._synthetic ? `<span style="color:var(--text-faint);font-size:10px;margin-left:4px" title="DB row 없어서 합성된 관계">≈</span>` : '';
-    // 친밀도 바 — emotion bar 와 동일 스타일. 안에 "타입 · 라벨" 표시.
-    const innerLabel = `${esc(r.type || '—')} · ${band.label}`;
+    // 친밀도 바 — emotion bar 와 동일 스타일. 안에 "타입이모지 타입 · 밴드이모지 라벨" 표시.
+    const tEmoji = relTypeEmoji(r.type);
+    const innerLabel = `${tEmoji} ${esc(r.type || '—')} · ${band.emoji} ${band.label}`;
     return `<div class="rel-row">
       <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}${synthTag}</span>
       <div class="intimacy-bar-v2 band-${band.cls}" title="친밀도 ${r.intimacy}/100 (0=원수 100=연인)">
