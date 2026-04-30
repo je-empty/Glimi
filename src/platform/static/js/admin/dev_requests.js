@@ -93,78 +93,101 @@ function renderGrid() {
   grid.innerHTML = items.map(r => renderCard(r)).join('');
 }
 
+const STATUS_LABEL = {
+  pending: '세나 분석 대기',
+  analyzed: '검토 대기',
+  approved: '승인됨 (실행 대기)',
+  queued: '실행 대기열',
+  processing: '작업 중',
+  completed: '완료',
+  failed: '실패',
+  needs_human_review: '오너 판단 필요',
+  rejected: '거부됨',
+};
+
+const SEVERITY_LABEL = { low: '낮음', med: '보통', high: '높음' };
+
 function renderCard(r) {
   const id = r.id;
   const status = r.status || 'pending';
   const sev = r.severity || 'med';
   const conf = r.confidence;
   const expanded = STATE.expanded.has(id);
-  const summary = r.sera_summary || (r.payload?.repro || '').slice(0, 200) || '(no summary)';
+  const summary = r.sera_summary || (r.payload?.repro || '').slice(0, 240) || '(아직 분석 전)';
 
-  // 액션 버튼들
+  // 액션
   const actions = [];
   if (status === 'analyzed' || status === 'needs_human_review') {
-    actions.push(`<button class="approve" onclick="approveReq(${id})">✓ Approve</button>`);
-    actions.push(`<button class="reject" onclick="rejectReq(${id})">Reject</button>`);
+    actions.push(`<button class="btn-approve" onclick="approveReq(${id})">✓ 승인</button>`);
+    actions.push(`<button class="btn-reject" onclick="rejectReq(${id})">거부</button>`);
   } else if (status === 'approved') {
-    actions.push(`<button class="unapprove" onclick="rejectReq(${id})">Unapprove</button>`);
+    actions.push(`<button class="btn-unapprove" onclick="rejectReq(${id})">승인 취소</button>`);
   }
 
-  // 메타 (commit / PR / 시간)
-  const commit = r.commit_sha ? `<span class="commit">${esc(r.commit_sha.slice(0,8))}</span>` : '';
-  const pr = r.pr_url ? `<a class="pr-link" href="${esc(r.pr_url)}" target="_blank" rel="noopener">PR ↗</a>` : '';
-  const timeAgo = `<span>${fmtAgo(r.requested_at)} ago</span>`;
+  // commit/PR
+  const commitChip = r.commit_sha ? `<span class="chip-commit" title="commit ${esc(r.commit_sha)}">⌘ ${esc(r.commit_sha.slice(0,7))}</span>` : '';
+  const prChip = r.pr_url ? `<a class="chip-pr" href="${esc(r.pr_url)}" target="_blank" rel="noopener">PR ↗</a>` : '';
 
-  // 상세 (expanded 시)
-  let details = '';
+  // 상세 (expanded)
+  let detailsHtml = '';
   if (expanded) {
     const p = r.payload || {};
-    const files = (r.files_hint_list || []).map(f => esc(f)).join(', ') || '(none)';
-    details = `
-      <span class="label">Channel</span>${esc(p.channel || '?')}
-      <span class="label">Reproduce</span>${esc(p.repro || '?')}
-      <span class="label">Expected</span>${esc(p.expected || '?')}
-      <span class="label">Actual</span>${esc(p.actual || '?')}
-      ${p.notes ? `<span class="label">Notes</span>${esc(p.notes)}` : ''}
-      ${r.task_brief ? `<span class="label">Task brief (Claude Code 에 전달)</span><pre>${esc(r.task_brief)}</pre>` : ''}
-      <span class="label">Files hint</span><span class="files">${files}</span>
-      ${r.analysis_notes ? `<span class="label">Sera notes</span>${esc(r.analysis_notes)}` : ''}
-      ${r.error ? `<span class="label" style="color:var(--err)">Error</span>${esc(r.error)}` : ''}
-      <span class="label">Requested by</span>${esc(r.requested_by || '')} · ${fmtAgo(r.requested_at)} ago
+    const files = (r.files_hint_list || []);
+    detailsHtml = `
+      <div class="detail-grid">
+        <section class="detail-section">
+          <h4>📋 원본 보고서</h4>
+          <div class="kv"><span class="k">발생 채널</span><span class="v">${esc(p.channel || '?')}</span></div>
+          <div class="kv"><span class="k">재현 방법</span><span class="v">${esc(p.repro || '?')}</span></div>
+          <div class="kv"><span class="k">기대 동작</span><span class="v">${esc(p.expected || '?')}</span></div>
+          <div class="kv"><span class="k">실제 동작</span><span class="v">${esc(p.actual || '?')}</span></div>
+          ${p.notes ? `<div class="kv"><span class="k">추가 메모</span><span class="v">${esc(p.notes)}</span></div>` : ''}
+          <div class="kv"><span class="k">보고자</span><span class="v">${esc(r.requested_by || '')} · ${fmtAgo(r.requested_at)} 전</span></div>
+        </section>
+        ${r.task_brief ? `
+        <section class="detail-section">
+          <h4>📐 세나의 작업 지시 (Claude Code 가 받음)</h4>
+          <pre class="task-brief">${esc(r.task_brief)}</pre>
+          ${files.length ? `<div class="kv"><span class="k">관련 파일</span><span class="v files-list">${files.map(f => `<code>${esc(f)}</code>`).join(' ')}</span></div>` : ''}
+          ${r.analysis_notes ? `<div class="kv"><span class="k">분석 메모</span><span class="v">${esc(r.analysis_notes)}</span></div>` : ''}
+        </section>
+        ` : ''}
+        ${r.error ? `<section class="detail-section error"><h4>⚠ 실패 사유</h4><pre>${esc(r.error)}</pre></section>` : ''}
+      </div>
     `;
   }
 
   return `
-    <div class="card ${expanded ? 'expanded' : ''}" data-status="${esc(status)}">
-      <div class="id-col">#${id}</div>
-
-      <div class="badges">
-        <span class="badge community">${esc(r.community_id || '?')}</span>
-        <div class="status-row">
-          <span class="badge status-${esc(status)}">${esc(status)}</span>
+    <article class="dev-card" data-status="${esc(status)}">
+      <div class="dev-card-main">
+        <div class="dev-card-left">
+          <div class="card-id">#${id}</div>
+          <span class="dev-badge community" title="발생 커뮤니티">${esc(r.community_id || '?')}</span>
         </div>
-        <div class="status-row">
-          <span class="badge severity-${esc(sev)}">${esc(sev)}</span>
-          ${conf ? `<span class="badge confidence-${esc(conf)}">${esc(conf)}</span>` : ''}
+
+        <div class="dev-card-body">
+          <div class="card-row-1">
+            <span class="dev-badge status status-${esc(status)}">${esc(STATUS_LABEL[status] || status)}</span>
+            <span class="dev-badge sev severity-${esc(sev)}" title="심각도">${esc(SEVERITY_LABEL[sev] || sev)}</span>
+            ${conf ? `<span class="dev-badge conf confidence-${esc(conf)}" title="세나 자체 판정">${conf === 'high' ? '명확한 수정' : '판단 모호'}</span>` : ''}
+            <span class="card-time" title="${esc(r.requested_at || '')}">${fmtAgo(r.requested_at)} 전</span>
+          </div>
+          <div class="card-summary">${esc(summary)}</div>
+          <div class="card-row-2">
+            ${commitChip}
+            ${prChip}
+            <button class="btn-toggle" onclick="toggleCard(${id})">
+              ${expanded ? '▾ 접기' : '▸ 자세히'}
+            </button>
+          </div>
+        </div>
+
+        <div class="dev-card-actions">
+          ${actions.join('') || '<span class="no-action">—</span>'}
         </div>
       </div>
-
-      <div class="summary">${esc(summary)}</div>
-      <div class="details">${details}</div>
-      <button class="toggle" onclick="toggleCard(${id})" style="grid-area: details; align-self: start;">
-        ${expanded ? '▾ Hide details' : '▸ Show details'}
-      </button>
-
-      <div class="meta-col">
-        ${pr}
-        ${commit}
-        ${timeAgo}
-      </div>
-
-      <div class="actions">
-        ${actions.join('') || '<span style="color:var(--text-faint);font-size:11px;">—</span>'}
-      </div>
-    </div>
+      ${detailsHtml}
+    </article>
   `;
 }
 
@@ -177,15 +200,15 @@ async function approveReq(id) {
   try {
     await j(`/api/admin/dev-requests/${id}/approve`, { method: 'POST' });
     refreshList();
-  } catch (e) { alert(`Approve failed: ${e.message}`); }
+  } catch (e) { alert(`승인 실패: ${e.message}`); }
 }
 
 async function rejectReq(id) {
-  if (!confirm(`Reject request #${id}?`)) return;
+  if (!confirm(`#${id} 을(를) 거부할까요?`)) return;
   try {
     await j(`/api/admin/dev-requests/${id}/reject`, { method: 'POST' });
     refreshList();
-  } catch (e) { alert(`Reject failed: ${e.message}`); }
+  } catch (e) { alert(`거부 실패: ${e.message}`); }
 }
 
 // ── Run / live output ────────────────────────────────────
@@ -193,7 +216,7 @@ async function rejectReq(id) {
 async function runApproved() {
   const approved = STATE.items.filter(r => r.status === 'approved');
   if (approved.length === 0) return;
-  if (!confirm(`Run ${approved.length} approved request(s)? This will stop all community bots, run Claude Code on a new branch, then create a PR.`)) return;
+  if (!confirm(`승인된 ${approved.length}건을 실행할까요?\n\n진행 시:\n1. 모든 community 봇 정지\n2. dev-requests/run-{ts} 브랜치 생성\n3. Claude Code(Opus) 가 작업 + 개별 commit\n4. PR 자동 생성 (target: develop)\n5. 봇 재가동`)) return;
   try {
     const result = await j('/api/admin/dev-requests/run', {
       method: 'POST',
@@ -207,30 +230,29 @@ async function runApproved() {
     document.getElementById('live-meta').textContent = `run #${result.run_id} · branch ${result.branch}`;
     refreshList();
   } catch (e) {
-    alert(`Run failed: ${e.message}`);
+    alert(`Run 실패: ${e.message}`);
   }
 }
 
 async function abortRun() {
   if (!STATE.activeRunId) return;
-  if (!confirm('Abort the in-progress run? This kills the tmux session.')) return;
+  if (!confirm('진행 중인 run 을 중단할까요? tmux 세션이 강제 종료됩니다.')) return;
   try {
     await j(`/api/admin/dev-requests/run/${STATE.activeRunId}/abort`, { method: 'POST' });
-  } catch (e) { alert(`Abort failed: ${e.message}`); }
+  } catch (e) { alert(`중단 실패: ${e.message}`); }
 }
 
 async function mergeRun() {
   if (!STATE.activeRunId) return;
-  if (!confirm('Merge this run\'s PR to develop? (squash + delete branch)')) return;
+  if (!confirm('이 run 의 PR 을 develop 으로 merge 할까요? (squash + branch 삭제)')) return;
   try {
     const result = await j(`/api/admin/dev-requests/run/${STATE.activeRunId}/merge`, { method: 'POST' });
     alert(`Merged: ${result.pr_url}`);
     refreshList();
-  } catch (e) { alert(`Merge failed: ${e.message}`); }
+  } catch (e) { alert(`Merge 실패: ${e.message}`); }
 }
 
 async function pollLive() {
-  // 활성 run 자동 감지
   if (!STATE.activeRunId) {
     try {
       const r = await j('/api/admin/dev-requests/run/active');
@@ -257,7 +279,6 @@ async function pollLive() {
       document.getElementById('btn-merge').style.display = 'inline-block';
     }
     if (r.finished || ['completed','failed','aborted'].includes(r.status)) {
-      // run 끝나면 list 갱신
       refreshList();
       if (r.status !== 'completed') {
         STATE.activeRunId = null;
