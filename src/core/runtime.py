@@ -767,7 +767,14 @@ class AgentRuntime:
                 _report_claude_error(name, raw, source="force")
                 return []
 
-            responses = self._parse_response(raw, agent_name=name)
+            # <tools> 블록 먼저 분리 — chat 만 메시지로, tool_calls 는 stash 후 dispatcher 처리.
+            # 이전엔 force 경로가 parse 안 해서 dev/mgr 의 tool 호출이 모두 chat 으로 leak +
+            # 실제 호출 0건. (e.g. 세나 dev_organize 가 호출 안 돼 status 'pending' 무한 정체)
+            parsed = parse_tools_in_output(raw)
+            self._last_tool_calls[agent_id] = parsed.tool_calls
+            if parsed.errors:
+                log_writer.system(f"[Tools] 강제 지시 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+            responses = self._parse_response(parsed.chat, agent_name=name)
 
         except subprocess.TimeoutExpired:
             log_writer.system(f"⚠ 강제지시 타임아웃 ({name} @ {channel}, 120s)")
