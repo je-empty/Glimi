@@ -95,6 +95,7 @@ router.get("/api/dev")(_json_endpoint(dash_api.api_dev))
 router.get("/api/usage")(_json_endpoint(dash_api.api_usage))
 router.get("/api/i18n")(_json_endpoint(dash_api.api_i18n))
 router.get("/api/achievements")(_json_endpoint(dash_api.api_achievements))
+router.get("/api/achievement_detail")(_json_endpoint(dash_api.api_achievement_detail))
 
 
 @router.get("/api/models")

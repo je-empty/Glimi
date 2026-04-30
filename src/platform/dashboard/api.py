@@ -108,6 +108,102 @@ def api_achievements(path: str) -> dict:
     return with_community(path, _run)
 
 
+def api_achievement_detail(path: str) -> dict:
+    """단일 도전과제 상세 + trigger 메시지 주변 대화 (모달용)."""
+    from urllib.parse import parse_qs, urlparse
+    q = parse_qs(urlparse(path).query)
+    key = (q.get("key", [""])[0] or "").strip()
+
+    def _run():
+        if not key:
+            return {"error": "missing key"}
+        try:
+            from src.achievements import engine as _eng
+            from src import db as _db
+            from src.core.profile import get_user_id
+            # 도전과제 row
+            user_id = get_user_id() or "owner"
+            conn = _db.get_conn()
+            row = conn.execute(
+                "SELECT key, state, progress_data, unlocked_at, completed_at "
+                "FROM achievements WHERE user_id=? AND key=?",
+                (user_id, key),
+            ).fetchone()
+            ach_def = next((a for a in _eng.dashboard_summary().get("items", [])
+                            if a.get("key") == key), None)
+            base = dict(ach_def) if ach_def else {"key": key}
+            if row:
+                import json as _json
+                pd = {}
+                try:
+                    pd = _json.loads(row["progress_data"] or "{}")
+                except Exception:
+                    pass
+                base["state"] = row["state"]
+                base["progress"] = pd
+                base["unlocked_at"] = row["unlocked_at"]
+                base["completed_at"] = row["completed_at"]
+            else:
+                base["state"] = base.get("state", "locked")
+                base["progress"] = base.get("progress") or {}
+
+            # trigger 메시지 주변 대화 5건 ± (progress.message / progress.channel 기반)
+            context = []
+            p = base.get("progress") or {}
+            channel = p.get("channel") or (p.get("channels") or [None])[0]
+            trigger_msg = p.get("message") or p.get("agent_msg") or p.get("owner_msg")
+            trigger_id = None
+            if channel and trigger_msg:
+                # message text 매칭으로 row id 찾기
+                tr = conn.execute(
+                    "SELECT id FROM conversations WHERE channel=? AND message LIKE ? "
+                    "ORDER BY id ASC LIMIT 1",
+                    (channel, f"%{trigger_msg[:60]}%"),
+                ).fetchone()
+                if tr:
+                    trigger_id = tr["id"]
+            if channel:
+                if trigger_id is not None:
+                    rows = conn.execute(
+                        "SELECT id, channel, speaker, message, timestamp FROM conversations "
+                        "WHERE channel=? AND id BETWEEN ? AND ? ORDER BY id ASC",
+                        (channel, max(1, trigger_id - 5), trigger_id + 5),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT id, channel, speaker, message, timestamp FROM conversations "
+                        "WHERE channel=? ORDER BY id DESC LIMIT 10",
+                        (channel,),
+                    ).fetchall()
+                    rows = list(reversed(rows))
+                # speaker → name resolve
+                from src.core.profile import get_user_id, get_user_name
+                _uid = get_user_id()
+                _uname = get_user_name() or "오너"
+                for r in rows:
+                    d = dict(r)
+                    sid = d["speaker"]
+                    if sid == _uid:
+                        d["speaker_name"] = _uname
+                        d["is_owner"] = True
+                    else:
+                        a = _db.get_agent(sid)
+                        d["speaker_name"] = (a or {}).get("name") or sid
+                        d["is_owner"] = False
+                    d["is_trigger"] = (trigger_id is not None and d["id"] == trigger_id)
+                    context.append(d)
+            conn.close()
+            base["context"] = context
+            base["trigger_channel"] = channel
+            base["trigger_message"] = trigger_msg
+            return base
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {"error": str(e)}
+    return with_community(path, _run)
+
+
 def api_i18n(path: str) -> dict:
     """i18n/dashboard.{ko,en}.json 파일 로드."""
     from urllib.parse import parse_qs, urlparse

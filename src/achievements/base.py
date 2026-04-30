@@ -36,6 +36,23 @@ class Achievement:
     # 선택: 도전과제별 메타 (작성자·도입 버전·태그 등) — UI 또는 분석용.
     meta: dict = field(default_factory=dict)
 
+    # ── LLM-judge tier (선택) ─────────────────────────────────
+    # Tier 1 (default): pure logic check 만 사용 → cheap·fast
+    # Tier 2: candidate_pre_filter 로 후보 좁힌 후 LLM judge 가 의미 판정 →
+    #         false-positive 방지 + 비용 적음 (Haiku batch). confession 류.
+    # Tier 3: events 테이블에 명시 기록된 이벤트 (scene/supervisor) → check 가 events 우선 조회.
+    candidate_pre_filter: Optional[Callable[[str], list[dict]]] = None
+    """user_id → list of candidate dicts.
+    각 dict 는 최소 {id, channel, speaker, speaker_name, message, timestamp} 포함.
+    judge 가 yes 판정한 첫 candidate 의 id 가 trigger 가 됨.
+    None 이면 Tier 2 비활성 (pure logic check 만 사용).
+    """
+    judge_prompt: Optional[str] = None
+    """Haiku 에 전달할 시스템 프롬프트. 메시지 1건당 yes/no 판정.
+    예: "다음 메시지가 캐릭터가 오너에게 마음을 직접 고백하는 발화인가? yes 또는 no 만."
+    None 이면 LLM judge 비활성.
+    """
+
 
 class AchievementSupervisor:
     """도전과제 실시간 추적 슈퍼바이저 베이스.

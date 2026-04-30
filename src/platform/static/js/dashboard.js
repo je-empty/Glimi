@@ -2585,7 +2585,11 @@ function renderAchievements(data) {
   document.getElementById('ach-grid').innerHTML = items.map(it => {
     const st = it.state || 'locked';
     const progChip = fmtProgress(it.progress);
-    return `<div class="ach-card ${st}">
+    // done/unlocked 상태에서만 클릭 가능 — locked 는 trigger 가 없어서 모달 의미 없음
+    const clickable = (st === 'done' || st === 'unlocked');
+    const handler = clickable ? `onclick="openAchievementDetail('${esc(it.key)}')"` : '';
+    const cursorStyle = clickable ? 'style="cursor:pointer"' : '';
+    return `<div class="ach-card ${st}" ${handler} ${cursorStyle} title="${clickable ? '클릭 — trigger 대화 보기' : ''}">
       <div class="ach-icon">${it.icon || '🏅'}</div>
       <div class="ach-body">
         <div class="ach-name">${esc(it.title)}</div>
@@ -2594,6 +2598,66 @@ function renderAchievements(data) {
       </div>
     </div>`;
   }).join('');
+}
+
+// 도전과제 상세 모달 — trigger 메시지 + 주변 대화 표시
+async function openAchievementDetail(key) {
+  if (!key) return;
+  const data = await j(q(`/api/achievement_detail?key=${encodeURIComponent(key)}`));
+  if (!data || data.error) {
+    openModal('🏅', 'Error', `<div class="empty">${esc(data?.error || 'failed to load')}</div>`);
+    return;
+  }
+  const ctx = data.context || [];
+  const triggerCh = data.trigger_channel || '';
+  let body = '';
+  body += `<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;">
+    <div style="font-size:42px;line-height:1">${data.icon || '🏅'}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:17px;font-weight:700;color:var(--text)">${esc(data.title || key)}</div>
+      <div style="font-size:13px;color:var(--text-dim);margin-top:2px">${esc(data.description || '')}</div>
+      <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;font-family:ui-monospace,monospace">
+        state: ${esc(data.state || '?')}${data.completed_at ? ' · 완료 ' + fmtAgo(data.completed_at) + ' 전' : ''}
+      </div>
+    </div>
+  </div>`;
+
+  // progress 요약 (key-value)
+  const p = data.progress || {};
+  const pkeys = Object.keys(p).filter(k => p[k] != null && k !== 'message' && k !== 'description');
+  if (pkeys.length) {
+    body += `<div class="detail-section"><h4>진척 데이터</h4>
+      <div style="font-size:12.5px;line-height:1.7;color:var(--text-dim)">
+        ${pkeys.map(k => `<div><b style="color:var(--text)">${esc(k)}</b>: ${esc(typeof p[k] === 'object' ? JSON.stringify(p[k]) : String(p[k]))}</div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // trigger 대화 thread
+  if (ctx.length) {
+    const lines = ctx.map(m => {
+      const isTrigger = m.is_trigger;
+      const userClass = m.is_owner ? 'user' : '';
+      return `<div class="cline ${userClass}" style="${isTrigger ? 'background:color-mix(in srgb,var(--accent) 14%,transparent);border-left:3px solid var(--accent);padding-left:10px;border-radius:6px;margin:4px 0' : 'padding-left:10px;margin:2px 0'}">
+        <div style="display:flex;gap:6px;align-items:baseline">
+          <b style="color:${m.is_owner ? 'var(--user)' : 'var(--accent)'};font-size:12px">${esc(m.speaker_name)}</b>
+          <span style="color:var(--text-faint);font-size:10.5px">${esc(_fmtMsgTime(m.timestamp))}</span>
+          ${isTrigger ? '<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:0.5px;margin-left:auto">TRIGGER</span>' : ''}
+        </div>
+        <div style="font-size:13px;color:var(--text);margin-top:1px;word-break:break-word">${esc(m.message || '')}</div>
+      </div>`;
+    }).join('');
+    body += `<div class="detail-section">
+      <h4>${triggerCh ? `📍 #${esc(triggerCh)} 의 대화` : '📍 trigger 대화'}</h4>
+      ${lines}
+    </div>`;
+  } else {
+    body += `<div class="detail-section"><h4>대화 컨텍스트 없음</h4>
+      <div class="empty">trigger 메시지를 못 찾았어 — 도전과제는 events 테이블이나 다른 source 로 달성됐을 수 있음.</div>
+    </div>`;
+  }
+
+  openModal(data.icon || '🏅', data.title || key, body);
 }
 
 async function loadAchievements() {
