@@ -544,7 +544,7 @@ class TestUserBot(discord.Client):
                         "--output-format", "text",
                         "--model", "claude-haiku-4-5",
                     ],
-                    capture_output=True, text=True, timeout=90,
+                    capture_output=True, text=True, timeout=180,
                     env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
                 ),
             )
