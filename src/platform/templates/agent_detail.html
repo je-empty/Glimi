@@ -320,13 +320,12 @@
     // 모달과 동일 기준으로 분리: 실시간 상태 정보만 여기에.
     const statusLines = [];
     if (d.emotion) {
-      // 가로 강도 바 + 숫자. emoji 는 avatar badge 에 이미 있으니 여기선 라벨만.
+      // 모달과 동일 — emoji+라벨이 바 안에, 강도가 fill 너비. CSS 클래스는 dashboard.css 에서 공유.
       const intensityPct = Math.min(100, (d.intensity || 0) * 10);
-      const emotionHtml = `${esc(d.emotion)}
-        <span style="display:inline-block;width:64px;height:5px;background:var(--border);border-radius:3px;margin:0 6px;vertical-align:middle;overflow:hidden">
-          <span style="display:block;height:100%;width:${intensityPct}%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></span>
-        </span>
-        <span style="color:var(--text-faint);font-size:11px">강도 ${esc(String(d.intensity ?? '?'))}/10</span>`;
+      const emotionHtml = `<div class="emotion-bar" title="강도 ${esc(String(d.intensity ?? '?'))}/10">
+        <div class="emotion-bar-fill" style="width:${intensityPct}%"></div>
+        <div class="emotion-bar-text">${esc(d.emoji || '')} ${esc(d.emotion)}</div>
+      </div>`;
       statusLines.push(['Emotion', emotionHtml, true]);
     }
     if (d.status) {
