@@ -257,9 +257,11 @@ async def _h_request_dev_fix(args: dict, ctx: ToolContext):
             from src.bot.core import _ensure_category
             from src.bot import MGR_ID
             category = await _ensure_category(ctx.guild, "glimi-mgr")
-            await ensure_unique_channel(
-                ctx.guild, DEV_CHANNEL, category, participants=[DEV_ID, MGR_ID]
-            )
+            # ensure_unique_channel 은 (channel, created) 튜플 — kwargs 는 create_text_channel
+            # 으로 직접 forward 되므로 participants 같은 사용자 정의 키 넘기면 안 됨.
+            await ensure_unique_channel(ctx.guild, DEV_CHANNEL, category)
+            # DB 참여자 등록 (세나 + 유나)
+            db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
         except Exception as e:
             log_writer.system(f"[dev] ⚠ {DEV_CHANNEL} 채널 ensure 실패: {type(e).__name__}: {e}")
 
