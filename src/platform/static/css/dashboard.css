@@ -1009,10 +1009,92 @@
     margin-left: 8px;
   }
 
-  /* Responsive */
+  /* ==== Responsive — Tablet (≤ 900px) ==== */
   @media (max-width: 900px) {
     .overview-grid { grid-template-columns: repeat(2, 1fr); }
     .view { padding: 14px 16px; }
+  }
+
+  /* ==== Responsive — Mobile (≤ 720px) ==== */
+  /* 모바일에서 좌우 늘어짐 + 탭 우측 잘림 + 그래프 가운데 안 맞는 회귀 차단. */
+  @media (max-width: 720px) {
+    /* Body / Shell — viewport-width 강제, 좌우 padding 축소 */
+    html, body { overflow-x: hidden; }
+    body { font-size: 14px; }
+    .app { width: 100%; max-width: 100vw; overflow-x: hidden; }
+
+    /* Header — 우선순위 낮은 항목 숨기고 wrap 허용 */
+    header.status {
+      padding: 10px 12px;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-height: 0;
+    }
+    .brand-name { font-size: 13px; }
+    .brand-logo { width: 26px; height: 26px; }
+    .community-btn { font-size: 11.5px; padding: 5px 9px; }
+    .gp-server-ctrl .gp-uptime { display: none; }
+    .gp-server-ctrl .gp-ctrl-btn { padding: 4px 8px; font-size: 11px; }
+    /* admin Dev Requests 링크는 작게 */
+    #admin-dev-link { padding: 4px 8px; font-size: 11px; }
+    /* 잘 안 쓰는 토글 — 모바일에선 숨김 (필요하면 추후 햄버거 메뉴로 분리) */
+    #lang-switcher-wrap, #supervisor-toggle, #theme-toggle { display: none; }
+    .gp-user { display: none; }
+
+    /* Tabs — 가로 스크롤 + 패딩 축소, momentum scroll */
+    nav.tabs {
+      padding: 0 4px;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
+    nav.tabs button { padding: 10px 12px; font-size: 12px; }
+    nav.tabs button .count { display: none; } /* 공간 절약 */
+
+    /* View — 패딩 더 줄이고 가로 overflow 차단 */
+    .view { padding: 12px 12px; overflow-x: hidden; }
+    main { overflow-x: hidden; }
+
+    /* Overview KPI — 단일 컬럼 */
+    .overview-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+    .kpi { padding: 10px 12px; }
+
+    /* Graph — 짧은 높이 + 가운데 정렬 */
+    .graph-panel { padding: 10px 12px; margin-bottom: 14px; }
+    .graph-stage { height: 320px; }
+    .graph-panel .graph-head h3 { font-size: 10.5px; letter-spacing: 0.8px; }
+    .graph-panel .graph-head .note { font-size: 10px; }
+
+    /* Agent grid — 단일 컬럼 강제 */
+    .agent-grid {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .agent-card { padding: 11px 13px; }
+    .agent-card.thinking, .agent-card.speaking {
+      grid-column: span 1;
+      max-width: none;
+    }
+
+    /* Detail modals / lightbox — viewport 한계 안에서 */
+    .detail-panel { width: calc(100vw - 16px); max-width: none; padding: 16px; }
+    .lightbox img { max-width: 92vw; max-height: 80vh; }
+
+    /* Dev Requests admin page (모바일 단일 컬럼은 페이지 자체 CSS 에서 처리됨) */
+
+    /* 길어지는 chip 들 wrap */
+    .filters, .toolbar { gap: 6px; }
+    .chip { padding: 4px 10px; font-size: 11.5px; }
+  }
+
+  /* ==== Very small (≤ 420px) ==== */
+  @media (max-width: 420px) {
+    header.status { padding: 8px 10px; gap: 6px; }
+    .brand-name { display: none; } /* 로고만 표시 */
+    .community-btn .chev { display: none; }
+    nav.tabs button { padding: 8px 10px; font-size: 11.5px; }
+    .overview-grid { grid-template-columns: 1fr; }
+    .graph-stage { height: 280px; }
+    .view { padding: 10px 8px; }
   }
 
 /* inline spin keyframe */
