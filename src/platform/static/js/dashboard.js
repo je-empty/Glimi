@@ -1838,14 +1838,13 @@ function buildGraphElements(snap) {
     }
   }
 
-  // 엣지 없어도 mgr/creator 는 항상 표시
+  // 엣지 없어도 mgr/creator/dev 는 항상 표시 (manager-class 는 항상 그래프에 노출)
   for (const a of snap.agents) {
-    if (a.type === 'mgr' || a.type === 'creator') involvedAgentIds.add(a.id);
+    if (a.type === 'mgr' || a.type === 'creator' || a.type === 'dev') involvedAgentIds.add(a.id);
   }
 
-  // 노드 정렬: mgr 먼저 → creator → persona (concentric 배치 순서 결정)
-  //   N=3 + startAngle=π 면: mgr 이 왼쪽, creator 가 오른쪽 으로 자연 배치됨
-  const typeRank = { mgr: 0, creator: 1, persona: 2 };
+  // 노드 정렬: mgr → creator → dev → persona (concentric 배치 순서 결정)
+  const typeRank = { mgr: 0, creator: 1, dev: 2, persona: 3 };
   const sortedAgentIds = Array.from(involvedAgentIds).sort((a, b) => {
     const ra = typeRank[idToAgent[a]?.type] ?? 9;
     const rb = typeRank[idToAgent[b]?.type] ?? 9;
@@ -2634,12 +2633,11 @@ function syntheticTestUserAgent(snap) {
 }
 
 async function tick() {
-  // 5개 엔드포인트 병렬 fetch — 순차 await 대신 Promise.all로 5배 빠름
-  const [snap, logs, health, dev, usage] = await Promise.all([
+  // 4개 엔드포인트 병렬 fetch (/api/dev 는 글로벌 admin 으로 이전 — community 단위 fetch 제거)
+  const [snap, logs, health, usage] = await Promise.all([
     j(q('/api/snapshot')),
     j(q('/api/logs?tail=200')),
     j(q('/api/health')),
-    j(q('/api/dev')),
     j(q('/api/usage')),
   ]);
   if (!snap) return;
@@ -2909,19 +2907,7 @@ async function tick() {
   renderScanTable();
   loadTrash();
 
-  // Dev
-  if (dev) {
-    const p = dev.pending, r = dev.result;
-    document.getElementById('dev-full').innerHTML = `
-      <div class="detail-section" style="margin-top:0">
-        <h4>Dev Mode Status</h4>
-        <div class="big" style="font-size:16px">${dev.active ? '<span style="color:var(--warn)">● Opus 작업 중</span>' : '<span style="color:var(--text-faint)">○ 대기</span>'}</div>
-      </div>
-      ${p ? `<div class="detail-section"><h4>Pending Request</h4><pre style="white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-dim)">${esc(JSON.stringify(p, null, 2))}</pre></div>` : ''}
-      ${r ? `<div class="detail-section"><h4>Last Result</h4><pre style="white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-dim)">${esc(JSON.stringify(r, null, 2))}</pre></div>` : ''}
-      ${!p && !r ? '<div class="empty">No dev activity</div>' : ''}
-    `;
-  }
+  // (legacy "Dev" tab 제거됨 — 새 글로벌 admin 페이지 /admin/dev-requests 로 이전)
 
   // Usage — telemetry parsed
   if (usage) {
