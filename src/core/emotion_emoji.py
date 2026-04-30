@@ -37,7 +37,16 @@ STATIC_EMOJI: dict[str, str] = {
     "감격": "🥹", "허탈": "😶‍🌫️", "당혹": "😵", "민망": "😅",
     "씁쓸함": "😑", "아쉬움": "😞", "안쓰러움": "🥺", "뿌듯": "😌",
     "긍정": "😊", "부정": "😞", "중립": "😐",
+    # QA 등장 라벨 추가 — 감탄/차분/행복/집중/따뜻함/진지함 등
+    "감탄": "😲", "차분": "😌", "행복": "😄", "집중": "🧐",
+    "따뜻함": "🤗", "진지함": "🧐", "기특": "🥰", "애틋": "🥺",
+    "활기참": "✨", "심심함": "😑", "졸림": "😴", "분주함": "😅",
 }
+
+# 라벨이 STATIC 에도 community override 에도 없을 때 fallback emoji.
+# 이전엔 "・" (단순 dot) 였는데 카드 badge 에서 거의 안 보임 → 사용자가 "이모지 안 뜸"
+# 으로 인지. 일반 감정 표현 emoji 로 대체해서 항상 뭔가 표시되게.
+FALLBACK_EMOJI = "💭"
 
 
 def _get_override_map() -> dict[str, str]:
@@ -62,13 +71,15 @@ def _save_override_map(d: dict[str, str]) -> None:
 
 
 def emoji_for(emotion: str) -> str:
-    """감정 라벨 → 이모지. override > static > '・'."""
+    """감정 라벨 → 이모지. override > static > FALLBACK_EMOJI (💭).
+    이전엔 fallback 이 "・" 였는데 시각적으로 "비어있음" 으로 보임 — 항상 의미있는
+    이모지가 뜨도록 보장 (LLM 이 set_emotion 의 emoji 인자 안 주는 케이스 안전망)."""
     if not emotion:
-        return "・"
+        return FALLBACK_EMOJI
     overrides = _get_override_map()
     if emotion in overrides:
         return overrides[emotion]
-    return STATIC_EMOJI.get(emotion, "・")
+    return STATIC_EMOJI.get(emotion, FALLBACK_EMOJI)
 
 
 def register_emoji_for(emotion: str, emoji: str, *, force: bool = False) -> bool:
