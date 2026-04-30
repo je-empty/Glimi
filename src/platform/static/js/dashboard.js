@@ -525,8 +525,10 @@ function renderAgent(a, clickable=true) {
           <span class="type-tag ${a.type}">${esc(a.type)}</span>
         </div>
         <div class="agent-meta">
-          <span class="emotion-label" title="강도 ${a.intensity || 0}/10">${esc(a.emoji || '')} ${esc(a.emotion)}</span>
-          <span class="intensity-dots band-${a.intensity_band || 'low'}" title="감정 강도 ${a.intensity || 0}/10 (${a.intensity_band || 'low'})">●●●</span>
+          <span class="emotion-label" title="강도 ${a.intensity || 0}/10">${esc(a.emotion)}</span>
+          <span class="intensity-mini band-${a.intensity_band || 'low'}" title="감정 강도 ${a.intensity || 0}/10">
+            <span style="width:${Math.min(100, (a.intensity||0)*10)}%"></span>
+          </span>
           ${a.mbti ? `<span class="sep">·</span><span>${esc(a.mbti)}</span>` : ''}
           ${a.age ? `<span class="sep">·</span><span>${a.age}y</span>` : ''}
         </div>
@@ -545,7 +547,8 @@ function renderAgent(a, clickable=true) {
 function renderHero(snap) {
   const m = snap.meta;
   const persona = snap.agents.filter(a => a.type === 'persona');
-  const mgrs = snap.agents.filter(a => a.type !== 'persona');
+  // dev (세나) 는 슈퍼바이저 보기 모드 ON 일 때만 hero 에 노출. mgr/creator/persona 만 default.
+  const mgrs = snap.agents.filter(a => a.type !== 'persona' && (SHOW_SUP || a.type !== 'dev'));
   const all = [...mgrs, ...persona];
   const avatarsHtml = all.slice(0, 8).map(a => avatarHtml(a, 'xl')).join('');
   const active = snap.agents.filter(a => a.thinking || a.speaking);

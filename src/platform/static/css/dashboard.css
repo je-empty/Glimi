@@ -646,16 +646,22 @@
   .agent-meta .bar { width: 48px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .agent-meta .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
   .agent-meta .sep { color: var(--text-faint); }
-  /* 감정 강도 — 3 dot, band 별로 점 색깔/투명도 다르게.
-     "X/10 점수" 로 오인 방지 (2026-04-30 회귀): 숫자 대신 dot 시각화. */
-  .agent-meta .intensity-dots {
-    font-size: 8px; letter-spacing: 1px;
-    color: var(--text-faint);
-    line-height: 1;
+  /* 감정 강도 — 작은 가로 바 (강도 비례 fill), band 별 색.
+     "X/10 점수" 로 오인 방지 (2026-04-30 회귀): 숫자 노출 X, hover tooltip 으로만. */
+  .agent-meta .intensity-mini {
+    display: inline-block;
+    width: 36px; height: 4px;
+    background: var(--border); border-radius: 2px;
+    overflow: hidden;
+    vertical-align: middle;
   }
-  .agent-meta .intensity-dots.band-low { color: var(--text-faint); opacity: 0.55; }
-  .agent-meta .intensity-dots.band-mid { color: var(--accent); opacity: 0.85; }
-  .agent-meta .intensity-dots.band-high { color: var(--accent-2); opacity: 1; text-shadow: 0 0 4px var(--accent-2); }
+  .agent-meta .intensity-mini > span {
+    display: block; height: 100%;
+    transition: width 0.3s;
+  }
+  .agent-meta .intensity-mini.band-low > span { background: var(--text-faint); opacity: 0.7; }
+  .agent-meta .intensity-mini.band-mid > span { background: var(--accent); }
+  .agent-meta .intensity-mini.band-high > span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); box-shadow: 0 0 4px var(--accent-2); }
   .agent-meta .emotion-label { font-weight: 500; color: var(--text); }
   .agent-footer {
     display: flex; justify-content: space-between; align-items: center;
@@ -869,6 +875,13 @@
   .rel-row .intimacy-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .rel-row .intimacy-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
   .rel-row .intimacy-num { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-dim); text-align: right; }
+  /* 오너 row — 항상 최상단, 살짝 강조 (다른 관계와 시각적 구분) */
+  .rel-row.rel-owner {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-left: 2px solid var(--accent);
+    padding-left: 6px; margin-left: -8px;
+    border-radius: 4px;
+  }
   /* 친밀도 band — 0=원수 ~ 100=연인 색 단계.
      숫자 그 자체보다 색깔로 직관적 강도 전달. hover 시 tooltip 으로 한국어 라벨. */
   .rel-row .intimacy-num.b-enemy   { color: #ef4444; }   /* 원수 — 빨강 */
