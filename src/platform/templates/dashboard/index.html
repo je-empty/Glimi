@@ -75,13 +75,24 @@
 
     <div style="flex:1"></div>
 
-    <!-- Dev Requests pending badge — admin / qa·test 에서만 표시 (서버가 dev_visible=true 일 때) -->
+    {% if user and user.role == 'admin' %}
+    <!-- Admin global dev-requests 페이지 진입점 (admin 만 노출) -->
+    <a id="admin-dev-link" href="/admin/dev-requests" target="_self"
+       title="모든 커뮤니티 dev requests 통합 관리 (admin)"
+       style="margin:0 6px;padding:5px 11px;border:1px solid var(--border);
+              border-radius:6px;font-size:12px;color:var(--text-dim);text-decoration:none;
+              font-weight:500;display:inline-flex;align-items:center;gap:4px;">
+      🔧 Dev Requests
+    </a>
+    {% endif %}
+
+    <!-- pending count 배지 — dev_visible 이고 1+ 일 때만 (link 옆에 작게) -->
     <a id="dev-pending-badge" href="/admin/dev-requests" target="_self"
-       title="이 커뮤니티의 미처리 dev requests — 클릭 시 admin 페이지로 이동"
-       style="display:none;margin:0 8px;padding:4px 10px;border:1px solid var(--err);
-              border-radius:999px;font-size:11.5px;color:var(--err);text-decoration:none;
-              font-weight:600;background:color-mix(in srgb, var(--err) 8%, transparent);">
-      🔧 Dev: <span id="dev-pending-count">0</span>
+       title="이 커뮤니티의 미처리 dev requests"
+       style="display:none;margin-right:8px;padding:3px 9px;
+              border-radius:999px;font-size:11px;color:white;text-decoration:none;
+              font-weight:700;background:var(--err);">
+      <span id="dev-pending-count">0</span>
     </a>
 
     <div style="position:relative" id="lang-switcher-wrap">
@@ -109,7 +120,6 @@
     <button data-tab="supervisors" class="sup-tab">Supervisors <span class="count" id="tc-supervisors">0</span></button>
     <button data-tab="health">Health</button>
     <button data-tab="sync">Sync</button>
-    <button data-tab="dev">Dev</button>
     <button data-tab="usage">Usage</button>
     <button data-tab="logs">Logs</button>
   </nav>
@@ -157,7 +167,6 @@
     <div class="view" id="view-events"><div class="event-list" id="events-full"></div></div>
     <div class="view" id="view-health"><div class="health-grid" id="health-full"></div></div>
     <div class="view" id="view-sync"><div id="sync-full"></div></div>
-    <div class="view" id="view-dev"><div id="dev-full"></div></div>
     <div class="view" id="view-usage"><div id="usage-full"></div></div>
     <div class="view" id="view-supervisors"><div id="supervisors-full"></div></div>
     <div class="view" id="view-logs"><div class="log-view" id="logs-full"></div></div>
