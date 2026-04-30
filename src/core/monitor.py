@@ -577,10 +577,11 @@ def get_agent_detail(agent_id: str) -> dict:
         return {"error": "agent not found"}
 
     profile = load_profile(agent_id) or {}
+    atype = agent.get("type", "persona")  # 일찍 결정 — 아래 관계 합성에서 참조.
     emo = agent.get("current_emotion") or "평온"
     is_t = log_writer.is_thinking(agent_id)
     is_s = log_writer.is_speaking(agent_id)
-    model_info = _get_agent_model(agent_id, agent.get("type", "persona"))
+    model_info = _get_agent_model(agent_id, atype)
 
     # 관계 (relationships 테이블) — other_id 별 dedup, owner ID 는 user_name 으로 해석.
     # DB row 없을 때:
@@ -696,8 +697,7 @@ def get_agent_detail(agent_id: str) -> dict:
         facts = []
         print(f"[Monitor] memory detail 로드 실패: {e}")
 
-    # 주 채널 이름
-    atype = agent.get("type", "persona")
+    # 주 채널 이름 (atype 은 위에서 결정됨)
     if atype == "mgr":
         primary = "mgr-dashboard"
     elif atype == "creator":
