@@ -1838,9 +1838,10 @@ function buildGraphElements(snap) {
     }
   }
 
-  // 엣지 없어도 mgr/creator/dev 는 항상 표시 (manager-class 는 항상 그래프에 노출)
+  // 엣지 없어도 mgr/creator 는 항상 표시. dev (한세나) 는 supervisor view 토글 ON 일 때만.
   for (const a of snap.agents) {
-    if (a.type === 'mgr' || a.type === 'creator' || a.type === 'dev') involvedAgentIds.add(a.id);
+    if (a.type === 'mgr' || a.type === 'creator') involvedAgentIds.add(a.id);
+    else if (a.type === 'dev' && SHOW_SUP) involvedAgentIds.add(a.id);
   }
 
   // 노드 정렬: mgr → creator → dev → persona (concentric 배치 순서 결정)
@@ -2764,10 +2765,10 @@ async function tick() {
   document.getElementById('tc-scenes').textContent = (snap.scenes || []).filter(s => s.status === 'active').length;
   document.getElementById('tc-events').textContent = snap.events.length;
 
-  // Dev pending 배지 — admin / qa·test 에서만 (서버가 dev_visible=true 로 표시).
+  // Dev pending 배지 — supervisor view 토글 ON + pending 1+ 일 때만 (모든 커뮤니티 통일)
   const devBadge = document.getElementById('dev-pending-badge');
   if (devBadge) {
-    if (snap.dev_visible && (snap.dev_pending_count || 0) > 0) {
+    if (SHOW_SUP && (snap.dev_pending_count || 0) > 0) {
       const linkHref = `/admin/dev-requests?community=${encodeURIComponent(snap.community_id || '')}`;
       devBadge.href = linkHref;
       document.getElementById('dev-pending-count').textContent = snap.dev_pending_count;
@@ -2827,16 +2828,19 @@ async function tick() {
     }
   }
 
+  // dev agent (한세나) — supervisor view 토글 ON 일 때만 카드 표시 (모든 커뮤니티 통일).
+  const visibleAgents = SHOW_SUP ? snap.agents : snap.agents.filter(a => a.type !== 'dev');
+
   document.getElementById('overview-agents').innerHTML =
-    snap.agents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
+    visibleAgents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
   const ovMsgs = document.getElementById('overview-msgs');
   const keepOv = atBottom(ovMsgs);
   ovMsgs.innerHTML = snap.recent_messages.slice(-10).map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
   if (keepOv) ovMsgs.scrollTop = ovMsgs.scrollHeight;
 
-  // Full tabs
+  // Full tabs (visibleAgents 가 dev 토글 반영)
   document.getElementById('agents-full').innerHTML =
-    snap.agents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
+    visibleAgents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
   document.getElementById('channels-full').innerHTML = renderChannelsGrouped(snap.channels);
   const fm = document.getElementById('messages-full');
   const keepFm = atBottom(fm);
