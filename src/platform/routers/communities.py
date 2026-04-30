@@ -426,6 +426,17 @@ _PLACEHOLDER_PNG = (
     b"\x03\x00\x01\x08\x00\x01\x10t\x08\xd7\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 
+# 디폴트 사람 모양 SVG — 프로필 이미지 없는 에이전트(특히 test-user) 가
+# 빈 박스로 보이는 회귀 fix. 카드/hero/모달 어디서든 이걸로 fallback.
+# 그래프의 owner 노드 SVG 와 동일한 머리+몸통 실루엣 — 시각적 일관성.
+_PLACEHOLDER_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">'
+    '<rect width="200" height="200" fill="#2a2d34"/>'
+    '<circle cx="100" cy="78" r="28" fill="#7a8597"/>'
+    '<path d="M40 178 Q 40 124 100 124 Q 160 124 160 178 Z" fill="#7a8597"/>'
+    '</svg>'
+).encode("utf-8")
+
 
 # 별도 라우터 — 공통 prefix 안 타도록 루트에 직접 붙임
 avatar_router = APIRouter()
@@ -461,9 +472,10 @@ async def serve_avatar(
     target = run_in_community(community, _resolve_path)
 
     if not target or not os.path.exists(target):
+        # SVG 실루엣으로 fallback — 빈 1x1 PNG 보다 카드/hero 에서 시각적 의미.
         return Response(
-            content=_PLACEHOLDER_PNG,
-            media_type="image/png",
+            content=_PLACEHOLDER_SVG,
+            media_type="image/svg+xml",
             headers={"Cache-Control": "no-cache"},
         )
 
