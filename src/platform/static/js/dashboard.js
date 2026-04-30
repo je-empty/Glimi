@@ -1966,11 +1966,12 @@ function pickGraphLayout(nodeCount, fullscreen, hasSup) {
       numIter: 800,
     };
   }
-  // 모바일에서 spacing/padding 더 작게 — viewport 좁아서 노드 많으면 잘려 보이는 회귀.
+  // 레이아웃 자체는 데스크 비율 유지 (사용자: "에이전트 간 거리는 이전이 적절").
+  // 모바일은 fit() 의 padding 만 작게 → zoom-out 으로 viewport 안에 수렴.
+  const minSpace = nodeCount <= 8 ? 75 : 50;
+  const spacingF = 1.25;
   const isMobile = (typeof window !== 'undefined') &&
                    window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
-  const minSpace = isMobile ? (nodeCount <= 8 ? 40 : 28) : (nodeCount <= 8 ? 75 : 50);
-  const spacingF = isMobile ? 0.95 : 1.25;
   return {
     name: 'concentric',
     concentric: function(node) {
@@ -1984,9 +1985,8 @@ function pickGraphLayout(nodeCount, fullscreen, hasSup) {
     spacingFactor: fullscreen ? spacingF * 1.25 : spacingF,
     avoidOverlap: true,
     fit: true,
-    padding: fullscreen ? 140 : (isMobile ? 8 : 25),
-    // mgr 이 첫 순서라 startAngle 에 배치됨 → -π/2 (위). 다음 creator 는 시계방향 다음 슬롯.
-    // nodeCount==3 만 예외로 π (왼쪽) 쓰던 로직 제거 — 일관성 있게 항상 -π/2.
+    // 모바일은 padding 만 줄여서 같은 layout 을 더 zoom-out 으로 수렴 (비율 유지).
+    padding: fullscreen ? 140 : (isMobile ? 6 : 25),
     startAngle: -Math.PI / 2,
     animate: false,
   };
@@ -2059,12 +2059,12 @@ function mountCytoscapeGraph(snap) {
     speaking: tok('--speaking') || '#6cf',
   };
 
-  // 노드 크기 — 모바일은 더 작게 (viewport 좁아서 demo/private 처럼 노드 많으면 잘림 회귀)
+  // 노드 크기 — 데스크/모바일 동일 (zoom-out 으로 모바일 fit). 라벨만 모바일에서 살짝 작게.
   const isMobileGraph = window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
-  const nodeSize = fullscreen ? 70 : (isMobileGraph ? 42 : 64);
-  const ownerSize = fullscreen ? 66 : (isMobileGraph ? 38 : 60);
-  const supSize = fullscreen ? 54 : (isMobileGraph ? 32 : 48);
-  const fontSize = fullscreen ? 12 : (isMobileGraph ? 9.5 : 11.5);
+  const nodeSize = fullscreen ? 70 : 64;
+  const ownerSize = fullscreen ? 66 : 60;
+  const supSize = fullscreen ? 54 : 48;
+  const fontSize = fullscreen ? 12 : (isMobileGraph ? 10 : 11.5);
 
   cyInstance = cytoscape({
     container,
@@ -2330,18 +2330,18 @@ function mountCytoscapeGraph(snap) {
     evt.target.removeClass('hl');
   });
 
-  // 레이아웃 끝나고 명시적으로 fit. 모바일은 viewport 좁아서 padding 작게 (15) — 노드 다 보이게.
+  // 레이아웃 끝나고 명시적으로 fit — 데스크 비율 유지, 모바일은 더 큰 padding 비율 효과로 zoom-out
   cyInstance.ready(() => {
     const isMobile = window.matchMedia('(max-width: 720px)').matches;
-    cyInstance.fit(undefined, fullscreen ? 140 : (isMobile ? 12 : 25));
+    cyInstance.fit(undefined, fullscreen ? 140 : (isMobile ? 6 : 25));
   });
-  // 윈도우 리사이즈 / 회전 시 그래프 자동 리핏 (모바일 회전 + 데스크 줄임 대응)
+  // 윈도우 리사이즈 / 회전 시 그래프 자동 리핏
   if (!cyInstance._resizeBound) {
     const _onResize = () => {
       try {
         cyInstance.resize();
         const isMobile = window.matchMedia('(max-width: 720px)').matches;
-        cyInstance.fit(undefined, isMobile ? 12 : 25);
+        cyInstance.fit(undefined, isMobile ? 6 : 25);
       } catch {}
     };
     window.addEventListener('resize', _onResize);
