@@ -483,21 +483,19 @@ function renderAgent(a, clickable=true) {
   const elapsed = a.thinking ? a.thinking_seconds : a.speaking ? a.speaking_seconds : 0;
   const dot = a.status === 'active' ? 'active' : '';
 
+  // expanded section — 로그/채팅 미리보기. progress 바는 위쪽 .state-bar 가 담당.
   let expanded = '';
   if (a.thinking || a.speaking) {
     const logs = (a._logs || []).map(l => `<div class="logline">${esc(l)}</div>`).join('');
     const chat = (a._chat || []).map(c =>
       `<div class="cline ${c.is_user ? 'user' : ''}"><b>${esc(c.speaker)}:</b>${esc((c.message||'').slice(0, 90))}</div>`
     ).join('');
-    expanded = `<div class="agent-expanded">
-      <div class="progress-wrap">
-        <span>${a.thinking ? '추론 중' : '전송 중'}</span>
-        <div class="progress-bar"><span></span></div>
-        <span class="elapsed">${fmtElapsed(elapsed)}</span>
-      </div>
-      ${logs ? `<div class="agent-logs">${logs}</div>` : ''}
-      ${chat ? `<div class="agent-chat">${chat}</div>` : ''}
-    </div>`;
+    if (logs || chat) {
+      expanded = `<div class="agent-expanded">
+        ${logs ? `<div class="agent-logs">${logs}</div>` : ''}
+        ${chat ? `<div class="agent-chat">${chat}</div>` : ''}
+      </div>`;
+    }
   }
 
   const onclick = clickable ? `onclick="openAgent('${esc(a.id)}')"` : '';
@@ -537,8 +535,8 @@ function renderAgent(a, clickable=true) {
     <div class="state-bar">
       <div class="state-bar-fill"></div>
       <div class="state-bar-text">
-        ${a.thinking ? '🧠 추론 중…' : (a.speaking ? '💬 응답 중…' : '')}
-        ${(a.thinking || a.speaking) ? `<span style="opacity:0.7;font-weight:400;font-size:11px">${fmtElapsed(elapsed)}</span>` : ''}
+        ${a.thinking ? '🧠 Thinking' : (a.speaking ? '💬 Speaking' : '')}
+        ${(a.thinking || a.speaking) ? `<span style="opacity:0.75;font-weight:400;font-size:11px;letter-spacing:0">${fmtElapsed(elapsed)}</span>` : ''}
       </div>
     </div>
     <div class="agent-footer">
