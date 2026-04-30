@@ -922,22 +922,59 @@ class TestUserBot(discord.Client):
         # 누락되면 fallback 으로 hint 첫 40 글자가 그대로 디스코드에 발화돼서
         # 빈이가 미션 지시문 그대로 타이핑하는 회귀 발생 (drama phase 에서 관찰됨).
         if not target:
+            # 친구 수 동적 카운트 — three_friends/many_friends 은 친구 부족 시 명시적
+            # "새 친구 만들어줘" 요청, 충분하면 기존 친구 활동 메시지로 분기.
+            friend_count = self._count_existing_friends()
+            # rotation 변형 — 같은 메시지 dedup 5분에 막히는 회귀 완화.
+            # 매 호출마다 streak 인덱스로 다른 메시지 선택해서 다양성 확보.
+            streak_idx = getattr(self, "_proactive_streak", 0)
+
+            FRIEND_REQUEST_VARIANTS = [
+                "유나야 새 친구 한 명만 더 만들어줄래? 컨셉은 ~~한 느낌으로",
+                "심심하다 ㅋㅋ 새 친구 한 명만 더 추가해줘",
+                "친구들 다양하게 있으면 좋겠는데 한 명만 더 부탁해",
+                "유나~ 분위기 다른 캐릭터 한 명 더 만들어주라",
+            ]
+            GROUP_REQUEST_VARIANTS = [
+                "우리 친구들이랑 다같이 그룹 채팅방 하나 만들어줄래?",
+                "유나야 그룹방 하나 더 만들고 싶은데 — 비슷한 취향 애들끼리",
+                "친구들끼리 자주 모일 톡방 하나 더 파고 싶어",
+            ]
+            CHAT_GO_VARIANTS = [
+                "친구들한테 말 걸어보려고 ㅋㅋ 누구부터 가볼까?",
+                "친구들 잘 지내나 한 번씩 들러볼래",
+                "오랜만에 친구들이랑 수다 떨고 싶다",
+            ]
+
+            def _pick(variants):
+                return variants[streak_idx % len(variants)]
+
             proactive_msgs = {
                 "first_friend_chat": "아 맞다 아까 만든 친구한테 말 걸어볼게 ㅋㅋ",
-                "three_friends": "유나야 친구들한테 말 걸어보려고 ㅋㅋ 누구부터 가볼까?",
-                "group_chat": "우리 친구들이랑 다같이 그룹 채팅방 하나 만들어줄래?",
+                # three_friends — 3명 미만이면 새 친구 요청, 그 이상이면 기존 친구 방문
+                "three_friends":
+                    _pick(FRIEND_REQUEST_VARIANTS) if friend_count < 3
+                    else _pick(CHAT_GO_VARIANTS),
+                "group_chat": _pick(GROUP_REQUEST_VARIANTS),
                 "peek_internal": "친구들끼리 지들끼리도 대화 좀 하게 해줘 궁금해",
                 "agent_auto_chat": "애들끼리 알아서 수다 떨게 두자",
                 "matchmaker": "유나야 친구들끼리 서로 소개도 해주고 싶은데 — 둘이 잘 맞을 거 같은 애들 묶어줄까?",
                 "first_conflict": "유나야 친구들 사이에 좀 미묘한 분위기 있는 거 같은데 한 번 살펴봐 줘",
-                "many_friends": "유나야 친구 한 명 더 있으면 좋을 거 같아, 추천해줄래?",
+                # many_friends — 5명 미만이면 명시적 새 친구 요청
+                "many_friends":
+                    _pick(FRIEND_REQUEST_VARIANTS) if friend_count < 5
+                    else "유나야 친구들 진짜 다양해서 좋다 ㅋㅋ",
                 "reconciliation": "유나야 친구들 분위기 다시 풀어줘야 할 거 같애. 도와줘",
-                "drama_freeplay": "유나야 요즘 친구들 어떻게 지내? 근황 좀 묶어서 알려줘",
+                # drama_freeplay — rotation 으로 다양한 활동 시드
+                "drama_freeplay": [
+                    "유나야 요즘 친구들 어떻게 지내? 근황 좀 묶어서 알려줘",
+                    _pick(FRIEND_REQUEST_VARIANTS),
+                    _pick(GROUP_REQUEST_VARIANTS),
+                    "친구들끼리 서로 소개도 해주자, 어울릴 만한 페어 있나?",
+                ][streak_idx % 4],
             }
             msg = proactive_msgs.get(mode)
             if not msg:
-                # 안전 fallback — 새 mission 추가됐는데 매핑 누락된 케이스.
-                # hint 를 노출하지 말고 generic 한 발화로 대체.
                 print(f"[TestUser] WARN: proactive_msgs 누락 mode={mode!r} — generic fallback")
                 msg = "유나야 다음 뭐 할까? 심심하다"
             for g in self.guilds:
@@ -1005,6 +1042,19 @@ class TestUserBot(discord.Client):
             print(f"[TestUser] proactive_reboot 오류: {e}")
             return False
 
+
+    def _count_existing_friends(self) -> int:
+        """현재 active 페르소나 수. proactive_reboot 가 친구 부족 여부 판단할 때 사용."""
+        try:
+            from src import db
+            conn = db.get_conn()
+            n = conn.execute(
+                "SELECT COUNT(*) FROM agents WHERE type='persona' AND status='active'"
+            ).fetchone()[0]
+            conn.close()
+            return int(n)
+        except Exception:
+            return 0
 
     def _pick_untalked_friend(self, talked_to: list) -> str:
         """DB 에서 페르소나 에이전트 목록 조회 → talked_to 에 없는 친구 하나 반환.
