@@ -81,18 +81,26 @@ class DevQueueSupervisor(Supervisor):
             )
             from src.core.runtime import runtime
             from src.bot.core import send_as_agent
+            from src.bot.mgr_system import parse_and_execute_actions
             responses = await runtime.generate_response_force(
                 agent_id=DEV_ID,
                 channel=DEV_CHANNEL,
                 user_message=user_msg,
             )
+            # tool 호출 dispatch (dev_organize / dev_escalate / dev_clarify) — 응답 텍스트와
+            # 별개로 runtime 이 stash 한 tool_calls 를 ToolContext 로 실행.
+            try:
+                responses = await parse_and_execute_actions(
+                    ch, responses, guild, caller_agent_id=DEV_ID,
+                )
+            except Exception as e:
+                log_writer.system(f"[dev.queue] tool dispatch 실패: {type(e).__name__}: {e}")
             # 응답 chat 메시지를 mgr-dev-request 에 게시
-            for msg in responses:
+            for msg in responses or []:
                 if msg and msg.strip():
                     try:
                         await send_as_agent(ch, DEV_ID, msg)
                     except Exception as e:
                         log_writer.system(f"[dev.queue] send_as_agent 실패: {e}")
-            # tool 호출 (dev_organize 등) 은 generate_response_force 안의 dispatcher 가 처리.
         except Exception as e:
             log_writer.system(f"[dev.queue] dev agent invoke 오류: {type(e).__name__}: {e}")

@@ -18,11 +18,12 @@
     --cmd: #9333ea;
     --thinking: #ca8a04;
     --speaking: #0891b2;
-    --mgr: #2563eb;
-    --creator: #d97706;
-    --persona: #7c3aed;
-    --dev: #0891b2;
-    --user: #ea580c;
+    /* Agent type colors — 4 사분면으로 명확히 분리. mgr=빨강, creator=주황, persona=파랑, dev=초록 */
+    --mgr: #dc2626;
+    --creator: #ea580c;
+    --persona: #2563eb;
+    --dev: #16a34a;
+    --user: #db2777;
     --shadow: 0 1px 3px rgba(20,22,40,0.06), 0 1px 2px rgba(20,22,40,0.04);
     --shadow-lg: 0 10px 30px rgba(20,22,40,0.08), 0 2px 8px rgba(20,22,40,0.04);
     --glow-thinking: 0 0 0 1px rgba(202,138,4,0.6), 0 0 28px rgba(202,138,4,0.15);
@@ -47,11 +48,12 @@
     --cmd: #d8b4fe;
     --thinking: #fde047;
     --speaking: #67e8f9;
-    --mgr: #93c5fd;
-    --creator: #fcd34d;
-    --persona: #c4b5fd;
-    --dev: #67e8f9;
-    --user: #fdba74;
+    /* Dark — 같은 4 hue, 약한 채도 */
+    --mgr: #f87171;
+    --creator: #fb923c;
+    --persona: #93c5fd;
+    --dev: #86efac;
+    --user: #f9a8d4;
     --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
     --shadow-lg: 0 10px 30px rgba(0,0,0,0.4);
     --glow-thinking: 0 0 0 1px var(--thinking), 0 0 28px rgba(253,224,71,0.15);

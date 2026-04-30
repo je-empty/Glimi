@@ -2,11 +2,20 @@
 {% block title %}Glimi · Dev Requests (admin){% endblock %}
 {% block head %}
 <style>
-  .dev-page { max-width: 1400px; margin: 0 auto; padding: 16px 20px 80px; }
-  .dev-page h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
-  .dev-page .lede { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+  /* ── Page shell ─────────────────────────────────── */
+  .dev-page { max-width: 1280px; margin: 0 auto; padding: 18px 22px 80px; }
+  .dev-page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .dev-page h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .admin-tag { font-size: 10.5px; padding: 3px 8px; background: var(--err); color: white;
+               border-radius: 4px; font-weight: 700; letter-spacing: 0.5px; }
+  .dev-page .lede { color: var(--text-dim); font-size: 13px; margin: 4px 0 22px; }
 
-  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  /* ── Filters ─────────────────────────────────────── */
+  .filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .filter-label {
+    font-size: 11px; font-weight: 600; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.6px; min-width: 78px;
+  }
   .chip {
     border: 1px solid var(--border); background: var(--panel); color: var(--text-dim);
     border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer;
@@ -14,202 +23,235 @@
   }
   .chip:hover { border-color: var(--accent); }
   .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
-  .chip-group-label { font-size: 11px; color: var(--text-faint); margin-right: 6px; align-self: center; }
 
-  .toolbar { display: flex; gap: 8px; margin: 8px 0 16px; align-items: center; flex-wrap: wrap; }
+  /* ── Toolbar ─────────────────────────────────────── */
+  .toolbar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin: 14px 0 18px; padding-top: 14px; border-top: 1px solid var(--border-soft);
+  }
   .toolbar .count { color: var(--text-dim); font-size: 13px; margin-right: auto; }
-  button.primary {
+  .btn-primary {
     background: var(--accent); color: white; border: none; border-radius: 6px;
-    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+    padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
   }
-  button.primary:hover { filter: brightness(1.08); }
-  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  button.secondary {
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-secondary {
     background: var(--panel); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
   }
-  button.secondary:hover { border-color: var(--accent); }
-  button.danger {
+  .btn-secondary:hover { border-color: var(--accent); }
+  .btn-danger {
     background: transparent; color: var(--err); border: 1px solid var(--err);
     border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer;
   }
-  button.danger:hover { background: color-mix(in srgb, var(--err) 12%, transparent); }
+  .btn-danger:hover { background: color-mix(in srgb, var(--err) 12%, transparent); }
 
-  /* 가로로 긴 단일 컬럼 세로 리스트 — 카드 1줄 = 요청 1개 */
+  /* ── Card list ───────────────────────────────────── */
   .grid { display: flex; flex-direction: column; gap: 10px; }
 
-  .card {
+  .dev-card {
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 18px;
+    overflow: hidden; transition: border-color 0.12s, box-shadow 0.12s;
+    border-left: 4px solid var(--text-faint);
+  }
+  .dev-card:hover { border-color: var(--accent); box-shadow: var(--shadow-lg); }
+
+  .dev-card-main {
     display: grid;
-    grid-template-columns: auto auto 1fr auto auto;
-    grid-template-areas:
-      "id badges summary meta actions"
-      "id badges details meta actions";
-    column-gap: 16px;
-    row-gap: 6px;
-    align-items: center;
-    box-shadow: var(--shadow);
-    border-left-width: 4px;
-    transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+    grid-template-columns: 90px 1fr 130px;
+    column-gap: 18px;
+    padding: 14px 18px;
+    align-items: start;
   }
-  .card:hover { border-color: var(--accent); box-shadow: var(--shadow-lg); }
 
-  /* 좌측: 좁고 깔끔한 ID 컬럼 */
-  .card .id-col {
-    grid-area: id;
+  /* 좌측 — ID + community */
+  .dev-card-left {
+    display: flex; flex-direction: column; gap: 5px; align-items: flex-start;
+  }
+  .card-id {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 13px; font-weight: 600; color: var(--text-dim);
-    min-width: 44px; text-align: right;
+    font-size: 14px; font-weight: 700; color: var(--text);
   }
 
-  /* 배지 스택 (community + severity + confidence) */
-  .card .badges {
-    grid-area: badges;
-    display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
-    min-width: 92px;
+  /* 본문 — 라벨·요약·메타 */
+  .dev-card-body {
+    display: flex; flex-direction: column; gap: 8px; min-width: 0;
   }
-  .card .status-row {
-    display: flex; gap: 4px; align-items: center;
+  .card-row-1 {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  }
+  .card-row-1 .card-time {
+    margin-left: auto; font-size: 11.5px; color: var(--text-faint);
+  }
+  .card-summary {
+    font-size: 14px; line-height: 1.5; color: var(--text);
+    word-break: break-word;
+  }
+  .card-row-2 {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .chip-commit {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    background: var(--panel-2); color: var(--text-dim);
+    border: 1px solid var(--border-soft); padding: 2px 7px; border-radius: 4px;
+  }
+  .chip-pr {
+    font-size: 11.5px; font-weight: 600; color: var(--accent);
+    text-decoration: none; padding: 2px 8px; border: 1px solid var(--accent);
+    border-radius: 4px;
+  }
+  .chip-pr:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .btn-toggle {
+    background: none; border: 1px solid var(--border-soft); color: var(--text-dim);
+    cursor: pointer; font-size: 11.5px; padding: 3px 10px; border-radius: 4px;
+    margin-left: auto;
+  }
+  .btn-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* 우측 — 액션 */
+  .dev-card-actions {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .dev-card-actions button {
+    padding: 7px 12px; font-size: 12.5px; border-radius: 6px; cursor: pointer;
+    font-weight: 600; border: 1px solid transparent; white-space: nowrap;
+    transition: filter 0.1s, background 0.1s;
+  }
+  .btn-approve { background: var(--ok); color: white; border-color: var(--ok); }
+  .btn-approve:hover { filter: brightness(1.08); }
+  .btn-reject { background: transparent; color: var(--err); border-color: var(--err); }
+  .btn-reject:hover { background: color-mix(in srgb, var(--err) 12%, transparent); }
+  .btn-unapprove { background: transparent; color: var(--text-dim); border-color: var(--border); font-weight: 500; }
+  .btn-unapprove:hover { border-color: var(--warn); color: var(--warn); }
+  .no-action { color: var(--text-faint); font-size: 12px; padding: 6px 0; text-align: center; }
+
+  /* ── Badges ──────────────────────────────────────── */
+  .dev-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 4px;
+    white-space: nowrap; letter-spacing: 0;
+  }
+  .dev-badge.community {
+    background: var(--panel-2); color: var(--text-dim);
+    border: 1px solid var(--border-soft);
+    font-family: ui-monospace, monospace; font-weight: 500;
   }
 
-  .badge {
-    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
-    letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap;
-  }
-  .badge.community {
-    background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border-soft);
-    text-transform: none; letter-spacing: 0; font-weight: 500; font-family: ui-monospace, monospace;
-  }
-  .badge.severity-low { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
-  .badge.severity-med { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
-  .badge.severity-high { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
-  .badge.confidence-high { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-  .badge.confidence-low { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); }
+  /* status badges — 의미별 색상, 한국어 라벨 */
+  .dev-badge.status-pending          { background: color-mix(in srgb, var(--text-faint) 20%, transparent); color: var(--text-dim); }
+  .dev-badge.status-analyzed         { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+  .dev-badge.status-approved         { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .dev-badge.status-queued           { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .dev-badge.status-processing       { background: color-mix(in srgb, var(--warn) 30%, transparent); color: var(--warn); animation: pulse-bg 1.5s infinite; }
+  .dev-badge.status-completed        { background: color-mix(in srgb, var(--ok) 28%, transparent); color: var(--ok); font-weight: 700; }
+  .dev-badge.status-failed           { background: color-mix(in srgb, var(--err) 22%, transparent); color: var(--err); }
+  .dev-badge.status-needs_human_review { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+  .dev-badge.status-rejected         { background: var(--panel-2); color: var(--text-faint); text-decoration: line-through; }
 
-  .badge.status-pending { background: var(--panel-2); color: var(--text-dim); }
-  .badge.status-analyzed { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-  .badge.status-approved { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
-  .badge.status-rejected { background: var(--panel-2); color: var(--text-faint); text-decoration: line-through; }
-  .badge.status-queued { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
-  .badge.status-processing { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn); animation: pulse-bg 1.5s infinite; }
-  .badge.status-completed { background: color-mix(in srgb, var(--ok) 24%, transparent); color: var(--ok); }
-  .badge.status-failed { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
-  .badge.status-needs_human_review { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
+  /* severity */
+  .dev-badge.severity-low  { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  .dev-badge.severity-med  { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .dev-badge.severity-high { background: color-mix(in srgb, var(--err) 22%, transparent); color: var(--err); }
+
+  /* confidence */
+  .dev-badge.confidence-high { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .dev-badge.confidence-low  { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); }
 
   /* 좌측 컬러 바 — status 별 차별화 */
-  .card[data-status="analyzed"]  { border-left-color: var(--accent); }
-  .card[data-status="approved"]  { border-left-color: var(--ok); }
-  .card[data-status="processing"]{ border-left-color: var(--warn); }
-  .card[data-status="completed"] { border-left-color: var(--ok); }
-  .card[data-status="failed"]    { border-left-color: var(--err); }
-  .card[data-status="needs_human_review"] { border-left-color: var(--err); }
-  .card[data-status="pending"]   { border-left-color: var(--text-faint); }
-  .card[data-status="queued"]    { border-left-color: var(--warn); }
-  .card[data-status="rejected"]  { border-left-color: var(--text-faint); opacity: 0.65; }
+  .dev-card[data-status="pending"]            { border-left-color: var(--text-faint); }
+  .dev-card[data-status="analyzed"]           { border-left-color: var(--accent); }
+  .dev-card[data-status="approved"]           { border-left-color: var(--ok); }
+  .dev-card[data-status="queued"]             { border-left-color: var(--warn); }
+  .dev-card[data-status="processing"]         { border-left-color: var(--warn); }
+  .dev-card[data-status="completed"]          { border-left-color: var(--ok); }
+  .dev-card[data-status="failed"]             { border-left-color: var(--err); }
+  .dev-card[data-status="needs_human_review"] { border-left-color: var(--err); }
+  .dev-card[data-status="rejected"]           { border-left-color: var(--text-faint); opacity: 0.65; }
 
   @keyframes pulse-bg {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.65; }
   }
 
-  /* 메인 본문 (요약 + 토글) */
-  .card .summary {
-    grid-area: summary;
-    font-size: 14px; line-height: 1.5; color: var(--text);
-    overflow: hidden; text-overflow: ellipsis;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  /* ── Expanded details ────────────────────────────── */
+  .detail-grid {
+    border-top: 1px solid var(--border-soft);
+    background: var(--panel-2);
+    padding: 16px 20px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+  }
+  @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .detail-section h4 {
+    margin: 0 0 10px; font-size: 12px; font-weight: 700;
+    color: var(--text); letter-spacing: 0.4px;
+  }
+  .detail-section.error h4 { color: var(--err); }
+
+  .kv {
+    display: grid; grid-template-columns: 90px 1fr; gap: 10px;
+    padding: 4px 0; font-size: 12.5px; line-height: 1.5;
+    border-bottom: 1px dashed var(--border-soft);
+  }
+  .kv:last-child { border-bottom: none; }
+  .kv .k {
+    color: var(--text-faint); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.4px; padding-top: 1px;
+  }
+  .kv .v {
+    color: var(--text); word-break: break-word;
+  }
+  .files-list code {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    background: var(--panel); padding: 1px 6px; border-radius: 3px;
+    border: 1px solid var(--border-soft); margin-right: 4px;
+  }
+  pre.task-brief {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: 6px; padding: 10px 12px; margin: 0;
+    font-family: ui-monospace, monospace; font-size: 12px;
+    line-height: 1.5; color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .detail-section.error pre {
+    background: color-mix(in srgb, var(--err) 8%, var(--panel));
+    border-color: var(--err); color: var(--err);
+    font-size: 11.5px; padding: 8px 10px; border-radius: 4px; margin: 0;
+    white-space: pre-wrap;
   }
 
-  /* expanded 상세 */
-  .card .details {
-    grid-area: details;
-    display: none; font-size: 12.5px; color: var(--text-dim); line-height: 1.5;
-    padding-top: 8px; border-top: 1px solid var(--border-soft); margin-top: 4px;
-  }
-  .card.expanded .details { display: block; }
-  .card.expanded .summary { -webkit-line-clamp: unset; display: block; }
-  .card .details .label { font-weight: 600; color: var(--text); display: block; margin: 8px 0 2px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px; }
-  .card .details .label:first-child { margin-top: 0; }
-  .card .details .files { font-family: ui-monospace, monospace; font-size: 11px; }
-  .card .details pre { white-space: pre-wrap; font-size: 12px; background: var(--panel-2); border: 1px solid var(--border-soft); border-radius: 4px; padding: 8px 10px; margin: 0; }
-
-  .card .toggle {
-    background: none; border: none; color: var(--text-dim);
-    cursor: pointer; font-size: 11px; padding: 2px 0;
-    text-align: left; margin-top: 2px;
-  }
-  .card .toggle:hover { color: var(--accent); }
-
-  /* 우측: 메타 (commit/PR/시간) */
-  .card .meta-col {
-    grid-area: meta;
-    display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
-    font-size: 11.5px; color: var(--text-dim);
-    min-width: 100px; white-space: nowrap;
-  }
-  .card .meta-col .commit { font-family: ui-monospace, monospace; font-size: 11px; }
-  .card .meta-col .pr-link { color: var(--accent); text-decoration: none; font-weight: 600; }
-  .card .meta-col .pr-link:hover { text-decoration: underline; }
-
-  /* 액션 버튼 묶음 (가장 우측) */
-  .card .actions {
-    grid-area: actions;
-    display: flex; flex-direction: column; gap: 6px; align-items: stretch;
-    min-width: 96px;
-  }
-  .card .actions button {
-    padding: 6px 12px; font-size: 12px; border-radius: 6px; cursor: pointer;
-    font-weight: 600; border: 1px solid transparent;
-    transition: filter 0.1s, background 0.1s;
-  }
-  .card .actions button.approve {
-    background: var(--ok); color: white; border-color: var(--ok);
-  }
-  .card .actions button.approve:hover { filter: brightness(1.08); }
-  .card .actions button.reject {
-    background: transparent; color: var(--err); border-color: var(--err);
-  }
-  .card .actions button.reject:hover { background: color-mix(in srgb, var(--err) 12%, transparent); }
-  .card .actions button.unapprove {
-    background: transparent; color: var(--text-dim); border-color: var(--border);
-    font-weight: 500;
-  }
-  .card .actions button.unapprove:hover { border-color: var(--err); color: var(--err); }
-
-  /* 모바일 — 단일 column stack */
-  @media (max-width: 800px) {
-    .card {
+  /* ── Mobile responsive ──────────────────────────── */
+  @media (max-width: 720px) {
+    .dev-card-main {
       grid-template-columns: 1fr;
-      grid-template-areas:
-        "badges"
-        "id"
-        "summary"
-        "details"
-        "meta"
-        "actions";
-      row-gap: 8px;
+      row-gap: 10px;
     }
-    .card .id-col, .card .meta-col { text-align: left; align-items: flex-start; min-width: 0; }
-    .card .actions { flex-direction: row; }
+    .dev-card-actions { flex-direction: row; flex-wrap: wrap; }
   }
 
+  /* ── Live output panel ───────────────────────────── */
   .live-panel {
-    margin-top: 18px; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 14px; display: none;
+    margin: 0 0 18px; background: var(--panel); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 14px 18px; display: none;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
   }
   .live-panel.visible { display: block; }
-  .live-panel h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+  .live-panel h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--accent); }
+  .live-meta {
+    font-size: 12px; color: var(--text-dim); margin-bottom: 8px;
+    font-family: ui-monospace, monospace;
+  }
   .live-output {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
     background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-    padding: 10px; white-space: pre-wrap; max-height: 360px; overflow-y: auto;
-    color: var(--text);
+    padding: 12px; white-space: pre-wrap; max-height: 380px; overflow-y: auto;
+    color: var(--text); line-height: 1.55;
   }
-  .live-meta { font-size: 12px; color: var(--text-dim); display: flex; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
 
+  /* ── Empty state ────────────────────────────────── */
   .empty-state {
-    text-align: center; padding: 40px 20px; color: var(--text-dim); font-size: 13px;
+    text-align: center; padding: 50px 20px; color: var(--text-dim); font-size: 13px;
     border: 1px dashed var(--border); border-radius: 10px;
   }
 </style>
@@ -217,56 +259,56 @@
 
 {% block content %}
 <div class="dev-page">
-  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
+  <div class="dev-page-head">
     <h1>Dev Requests</h1>
-    <span style="font-size: 11px; padding: 2px 8px; background: var(--err); color: white; border-radius: 4px; font-weight: 700;">ADMIN</span>
+    <span class="admin-tag">ADMIN</span>
   </div>
   <p class="lede">한세나가 정리해둔 모든 community 의 개발 요청 — 검토 + 승인 + 일괄 dispatch.</p>
 
   <!-- Filters -->
-  <div class="filters">
-    <span class="chip-group-label">community</span>
-    <span id="f-community" data-group="community" class="chip-row" style="display:contents"></span>
+  <div class="filter-row">
+    <span class="filter-label">커뮤니티</span>
+    <div id="f-community" style="display:contents"></div>
   </div>
-  <div class="filters">
-    <span class="chip-group-label">status</span>
-    <div id="f-status" data-group="status" style="display:contents">
-      <span class="chip active" data-val="">all</span>
-      <span class="chip" data-val="pending">pending</span>
-      <span class="chip" data-val="analyzed">analyzed</span>
-      <span class="chip" data-val="approved">approved</span>
-      <span class="chip" data-val="processing">processing</span>
-      <span class="chip" data-val="completed">completed</span>
-      <span class="chip" data-val="failed">failed</span>
-      <span class="chip" data-val="needs_human_review">needs review</span>
-      <span class="chip" data-val="rejected">rejected</span>
+  <div class="filter-row">
+    <span class="filter-label">상태</span>
+    <div id="f-status" style="display:contents">
+      <span class="chip active" data-val="">전체</span>
+      <span class="chip" data-val="pending">분석 대기</span>
+      <span class="chip" data-val="analyzed">검토 대기</span>
+      <span class="chip" data-val="approved">승인됨</span>
+      <span class="chip" data-val="processing">작업 중</span>
+      <span class="chip" data-val="completed">완료</span>
+      <span class="chip" data-val="failed">실패</span>
+      <span class="chip" data-val="needs_human_review">오너 판단</span>
+      <span class="chip" data-val="rejected">거부됨</span>
     </div>
   </div>
-  <div class="filters">
-    <span class="chip-group-label">severity</span>
-    <div id="f-severity" data-group="severity" style="display:contents">
-      <span class="chip active" data-val="">all</span>
-      <span class="chip" data-val="high">high</span>
-      <span class="chip" data-val="med">med</span>
-      <span class="chip" data-val="low">low</span>
+  <div class="filter-row">
+    <span class="filter-label">심각도</span>
+    <div id="f-severity" style="display:contents">
+      <span class="chip active" data-val="">전체</span>
+      <span class="chip" data-val="high">높음</span>
+      <span class="chip" data-val="med">보통</span>
+      <span class="chip" data-val="low">낮음</span>
     </div>
   </div>
 
   <!-- Toolbar -->
   <div class="toolbar">
     <span class="count" id="count-label">0 requests</span>
-    <button class="secondary" onclick="refreshList()">↻ Refresh</button>
-    <button class="primary" id="btn-run" onclick="runApproved()" disabled>▶ Run all approved</button>
+    <button class="btn-secondary" onclick="refreshList()">↻ 새로고침</button>
+    <button class="btn-primary" id="btn-run" onclick="runApproved()" disabled>▶ 승인된 작업 일괄 실행</button>
   </div>
 
   <!-- Live output panel (visible during run) -->
   <div class="live-panel" id="live-panel">
-    <h3>🔄 Active dev run</h3>
+    <h3>🔄 작업 진행 중</h3>
     <div class="live-meta" id="live-meta"></div>
     <div class="live-output" id="live-output"></div>
-    <div style="margin-top: 8px;">
-      <button class="danger" onclick="abortRun()">Abort run</button>
-      <button class="secondary" id="btn-merge" onclick="mergeRun()" style="display:none;">Merge to develop</button>
+    <div style="margin-top: 10px; display:flex; gap:8px;">
+      <button class="btn-danger" onclick="abortRun()">중단</button>
+      <button class="btn-secondary" id="btn-merge" onclick="mergeRun()" style="display:none;">PR Merge → develop</button>
     </div>
   </div>
 
