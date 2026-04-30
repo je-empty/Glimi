@@ -948,7 +948,10 @@
   }
 
   /* Thinking/Speaking 상태 — 카드에서 emotion-bar 와 같은 큰 바로 표시.
-     기존 작은 state-badge 대신 카드 내부에 가로 바 + 라벨/이모지. */
+     진행감 표현:
+       (1) state-bar-fill: 풀 너비 + 펄스
+       (2) state-bar-shine: 좌→우 빛이 흐르는 sweep 애니메이션
+       (3) state-dots: 라벨 뒤의 ... 가 차례로 나타나는 ellipsis dots */
   .agent-card .state-bar {
     display: none;
     margin-top: 8px;
@@ -961,9 +964,20 @@
   }
   .agent-card .state-bar > .state-bar-fill {
     position: absolute; inset: 0;
-    background: linear-gradient(90deg, var(--thinking,#f59e0b), var(--thinking,#f59e0b));
     width: 100%;
     animation: state-pulse 1.4s ease-in-out infinite;
+  }
+  /* 좌→우 흐르는 하이라이트 — "뭔가 돌아가는" 시각적 진행감 */
+  .agent-card .state-bar > .state-bar-shine {
+    position: absolute; top: 0; bottom: 0;
+    width: 60px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255,255,255,0.35) 50%,
+      transparent 100%);
+    animation: state-shine 1.6s linear infinite;
+    pointer-events: none;
+    z-index: 1;
   }
   .agent-card.thinking .state-bar { display: block; }
   .agent-card.thinking .state-bar > .state-bar-fill {
@@ -978,13 +992,32 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 11.5px; font-weight: 700; color: #fff;
     text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-    z-index: 1; gap: 8px;
+    z-index: 2; gap: 8px;
     letter-spacing: 1px;
     text-transform: uppercase;
+  }
+  /* "..." dots — 0.4s 간격으로 한 점씩 추가, 3개에서 리셋 */
+  .agent-card .state-bar .state-dots::after {
+    display: inline-block;
+    content: '';
+    width: 18px; text-align: left;
+    animation: state-dots 1.2s steps(4, end) infinite;
+    margin-left: 1px;
   }
   @keyframes state-pulse {
     0%, 100% { opacity: 0.85; }
     50% { opacity: 1; }
+  }
+  @keyframes state-shine {
+    0%   { left: -60px; }
+    100% { left: 100%; }
+  }
+  @keyframes state-dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+    100% { content: ''; }
   }
 
   /* 오너 row — 항상 최상단, 살짝 강조 (다른 관계와 시각적 구분) */

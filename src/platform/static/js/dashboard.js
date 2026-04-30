@@ -534,8 +534,9 @@ function renderAgent(a, clickable=true) {
     </div>
     <div class="state-bar">
       <div class="state-bar-fill"></div>
+      <div class="state-bar-shine"></div>
       <div class="state-bar-text">
-        ${a.thinking ? '🧠 Thinking' : (a.speaking ? '💬 Speaking' : '')}
+        ${a.thinking ? '🧠 Thinking<span class="state-dots"></span>' : (a.speaking ? '💬 Speaking<span class="state-dots"></span>' : '')}
         ${(a.thinking || a.speaking) ? `<span style="opacity:0.75;font-weight:400;font-size:11px;letter-spacing:0">${fmtElapsed(elapsed)}</span>` : ''}
       </div>
     </div>
