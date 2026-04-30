@@ -434,26 +434,36 @@ def get_total_message_count() -> int:
 
 # ── 이벤트 ─────────────────────────────────────────────
 
-def get_events(limit: int = 20) -> list[dict]:
+def get_events(limit: int = 50) -> list[dict]:
+    """events 테이블 — 최신순. impact 필드 포함 (긍정/주의/마일스톤 등 시각적 강조용)."""
     try:
         conn = db.get_conn()
         rows = conn.execute(
-            "SELECT event_type, participants, description, created_at "
-            "FROM events ORDER BY id DESC LIMIT ?",
+            "SELECT event_type, participants, description, impact, timestamp "
+            "FROM events ORDER BY timestamp DESC, id DESC LIMIT ?",
             (limit,),
         ).fetchall()
         conn.close()
-    except Exception:
+    except Exception as e:
+        log_writer.system(f"[events] get_events 실패: {type(e).__name__}: {e}")
         return []
-    return [
-        {
+    out = []
+    import json as _json
+    for r in rows:
+        # participants 는 JSON array (TEXT 로 저장) — frontend 가 array 받게 parse
+        raw_p = r["participants"] or ""
+        try:
+            participants = _json.loads(raw_p) if raw_p.startswith("[") else [raw_p] if raw_p else []
+        except Exception:
+            participants = [raw_p]
+        out.append({
             "type": r["event_type"] or "",
-            "participants": r["participants"] or "",
+            "participants": participants,
             "description": r["description"] or "",
-            "timestamp": r["created_at"] or "",
-        }
-        for r in rows
-    ]
+            "impact": r["impact"] or "",
+            "timestamp": r["timestamp"] or "",
+        })
+    return out
 
 
 # ── 관계 ───────────────────────────────────────────────

@@ -804,6 +804,17 @@
   .event .type { color: var(--cmd); font-weight: 600; margin-right: 8px; }
   .event .desc { color: var(--text-dim); }
   .event .ts { color: var(--text-faint); font-size: 10px; margin-left: 6px; }
+  .event .parts { display: inline-flex; gap: 4px; margin-right: 8px; }
+  .event .parts .part {
+    background: var(--panel-2); color: var(--text-dim);
+    padding: 1px 6px; border-radius: 3px; font-size: 10.5px;
+  }
+  .event.impact-positive .type { color: #10b981; }
+  .event.impact-positive { border-left: 2px solid #10b981; padding-left: 8px; }
+  .event.impact-warn .type { color: #f59e0b; }
+  .event.impact-warn { border-left: 2px solid #f59e0b; padding-left: 8px; }
+  .event.impact-milestone .type { color: var(--accent-2); font-weight: 700; }
+  .event.impact-milestone { border-left: 2px solid var(--accent-2); padding-left: 8px; background: color-mix(in srgb, var(--accent-2) 5%, transparent); }
 
   /* ==== Log ==== */
   .log-view {
