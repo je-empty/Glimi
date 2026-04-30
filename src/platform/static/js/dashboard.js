@@ -1059,9 +1059,9 @@ async function openAgent(id) {
     <div class="detail-section" style="margin-top:0">
       <h4>📊 상태</h4>
       <dl class="kv">
-        ${emotionLine ? `<dt>${T('f_emotion')}</dt><dd>${emotionLine}</dd>` : ''}
-        <dt>${T('f_status')}</dt><dd>${statusHtml}</dd>
-        ${modelHtml ? `<dt>${T('f_model')}</dt><dd>${modelHtml}</dd>` : ''}
+        ${emotionLine ? `<dt>${t('f_emotion')}</dt><dd>${emotionLine}</dd>` : ''}
+        <dt>${t('f_status')}</dt><dd>${statusHtml}</dd>
+        ${modelHtml ? `<dt>${t('f_model')}</dt><dd>${modelHtml}</dd>` : ''}
       </dl>
     </div>
     <div class="detail-section">
