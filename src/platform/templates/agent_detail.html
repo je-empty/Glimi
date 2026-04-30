@@ -52,14 +52,27 @@
     border-radius: 12px;
     box-shadow: var(--shadow);
   }
+  /* Avatar wrap — 모달과 동일 스타일 (둥근 프레임 + 우측 하단 emoji badge).
+     overflow visible 필수 (badge 가 프레임 밖으로 살짝 튀어나오는 디자인). */
   .agent-page header.page-head .avatar-wrap {
-    width: 72px; height: 72px; border-radius: 50%; overflow: hidden;
+    position: relative;
+    width: 88px; height: 88px; border-radius: 50%;
     flex-shrink: 0; background: var(--panel-2);
-    border: 1px solid var(--border);
+    border: 3px solid var(--border-soft);
+    overflow: visible;
   }
   .agent-page header.page-head .avatar-wrap img {
     width: 100%; height: 100%; object-fit: cover;
+    border-radius: 50%;
   }
+  .agent-page header.page-head .avatar-wrap .emoji-badge {
+    position: absolute; bottom: -4px; right: -4px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--bg-elev); border: 3px solid var(--bg-elev);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; box-shadow: var(--shadow);
+  }
+  .agent-page header.page-head .avatar-wrap .emoji-badge.hidden { display: none; }
   .agent-page header.page-head .hd-text { flex: 1; min-width: 0; }
   .agent-page header.page-head .hd-name {
     font-size: 22px; font-weight: 700; letter-spacing: -0.3px;
@@ -133,6 +146,7 @@
   <header class="page-head">
     <div class="avatar-wrap" id="agent-avatar">
       <img id="agent-avatar-img" src="" alt="" style="display:none">
+      <span class="emoji-badge hidden" id="agent-emoji-badge"></span>
     </div>
     <div class="hd-text">
       <div class="hd-name" id="agent-name">에이전트 로드 중…</div>
@@ -284,8 +298,8 @@
       return;
     }
 
-    // Header
-    document.getElementById('agent-name').innerHTML = `${d.emoji || '◆'} ${esc(d.name || AID)}`;
+    // Header — 이름은 이름만, emoji 는 avatar 우측하단 badge 로 (모달과 통일).
+    document.getElementById('agent-name').textContent = d.name || AID;
     document.getElementById('agent-type').textContent = d.type || '—';
     document.title = `${d.name || AID} · Glimi`;
     const img = document.getElementById('agent-avatar-img');
@@ -293,19 +307,35 @@
     img.alt = d.name || '';
     img.style.display = '';
     img.onerror = () => { img.style.display = 'none'; };
+    // Avatar 우측 하단 emoji badge — 평온/없음일 땐 숨김 (카드 hideBadge 와 동일 규칙)
+    const badge = document.getElementById('agent-emoji-badge');
+    if (d.emoji && d.emotion && d.emotion !== '평온') {
+      badge.textContent = d.emoji;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
 
     // ── 📊 상태 섹션 (emotion / status / model) ──
     // 모달과 동일 기준으로 분리: 실시간 상태 정보만 여기에.
     const statusLines = [];
     if (d.emotion) {
-      statusLines.push(['Emotion', `${d.emoji || ''} ${esc(d.emotion)} (${d.intensity}/10)`, true]);
+      // 가로 강도 바 + 숫자. emoji 는 avatar badge 에 이미 있으니 여기선 라벨만.
+      const intensityPct = Math.min(100, (d.intensity || 0) * 10);
+      const emotionHtml = `${esc(d.emotion)}
+        <span style="display:inline-block;width:64px;height:5px;background:var(--border);border-radius:3px;margin:0 6px;vertical-align:middle;overflow:hidden">
+          <span style="display:block;height:100%;width:${intensityPct}%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></span>
+        </span>
+        <span style="color:var(--text-faint);font-size:11px">강도 ${esc(String(d.intensity ?? '?'))}/10</span>`;
+      statusLines.push(['Emotion', emotionHtml, true]);
     }
     if (d.status) {
       let statusLabel;
-      if (d.thinking) statusLabel = '🧠 Thinking';
-      else if (d.speaking) statusLabel = '💬 Speaking';
-      else if (d.status === 'active') statusLabel = '● Active';
-      else statusLabel = '○ ' + esc(d.status);
+      if (d.thinking) statusLabel = '<span style="color:var(--thinking,#f59e0b)">🧠 Thinking</span>';
+      else if (d.speaking) statusLabel = '<span style="color:var(--speaking,#3b82f6)">💬 Speaking</span>';
+      else if (d.status === 'active') statusLabel = '<span style="color:var(--active,#10b981);font-weight:600">● Active</span>';
+      else if (d.status === 'inactive') statusLabel = '<span style="color:var(--text-faint)">○ Inactive</span>';
+      else statusLabel = '<span style="color:var(--text-dim)">○ ' + esc(d.status) + '</span>';
       statusLines.push(['Status', statusLabel, true]);
     }
     if (d.model) statusLines.push(['Model', renderModelChips(d), true]);
@@ -338,17 +368,50 @@
     }
     if (d.background) profileLines.push(['배경', esc(d.background), true]);
 
-    // Relationships
-    const rels = (d.relationships || []).map(r => {
-      const pct = Math.min(100, r.intimacy);
-      return `<div class="rel-row">
-        <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
-        <span class="rtype" title="${esc(r.type)}">${esc(r.type)}</span>
+    // Relationships — 오너 관계 항상 최상단 고정 + intimacy band 색깔 적용 (대시보드와 통일).
+    const intimacyBand = (n) => {
+      if (n >= 100) return { label: '연인', cls: 'b-lover' };
+      if (n >= 80) return { label: '절친', cls: 'b-best' };
+      if (n >= 60) return { label: '친한 친구', cls: 'b-close' };
+      if (n >= 40) return { label: '친구', cls: 'b-friend' };
+      if (n >= 20) return { label: '어색', cls: 'b-awkward' };
+      if (n >= 1) return { label: '적대', cls: 'b-hostile' };
+      return { label: '원수', cls: 'b-enemy' };
+    };
+    const renderRelRow = (r, opts = {}) => {
+      const pct = Math.min(100, r.intimacy || 0);
+      const band = intimacyBand(r.intimacy || 0);
+      const ownerTag = opts.isOwner ? `<span style="color:var(--accent);font-size:10px;font-weight:600;margin-right:4px">OWNER</span>` : '';
+      return `<div class="rel-row${opts.isOwner ? ' rel-owner' : ''}">
+        <span class="rname" title="${esc(r.other_name)}">${ownerTag}${esc(r.other_name)}</span>
+        <span class="rtype" title="${esc(r.type)}">${esc(r.type || '—')}</span>
         <div class="intimacy-bar"><span style="width:${pct}%"></span></div>
-        <span class="intimacy-num">${r.intimacy}</span>
+        <span class="intimacy-num ${band.cls}" title="${band.label} · 친밀도 ${r.intimacy}/100 (0=원수 100=연인)">${r.intimacy}/100</span>
         ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
       </div>`;
-    }).join('');
+    };
+    // 오너 row 분리 — 이미 relationships 안에 있으면 pop 해서 최상단에, 없으면 placeholder.
+    const allRels = (d.relationships || []).slice();
+    const ownerRow = (() => {
+      if (!d.owner_id) return null;
+      const idx = allRels.findIndex(r => r.other_id === d.owner_id);
+      if (idx >= 0) {
+        return allRels.splice(idx, 1)[0];
+      }
+      // placeholder — 아직 관계 row 안 생성된 경우 (mgr/creator 등 오너와 명시적 row 없음)
+      return {
+        other_id: d.owner_id,
+        other_name: d.owner_name || '오너',
+        type: '—',
+        intimacy: 0,
+        dynamics: '아직 기록된 관계 없음',
+        _placeholder: true,
+      };
+    })();
+    const relsHtml =
+      (ownerRow ? renderRelRow(ownerRow, { isOwner: true }) : '') +
+      allRels.map(r => renderRelRow(r)).join('');
+    const rels = relsHtml;
 
     // Memory — dashboard.js 로직 포팅
     const TYPE_LABEL = {

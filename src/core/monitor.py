@@ -686,6 +686,15 @@ def get_agent_detail(agent_id: str) -> dict:
     appearance = (profile.get("appearance") or {}) if profile else {}
     speech = (profile.get("speech") or {}) if profile else {}
 
+    # owner 정보 — 관계 섹션이 owner 와의 관계를 항상 최상단에 고정 표시할 수 있게 노출.
+    try:
+        from src.core.profile import get_user_id, get_user_name
+        owner_id = get_user_id() or ""
+        owner_name = get_user_name() or "오너"
+    except Exception:
+        owner_id = ""
+        owner_name = "오너"
+
     return {
         "id": agent_id,
         "name": agent.get("name", agent_id),
@@ -695,6 +704,8 @@ def get_agent_detail(agent_id: str) -> dict:
         "emoji": _resolve_emoji(emo),
         "intensity": agent.get("emotion_intensity", 0) or 0,
         "intensity_band": _intensity_band(agent.get("emotion_intensity", 0) or 0),
+        "owner_id": owner_id,
+        "owner_name": owner_name,
         "mbti": agent.get("mbti", "") or (profile.get("mbti", "") if profile else ""),
         "age": agent.get("age", 0) or 0,
         "birth_year": agent.get("birth_year", 0) or 0,
