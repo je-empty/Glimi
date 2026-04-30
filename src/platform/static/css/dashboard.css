@@ -862,23 +862,23 @@
   .kv dt { color: var(--text-dim); font-weight: 500; }
   .kv dd { color: var(--text); }
 
+  /* rel-row 신 레이아웃 — flex: 이름 / 친밀도 바 / dynamics.
+     이전엔 grid 4 cols (rname/rtype/bar/num) 였지만, intimacy-bar-v2 가 type/band/score
+     를 모두 흡수해서 단순화 가능. */
   .rel-row {
-    display: grid;
-    grid-template-columns: 110px 160px 1fr 40px;
+    display: flex;
     align-items: center; gap: 10px;
-    padding: 6px 2px;
+    padding: 5px 2px;
     font-size: 12px;
     border-bottom: 1px dashed var(--border-soft);
+    min-height: 30px;
   }
   .rel-row:last-child { border-bottom: none; }
-  .rel-row .rname { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rel-row .rtype {
-    color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    padding: 2px 8px; background: var(--panel-2); border-radius: 5px; font-size: 11px;
+  .rel-row .rname {
+    flex: 0 0 auto; min-width: 0; max-width: 130px;
+    font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .rel-row .intimacy-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-  .rel-row .intimacy-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
-  .rel-row .intimacy-num { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-dim); text-align: right; }
   /* Emotion bar — emoji+label 이 바 내부에 들어가는 통합 표시.
      모달/상세페이지/카드 어디에서든 동일 스타일. fill 너비 = 강도 비례.
      모바일에서 모달 dl 폭을 뚫고 빠져나오는 회귀 fix: width 100%, max-width 200px. */
@@ -911,19 +911,10 @@
   }
 
   /* Intimacy bar v2 — emotion bar 와 동일 형태. 타입+밴드 라벨이 바 안에. */
-  .rel-row {
-    display: flex; align-items: center; gap: 10px;
-    padding: 4px 0; min-height: 28px;
-  }
-  .rel-row .rname {
-    flex: 0 0 auto; min-width: 0; max-width: 120px;
-    font-size: 12px; color: var(--text);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
   .rel-row .dynamics {
     color: var(--text-faint); font-size: 10.5px; font-style: italic;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    min-width: 0; flex: 1;
+    min-width: 0; max-width: 180px;
   }
   .intimacy-bar-v2 {
     position: relative;
