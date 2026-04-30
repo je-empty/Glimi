@@ -1966,8 +1966,11 @@ function pickGraphLayout(nodeCount, fullscreen, hasSup) {
       numIter: 800,
     };
   }
-  const minSpace = nodeCount <= 8 ? 75 : 50;
-  const spacingF = 1.25;
+  // 모바일에서 spacing/padding 더 작게 — viewport 좁아서 노드 많으면 잘려 보이는 회귀.
+  const isMobile = (typeof window !== 'undefined') &&
+                   window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
+  const minSpace = isMobile ? (nodeCount <= 8 ? 40 : 28) : (nodeCount <= 8 ? 75 : 50);
+  const spacingF = isMobile ? 0.95 : 1.25;
   return {
     name: 'concentric',
     concentric: function(node) {
@@ -1981,7 +1984,7 @@ function pickGraphLayout(nodeCount, fullscreen, hasSup) {
     spacingFactor: fullscreen ? spacingF * 1.25 : spacingF,
     avoidOverlap: true,
     fit: true,
-    padding: fullscreen ? 140 : 25,
+    padding: fullscreen ? 140 : (isMobile ? 8 : 25),
     // mgr 이 첫 순서라 startAngle 에 배치됨 → -π/2 (위). 다음 creator 는 시계방향 다음 슬롯.
     // nodeCount==3 만 예외로 π (왼쪽) 쓰던 로직 제거 — 일관성 있게 항상 -π/2.
     startAngle: -Math.PI / 2,
@@ -2056,11 +2059,12 @@ function mountCytoscapeGraph(snap) {
     speaking: tok('--speaking') || '#6cf',
   };
 
-  // 노드 크기 — overview 에서도 충분히 크게 (사용자: "원이 멀리있다 = 작다")
-  const nodeSize = fullscreen ? 70 : 64;
-  const ownerSize = fullscreen ? 66 : 60;
-  const supSize = fullscreen ? 54 : 48;
-  const fontSize = fullscreen ? 12 : 11.5;
+  // 노드 크기 — 모바일은 더 작게 (viewport 좁아서 demo/private 처럼 노드 많으면 잘림 회귀)
+  const isMobileGraph = window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
+  const nodeSize = fullscreen ? 70 : (isMobileGraph ? 42 : 64);
+  const ownerSize = fullscreen ? 66 : (isMobileGraph ? 38 : 60);
+  const supSize = fullscreen ? 54 : (isMobileGraph ? 32 : 48);
+  const fontSize = fullscreen ? 12 : (isMobileGraph ? 9.5 : 11.5);
 
   cyInstance = cytoscape({
     container,
