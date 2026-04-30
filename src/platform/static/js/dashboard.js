@@ -858,15 +858,17 @@ async function openAgent(id) {
   const renderRelRow = (r) => {
     const pct = Math.min(100, r.intimacy);
     const band = intimacyBand(r.intimacy || 0);
-    const synthTag = r._synthetic ? `<span style="color:var(--text-faint);font-size:10px;margin-left:4px" title="DB row 없어서 합성된 관계">≈</span>` : '';
-    // 친밀도 바 — emotion bar 와 동일 스타일. 안에 "타입이모지 타입 · 밴드이모지 라벨" 표시.
     const tEmoji = relTypeEmoji(r.type);
-    const innerLabel = `${tEmoji} ${esc(r.type || '—')} · ${band.emoji} ${band.label}`;
     return `<div class="rel-row">
-      <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}${synthTag}</span>
+      <span class="rname" title="${esc(r.other_name)}">${esc(r.other_name)}</span>
       <div class="intimacy-bar-v2 band-${band.cls}" title="친밀도 ${r.intimacy}/100 (0=원수 100=연인)">
         <div class="intimacy-bar-fill" style="width:${pct}%"></div>
-        <div class="intimacy-bar-text">${innerLabel} <span style="opacity:0.7;font-weight:400;font-size:11px">${r.intimacy}/100</span></div>
+        <div class="intimacy-bar-text">
+          <span class="rel-type">${tEmoji} ${esc(r.type || '—')}</span>
+          <span class="rel-sep">·</span>
+          <span class="rel-band">${band.emoji} ${band.label}</span>
+          <span class="rel-score">${r.intimacy}/100</span>
+        </div>
       </div>
       ${r.dynamics ? `<span class="dynamics" title="${esc(r.dynamics)}">${esc(r.dynamics)}</span>` : ''}
     </div>`;
