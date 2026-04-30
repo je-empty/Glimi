@@ -45,7 +45,39 @@ def recompute_all(user_id: str | None = None) -> dict:
             if prev_state == "done":
                 continue  # 이미 완료 — 재평가 불필요
 
-            result = ach.check(user_id)
+            # Tier 2 (LLM judge): pre_filter 로 후보 좁힌 후 Haiku batch 판정.
+            # check 가 None 반환해도 judge 가 yes 하면 done 처리.
+            result = None
+            if ach.candidate_pre_filter and ach.judge_prompt:
+                try:
+                    candidates = ach.candidate_pre_filter(user_id) or []
+                except Exception as e:
+                    print(f"[achievements] {ach.key} pre_filter 실패: {e}")
+                    candidates = []
+                if candidates:
+                    from src.achievements.judge import batch_classify
+                    verdicts = batch_classify(ach.key, candidates, ach.judge_prompt)
+                    # 첫 양성 → trigger
+                    for cand, ok in zip(candidates, verdicts):
+                        if ok:
+                            result = {
+                                "state": "done",
+                                "mark_completed": True,
+                                "mark_unlocked": True,
+                                "progress_data": {
+                                    "agent": cand.get("speaker"),
+                                    "agent_name": cand.get("speaker_name") or cand.get("speaker"),
+                                    "channel": cand.get("channel"),
+                                    "message": (cand.get("message") or "")[:120],
+                                    "timestamp": cand.get("timestamp"),
+                                    "source": "llm_judge",
+                                },
+                            }
+                            break
+
+            # Tier 1/3 fallback — 기존 check (events 우선, 그 다음 logic)
+            if result is None:
+                result = ach.check(user_id)
             if not result:
                 continue
 
