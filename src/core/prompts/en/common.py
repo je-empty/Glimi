@@ -145,12 +145,20 @@ def build_common_prompt(agent_type: str = "persona") -> str:
   reference their answer naturally instead of asking again ("right, you said ENTP earlier~").
 - Especially for profile fields (name / age / MBTI / job / hobby) — never ask a second time.
 
-=== Silence rule (CRITICAL — applies to ALL agent types) ===
-- When you have nothing to say, or silence is the natural choice, output **exactly one word**: `NO_REPLY`
-- Nothing else next to `NO_REPLY` — no reasons, no parentheses, no emojis.
-- NEVER output silence reasoning / situation analysis / "would loop if I keep talking" as a message.
-- NEVER output bracket-enclosed narration like `[silence]`, `[...]`, `(naturally wrapped up)`, `no reply`.
-- The runtime post-processor auto-drops `NO_REPLY` and reasoning-leak patterns — letting them
+=== Silence rule (CRITICAL — context-dependent) ===
+- `NO_REPLY` is for **persona dm/group chat** where silence really is the natural beat
+  (e.g. dm-* after both sides exchanged a clean farewell + no new prompt).
+- **Managers (mgr / creator / dev) NEVER use `NO_REPLY` in their owner channels**
+  (`mgr-dashboard`, `mgr-creator`, `mgr-dev-request`). Even on vague pivots like "그래"
+  or "애들끼리 놀게 두자" → engage (call a tool, status update, brief redirect). Manager
+  silence to owner reads as a broken bot.
+- Personas: `NO_REPLY` only after BOTH sides exchanged a clean farewell AND there is NO
+  new prompt. A vague prompt = engage, not silence.
+- Output rules when you DO choose silence (persona dm only):
+  - **Exactly one word: `NO_REPLY`** — no reasons, no parentheses, no emojis.
+  - NEVER write the reason ("would loop if I keep talking") or bracket narration like
+    `[silence]`, `[...]`, `(naturally wrapped up)`, `no reply`.
+- The runtime post-processor drops `NO_REPLY` and reasoning-leak patterns — letting them
   leak into chat exposes the character as buggy.
 {lang_instruction}
 """
