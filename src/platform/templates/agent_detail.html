@@ -326,7 +326,7 @@
         <div class="emotion-bar-fill" style="width:${intensityPct}%"></div>
         <div class="emotion-bar-text">${esc(d.emoji || '')} ${esc(d.emotion)}</div>
       </div>`;
-      statusLines.push(['Emotion', emotionHtml, true]);
+      statusLines.push(['감정', emotionHtml, true]);
     }
     if (d.status) {
       let statusLabel;
@@ -335,9 +335,9 @@
       else if (d.status === 'active') statusLabel = '<span style="color:var(--active,#10b981);font-weight:600">● Active</span>';
       else if (d.status === 'inactive') statusLabel = '<span style="color:var(--text-faint)">○ Inactive</span>';
       else statusLabel = '<span style="color:var(--text-dim)">○ ' + esc(d.status) + '</span>';
-      statusLines.push(['Status', statusLabel, true]);
+      statusLines.push(['상태', statusLabel, true]);
     }
-    if (d.model) statusLines.push(['Model', renderModelChips(d), true]);
+    if (d.model) statusLines.push(['모델', renderModelChips(d), true]);
 
     // ── 👤 프로필 섹션 (본질 정보 — 성격 / 직업 / 외모 / 말투 / 배경) ──
     const joinList = (arr) => (arr || []).map(esc).join(', ');
