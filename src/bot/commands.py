@@ -227,15 +227,22 @@ async def cmd_create_agent(ctx, *, concept: str):
         # DB 등록
         db.register_agent(new_id, "persona", profile["name"])
 
-        # 관계 설정 — 처음 추가되는 페르소나 → 어색~친구 default (db.INTIMACY_SCALE_DEFAULT).
-        if "relationship_to_owner" in profile:
-            rel_intimacy = profile["relationship_to_owner"].get("intimacy", db.INTIMACY_SCALE_DEFAULT)
-            db.add_relationship(
-                get_user_id(), new_id,
-                profile["relationship_to_owner"]["type"],
-                intimacy=rel_intimacy,
-                dynamics=profile["relationship_to_owner"].get("dynamics", "")
-            )
+        # 관계 설정 — null/missing 이어도 default row 강제. (mgr_system.py 와 동일 회귀 fix)
+        r2o = profile.get("relationship_to_owner")
+        if isinstance(r2o, dict):
+            rel_type = r2o.get("type") or "친구"
+            rel_intimacy = r2o.get("intimacy", db.INTIMACY_SCALE_DEFAULT)
+            rel_dynamics = r2o.get("dynamics", "")
+        else:
+            rel_type = "친구"
+            rel_intimacy = db.INTIMACY_SCALE_DEFAULT
+            rel_dynamics = ""
+        db.add_relationship(
+            get_user_id(), new_id,
+            rel_type,
+            intimacy=rel_intimacy,
+            dynamics=rel_dynamics,
+        )
 
         # 채널 매핑 갱신
         ch_name = f"dm-{profile['name']}"

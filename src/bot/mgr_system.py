@@ -1673,15 +1673,25 @@ async def _cmd_profile_create(report_channel, json_str):
         agent_type = profile.get("type", "persona")
         db.register_agent(profile["id"], agent_type, profile["name"])
 
-        # 관계 설정 — 오너 ↔ 새 페르소나는 처음 만나는 사이 → INTIMACY_SCALE_DEFAULT (30, 어색~친구).
-        # creator profile 에서 명시적으로 다른 값 주면 그걸 사용 (이미 친한 캐릭터 컨셉 등).
-        if "relationship_to_owner" in profile:
-            rel_intimacy = profile["relationship_to_owner"].get("intimacy", db.INTIMACY_SCALE_DEFAULT)
+        # 관계 설정 — 페르소나는 무조건 오너와 row 생성 (없으면 default).
+        # 이전엔 `if "relationship_to_owner" in profile` 였는데 Hana 가 null 로 적으면
+        # `None.get()` AttributeError → silently fail → row 안 생성 → 그래프에서 관계 없음 회귀.
+        # 명시적 dict 면 그 값 사용, 그 외엔 default 30 + "친구" 로 강제 생성.
+        if agent_type == "persona":
+            r2o = profile.get("relationship_to_owner")
+            if isinstance(r2o, dict):
+                rel_type = r2o.get("type") or "친구"
+                rel_intimacy = r2o.get("intimacy", db.INTIMACY_SCALE_DEFAULT)
+                rel_dynamics = r2o.get("dynamics", "")
+            else:
+                rel_type = "친구"
+                rel_intimacy = db.INTIMACY_SCALE_DEFAULT
+                rel_dynamics = ""
             db.add_relationship(
                 get_user_id(), profile["id"],
-                profile["relationship_to_owner"]["type"],
+                rel_type,
                 intimacy=rel_intimacy,
-                dynamics=profile["relationship_to_owner"].get("dynamics", "")
+                dynamics=rel_dynamics,
             )
 
         runtime.activate_agent(profile["id"])
