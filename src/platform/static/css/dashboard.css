@@ -1055,6 +1055,23 @@
     .view { padding: 12px 12px; overflow-x: hidden; }
     main { overflow-x: hidden; }
 
+    /* Hero (상단 커뮤니티 헤더) — 모바일에선 아바타 줄 줄바꿈 + 작은 사이즈 + min-width 0 으로
+       gallery 가 viewport 옆으로 늘어나는 거 차단 (demo/private 9 agents 옆으로 잘리던 회귀). */
+    .hero-row { flex-wrap: wrap; gap: 12px; }
+    .hero-avatars {
+      flex-wrap: wrap;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .hero-text { flex-basis: 100%; min-width: 0; }
+    .avatar.xl {
+      width: 44px; height: 44px; border-width: 2px;
+    }
+    .avatar.xl .emoji-badge {
+      width: 18px; height: 18px; font-size: 11px; bottom: -3px; right: -3px;
+    }
+    .hero-avatars .avatar { margin-left: -10px; }
+
     /* Overview KPI — 단일 컬럼 */
     .overview-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
     .kpi { padding: 10px 12px; }
