@@ -220,6 +220,47 @@ class TestUserBot(discord.Client):
         print("[TestUser] mgr-dashboard 채널 없음 — 타임아웃")
         await self.close()
 
+    def _seed_conversation_from_db(self, limit: int = 60):
+        """봇 재시작 시 community DB 의 최근 대화를 self.conversation 에 seed.
+        in-memory list 만 쓰면 재시작마다 빈이가 amnesia 상태 → 컨텍스트 무지 + 같은 인사 반복.
+        DB 의 conversations 테이블에서 빈이가 활동했던 채널들의 최근 메시지를 시간순 로드.
+        """
+        try:
+            import sqlite3
+            db_path = os.path.join(self._qa_log_dir(), "..", "community.db")
+            db_path = os.path.abspath(db_path)
+            if not os.path.exists(db_path):
+                return
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            # 빈이 시점에 의미있는 채널 — mgr-dashboard, mgr-creator, dm-*, group-* 만.
+            # internal-* 는 빈이가 못 보는 영역. mgr-dev-request 도 admin 영역이라 skip.
+            rows = conn.execute(
+                "SELECT c.channel, c.speaker, c.message, c.timestamp, "
+                "  COALESCE(a.name, u.name, c.speaker) as speaker_name, "
+                "  CASE WHEN u.id IS NOT NULL THEN 'user' ELSE 'agent' END as role "
+                "FROM conversations c "
+                "LEFT JOIN agents a ON a.id = c.speaker "
+                "LEFT JOIN users u ON u.id = c.speaker "
+                "WHERE (c.channel = 'mgr-dashboard' OR c.channel = 'mgr-creator' "
+                "       OR c.channel LIKE 'dm-%' OR c.channel LIKE 'group-%') "
+                "ORDER BY c.id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            conn.close()
+            # 시간순 (오래된 → 최신)
+            for r in reversed(rows):
+                self.conversation.append({
+                    "role": r["role"],
+                    "name": r["speaker_name"] or "",
+                    "text": r["message"] or "",
+                    "channel": r["channel"],
+                })
+            if rows:
+                print(f"[TestUser] DB 에서 {len(rows)}건 대화 seed (재시작 amnesia 방지)")
+        except Exception as e:
+            print(f"[TestUser] conversation seed 실패 (무시): {e}")
+
     async def _wait_for_first_message(self):
         """유나의 첫 인사를 기다림. 이미 튜토리얼 완료된 resume 모드면 skip."""
         # Resume 감지: DB meta.tutorial_phase == 'complete' 면 새 인사 안 옴 → 스킵
@@ -235,6 +276,8 @@ class TestUserBot(discord.Client):
                 conn.close()
                 if row and row[0] == "complete":
                     print("[TestUser] resume 감지 — 튜토리얼 이미 완료, 바로 대화 루프 시작")
+                    # 재시작 amnesia 방지 — 최근 대화 seed
+                    self._seed_conversation_from_db(limit=60)
                     await asyncio.sleep(random.uniform(2.0, 4.0))
                     # resume 모드에선 test_user 가 먼저 말 걸어야 함 (유나 첫 인사 없음).
                     # 이전엔 return 만 하고 _conversation_loop 시작 안 해서 dead — cycle 묵묵 48분+.
@@ -253,6 +296,8 @@ class TestUserBot(discord.Client):
                     if hist_msg.webhook_id and hist_msg.author != self.user:
                         # 이전 인사 발견 → 첫 인사 단계 스킵
                         print("[TestUser] 늦은 합류 감지 — 유나 인사 이미 도착, 바로 대화 시작")
+                        # 재시작 amnesia 방지 — 최근 대화 seed
+                        self._seed_conversation_from_db(limit=60)
                         await asyncio.sleep(random.uniform(2.0, 4.0))
                         asyncio.create_task(self._conversation_loop())
                         return
