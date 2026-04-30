@@ -113,10 +113,10 @@ const I18N_UNUSED_OLD = {
     no_msgs: '대화 없음',
     no_trash: '휴지통 비어있음',
     // Field labels
-    f_age: 'Age', f_mbti: 'MBTI', f_enneagram: 'Enneagram', f_traits: 'Traits',
-    f_emotion: 'Emotion', f_status: 'Status', f_model: 'Model', f_owner: 'Owner',
-    f_background: 'Background',
-    f_started: '시작', f_completed: '완료', f_last_active: 'last active',
+    f_age: '나이', f_mbti: 'MBTI', f_enneagram: '에니어그램', f_traits: '성격 특성',
+    f_emotion: '감정', f_status: '상태', f_model: '모델', f_owner: '오너',
+    f_background: '배경',
+    f_started: '시작', f_completed: '완료', f_last_active: '마지막 활동',
     // Sync
     sync_guard_running: 'ℹ 서버 실행 중 — Sync 버튼 클릭 시 자동으로 서버 중단 → 작업 → 재시작 진행. 취소 버튼 제공됨.',
     sync_guard_stopped: '○ 서버 오프라인 — 모든 sync 작업 즉시 가능.',
@@ -1059,9 +1059,9 @@ async function openAgent(id) {
     <div class="detail-section" style="margin-top:0">
       <h4>📊 상태</h4>
       <dl class="kv">
-        ${emotionLine ? `<dt>Emotion</dt><dd>${emotionLine}</dd>` : ''}
-        <dt>Status</dt><dd>${statusHtml}</dd>
-        ${modelHtml ? `<dt>Model</dt><dd>${modelHtml}</dd>` : ''}
+        ${emotionLine ? `<dt>${T('f_emotion')}</dt><dd>${emotionLine}</dd>` : ''}
+        <dt>${T('f_status')}</dt><dd>${statusHtml}</dd>
+        ${modelHtml ? `<dt>${T('f_model')}</dt><dd>${modelHtml}</dd>` : ''}
       </dl>
     </div>
     <div class="detail-section">
