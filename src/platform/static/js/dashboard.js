@@ -678,15 +678,44 @@ function renderChannelsGrouped(channels) {
   return html || '<div class="empty">no channels</div>';
 }
 
+// 이벤트 타입 → 한글 라벨 + 이모지 매핑.
+// raw key 가 어색하거나 (dm_request) 살짝 다듬을 가치 있는 한글 (멤버합류) 모두 보정.
+const EVENT_TYPE_META = {
+  // 시스템/요청
+  'dm_request':       { label: 'DM 요청',     icon: '✉️' },
+  '멤버합류':           { label: '새 친구 추가', icon: '🎉' },
+  '튜토리얼시작':       { label: '튜토리얼 시작', icon: '🚀' },
+  '튜토리얼완료':       { label: '튜토리얼 완료', icon: '🎓' },
+  '페르소나생성':       { label: '캐릭터 생성',   icon: '✨' },
+  '페르소나추가':       { label: '친구 추가',    icon: '🌱' },
+  '톡방생성':           { label: '톡방 생성',    icon: '💬' },
+  '단톡방생성':         { label: '단톡방 생성',  icon: '👥' },
+  '비밀톡방생성':       { label: '비밀톡방',     icon: '🤫' },
+  '그룹생성':           { label: '그룹 생성',    icon: '👥' },
+  // 관계
+  '관계강화':           { label: '관계 강화',    icon: '💗' },
+  '관계갈등':           { label: '관계 갈등',    icon: '⚡' },
+  '관계진화':           { label: '관계 진화',    icon: '🌟' },
+  '화해':               { label: '화해',         icon: '🤝' },
+  '매칭메이킹':         { label: '매칭메이킹',   icon: '🎯' },
+  // 일상
+  '심야대화':           { label: '심야 대화',    icon: '🌙' },
+  '자율대화':           { label: '자율 대화',    icon: '🔄' },
+  '회사이벤트':         { label: '회사 이벤트',  icon: '🏢' },
+  '작업성과':           { label: '작업 성과',    icon: '🎨' },
+  '기념일임박':         { label: '기념일 임박',  icon: '🎁' },
+  '감정변화':           { label: '감정 변화',    icon: '💭' },
+  '새오너접속':         { label: '오너 복귀',    icon: '👋' },
+};
+
 function renderEvent(e) {
-  // impact 별 색상: 긍정=초록, 주의=주황, 마일스톤=accent, 기본=텍스트
+  const meta = EVENT_TYPE_META[e.type] || { label: e.type, icon: '◇' };
   const impactCls = {
-    '긍정': 'impact-positive',
-    '주의': 'impact-warn',
-    '마일스톤': 'impact-milestone',
-  }[e.impact] || '';
+    '긍정':       'impact-positive',
+    '주의':       'impact-warn',
+    '마일스톤':   'impact-milestone',
+  }[e.impact] || 'impact-neutral';
   const participants = Array.isArray(e.participants) ? e.participants : [];
-  // owner / agent ID → 표시용 이름 (snap.agents 에서 lookup)
   const lookupName = (id) => {
     if (id === 'owner' || id === 'jaebin') {
       const cur = window.__GLIMI_LAST_SNAP__ || {};
@@ -695,14 +724,34 @@ function renderEvent(e) {
     const ag = (window.__GLIMI_LAST_SNAP__?.agents || []).find(a => a.id === id);
     return ag?.name || id;
   };
+  // 참여자 칩 — owner 는 핑크, 일반은 회색
   const partsHtml = participants.length
-    ? `<span class="parts">${participants.map(p => `<span class="part">${esc(lookupName(p))}</span>`).join('')}</span>`
+    ? participants.slice(0, 4).map(p => {
+        const isOwner = p === 'owner' || p === 'jaebin';
+        return `<span class="ev-part ${isOwner ? 'ev-part-owner' : ''}">${esc(lookupName(p))}</span>`;
+      }).join('') + (participants.length > 4 ? `<span class="ev-part-more">+${participants.length - 4}</span>` : '')
     : '';
-  return `<div class="event ${impactCls}">
-    <span class="type">${esc(e.type)}</span>
-    ${partsHtml}
-    <span class="desc">${esc(e.description)}</span>
-    <span class="ts">${esc(fmtLocalHMS(e.timestamp))}</span>
+  // 시간 — fmtLocalHMS 가 분 + 초까지 — 이벤트는 더 큰 단위 적합. 상대시간 표기.
+  const relTime = (() => {
+    if (!e.timestamp) return '';
+    try {
+      const dt = _parseServerTs(e.timestamp);
+      if (!dt || isNaN(dt.getTime())) return e.timestamp.slice(11, 16);
+      const secs = (Date.now() - dt.getTime()) / 1000;
+      if (secs < 60) return '방금';
+      if (secs < 3600) return `${Math.floor(secs / 60)}분 전`;
+      if (secs < 86400) return `${Math.floor(secs / 3600)}시간 전`;
+      if (secs < 86400 * 7) return `${Math.floor(secs / 86400)}일 전`;
+      return `${Math.floor(secs / 86400 / 7)}주 전`;
+    } catch { return ''; }
+  })();
+  return `<div class="event-card ${impactCls}" title="${esc(e.timestamp)}">
+    <div class="ev-head">
+      <span class="ev-badge">${meta.icon} ${esc(meta.label)}</span>
+      ${partsHtml ? `<span class="ev-parts">${partsHtml}</span>` : ''}
+      <span class="ev-time">${relTime}</span>
+    </div>
+    <div class="ev-desc">${esc(e.description)}</div>
   </div>`;
 }
 
