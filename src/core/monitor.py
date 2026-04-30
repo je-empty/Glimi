@@ -1439,7 +1439,14 @@ def get_supervisors() -> list[dict]:
                 with open(snap_path, "r", encoding="utf-8") as f:
                     data = _json.load(f)
                 items = data.get("items", [])
-                live_sups = [_SupShim(it) for it in items if it.get("active", True)]
+                # registered (pool 등록 여부) 로 필터 — active 는 "현재 일하는 중" 이라
+                # idle 한 supervisor 도 그래프에 보여야 함 (사용자 요청: 항상 가시화).
+                # _active 필드는 visual dim 용으로 그대로 전달.
+                live_sups = [
+                    _SupShim(it, _active=bool(it.get("active", True)))
+                    for it in items
+                    if it.get("registered", it.get("active", True))
+                ]
                 if live_sups:
                     snapshot_loaded = True
         except Exception:
