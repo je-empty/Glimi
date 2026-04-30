@@ -804,17 +804,94 @@
   .event .type { color: var(--cmd); font-weight: 600; margin-right: 8px; }
   .event .desc { color: var(--text-dim); }
   .event .ts { color: var(--text-faint); font-size: 10px; margin-left: 6px; }
-  .event .parts { display: inline-flex; gap: 4px; margin-right: 8px; }
-  .event .parts .part {
-    background: var(--panel-2); color: var(--text-dim);
-    padding: 1px 6px; border-radius: 3px; font-size: 10.5px;
+
+  /* event-card — 신 디자인. 카드 형태, 헤더(뱃지+참여자+시간) + description. */
+  .event-card {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-faint);
+    border-radius: 8px;
+    transition: border-color 0.2s, background 0.2s;
   }
-  .event.impact-positive .type { color: #10b981; }
-  .event.impact-positive { border-left: 2px solid #10b981; padding-left: 8px; }
-  .event.impact-warn .type { color: #f59e0b; }
-  .event.impact-warn { border-left: 2px solid #f59e0b; padding-left: 8px; }
-  .event.impact-milestone .type { color: var(--accent-2); font-weight: 700; }
-  .event.impact-milestone { border-left: 2px solid var(--accent-2); padding-left: 8px; background: color-mix(in srgb, var(--accent-2) 5%, transparent); }
+  .event-card:hover { border-color: var(--accent); }
+  .event-card .ev-head {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 8px; min-width: 0;
+  }
+  .event-card .ev-badge {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px;
+    background: var(--panel-2);
+    border-radius: 12px;
+    font-size: 11.5px; font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .event-card .ev-parts {
+    display: inline-flex; flex-wrap: wrap; gap: 4px;
+    flex: 1 1 auto; min-width: 0;
+  }
+  .event-card .ev-parts .ev-part {
+    padding: 2px 8px;
+    background: var(--panel-2);
+    border-radius: 4px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .event-card .ev-parts .ev-part-owner {
+    background: color-mix(in srgb, var(--user, #db2777) 18%, transparent);
+    color: var(--user, #db2777);
+    font-weight: 600;
+  }
+  .event-card .ev-parts .ev-part-more {
+    padding: 2px 6px;
+    color: var(--text-faint);
+    font-size: 10.5px;
+    align-self: center;
+  }
+  .event-card .ev-time {
+    flex-shrink: 0;
+    color: var(--text-faint);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+  }
+  .event-card .ev-desc {
+    color: var(--text-dim);
+    font-size: 12.5px;
+    line-height: 1.55;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    /* 잘림 회귀 fix: 명시적 줄바꿈 허용, ellipsis 제거 */
+    white-space: normal;
+  }
+
+  /* impact 별 좌측 보더 + 뱃지 강조 */
+  .event-card.impact-positive { border-left-color: #10b981; }
+  .event-card.impact-positive .ev-badge {
+    background: color-mix(in srgb, #10b981 14%, transparent);
+    color: #10b981;
+  }
+  .event-card.impact-warn { border-left-color: #f59e0b; }
+  .event-card.impact-warn .ev-badge {
+    background: color-mix(in srgb, #f59e0b 14%, transparent);
+    color: #f59e0b;
+  }
+  .event-card.impact-milestone {
+    border-left-color: var(--accent-2);
+    background: color-mix(in srgb, var(--accent-2) 4%, var(--panel));
+  }
+  .event-card.impact-milestone .ev-badge {
+    background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+    color: var(--accent-2);
+    font-weight: 700;
+  }
+  .event-card.impact-neutral { border-left-color: var(--text-faint); }
 
   /* ==== Log ==== */
   .log-view {
