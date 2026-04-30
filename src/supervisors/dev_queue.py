@@ -82,10 +82,14 @@ class DevQueueSupervisor(Supervisor):
             from src.core.runtime import runtime
             from src.bot.core import send_as_agent
             from src.bot.mgr_system import parse_and_execute_actions
-            responses = await runtime.generate_response_force(
-                agent_id=DEV_ID,
-                channel=DEV_CHANNEL,
-                user_message=user_msg,
+            import asyncio as _asyncio
+            # generate_response_force 는 sync + 내부에서 subprocess.run(claude CLI, 120s) 호출.
+            # 그냥 await 했더니 sync 함수는 list 반환하지만 event loop 가 120s 동안 블록 →
+            # paced_sender 워커 못 돌아서 Discord 메시지 안 나가던 회귀. asyncio.to_thread 로
+            # 워커 스레드에서 실행 → event loop 자유.
+            responses = await _asyncio.to_thread(
+                runtime.generate_response_force,
+                DEV_ID, DEV_CHANNEL, user_msg,
             )
             # tool 호출 dispatch (dev_organize / dev_escalate / dev_clarify) — 응답 텍스트와
             # 별개로 runtime 이 stash 한 tool_calls 를 ToolContext 로 실행.
