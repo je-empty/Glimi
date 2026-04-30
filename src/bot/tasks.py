@@ -108,15 +108,13 @@ async def on_ready():
             log_writer.system(f"  [{i}/{len(profiles)}] {name} ({agent_type}) 활성화")
             runtime.activate_agent(p["id"])
 
-    # qa/test 같은 특수 커뮤니티 — 한세나 (dev) 도 봇 시작 시 자동 seed.
-    # 일반 커뮤니티는 lazy (request_dev_fix 첫 호출 시) — 사용자한테 굳이 노출할 필요 없음.
+    # 한세나 (dev) 모든 커뮤니티 봇 시작 시 자동 시드. 가시성은 별개 (가시성 필터가
+    # 일반 커뮤니티 + 비-admin 한테 자동 숨김 처리). DB 에 항상 존재해야 첫 request_dev_fix
+    # 호출 시 race 없이 즉시 invoke 가능.
     try:
-        from src import community as _community
-        cid = _community.get_community_id() or ""
-        if cid in ("qa", "test"):
-            from src.core.dev_agent import ensure_dev_seeded
-            if ensure_dev_seeded():
-                log_writer.system("[startup] 한세나 (dev) auto-seeded for special community")
+        from src.core.dev_agent import ensure_dev_seeded
+        if ensure_dev_seeded():
+            log_writer.system("[startup] 한세나 (dev) auto-seeded")
     except Exception as _e:
         log_writer.system(f"[startup] dev auto-seed 실패 (skip): {_e}")
 

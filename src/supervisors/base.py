@@ -52,6 +52,14 @@ class Supervisor:
         system: 항상 True"""
         return True
 
+    def is_active(self) -> bool:
+        """현재 실제로 'active' 인지 (pool 등록 여부 ≠ active 여부).
+        기본 True. 큐 기반 system supervisor (예: DevQueueSupervisor) 는 큐 비어있을 때
+        False 반환해서 UI 가 'idle' 로 표시. should_exist 와는 다름 — should_exist 는
+        등록 자체 여부, is_active 는 표시용 활성 여부.
+        """
+        return True
+
     # ── 유틸 ───────────────────────────────────────────────
 
     def __repr__(self) -> str:
@@ -215,6 +223,14 @@ class SupervisorPool:
             import logging
             logging.getLogger("glimi.supervisor").warning(
                 f"DevQueueSupervisor 등록 실패: {e}"
+            )
+        try:
+            from src.supervisors.commitment import CommitmentSupervisor
+            self.register(CommitmentSupervisor())
+        except Exception as e:
+            import logging
+            logging.getLogger("glimi.supervisor").warning(
+                f"CommitmentSupervisor 등록 실패: {e}"
             )
 
     # ── Tick ───────────────────────────────────────────────
