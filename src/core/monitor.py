@@ -1531,9 +1531,11 @@ def get_supervisors() -> list[dict]:
             "icon": _icon(name),
             "description": sup.display_name or name,
             "interval_sec": sup.interval,
-            # live(봇 프로세스 pool): True / snapshot fallback: True /
-            # offline enumerate: False (shim._active 참조)
-            "active": getattr(sup, "_active", True),
+            # live(봇 프로세스 pool): supervisor.is_active() (큐 기반 supervisor 가 idle 표시)
+            # snapshot fallback (Shim): _active 직접 참조
+            # offline enumerate: False
+            "active": (sup.is_active() if hasattr(sup, "is_active") and not hasattr(sup, "_active")
+                       else getattr(sup, "_active", True)),
             "target_agents": targets,
             "recent_logs": sup_logs,
             "last_action": last_action,

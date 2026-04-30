@@ -19,7 +19,16 @@ class DevQueueSupervisor(Supervisor):
     interval = 30.0  # 30s 마다 폴링
 
     def should_exist(self) -> bool:
-        return True  # 봇 수명 내내 유지
+        return True  # 봇 수명 내내 유지 (큐 비어있어도 등록은 유지)
+
+    def is_active(self) -> bool:
+        """큐에 처리할 요청 (pending/analyzed/approved/queued/processing) 있을 때만 active.
+        그 외엔 idle — UI 에서 회색 표시되어 '대기' 상태임이 명확."""
+        try:
+            from src.core.dev_agent import has_active_work
+            return has_active_work()
+        except Exception:
+            return False
 
     async def check(self, ctx: dict) -> None:
         guild = ctx.get("guild")
