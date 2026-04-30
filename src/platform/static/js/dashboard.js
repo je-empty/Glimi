@@ -2306,10 +2306,23 @@ function mountCytoscapeGraph(snap) {
     evt.target.removeClass('hl');
   });
 
-  // 레이아웃 끝나고 명시적으로 fit (concentric 의 fit:true 가 spacingFactor 큰 경우 overflow)
+  // 레이아웃 끝나고 명시적으로 fit. 모바일은 viewport 좁아서 padding 작게 (15) — 노드 다 보이게.
   cyInstance.ready(() => {
-    cyInstance.fit(undefined, fullscreen ? 140 : 25);
+    const isMobile = window.matchMedia('(max-width: 720px)').matches;
+    cyInstance.fit(undefined, fullscreen ? 140 : (isMobile ? 12 : 25));
   });
+  // 윈도우 리사이즈 / 회전 시 그래프 자동 리핏 (모바일 회전 + 데스크 줄임 대응)
+  if (!cyInstance._resizeBound) {
+    const _onResize = () => {
+      try {
+        cyInstance.resize();
+        const isMobile = window.matchMedia('(max-width: 720px)').matches;
+        cyInstance.fit(undefined, isMobile ? 12 : 25);
+      } catch {}
+    };
+    window.addEventListener('resize', _onResize);
+    cyInstance._resizeBound = true;
+  }
 
   // 노드 펄스용 색상 stash. thinking 머스타드 노랑은 따뜻한 아바타 위에 더러워보여서
   // 차분한 accent (indigo)로 통일. speaking 만 cyan 유지 (대비)
