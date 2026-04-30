@@ -137,6 +137,24 @@ EMOTION_EMOJI = {
 }
 
 
+def _resolve_emoji(emotion: str) -> str:
+    """src.core.emotion_emoji 에 위임 (community override + 확장 static + fallback).
+    레거시 EMOTION_EMOJI 는 호환용으로 남겨둠 (직접 import 하는 외부 코드용)."""
+    try:
+        from src.core.emotion_emoji import emoji_for
+        return emoji_for(emotion or "")
+    except Exception:
+        return EMOTION_EMOJI.get(emotion or "", "・")
+
+
+def _intensity_band(intensity) -> str:
+    try:
+        from src.core.emotion_emoji import intensity_band
+        return intensity_band(intensity)
+    except Exception:
+        return "low"
+
+
 def _get_agent_model(agent_id: str, agent_type: str) -> dict:
     """에이전트 사용 모델 정보 조회.
 
@@ -231,8 +249,9 @@ def get_agents() -> list[dict]:
             "name": a.get("name", aid),
             "status": display_status,
             "emotion": emo,
-            "emoji": EMOTION_EMOJI.get(emo, "・"),
+            "emoji": _resolve_emoji(emo),
             "intensity": a.get("emotion_intensity", 0) or 0,
+            "intensity_band": _intensity_band(a.get("emotion_intensity", 0) or 0),
             "mbti": a.get("mbti", ""),
             "age": a.get("age", 0) or 0,
             "last_active": a.get("last_active", ""),
@@ -673,8 +692,9 @@ def get_agent_detail(agent_id: str) -> dict:
         "type": atype,
         "status": agent.get("status", ""),
         "emotion": emo,
-        "emoji": EMOTION_EMOJI.get(emo, "・"),
+        "emoji": _resolve_emoji(emo),
         "intensity": agent.get("emotion_intensity", 0) or 0,
+        "intensity_band": _intensity_band(agent.get("emotion_intensity", 0) or 0),
         "mbti": agent.get("mbti", "") or (profile.get("mbti", "") if profile else ""),
         "age": agent.get("age", 0) or 0,
         "birth_year": agent.get("birth_year", 0) or 0,

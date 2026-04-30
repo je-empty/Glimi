@@ -72,6 +72,37 @@ def _now_iso() -> str:
 
 # ── dev_requests 큐 (platform.db, 글로벌) ──────────────────
 
+def find_similar_recent_request(
+    community_id: str,
+    payload: dict,
+    window_minutes: int = 60,
+) -> Optional[dict]:
+    """같은 community 의 pending/analyzed 요청 중, 같은 channel · 같은 severity 로
+    최근 N 분 안에 적재된 row 가 있으면 반환. dedup gate 용.
+
+    호출 측이 None 이 아니면 새 INSERT 안 하고 기존 request_id 반환해서
+    동일 버그 중복 보고 차단 (2026-04-30 유나가 같은 "메시지 중복 버그" 7회 보고 회귀).
+    """
+    ch = (payload or {}).get("channel", "")
+    sev = (payload or {}).get("severity", "")
+    if not ch or not sev:
+        return None
+    conn = _platform_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM dev_requests "
+            "WHERE community_id=? AND status IN ('pending','analyzed') "
+            "  AND severity=? "
+            "  AND json_extract(payload_json, '$.channel')=? "
+            "  AND requested_at >= datetime('now', ?) "
+            "ORDER BY id DESC LIMIT 1",
+            (community_id, sev, ch, f"-{window_minutes} minutes"),
+        ).fetchone()
+    finally:
+        conn.close()
+    return dict(row) if row else None
+
+
 def enqueue_dev_request(
     community_id: str,
     requested_by: str,

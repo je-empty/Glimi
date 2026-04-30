@@ -360,8 +360,11 @@ class TestUserBot(discord.Client):
         # _pick_reply_channel이 conversation 로그를 스캔해서 올바른 채널을 고름.
         # (중간에 바꾸면 생성 중인 응답 내용과 대상 채널이 어긋남)
 
-        # 응답 대기 중이면 알림
+        # 응답 대기 중이면 알림 + 선제 재시동 streak 리셋
         if self.waiting_for_response:
+            # agent 가 응답해줬으니 reboot streak 0으로 — 다음 stall 시 다시 4회 허용
+            if hasattr(self, "_proactive_streak"):
+                self._proactive_streak = 0
             # 연속 메시지 대기 (에이전트가 여러 줄 보낼 수 있음)
             self._pending_messages.append(message.content)
             # 짧은 대기 후 더 안 오면 응답 완료로 판단
@@ -434,8 +437,22 @@ class TestUserBot(discord.Client):
                 # NO_REPLY (의도된 침묵) 면 agent 응답 대기 스킵 — 다음 턴에서 채널 재선택.
                 # 안 그러면 idle timeout 누적되어 조기 종료 회귀.
                 if not spoke:
-                    await asyncio.sleep(random.uniform(*REPLY_DELAY))
+                    if not hasattr(self, "_no_reply_streak"):
+                        self._no_reply_streak = 0
+                    self._no_reply_streak += 1
+                    # 2회 연속 NO_REPLY = ack-echo 루프 확정. 채널 강제 전환 (dm-* 우선)
+                    # 또는 mission proactive 발화로 탈출. idle timeout 240s 기다리지 않음.
+                    if self._no_reply_streak >= 2:
+                        print(f"[TestUser] NO_REPLY {self._no_reply_streak}연속 — 강제 pivot")
+                        if not await self._proactive_reboot(f"NO_REPLY {self._no_reply_streak}연속"):
+                            print("[TestUser] pivot 실패 — 종료")
+                            break
+                        self._no_reply_streak = 0
+                    else:
+                        await asyncio.sleep(random.uniform(*REPLY_DELAY))
                     continue
+                # 발화 성공 → streak 리셋
+                self._no_reply_streak = 0
 
                 # 에이전트 응답 대기
                 self.waiting_for_response = True
@@ -850,12 +867,13 @@ class TestUserBot(discord.Client):
         """에이전트 idle + mission 미완 시 테스트 유저가 다음 주제 선제 발화로 대화 재시동.
         성공 시 True (루프 계속), 실패 시 False (break 허용).
 
-        _proactive_count 로 최대 3회 제한 — 무한 루프 방지.
+        _proactive_streak: 마지막 agent 응답 이후 연속 reboot 횟수. 응답 받으면 리셋.
+        연속 4회까지 허용 — 그 이상이면 진짜로 봇이 죽은 것.
         """
-        if not hasattr(self, "_proactive_count"):
-            self._proactive_count = 0
-        if self._proactive_count >= 3:
-            print(f"[TestUser] 선제 재시동 3회 소진 — {reason}")
+        if not hasattr(self, "_proactive_streak"):
+            self._proactive_streak = 0
+        if self._proactive_streak >= 4:
+            print(f"[TestUser] 선제 재시동 streak 4회 소진 — {reason}")
             return False
         m = self._current_mission()
         mode = m.get("mode", "tutorial")
@@ -871,7 +889,21 @@ class TestUserBot(discord.Client):
         msg = ""
         target_channel_name = "mgr-dashboard"
 
-        if mode in ("three_friends", "first_friend_chat"):
+        # NO_REPLY ack-echo 루프 탈출용 — 현재 채널이 mgr-dashboard 인 상태로 stuck 이면
+        # 무조건 dm-* 중 아무거나 들어가서 새 대화 시작 (mission 무관).
+        cur_ch = self.target_channel.name if self.target_channel else ""
+        if "NO_REPLY" in reason and cur_ch in ("mgr-dashboard", "mgr-creator"):
+            for g in self.guilds:
+                for ch in g.text_channels:
+                    if ch.name.startswith("dm-"):
+                        target = ch
+                        target_channel_name = ch.name
+                        friend = ch.name[3:]  # strip "dm-"
+                        msg = f"야 {friend}아 뭐해? 심심해서 왔어 ㅋㅋ"
+                        break
+                if target: break
+
+        if not target and mode in ("three_friends", "first_friend_chat"):
             untalked = self._pick_untalked_friend(progress.get("talked_to") or [])
             if untalked:
                 dm_ch_name = f"dm-{untalked}"
@@ -885,7 +917,10 @@ class TestUserBot(discord.Client):
                 if target:
                     msg = f"야 {untalked}아 잘 지내? 요즘 뭐하고 지내?"
 
-        # fallback / 그 외 mission → mgr-dashboard 로 유나한테 요청
+        # fallback / 그 외 mission → mgr-dashboard 로 유나한테 요청.
+        # **중요**: 모든 mission 에 자연스러운 한 줄 발화를 매핑해야 함.
+        # 누락되면 fallback 으로 hint 첫 40 글자가 그대로 디스코드에 발화돼서
+        # 빈이가 미션 지시문 그대로 타이핑하는 회귀 발생 (drama phase 에서 관찰됨).
         if not target:
             proactive_msgs = {
                 "first_friend_chat": "아 맞다 아까 만든 친구한테 말 걸어볼게 ㅋㅋ",
@@ -893,8 +928,18 @@ class TestUserBot(discord.Client):
                 "group_chat": "우리 친구들이랑 다같이 그룹 채팅방 하나 만들어줄래?",
                 "peek_internal": "친구들끼리 지들끼리도 대화 좀 하게 해줘 궁금해",
                 "agent_auto_chat": "애들끼리 알아서 수다 떨게 두자",
+                "matchmaker": "유나야 친구들끼리 서로 소개도 해주고 싶은데 — 둘이 잘 맞을 거 같은 애들 묶어줄까?",
+                "first_conflict": "유나야 친구들 사이에 좀 미묘한 분위기 있는 거 같은데 한 번 살펴봐 줘",
+                "many_friends": "유나야 친구 한 명 더 있으면 좋을 거 같아, 추천해줄래?",
+                "reconciliation": "유나야 친구들 분위기 다시 풀어줘야 할 거 같애. 도와줘",
+                "drama_freeplay": "유나야 요즘 친구들 어떻게 지내? 근황 좀 묶어서 알려줘",
             }
-            msg = proactive_msgs.get(mode, f"그래서 {hint[:40]}")
+            msg = proactive_msgs.get(mode)
+            if not msg:
+                # 안전 fallback — 새 mission 추가됐는데 매핑 누락된 케이스.
+                # hint 를 노출하지 말고 generic 한 발화로 대체.
+                print(f"[TestUser] WARN: proactive_msgs 누락 mode={mode!r} — generic fallback")
+                msg = "유나야 다음 뭐 할까? 심심하다"
             for g in self.guilds:
                 for ch in g.text_channels:
                     if ch.name == "mgr-dashboard":
@@ -902,15 +947,51 @@ class TestUserBot(discord.Client):
                 if target: break
         if not target:
             return False
+
+        # ── 동일 메시지 dedup (5분 cooldown) ───────────────────────
+        # matchmaker 같은 mission 에 발이 묶여서 같은 proactive_msg 가 27회 연속 발화되는
+        # 회귀 (2026-04-30 관찰) 방지. (channel, msg) 키로 마지막 발화 시각 추적.
+        # 5분 안에 같은 조합이면 강제 dm-* pivot (재미션 진척 안 되니 다른 채널로).
+        if not hasattr(self, "_proactive_history"):
+            self._proactive_history: dict[tuple, float] = {}
+        now_ts = time.time()
+        key = (target_channel_name, msg)
+        last_sent = self._proactive_history.get(key, 0.0)
+        if now_ts - last_sent < 300:
+            print(f"[TestUser] dedup: 5분 내 동일 발화 ({target_channel_name}: {msg[:40]}...) → dm-* pivot 시도")
+            # dm-* 중 아무거나 골라서 generic 발화
+            dm_target = None
+            for g in self.guilds:
+                for ch in g.text_channels:
+                    if ch.name.startswith("dm-"):
+                        dm_target = ch
+                        break
+                if dm_target: break
+            if dm_target:
+                friend = dm_target.name[3:]
+                pivot_msg = f"야 {friend}아 뭐해 ㅋㅋ"
+                pivot_key = (dm_target.name, pivot_msg)
+                if now_ts - self._proactive_history.get(pivot_key, 0.0) < 300:
+                    # dm 도 dedup hit — 그냥 종료
+                    print("[TestUser] dm-* pivot 도 dedup — 재시동 포기")
+                    return False
+                target = dm_target
+                target_channel_name = dm_target.name
+                msg = pivot_msg
+            else:
+                return False  # 갈 곳 없음
+        # ────────────────────────────────────────────────────
+
         try:
             await target.send(msg)
+            self._proactive_history[(target_channel_name, msg)] = now_ts
             self.conversation.append({
                 "role": "user", "name": _QA_NAME, "text": msg, "channel": target_channel_name,
             })
             self.target_channel = target
             self.turn_count += 1
-            self._proactive_count += 1
-            print(f"[#{target_channel_name}] [{_QA_NAME}] {msg}  ← [선제 재시동 #{self._proactive_count}, mission={mode}, 사유={reason}]")
+            self._proactive_streak += 1
+            print(f"[#{target_channel_name}] [{_QA_NAME}] {msg}  ← [선제 재시동 streak#{self._proactive_streak}, mission={mode}, 사유={reason}]")
             # 응답 대기 리셋
             self.waiting_for_response = True
             self._response_event.clear()

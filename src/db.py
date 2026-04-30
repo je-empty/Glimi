@@ -513,7 +513,27 @@ def list_agents(agent_type: Optional[str] = None) -> list[dict]:
 
 # === Relationship CRUD ===
 
-def add_relationship(agent_a: str, agent_b: str, rel_type: str, intimacy: int = 50, dynamics: str = ""):
+# 친밀도 (= 호감도) 스케일 가이드 — UI 표시 + LLM 프롬프트 양쪽에서 일관되게 사용.
+# 0~100 INTEGER. 0 = 원수. 100 = 절대 신뢰.
+#   0     원수      ─ 서로 못 잡아먹어 안달, 상대 발화 자체가 자극
+#   1-19  적대      ─ 갈등 중, 비꼬거나 무시. 회복하려면 사건 필요
+#   20-39 어색      ─ 거리감, 의례적 인사. **초면 default 영역**
+#   40-59 친구      ─ 일상적 대화 OK, 상대 안부에 관심
+#   60-79 친한 친구  ─ 사적인 고민·취향 공유, 농담 자연스러움
+#   80-99 가족·절친  ─ 무조건적 신뢰, 작은 충돌도 큰 영향 X
+#   100   연인급/한 몸 ─ 절대 신뢰, 운명 공동체 톤
+#
+# default 30 (어색~친구 사이) — 처음 만난 페르소나끼리는 호의적이지만 거리감 있는 상태.
+# 이전 default 50 은 "이미 친구" 라 LLM 이 처음부터 너무 친하게 굴어서 진화감 없었음 (회귀 fix 2026-04-30).
+INTIMACY_SCALE_DEFAULT = 30
+INTIMACY_SCALE_DOC = (
+    "친밀도 0~100. "
+    "0=원수 / 1-19=적대 / 20-39=어색 / 40-59=친구 / 60-79=친한 친구 / "
+    "80-99=가족·절친 / 100=연인. 초면은 30 default."
+)
+
+
+def add_relationship(agent_a: str, agent_b: str, rel_type: str, intimacy: int = INTIMACY_SCALE_DEFAULT, dynamics: str = ""):
     conn = get_conn()
     conn.execute(
         """INSERT OR REPLACE INTO relationships (agent_a, agent_b, type, intimacy_score, dynamics, updated_at)
