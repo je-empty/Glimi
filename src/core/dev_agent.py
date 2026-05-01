@@ -206,11 +206,18 @@ def count_pending_for_community(community_id: str) -> int:
 
 
 def has_active_work(community_id: Optional[str] = None) -> bool:
-    """현재 큐에 작업/검토 중인 항목이 있는지 — agent display status 동적 결정.
+    """**Sena 본인이** 처리해야 할 일이 있는지 — agent display status 동적 결정.
 
-    community_id 미지정 시 current community 사용 (community 미설정이면 글로벌).
-    이전엔 항상 글로벌 → 다른 community 의 pending 이 있으면 모든 community 의 Sena 가
-    active 로 보이는 회귀. community-scoped 가 정상.
+    상태별 책임:
+      - pending    → Sena 가 분석해야 함 (active)
+      - analyzed   → admin 검토 대기 (Sena 일 끝남, **inactive**)
+      - approved   → admin 이 dispatch 준비 (Sena 무관)
+      - queued     → Claude Code 가 작업 대기 (Sena 무관)
+      - processing → Claude Code 작업 중 (Sena 무관)
+      - completed/rejected/needs_human_review → 종결
+
+    이전엔 모든 미완료 status 를 active 로 잡아서, Sena 가 분석 끝낸 후에도 영구 활성
+    표시되던 회귀. 'pending' 만 카운트 — Sena 역할 끝나면 자동 비활성.
     """
     if community_id is None:
         try:
@@ -224,13 +231,12 @@ def has_active_work(community_id: Optional[str] = None) -> bool:
         if community_id:
             n = conn.execute(
                 "SELECT COUNT(*) FROM dev_requests "
-                "WHERE community_id=? AND status IN ('pending','analyzed','approved','queued','processing')",
+                "WHERE community_id=? AND status='pending'",
                 (community_id,),
             ).fetchone()[0]
         else:
             n = conn.execute(
-                "SELECT COUNT(*) FROM dev_requests "
-                "WHERE status IN ('pending','analyzed','approved','queued','processing')"
+                "SELECT COUNT(*) FROM dev_requests WHERE status='pending'"
             ).fetchone()[0]
     finally:
         conn.close()
