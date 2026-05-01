@@ -60,6 +60,100 @@ def _ensure_creator_seeded() -> bool:
         return False
 
 
+async def force_hana_greeting_if_missing(guild) -> bool:
+    """복구 헬퍼 — phase 가 channels_done/complete 인데 mgr-creator 에 creator 발화가
+    0 건이면 Hana 첫 인사가 누락된 상태. setup_channels 의 Hana 인사 부분만 강제 실행.
+
+    회귀 케이스: 봇 첫 부팅 시 Hana 호출 중 prompt 빌더에서 NameError 등으로 abort →
+    phase 는 channels_done 으로 진척했지만 실제 Hana 메시지 없음 → 오너가 영원히 대기.
+
+    반환: 복구 실행했으면 True.
+    """
+    creator_ch = discord.utils.get(guild.text_channels, name=CREATOR_CHANNEL)
+    if not creator_ch:
+        return False
+    creator_msgs = db.get_recent_messages(CREATOR_CHANNEL, limit=1)
+    has_creator_msg = bool(creator_msgs) and any(
+        m.get("speaker") == CREATOR_ID for m in creator_msgs
+    )
+    if has_creator_msg:
+        return False
+    log_writer.system(
+        "[recovery] mgr-creator 에 Hana 발화 0건 — 첫 인사 누락 복구 시작"
+    )
+    _ensure_creator_seeded()
+    runtime.activate_agent(CREATOR_ID)
+
+    creator_profile = load_profile(CREATOR_ID)
+    creator_name = creator_profile["name"] if creator_profile else "하나"
+    conn = db.get_conn()
+    user = conn.execute("SELECT * FROM users LIMIT 1").fetchone()
+    conn.close()
+    user = dict(user) if user else {}
+    owner_name = user.get("name", "?")
+    pers = user.get("personality")
+    if isinstance(pers, str):
+        try:
+            pers = _json.loads(pers)
+        except Exception:
+            pers = {}
+    pers = pers or {}
+    owner_nickname = pers.get("nickname", "")
+    owner_age = user.get("age", "?")
+    owner_gender = pers.get("gender", "")
+    call_name = owner_nickname if owner_nickname else owner_name
+
+    creator_age = creator_profile.get("age", "?") if creator_profile else "?"
+    older = (
+        int(owner_age) > int(creator_age)
+        if str(owner_age).isdigit() and str(creator_age).isdigit()
+        else True
+    )
+    creator_prompt = (
+        f"[상황] 유나가 너를 소개해줬어. 오너 정보: 이름={owner_name}, "
+        f"별명={owner_nickname or '없음'}, 나이={owner_age}, 성별={owner_gender}\n"
+        f"[지시] 너({creator_name})는 크리에이터야. {call_name}에게 처음 인사하는 상황이야.\n"
+        f"[포함할 내용]\n"
+        f"- 자기소개 (이름, 성격, 역할: 새 친구의 외모/성격/배경을 디자인해서 만들어주는 크리에이터)\n"
+        f"- 자연스럽게 아이스브레이킹 (가벼운 대화)\n"
+        f"- 어떻게 불러줄지 물어봐 (이름/별명)\n"
+        f"- 존댓말/반말 선호도 물어봐\n"
+        f"- 새 친구를 만들 준비가 되면 말해달라고 (급하지 않게)\n"
+        f"[규칙]\n"
+        f"- '오너' '오너분' 쓰지 마. {call_name} 이름이나 별명으로 불러.\n"
+        f"- {call_name}은(는) {owner_age}살. "
+        f"{'너보다 연상이니까 존댓말로 시작.' if older else '나이 비슷하거나 모르니까 일단 존댓말.'}\n"
+        f"- 질문 한 번에 하나씩.\n"
+        f"- 너의 나이는 굳이 말하지 마.\n"
+        f"[스타일] 카톡처럼 짧은 메시지 여러 개로. 자연스럽고 친근하게."
+    )
+    loop = asyncio.get_event_loop()
+    try:
+        responses = await loop.run_in_executor(
+            None,
+            lambda: runtime.generate_response(
+                CREATOR_ID, CREATOR_CHANNEL, creator_prompt, log_user_message=False
+            ),
+        )
+    except Exception as e:
+        log_writer.system(f"[recovery] Hana 응답 생성 실패: {type(e).__name__}: {e}")
+        return False
+    sent = 0
+    for resp in responses or []:
+        resp = resp.strip()
+        if not resp:
+            continue
+        for part in _split_for_chat(resp):
+            await send_as_agent(creator_ch, CREATOR_ID, part)
+            sent += 1
+            await asyncio.sleep(1)
+    log_writer.system(f"[recovery] Hana 첫 인사 복구 완료 — {sent}건 발송")
+    # phase 가 아직 setup 이면 done 으로 진척
+    if scene.current_phase() in ("channels_setup",):
+        scene.set_phase("channels_done")
+    return True
+
+
 async def trigger_phase2(guild):
     """Phase 2 트리거 — scene의 phase를 channels_setup으로 전환하고
     채널 생성/크리에이터 소개를 비동기 실행."""
