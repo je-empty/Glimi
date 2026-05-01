@@ -746,6 +746,119 @@ async def _h_discord_get_pins(args, ctx):
 
 # ── 요청 도구 (persona → mgr) ──────────────────────────
 
+async def _h_bring_friend(args: dict, ctx: ToolContext):
+    """페르소나가 자기 다른 친구를 오너에게 소개하고 싶을 때.
+
+    동작 흐름:
+      1) 호출자 페르소나 검증 + 오너와 intimacy ≥ 70 확인
+      2) Hana 한테 internal-dm 보내서 새 친구 생성 위임 — 친구의 컨셉 + 호출자와의 관계
+         dynamics 미리 채워서 Hana 가 create_agent_profile 시 relationship_templates 에
+         자동으로 시드.
+      3) 새 친구는 호출자와 절친 (75) + 오너와 초면 (30) 으로 시작.
+      4) events 테이블에 기록 (대시보드 가시화).
+    """
+    from src.bot.mgr_system import _forward_action_to_yuna
+    from src.core.profile import get_user_id, get_user_name
+
+    caller_id = ctx.caller_agent_id or ""
+    caller = db.get_agent(caller_id) or {}
+    if caller.get("type") != "persona":
+        return {"ok": False, "reason": "only_persona", "note": "페르소나만 호출 가능"}
+
+    friend_name = (args.get("friend_name") or "").strip()
+    friend_concept = (args.get("friend_concept") or "").strip()
+    rel_to_self = (args.get("relationship_to_self") or "").strip()
+    rel_dynamics = (args.get("relationship_dynamics") or "").strip()
+    if not friend_name or not friend_concept or not rel_to_self:
+        return {"ok": False, "reason": "missing_fields"}
+
+    # 친밀도 체크
+    owner_id = get_user_id() or "owner"
+    rel = db.get_relationship(owner_id, caller_id) or db.get_relationship(caller_id, owner_id) or {}
+    intimacy = rel.get("intimacy_score", 0)
+    INTRO_THRESHOLD = 70
+    if intimacy < INTRO_THRESHOLD:
+        return {
+            "ok": False,
+            "reason": "intimacy_too_low",
+            "current_intimacy": intimacy,
+            "need": INTRO_THRESHOLD,
+            "note": "오너랑 친밀도가 70 이상이어야 친구 데려오기 가능 (현재 {}/{})".format(intimacy, INTRO_THRESHOLD),
+        }
+
+    # 중복 방지 — 같은 caller 가 24시간 내 이미 친구 데려오기 발의했으면 차단
+    try:
+        conn = db.get_conn()
+        recent = conn.execute(
+            "SELECT id FROM events WHERE event_type='친구소개_제안' "
+            "AND participants LIKE ? "
+            "AND timestamp >= datetime('now', '-24 hours') LIMIT 1",
+            (f"%{caller_id}%",),
+        ).fetchone()
+        conn.close()
+        if recent:
+            return {
+                "ok": False,
+                "reason": "cooldown",
+                "note": "최근 24시간 내 이미 친구 데려오기 시도 — 너무 자주 발의하면 부자연스러움",
+            }
+    except Exception:
+        pass
+
+    caller_name = caller.get("name", "?")
+    owner_name = get_user_name() or "오너"
+
+    # 이벤트 기록 (대시보드 가시화)
+    try:
+        db.log_event(
+            "친구소개_제안",
+            [caller_id, owner_id],
+            f"{caller_name} 가 자기 친구 {friend_name} 을 {owner_name} 에게 소개 제안 ({rel_to_self})",
+            impact="마일스톤",
+        )
+    except Exception:
+        pass
+
+    # Hana 에게 internal-dm 으로 위임 — 컨셉 + 관계 미리 박혀 있어서 Hana 가 그대로 create_agent_profile
+    relay_msg = (
+        f"[친구 소개 위임 — {caller_name} ({caller_id}) 발의]\n"
+        f"오너({owner_name})랑 친한 {caller_name} 가 자기 친구 {friend_name} 데려오겠다고 함.\n\n"
+        f"새 친구 정보:\n"
+        f"  - 이름: {friend_name}\n"
+        f"  - 컨셉: {friend_concept}\n"
+        f"  - {caller_name} 와의 관계: {rel_to_self} (intimacy 75)"
+        f"{' — ' + rel_dynamics if rel_dynamics else ''}\n"
+        f"  - 오너와의 관계: 초면 (intimacy 30, '{caller_name} 통해 알게 됨')\n\n"
+        f"create_agent_profile 호출 시 relationship_templates 에 다음 항목 포함:\n"
+        f'  {{"target_id": "{caller_id}", "rel_type": "{rel_to_self}", '
+        f'"intimacy": 75, "dynamics": "{rel_dynamics or rel_to_self}", "is_owner_relationship": 0}}\n\n'
+        f"오너 확인 후 진행 — 오너가 거부하면 \"빈이가 아직 부담스럽대\" 식으로 자연스럽게 거절."
+    )
+    try:
+        # request_dm 호출 흐름과 동일 — Yuna 가 받아 처리, internal-dm 통해 Hana 와 협의
+        from src.bot.mgr_system import _forward_action_to_yuna as _fwd
+        import json as _json
+        action_payload = _json.dumps({
+            "type": "REQUEST_DM",
+            "target": "윤하나",
+            "message": relay_msg,
+        }, ensure_ascii=False)
+        await _fwd(caller_id, action_payload, ctx.guild)
+    except Exception as e:
+        log_writer.system(f"[bring_friend] forward 실패: {type(e).__name__}: {e}")
+
+    log_writer.system(
+        f"[bring_friend] {caller_name}({caller_id}) → 친구 {friend_name} 소개 제안 (intimacy {intimacy})"
+    )
+    return {
+        "ok": True,
+        "proposed_friend": friend_name,
+        "delegated_to": "윤하나",
+        "caller_intimacy": intimacy,
+        "note": "Hana 가 처리 시작 — 오너 컨펌 후 생성됨. 새 친구는 너랑 절친 75, 오너랑 초면 30 으로 시작.",
+    }
+
+
 async def _h_request_dm(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _forward_action_to_yuna
     target = args["target"]
@@ -952,6 +1065,7 @@ _MAP = {
     # request
     "request_dm": _h_request_dm,
     "request_room": _h_request_room,
+    "bring_friend": _h_bring_friend,
 }
 
 
