@@ -375,13 +375,18 @@ class OrchestratorSupervisor(Supervisor):
                     db.add_relationship(a_id, b_id, "친구", intimacy=30, dynamics="처음 대화 시작")
                 except Exception:
                     pass
-            # start_conversation 시그니처: (channel_name, participants, send_fn, context, max_turns)
-            # send_fn 은 (agent_id, message) → await send_as_agent 호출
             from src.bot.core import send_as_agent
             async def _send(agent_id: str, message: str):
                 await send_as_agent(ch, agent_id, message)
-            context_text = f"요즘 어떻게 지냈는지 가볍게 근황 나눔. ({reason})"
-            asyncio.create_task(start_conversation(ch_name, [a_id, b_id], _send, context=context_text))
+
+            # 풍성한 context — 짧은 대화·작별 echo 회귀 fix.
+            # 두 에이전트의 직업/관심사 + 관계 dynamics + intimacy + 최근 dm 활동 요약을 묶어 seed.
+            context_text = self._build_rich_context(a_id, b_id, a_name, b_name, reason)
+            # 페르소나끼리 internal-dm 은 16턴까지 허용 (default 8 은 너무 일찍 wrap-up)
+            asyncio.create_task(
+                start_conversation(ch_name, [a_id, b_id], _send,
+                                    context=context_text, max_turns=16)
+            )
             log_writer.system(
                 f"[sup:orchestrator] ▶ 대화 시작: #{ch_name} ({a_name} ↔ {b_name})"
             )
@@ -389,3 +394,71 @@ class OrchestratorSupervisor(Supervisor):
             log_writer.system(
                 f"[sup:orchestrator] 채널/대화 시작 실패: {type(e).__name__}: {e}"
             )
+
+    def _build_rich_context(self, a_id: str, b_id: str, a_name: str, b_name: str, reason: str) -> str:
+        """internal-dm 시작 시 두 페르소나 간 자연스러운 시작 토픽 seed.
+
+        포함:
+          - 각자 직업·관심사 (profile)
+          - 관계 (type/intimacy/dynamics)
+          - 최근 각자의 dm 에서 언급한 화제 1줄씩 (자연스러운 referent)
+        seed 가 있으면 페르소나가 첫 턴에 "OO 어떻게 됐어?" 식으로 specific 시작 가능.
+        """
+        try:
+            from src.core.profile import load_profile
+            pa = load_profile(a_id) or {}
+            pb = load_profile(b_id) or {}
+            a_occ = (pa.get("daily_life") or {}).get("occupation", "") if pa else ""
+            b_occ = (pb.get("daily_life") or {}).get("occupation", "") if pb else ""
+            a_interests = ", ".join((pa.get("personality") or {}).get("likes", [])[:3])
+            b_interests = ", ".join((pb.get("personality") or {}).get("likes", [])[:3])
+
+            # 관계
+            rel = db.get_relationship(a_id, b_id) or db.get_relationship(b_id, a_id) or {}
+            rel_type = rel.get("type", "친구")
+            intimacy = rel.get("intimacy_score", 30)
+            dynamics = rel.get("dynamics", "")
+
+            # 각자의 dm 채널에서 마지막 발화 1줄 — 최근 화제 referent
+            def _last_dm_topic(name: str) -> str:
+                try:
+                    conn = db.get_conn()
+                    row = conn.execute(
+                        "SELECT message FROM conversations WHERE channel=? "
+                        "ORDER BY id DESC LIMIT 1",
+                        (f"dm-{name}",),
+                    ).fetchone()
+                    conn.close()
+                    if row and row["message"]:
+                        return row["message"][:60]
+                except Exception:
+                    pass
+                return ""
+
+            a_topic = _last_dm_topic(a_name)
+            b_topic = _last_dm_topic(b_name)
+
+            parts = [
+                f"{a_name} ↔ {b_name} internal-dm — {rel_type} 사이 (친밀도 {intimacy}/100).",
+            ]
+            if dynamics:
+                parts.append(f"관계 분위기: {dynamics}.")
+            if a_occ or b_occ or a_interests or b_interests:
+                parts.append(
+                    f"{a_name}: {a_occ or '?'} | 관심: {a_interests or '?'}. "
+                    f"{b_name}: {b_occ or '?'} | 관심: {b_interests or '?'}."
+                )
+            if a_topic:
+                parts.append(f"{a_name} 최근 빈이랑 한 얘기: \"{a_topic}\"")
+            if b_topic:
+                parts.append(f"{b_name} 최근 빈이랑 한 얘기: \"{b_topic}\"")
+            parts.append(
+                "이걸 referent 로 자연스럽게 말 걸어. "
+                "근황·공통 관심사·서로 안부 깊게 — 8턴 이상 충분히 풀어. "
+                "한 줄 작별 echo 로 일찍 끝내지 말 것."
+            )
+            parts.append(f"({reason})")
+            return " ".join(parts)
+        except Exception as e:
+            log_writer.system(f"[sup:orchestrator] context build 실패 (fallback): {e}")
+            return f"요즘 어떻게 지냈는지 가볍게 근황 나눔. ({reason})"
