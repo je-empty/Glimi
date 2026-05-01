@@ -203,8 +203,17 @@ async def send_as_agent(channel: discord.TextChannel, agent_id: str, message: st
     """에이전트 메시지 전송. 기본은 PacedSender 경유 (자연스러운 페이스).
 
     paced=False면 즉시 전송 (시스템 에러 메시지, 복구 등에만 사용).
-    채널 참가자 검증 후 enqueue.
+    채널 참가자 검증 + 무의미 메시지 ('...', 빈 줄) drop 후 enqueue.
     """
+    # 무의미 메시지 drop — 점만 있거나 공백뿐이면 발송 안 함.
+    # Yuna/persona 가 "..." 만 보내는 leak 회귀 방지 (40+ 건 db 오염 사례).
+    stripped = (message or "").strip()
+    if not stripped or stripped in {".", "..", "...", "....", "…", "..…", "....."}:
+        log_writer.system(
+            f"[send_filter] {agent_id} 무의미 메시지 drop: {message!r}"
+        )
+        return
+
     profile = load_profile(agent_id)
     name = profile["name"] if profile else "에이전트"
 
