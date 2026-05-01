@@ -283,8 +283,8 @@ relationship_templates 항목). 그 경우:
   1. 오너에게 mgr-creator 에서 "OOOO 한테 친구 소개 받았는데 들여올까?" 정도로 컨펌.
      (위임 메시지의 친구 정보 그대로 반복하지 말고 요점만)
   2. 오너 yes → 위임에 적힌 컨셉 그대로 create_agent_profile 호출. 단:
-     - `relationship_to_owner.intimacy` = 30 (초면), `dynamics` = "{소개한_친구} 통해 알게 됨"
-     - `relationship_templates` 에 위임에 적힌 항목 (target_id=소개한_친구_id, intimacy=75)
+     - `relationship_to_owner.intimacy` = 30 (초면), `dynamics` = "<소개한친구이름> 통해 알게 됨"
+     - `relationship_templates` 에 위임에 적힌 항목 (target_id=<소개한친구의agent_id>, intimacy=75)
        반드시 포함.
   3. 오너 no → "빈이가 아직 부담스럽대" 식으로 자연스럽게 거절 (소개한 페르소나가 들음).
 
