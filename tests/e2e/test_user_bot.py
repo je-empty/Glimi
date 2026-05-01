@@ -1081,9 +1081,11 @@ class TestUserBot(discord.Client):
         """현재 진행할 미션 결정.
 
         로직:
-          1) 튜토리얼 미완 → "tutorial" (유나 응답만 잘 따라가면 됨 — 기본 PERSONA 프롬프트)
-          2) 튜토리얼 완료 + 도전과제 중 유저 agency 있는 것 순차 진행
-          3) 전부 done → "done" (테스트 종료)
+          1) 튜토리얼 미완 → "tutorial"
+          2) 도전과제 중 미완 항목 순차 진행
+          3) **stuck-skip**: 같은 mission 에서 _proactive_streak 가 계속 reset 안 되고 누적되면
+             해당 mission 을 임시 skip 마크 → 다음 mission 시도 (다양성 강제)
+          4) 전부 done → "done"
 
         결과 캐시 5초 — 매 턴 recompute 비싸지 않지만 DB 부담 최소화.
         """
@@ -1091,9 +1093,16 @@ class TestUserBot(discord.Client):
         if now - self._current_mission_cache_at < 5 and self._current_mission_cache:
             return self._current_mission_cache
 
+        # stuck mission 추적 — 같은 mode 가 _stuck_threshold 분 이상 진행 X 면 임시 skip
+        if not hasattr(self, "_mission_stuck_since"):
+            self._mission_stuck_since: dict[str, float] = {}
+        if not hasattr(self, "_mission_skip_until"):
+            self._mission_skip_until: dict[str, float] = {}
+        STUCK_MIN = 30 * 60   # 30분 진척 없으면 stuck 판단
+        SKIP_DURATION = 20 * 60  # 다음 mission 한 번 시도 후 20분 후 다시 도전
+
         result = {"mode": "tutorial", "hint": ""}
         try:
-            # 테스트 유저는 QA 봇과 같은 DB 를 공유 — src.achievements 직접 import
             from src.achievements import engine as _eng
             summary = _eng.dashboard_summary()
             items = summary.get("items", [])
@@ -1103,12 +1112,37 @@ class TestUserBot(discord.Client):
             if tut.get("state") != "done":
                 result = {"mode": "tutorial", "hint": ""}
             else:
-                # 순차 진행
                 for key, hint in _MISSION_ORDER:
                     m = by_key.get(key, {})
-                    if m.get("state") != "done":
-                        result = {"mode": key, "hint": hint, "progress": m.get("progress")}
-                        break
+                    if m.get("state") == "done":
+                        # 완료된 건 stuck 트래킹에서 제거
+                        self._mission_stuck_since.pop(key, None)
+                        self._mission_skip_until.pop(key, None)
+                        continue
+                    # 임시 skip 중인 mission 인지
+                    if now < self._mission_skip_until.get(key, 0):
+                        continue
+                    # 진척 hash — count 또는 talked_to 길이 등 변화 감지
+                    progress = m.get("progress") or {}
+                    progress_hash = repr(sorted((progress or {}).items()) if isinstance(progress, dict) else progress)
+                    last_hash_key = f"_{key}_progress_hash"
+                    last_hash = getattr(self, last_hash_key, None)
+                    if progress_hash != last_hash:
+                        # 진척 변화 → stuck 클리어
+                        setattr(self, last_hash_key, progress_hash)
+                        self._mission_stuck_since.pop(key, None)
+                    else:
+                        # 첫 정체 시점 기록
+                        if key not in self._mission_stuck_since:
+                            self._mission_stuck_since[key] = now
+                        elif now - self._mission_stuck_since[key] > STUCK_MIN:
+                            # 30분 이상 정체 → 다음 mission 으로 우회
+                            self._mission_skip_until[key] = now + SKIP_DURATION
+                            print(f"[TestUser] mission stuck-skip: {key} (정체 {(now - self._mission_stuck_since[key])/60:.0f}분 → 20분 우회)")
+                            self._mission_stuck_since.pop(key, None)
+                            continue
+                    result = {"mode": key, "hint": hint, "progress": progress}
+                    break
                 else:
                     result = {"mode": "done", "hint": ""}
         except Exception as e:
