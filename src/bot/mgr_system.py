@@ -1674,9 +1674,6 @@ async def _cmd_profile_create(report_channel, json_str):
         db.register_agent(profile["id"], agent_type, profile["name"])
 
         # 관계 설정 — 페르소나는 무조건 오너와 row 생성 (없으면 default).
-        # 이전엔 `if "relationship_to_owner" in profile` 였는데 Hana 가 null 로 적으면
-        # `None.get()` AttributeError → silently fail → row 안 생성 → 그래프에서 관계 없음 회귀.
-        # 명시적 dict 면 그 값 사용, 그 외엔 default 30 + "친구" 로 강제 생성.
         if agent_type == "persona":
             r2o = profile.get("relationship_to_owner")
             if isinstance(r2o, dict):
@@ -1693,6 +1690,37 @@ async def _cmd_profile_create(report_channel, json_str):
                 intimacy=rel_intimacy,
                 dynamics=rel_dynamics,
             )
+
+            # 페르소나간 관계 시드 — Hana 의 relationship_templates 에서 is_owner_relationship=0
+            # 항목들을 실제 relationships 테이블에 row 로 materialize.
+            # 이전엔 templates 테이블에만 저장 → relationships 비어 있음 → orchestrator 의 페어
+            # internal-dm 이 "처음 보는 사이" 로 시작 → 어색·단답·일찍 종료 회귀.
+            # 이제 시드 직후 페어 관계 row 가 살아 있어 첫 internal-dm 부터 공통 referent O.
+            try:
+                rel_templates = profile.get("relationship_templates") or []
+                for t in rel_templates:
+                    if not isinstance(t, dict):
+                        continue
+                    if t.get("is_owner_relationship"):
+                        continue
+                    target_id = t.get("target_id")
+                    if not target_id or not db.get_agent(target_id):
+                        continue
+                    if db.get_relationship(profile["id"], target_id) or db.get_relationship(target_id, profile["id"]):
+                        continue
+                    inter_intimacy = int(t.get("intimacy", 60))  # 친구 default
+                    db.add_relationship(
+                        profile["id"], target_id,
+                        t.get("rel_type") or "친구",
+                        intimacy=inter_intimacy,
+                        dynamics=t.get("dynamics") or t.get("note") or "",
+                    )
+                    log_writer.system(
+                        f"[create] 페르소나간 관계 시드: {profile['name']} ↔ {target_id} "
+                        f"({t.get('rel_type', '친구')}, {inter_intimacy})"
+                    )
+            except Exception as e:
+                log_writer.system(f"[create] persona-persona 관계 시드 실패: {type(e).__name__}: {e}")
 
         runtime.activate_agent(profile["id"])
         runtime.refresh_agent("agent-mgr-001")

@@ -250,12 +250,26 @@ Create new characters with this JSON structure:
       "rel_type": "Relationship type",
       "dynamics": "Relationship description",
       "pet_name": "Nickname",
+      "intimacy": 65,
       "is_owner_relationship": 0
     }}
   ]
 }}
 ```
 Minimum 3 few_shot_examples. Include the {oc} relationship entry with is_owner_relationship=1.
+
+**[CRITICAL — 페르소나간 관계 시드]** 2번째 이후 친구를 만들 때, 기존 페르소나
+(이미 등록된) 와의 관계도 1-2개 채워서 `relationship_templates` 에 추가해. 이게
+없으면 새 친구는 다른 친구들과 "처음 보는 사이" 로 시작해서, 자율 internal-dm 이
+어색하고 일찍 끝남 (회귀: 페르소나끼리 12턴 ack-echo). 좋은 패턴:
+  - 같은 학교/대학 동기 (intimacy 60-70)
+  - 회사·팀 동료 (intimacy 50-65)
+  - 오너 모임에서 만난 사이 (intimacy 40-55)
+  - 친구의 친구 (intimacy 35-50)
+  - 어릴 적부터 알던 사이 (intimacy 70-85)
+배경 (background) 에서 자연스러운 연결고리 만들고 — "OO과는 대학 1학년 같은 교양에서
+만남", "회사에서 같은 팀" 등 — 그걸 `dynamics` 에 적고 적절 intimacy 부여.
+target_id 는 **이미 존재하는** agent-persona-NNN 만 (안 그러면 시드 skip 됨).
 
 === Final confirmation flow (required BEFORE calling create_agent_profile) ===
 Once you've gathered enough design input from the owner, follow this order **before** calling
