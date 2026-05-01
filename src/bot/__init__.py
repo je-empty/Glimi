@@ -16,9 +16,28 @@ from src import community
 # ── 환경변수 (커뮤니티별 .env) ────────────────────────
 
 community.ensure_dirs()
+
+# 부모 프로세스 env 가 섞여들어 stale 값이 남는 회귀 fix:
+# 커뮤니티 .env 에 명시되지 않은 DISCORD_* 키는 부모에서 상속받지 않도록 미리 unset.
+# (예: 새 community 의 .env 에 DISCORD_GUILD_ID 가 없으면 → 부모 프로세스의 GUILD_ID
+# (다른 community 거) 가 그대로 살아 봇이 엉뚱한 guild 로 시도하던 회귀)
+_env_path = community.get_env_path()
+try:
+    if os.path.exists(_env_path):
+        with open(_env_path, "r", encoding="utf-8") as _ef:
+            _file_keys = {
+                ln.split("=", 1)[0].strip()
+                for ln in _ef
+                if ln.strip() and not ln.strip().startswith("#") and "=" in ln
+            }
+        for _k in ("DISCORD_GUILD_ID", "DISCORD_OWNER_ID"):
+            if _k not in _file_keys and _k in os.environ:
+                os.environ.pop(_k, None)
+except Exception:
+    pass
+
 # override=True — 커뮤니티 .env 가 프로세스에 이미 있는 env 변수보다 우선.
-# 플랫폼이 subprocess 로 봇을 띄울 때 부모 env 가 섞여들어와도 커뮤니티 .env 가 이김.
-load_dotenv(community.get_env_path(), override=True)
+load_dotenv(_env_path, override=True)
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 OWNER_DISCORD_ID = os.getenv("DISCORD_OWNER_ID")
