@@ -74,6 +74,19 @@ async def on_ready():
         if not guild:
             log_writer.system("❌ 타겟 guild 확정 불가 — 봇 초기화 중단")
             return
+        # GUILD_ID 가 .env 에 없는 신규 커뮤니티면 자동 persist (next boot 부터 명시적 사용)
+        if not os.environ.get("DISCORD_GUILD_ID"):
+            try:
+                from dotenv import set_key
+                from src import community as _comm
+                env_path = _comm.get_env_path()
+                set_key(env_path, "DISCORD_GUILD_ID", str(guild.id), quote_mode="never")
+                os.environ["DISCORD_GUILD_ID"] = str(guild.id)
+                log_writer.system(
+                    f"[startup] DISCORD_GUILD_ID 자동 감지: {guild.id} ({guild.name}) → .env 저장"
+                )
+            except Exception as e:
+                log_writer.system(f"[startup] guild_id .env 저장 실패: {e}")
         log.info(f"서버: {guild.name}")
         log_writer.system(f"Server connected: {guild.name}")
         log_writer.system("Initializing channels...")
