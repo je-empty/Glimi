@@ -543,9 +543,6 @@ async def _h_finish_tutorial(args: dict, ctx: ToolContext):
 
 async def _h_create_agent_profile(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import _cmd_profile_create
-    # 중복 생성 체크 — LLM 에게 확실한 시그널 돌려줘서 tool chain 멈추게 함.
-    # 이전엔 Creator 가 한 턴에 중복 create (같은 persona 두 번 생성 + "만들었어" 보고 2번 +
-    # 이미지 preview 재전송) 사례. DB/Discord side-effect 다 일어나서 UX 혼란.
     try:
         import json as _j
         raw = args.get("args", "")
@@ -560,9 +557,30 @@ async def _h_create_agent_profile(args: dict, ctx: ToolContext):
                 f"[create_agent_profile] duplicate '{new_name}' — skip "
                 f"(existing id={existing['id']})"
             )
-            # LLM 이 이 결과 보고 "아 이미 있네" 인식 → 후속 request_dm / 이미지 preview 안 함
             return {"accepted": False, "reason": "already_exists",
                     "existing_id": existing["id"], "name": new_name}
+
+    # Gender lock — 임시 (샘플 아바타 뱅크 여자만 준비). 남자/non-female 차단 + payload 강제 보정.
+    if isinstance(payload, dict):
+        gender_raw = (payload.get("gender") or "").strip().lower()
+        FEMALE_OK = {"여자", "female", "f", "여성"}
+        MALE_FORBIDDEN = {"남자", "male", "m", "남성"}
+        if gender_raw in MALE_FORBIDDEN:
+            log_writer.system(
+                f"[create_agent_profile] gender='{gender_raw}' rejected — female-only lock"
+            )
+            return {
+                "accepted": False, "reason": "gender_locked_female_only",
+                "note": "현재 샘플 아바타가 여자만 준비됨 — gender='여자' 로 다시 호출. "
+                        "오너에게 '남자 캐릭터는 임시로 어려워서 여자로 만들게' 식 redirect 필요.",
+            }
+        if gender_raw not in FEMALE_OK:
+            # 명시 없거나 모호하면 자동으로 '여자' 채워서 진행
+            payload["gender"] = "여자"
+            args["args"] = _j.dumps(payload, ensure_ascii=False)
+            log_writer.system(
+                f"[create_agent_profile] gender 자동 보정 → '여자' (was '{gender_raw or 'empty'}')"
+            )
 
     await _cmd_profile_create(ctx.channel_obj, args["args"])
     # 이벤트 로그 — 새 멤버 합류
