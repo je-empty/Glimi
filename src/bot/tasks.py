@@ -194,6 +194,14 @@ async def on_ready():
         # 튜토리얼 상태 검증 — 채널 기반 안전장치
         await _verify_tutorial_state(guild)
 
+        # Hana 첫 인사 누락 복구 (NameError 등 abort 회귀 시) — phase 가 channels_done/complete
+        # 인데 mgr-creator 에 creator 발화 0 건이면 강제 재발사.
+        try:
+            from src.scenes.tutorial.handlers import force_hana_greeting_if_missing
+            await force_hana_greeting_if_missing(guild)
+        except Exception as _e:
+            log_writer.system(f"[recovery] Hana 인사 복구 시도 실패: {_e}")
+
         # 오너 정보 없으면 디코에서 가져오기 + 유나가 추가 정보 요청
         await _check_owner_profile(guild)
     except Exception as e:
