@@ -577,6 +577,27 @@ REQUEST: list[ToolSpec] = [
         applies_to=frozenset({"persona"}),
         requires_approval=True,
     ),
+    ToolSpec(
+        name="bring_friend",
+        description=(
+            "이미 오너와 친한 (intimacy ≥ 70) 상태에서, 자기 다른 친구를 오너에게 소개하고 "
+            "싶을 때 호출. 자연스러운 발화 (\"OO이라는 친구 있는데 소개시켜줄까?\") 와 함께 "
+            "이 도구를 같은 응답에서 호출. 시스템이 윤하나(creator)에게 위임 → 오너 컨펌 후 "
+            "새 페르소나 생성. 새 친구는 너랑 (절친 75) + 오너랑 (초면 30) 시작."
+        ),
+        params={
+            "friend_name":            {"type": "str", "required": True, "desc": "데려올 친구의 이름 (성+이름, 예: '김도훈')"},
+            "friend_concept":         {"type": "str", "required": True, "desc": "어떤 친구인지 (3-5줄): 나이/성별/직업/성격/취향 핵심"},
+            "relationship_to_self":   {"type": "str", "required": True, "desc": "데려오는 사람(나) 와의 관계 (예: '대학 동기 절친', '회사 입사동기', '어릴 적부터 친구')"},
+            "relationship_dynamics":  {"type": "str", "required": False, "desc": "관계 묘사 1줄 (예: '4년 같은 학교, 매주 술 한 잔')"},
+        },
+        category="request",
+        applies_to=frozenset({"persona"}),
+        requires_approval=True,
+        examples=[
+            '{"friend_name":"김도훈","friend_concept":"28세 남자, 인디게임 개발자, ENTP, 내성적이지만 농담 많음","relationship_to_self":"대학 동기 절친","relationship_dynamics":"4년 같은 컴퓨터공학과, 졸업 후도 매주 연락"}',
+        ],
+    ),
 ]
 
 
