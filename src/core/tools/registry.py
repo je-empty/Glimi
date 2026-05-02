@@ -21,8 +21,13 @@ Claude Code Tool 시스템에서 차용한 개념 (SDK 의존 없음, 순수 프
 결과 피드백 (다음 턴 user prompt에 주입):
 <tool_result id="1" tool="create_room" ok="true">{"channel": "group-은하윤-수민"}</tool_result>
 """
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 @dataclass
@@ -36,6 +41,9 @@ class ToolSpec:
     requires_approval: bool = False
     handler: Optional[Callable] = None  # 런타임에 set_handler로 주입
     examples: list[str] = field(default_factory=list)
+    # opt-in 도구 — 지정한 env var 가 truthy 일 때만 _ALL_TOOLS 에 포함됨.
+    # 비활성화 시 에이전트 toolset 에서 보이지 않고 dispatcher 도 모름 → 깨끗하게 무존재.
+    requires_env: Optional[str] = None
 
 
 # ── 공통 파라미터 타입 ────────────────────────────────
@@ -359,7 +367,8 @@ MGMT: list[ToolSpec] = [
         description=(
             "샘플 카탈로그에 맞는 얼굴이 없을 때만 호출 — Animagine LoRA 로 신규 portrait 직접 생성. "
             "약 6-7분 소요 (백그라운드, 완료 시 자동으로 채널에 이미지 게시 + 에이전트에 적용). "
-            "오너에게 사전 안내 후 호출. character_block 은 영어 (LoRA 가 영어로만 학습됨)."
+            "오너에게 사전 안내 후 호출. character_block 은 영어 (LoRA 가 영어로만 학습됨). "
+            "[opt-in: GLIMI_IMAGEGEN=1 / `./run.sh --imagegen`]"
         ),
         params={
             "name": _str,
@@ -384,6 +393,7 @@ MGMT: list[ToolSpec] = [
         examples=[
             '{"name":"이루다","character_block":"korean female with high ponytail brown hair, freckles, navy track jacket with white stripes, energetic bright smile, sunny yellow gradient background"}'
         ],
+        requires_env="GLIMI_IMAGEGEN",
     ),
     # 승인
     ToolSpec(
@@ -634,7 +644,13 @@ REQUEST: list[ToolSpec] = [
 
 # ── 레지스트리 ────────────────────────────────────────
 
-_ALL_TOOLS: list[ToolSpec] = MGMT + QUERY + REQUEST
+# requires_env 가 지정된 도구는 해당 env var 가 truthy 할 때만 활성화.
+# 비활성 도구는 _ALL_TOOLS / TOOLS 에 아예 안 들어감 → 에이전트 프롬프트에 노출 안 되고
+# dispatcher 도 unknown tool 처리. set_handler 는 미등록 도구를 silently skip (런타임 안전).
+_ALL_TOOLS: list[ToolSpec] = [
+    t for t in MGMT + QUERY + REQUEST
+    if t.requires_env is None or _env_truthy(t.requires_env)
+]
 TOOLS: dict[str, ToolSpec] = {t.name: t for t in _ALL_TOOLS}
 
 
@@ -648,7 +664,11 @@ def tools_for_agent(agent_type: str) -> list[ToolSpec]:
 
 
 def set_handler(tool_name: str, handler: Callable):
-    """런타임 dispatcher가 handler 함수를 주입"""
+    """런타임 dispatcher가 handler 함수를 주입.
+
+    requires_env 로 비활성화된 도구의 handler 가 _MAP 에 있어도 skip — 핸들러 코드는 항상
+    import 되지만 spec 이 없으면 호출 경로 자체가 닫힘.
+    """
     if tool_name not in TOOLS:
-        raise KeyError(f"Unknown tool: {tool_name}")
+        return
     TOOLS[tool_name].handler = handler
