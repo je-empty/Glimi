@@ -6,6 +6,11 @@
 #   ./run.sh --port 9000
 #   ./run.sh --host 127.0.0.1
 #
+# 옵션 (어디서나 사용 가능):
+#   --imagegen                       → 로컬 LoRA 프로필 이미지 생성 활성화
+#                                       (1회: torch+diffusers ~수GB 설치 + Animagine XL 4.0 ~6.5GB
+#                                        HF cache 다운로드. ENV: GLIMI_IMAGEGEN=1 도 동등)
+#
 # 레거시 모드:
 #   ./run.sh --legacy <community>    → 구 단일 봇 (QA/디버깅용)
 #   ./run.sh tui                     → 구 TUI wizard (deprecated)
@@ -32,6 +37,40 @@ MARKER=".venv/.deps_installed"
 if [ ! -f "$MARKER" ] || [ requirements.txt -nt "$MARKER" ]; then
     pip install -q -r requirements.txt && pip install -q -e . 2>/dev/null
     touch "$MARKER"
+fi
+
+# ── --imagegen 플래그 추출 (모든 mode 공통, 위치 무관) ───
+IMAGEGEN=0
+_FILTERED_ARGS=()
+for arg in "$@"; do
+    if [ "$arg" = "--imagegen" ]; then
+        IMAGEGEN=1
+    else
+        _FILTERED_ARGS+=("$arg")
+    fi
+done
+set -- "${_FILTERED_ARGS[@]}"
+# ENV 로 사전 활성화한 경우도 동일 처리
+if [ "${GLIMI_IMAGEGEN:-0}" = "1" ] || [ "${GLIMI_IMAGEGEN:-}" = "true" ]; then
+    IMAGEGEN=1
+fi
+
+if [ "$IMAGEGEN" = "1" ]; then
+    export GLIMI_IMAGEGEN=1
+    IMAGEGEN_MARKER=".venv/.imagegen_installed"
+    if [ ! -f "$IMAGEGEN_MARKER" ]; then
+        echo -e "${CYAN}[imagegen] 1회 deps 설치 (torch + diffusers ~수 GB, ~5분)...${NC}"
+        if pip install -q -e ".[imagegen]"; then
+            touch "$IMAGEGEN_MARKER"
+            echo -e "${GREEN}[imagegen] 활성화 완료. 첫 호출 시 Animagine XL 4.0 (~6.5GB) HF cache 다운로드.${NC}"
+        else
+            echo -e "${RED}[imagegen] deps 설치 실패 — 비활성으로 진행${NC}"
+            unset GLIMI_IMAGEGEN
+            IMAGEGEN=0
+        fi
+    else
+        echo -e "${GREEN}[imagegen] 활성 (GLIMI_IMAGEGEN=1)${NC}"
+    fi
 fi
 
 mkdir -p dev
