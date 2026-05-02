@@ -16,6 +16,20 @@ dependencies = [
     "jinja2>=3.1.0",
 ]
 
+[project.optional-dependencies]
+# 로컬 프로필 이미지 생성 (Animagine XL 4.0 + Glimi Style LoRA).
+# 설치: pip install -e ".[imagegen]"
+# LoRA 가중치는 src/glimi_imagegen/loras/ 에 별도 배치 (gitignore — 93MB × 2).
+imagegen = [
+    "torch>=2.1",
+    "diffusers>=0.27",
+    "transformers>=4.36",
+    "accelerate",
+    "safetensors",
+    "opencv-python",
+    "numpy",
+]
+
 [project.scripts]
 glimi-cli = "src.cli:main"
 glimi-bot = "src.discord_bot:main"
