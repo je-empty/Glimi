@@ -44,12 +44,14 @@ Glimi/
     ├── core/               ← 에이전트 두뇌 (플랫폼 중립)
     │   ├── runtime.py
     │   ├── profile.py
+    │   ├── profile_image.py  ← glimi_imagegen 브릿지 (DB 갱신 + executor)
     │   ├── memory.py
     │   ├── monitor.py
     │   ├── conversation.py
     │   ├── sync.py         ← Discord↔DB 동기화 (어댑터 책임)
     │   ├── timeutil.py
     │   └── tools/          ← <tools> XML 프로토콜
+    ├── glimi_imagegen/     ← LoRA 이미지 생성 패키지 (도메인 무관, 영어 prompt + 두 path)
     ├── bot/                ← Discord 어댑터
     ├── platform/           ← FastAPI 플랫폼 (신규)
     ├── scenes/             ← Scene 시스템 (tutorial 등)
