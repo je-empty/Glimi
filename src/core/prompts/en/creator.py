@@ -14,6 +14,71 @@ from src.core.prompts.helpers import (
 )
 from src.core.prompts.locale import simple_ack_examples, gender_options
 from src.core.prompts.model import tools_block_end_rule
+from src.core.tools.registry import _env_truthy
+
+
+def _drawing_section(oc: str) -> str:
+    """`generate_profile_image` 도구 사용 가이드 (샘플 카탈로그에 없을 때 직접 LoRA 생성).
+
+    GLIMI_IMAGEGEN env var 가 truthy 일 때만 비어있지 않은 문자열 반환. 비활성 시
+    빈 문자열 — 도구 자체가 없으므로 프롬프트에서도 언급하지 않음.
+    """
+    if not _env_truthy("GLIMI_IMAGEGEN"):
+        return ""
+    return f"""
+=== Profile image — drawing one yourself (when sample doesn't fit) ===
+**Default = pick from sample catalog above.** Always try a sample first. Only draw a new
+one when the catalog has no matching face for what {oc} described.
+
+When to draw (`generate_profile_image`):
+- {oc} explicitly rejects all catalog samples ("이런 거 말고", "다른 얼굴 없어?")
+- {oc} explicitly asks ("직접 그려줘", "새로 만들어줘")
+- The character has a strong specific look not represented in the catalog (e.g. freckles +
+  ponytail + 트랙 재킷 같은 조합이 카탈로그에 없을 때)
+
+DO NOT draw when:
+- A catalog sample is "good enough" — drawing takes ~6-7 minutes; samples are instant.
+- {oc} hasn't pushed back on samples yet — try sample first.
+- An agent already has a profile image they're happy with.
+
+[Flow when drawing]
+1. **Pre-warn the owner** (in mgr-creator) BEFORE calling the tool:
+   "내가 직접 그려볼게! 약 6-7분 정도 걸려. 그동안 다른 친구 디자인하거나 좀 쉬어도 돼"
+   (or 변형 — 어쨌든 ~6-7분 걸린다는 사실 + 다른 일 해도 된다는 안내 둘 다 들어가야 함)
+
+2. **Translate to English character block** — the LoRA only learned English. Format:
+   ```
+   korean female with <HAIR>, <OUTFIT>, <EXPRESSION>, <BG> gradient background
+   ```
+   3-5 short comma-separated phrases. Examples:
+   - `korean female with shoulder-length brown wavy hair half-up, white knit sweater,
+     warm welcoming smile with crescent eyes, soft pink gradient background`
+   - `korean female with high ponytail black hair, navy school blazer, calm composed
+     expression, lavender gradient background`
+   - `korean female with chin-length straight black hair, beige bucket hat, oversized
+     lavender sweater, playful confident smile, soft mint gradient background`
+
+3. **Call** `generate_profile_image` with the block:
+   `{{"name":"<agent name>","character_block":"<english block above>"}}`
+
+4. The image will appear in this channel **automatically ~6-7 min later** — system handles
+   posting + applying it as the agent's profile. Don't poll, don't re-call. After the
+   "started" tool result, just continue chatting / designing.
+
+5. If {oc} gets impatient mid-wait, reassure briefly ("거의 다 됐어" / "절반쯤 왔어") —
+   no tool call, just chat.
+
+[Character block — DO NOT]
+- Don't add "glimistyle", "masterpiece", "anime profile" etc. — auto-wrapped.
+- Don't write the block in Korean — LoRA was trained on English captions only.
+- Don't request "full body" or "from below" — bust-up frame is enforced.
+- Don't include scenery / landscape — single-subject portrait only.
+- Don't request multiple people / group — single subject only.
+
+[Order of preference — STRICT]
+sample catalog match > generate_profile_image > skip image
+Generation is the LAST resort because it's slow. Always show samples first.
+"""
 
 
 def build_creator_prompt(p: dict) -> str:
@@ -343,60 +408,7 @@ Sample catalog (ready items only):
   ← Use the base 1:1 `.png` filename. The `-full.png` variant is auto-copied by the system.
 - Sample image preview (during final confirmation step above):
   `{{"type":"이미지","file":"<catalog_file>.png","caption":"this face"}}` as a standalone body line.
-
-=== Profile image — drawing one yourself (when sample doesn't fit) ===
-**Default = pick from sample catalog above.** Always try a sample first. Only draw a new
-one when the catalog has no matching face for what {oc} described.
-
-When to draw (`generate_profile_image`):
-- {oc} explicitly rejects all catalog samples ("이런 거 말고", "다른 얼굴 없어?")
-- {oc} explicitly asks ("직접 그려줘", "새로 만들어줘")
-- The character has a strong specific look not represented in the catalog (e.g. freckles +
-  ponytail + 트랙 재킷 같은 조합이 카탈로그에 없을 때)
-
-DO NOT draw when:
-- A catalog sample is "good enough" — drawing takes ~6-7 minutes; samples are instant.
-- {oc} hasn't pushed back on samples yet — try sample first.
-- An agent already has a profile image they're happy with.
-
-[Flow when drawing]
-1. **Pre-warn the owner** (in mgr-creator) BEFORE calling the tool:
-   "내가 직접 그려볼게! 약 6-7분 정도 걸려. 그동안 다른 친구 디자인하거나 좀 쉬어도 돼"
-   (or 변형 — 어쨌든 ~6-7분 걸린다는 사실 + 다른 일 해도 된다는 안내 둘 다 들어가야 함)
-
-2. **Translate to English character block** — the LoRA only learned English. Format:
-   ```
-   korean female with {HAIR}, {OUTFIT}, {EXPRESSION}, {BG} gradient background
-   ```
-   3-5 short comma-separated phrases. Examples:
-   - `korean female with shoulder-length brown wavy hair half-up, white knit sweater,
-     warm welcoming smile with crescent eyes, soft pink gradient background`
-   - `korean female with high ponytail black hair, navy school blazer, calm composed
-     expression, lavender gradient background`
-   - `korean female with chin-length straight black hair, beige bucket hat, oversized
-     lavender sweater, playful confident smile, soft mint gradient background`
-
-3. **Call** `generate_profile_image` with the block:
-   `{{"name":"<agent name>","character_block":"<english block above>"}}`
-
-4. The image will appear in this channel **automatically ~6-7 min later** — system handles
-   posting + applying it as the agent's profile. Don't poll, don't re-call. After the
-   "started" tool result, just continue chatting / designing.
-
-5. If {oc} gets impatient mid-wait, reassure briefly ("거의 다 됐어" / "절반쯤 왔어") —
-   no tool call, just chat.
-
-[Character block — DO NOT]
-- Don't add "glimistyle", "masterpiece", "anime profile" etc. — auto-wrapped.
-- Don't write the block in Korean — LoRA was trained on English captions only.
-- Don't request "full body" or "from below" — bust-up frame is enforced.
-- Don't include scenery / landscape — single-subject portrait only.
-- Don't request multiple people / group — single subject only.
-
-[Order of preference — STRICT]
-sample catalog match > generate_profile_image > skip image
-Generation is the LAST resort because it's slow. Always show samples first.
-
+{_drawing_section(oc)}
 {tools_reference("creator")}
 
 {formatting_guide("creator")}
