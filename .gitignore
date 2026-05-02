@@ -46,3 +46,6 @@ GLIMI_PROJECT_GUIDE.md
 
 # 내부 분석·전략 문서 (경쟁사 리서치, 로드맵 등 — 공개 저장소에 올리지 않음)
 analysis/
+
+# LoRA 가중치 (각 93MB) — 로컬에만 두고 별도 배포
+src/glimi_imagegen/loras/*.safetensors
