@@ -354,6 +354,37 @@ MGMT: list[ToolSpec] = [
         category="management",
         applies_to=frozenset({"creator"}),
     ),
+    ToolSpec(
+        name="generate_profile_image",
+        description=(
+            "샘플 카탈로그에 맞는 얼굴이 없을 때만 호출 — Animagine LoRA 로 신규 portrait 직접 생성. "
+            "약 6-7분 소요 (백그라운드, 완료 시 자동으로 채널에 이미지 게시 + 에이전트에 적용). "
+            "오너에게 사전 안내 후 호출. character_block 은 영어 (LoRA 가 영어로만 학습됨)."
+        ),
+        params={
+            "name": _str,
+            "character_block": {
+                "type": "str",
+                "required": True,
+                "desc": (
+                    "영어 캐릭터 설명. 형식: "
+                    "'korean female with HAIR, OUTFIT, EXPRESSION, BG gradient background'. "
+                    "3-5개 짧은 콤마-구분 phrase. quality / glimistyle / style suffix 자동 wrap — "
+                    "직접 쓰지 말 것."
+                ),
+            },
+            "version": {
+                "type": "str",
+                "required": False,
+                "desc": "'v3' (default — 신 캐릭) 또는 'v2' (anchor 3 재현)",
+            },
+        },
+        category="management",
+        applies_to=frozenset({"creator"}),
+        examples=[
+            '{"name":"이루다","character_block":"korean female with high ponytail brown hair, freckles, navy track jacket with white stripes, energetic bright smile, sunny yellow gradient background"}'
+        ],
+    ),
     # 승인
     ToolSpec(
         name="approve_request",

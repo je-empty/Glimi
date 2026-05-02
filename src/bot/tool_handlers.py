@@ -632,6 +632,84 @@ async def _h_set_profile_image(args: dict, ctx: ToolContext):
     return {"name": args["name"], "profile_image": requested}
 
 
+async def _h_generate_profile_image(args: dict, ctx: ToolContext):
+    """LoRA portrait 직접 생성 — 즉시 반환, 백그라운드 task 가 ~6-7분 후 채널에 이미지 게시.
+
+    flow:
+        1) 동기 처리: 대상 agent 존재 확인 → "started" payload 반환 (LLM 에 곧바로 응답)
+        2) 비동기 task: generate_for_agent (executor 에서 ~6분) → webhook avatar 갱신 →
+           caller 에이전트로 채널에 이미지 + 한마디
+    """
+    import asyncio as _asyncio
+
+    name = args["name"]
+    character_block = args["character_block"]
+    version = args.get("version", "v3") or "v3"
+
+    target = db.get_agent_by_name(name)
+    if not target:
+        return {"ok": False, "error": f"agent not found: {name}"}
+    agent_id = target["id"]
+
+    # caller / channel / guild 캡처 — task 안에서 ctx 직접 참조 시 stale 가능성
+    caller_agent_id = ctx.caller_agent_id or "agent-creator-001"
+    channel_obj = ctx.channel_obj
+    guild = ctx.guild
+
+    async def _bg():
+        from src.core.profile_image import generate_for_agent
+        from src.bot.core import (
+            send_as_agent, send_image_as_agent, update_agent_webhook_profile_image,
+        )
+        try:
+            result = await generate_for_agent(agent_id, character_block, version=version)
+        except FileNotFoundError as e:
+            log_writer.system(f"[generate_profile_image] LoRA missing: {e}")
+            await send_as_agent(
+                channel_obj, caller_agent_id,
+                f"{name} 그리려는데 그림 도구 파일이 빠졌네 ㅠㅠ 세나한테 알려야겠다",
+            )
+            return
+        except Exception as e:
+            log_writer.system(f"[generate_profile_image] error: {type(e).__name__}: {e}")
+            await send_as_agent(
+                channel_obj, caller_agent_id,
+                f"{name} 그리다가 오류 났어 ㅠㅠ ({type(e).__name__})",
+            )
+            return
+
+        # webhook avatar 즉시 갱신 — set_profile_image 와 동일 패턴
+        if guild is not None:
+            updated = 0
+            for ch in guild.text_channels:
+                try:
+                    whs = await ch.webhooks()
+                    if any(wh.name == f"glimi-{agent_id}" for wh in whs):
+                        if await update_agent_webhook_profile_image(ch, agent_id):
+                            updated += 1
+                except Exception:
+                    pass
+            log_writer.system(f"[generate_profile_image] webhook avatar 갱신: {updated}개")
+
+        # 채널에 완료 통지 + 이미지
+        await send_image_as_agent(
+            channel_obj, caller_agent_id,
+            result["crop_path"],
+            caption=f"{name} 그렸어! 어때?",
+        )
+
+    _asyncio.create_task(_bg())
+    return {
+        "ok": True,
+        "name": name,
+        "agent_id": agent_id,
+        "version": version,
+        "status": "started",
+        "estimated_seconds": 420,
+        "note": "약 6-7분 후 자동으로 채널에 이미지가 올라가. 그동안 다른 일 하면 됨.",
+    }
+
+
 async def _h_approve_request(args: dict, ctx: ToolContext):
     from src.bot.mgr_system import yuna_approve_action
     s = json.dumps({
@@ -1060,6 +1138,7 @@ _MAP = {
     "create_agent_profile": _h_create_agent_profile,
     "delete_agent_profile": _h_delete_agent_profile,
     "set_profile_image": _h_set_profile_image,
+    "generate_profile_image": _h_generate_profile_image,
     "approve_request": _h_approve_request,
     "pin_memory": _h_pin_memory,
     # query
