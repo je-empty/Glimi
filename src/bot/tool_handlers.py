@@ -560,19 +560,31 @@ async def _h_create_agent_profile(args: dict, ctx: ToolContext):
             return {"accepted": False, "reason": "already_exists",
                     "existing_id": existing["id"], "name": new_name}
 
-    # Gender lock — 임시 (샘플 아바타 뱅크 여자만 준비). 남자/non-female 차단 + payload 강제 보정.
+    # Gender lock — 샘플 아바타 뱅크 여자만 준비 (sample 경로 한정).
+    # 남자 캐릭터는 imagegen 활성 (`./run.sh --imagegen`) 시 `create_agent_with_image`
+    # 로만 가능. 이 도구 (`create_agent_profile`) 는 sample 사용이라 여전히 여자 lock.
     if isinstance(payload, dict):
         gender_raw = (payload.get("gender") or "").strip().lower()
         FEMALE_OK = {"여자", "female", "f", "여성"}
         MALE_FORBIDDEN = {"남자", "male", "m", "남성"}
         if gender_raw in MALE_FORBIDDEN:
+            from src.core.tools.registry import _env_truthy as _et
+            imagegen_on = _et("GLIMI_IMAGEGEN")
             log_writer.system(
-                f"[create_agent_profile] gender='{gender_raw}' rejected — female-only lock"
+                f"[create_agent_profile] gender='{gender_raw}' rejected — sample path is female-only "
+                f"(imagegen={imagegen_on})"
+            )
+            note = (
+                "샘플 아바타가 여자만 준비됨. "
+                + ("**남자 만들고 싶으면 `create_agent_with_image` 도구 사용** "
+                   "(직접 그리기 — 6-7분 소요). 오너에게 '남자는 직접 그려야 해서 좀 걸려, 괜찮아?' 안내."
+                   if imagegen_on else
+                   "오너에게 '남자 캐릭터는 임시로 어려워서 여자로 만들게' 식 redirect 필요.")
             )
             return {
-                "accepted": False, "reason": "gender_locked_female_only",
-                "note": "현재 샘플 아바타가 여자만 준비됨 — gender='여자' 로 다시 호출. "
-                        "오너에게 '남자 캐릭터는 임시로 어려워서 여자로 만들게' 식 redirect 필요.",
+                "accepted": False, "reason": "gender_locked_female_only_sample_path",
+                "imagegen_available": imagegen_on,
+                "note": note,
             }
         if gender_raw not in FEMALE_OK:
             # 명시 없거나 모호하면 자동으로 '여자' 채워서 진행
@@ -754,22 +766,14 @@ async def _h_create_agent_with_image(args: dict, ctx: ToolContext):
         return {"accepted": False, "reason": "already_exists",
                 "existing_id": existing["id"], "name": name}
 
-    # Gender lock — 임시 (샘플 아바타 뱅크 여자만 — 직접 생성도 동일 적용)
-    gender_raw = (payload.get("gender") or "").strip().lower()
-    FEMALE_OK = {"여자", "female", "f", "여성"}
-    MALE_FORBIDDEN = {"남자", "male", "m", "남성"}
-    if gender_raw in MALE_FORBIDDEN:
+    # Gender — 직접 생성 경로는 imagegen ON 일 때만 호출 가능 (requires_env 게이트). LoRA 가
+    # 영어 prompt 의 "korean female / male" 스왑으로 양쪽 그릴 수 있으므로 lock 없음.
+    # 남자 sample 미배포라 sample 경로 (`_h_create_agent_profile`) 만 여자 제한 유지.
+    gender_raw = (payload.get("gender") or "").strip()
+    if not gender_raw:
+        payload["gender"] = "여자"  # default — 명시 없으면 여자
         log_writer.system(
-            f"[create_agent_with_image] gender='{gender_raw}' rejected — female-only lock"
-        )
-        return {
-            "accepted": False, "reason": "gender_locked_female_only",
-            "note": "현재 남자 캐릭터 LoRA 미학습 — gender='여자' 로 다시 호출.",
-        }
-    if gender_raw not in FEMALE_OK:
-        payload["gender"] = "여자"
-        log_writer.system(
-            f"[create_agent_with_image] gender 자동 보정 → '여자' (was '{gender_raw or 'empty'}')"
+            "[create_agent_with_image] gender 비어있어 default '여자'"
         )
 
     # profile_image_filename 자동 셋업 (LoRA 출력 file 명과 일치)
