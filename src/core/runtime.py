@@ -1303,8 +1303,8 @@ class AgentRuntime:
             # Internal-monologue / silence-reasoning leak 차단 — persona/mgr 둘 다.
             # NO_REPLY 토큰 + bracket-enclosed reasoning + "응답 없음"/"빈 응답"/"[침묵]"
             # 같은 회귀 패턴. 자세한 사례는 docs/edge_cases.md (reasoning leakage).
+            # auto-report 는 _parse_response 가 agent_id/channel 인자 없어서 streaming 경로만 발사.
             if _is_reasoning_leak(cleaned):
-                _auto_report_leak(agent_id, channel, cleaned, source="non-stream")
                 continue
             messages.append(cleaned)
 
