@@ -365,8 +365,9 @@ MGMT: list[ToolSpec] = [
     ToolSpec(
         name="generate_profile_image",
         description=(
-            "샘플 카탈로그에 맞는 얼굴이 없을 때만 호출 — Animagine LoRA 로 신규 portrait 직접 생성. "
+            "**기존 에이전트의 얼굴을 다시 그릴 때** 호출 — Animagine LoRA 로 신규 portrait. "
             "약 6-7분 소요 (백그라운드, 완료 시 자동으로 채널에 이미지 게시 + 에이전트에 적용). "
+            "신규 에이전트 생성과 동시에 그릴 때는 이거 말고 `create_agent_with_image` 사용. "
             "오너에게 사전 안내 후 호출. character_block 은 영어 (LoRA 가 영어로만 학습됨). "
             "[opt-in: GLIMI_IMAGEGEN=1 / `./run.sh --imagegen`]"
         ),
@@ -392,6 +393,61 @@ MGMT: list[ToolSpec] = [
         applies_to=frozenset({"creator"}),
         examples=[
             '{"name":"이루다","character_block":"korean female with high ponytail brown hair, freckles, navy track jacket with white stripes, energetic bright smile, sunny yellow gradient background"}'
+        ],
+        requires_env="GLIMI_IMAGEGEN",
+    ),
+    ToolSpec(
+        name="create_agent_with_image",
+        description=(
+            "**신규 페르소나 + 직접 그린 프로필 이미지를 한 번에 생성 (deferred reveal)**. "
+            "이미지 생성 완료 (~6-7분) 후에 비로소 에이전트가 DB 에 활성화 + dm 채널 생성 + "
+            "mgr-creator 에 이미지 reveal + Yuna 보고까지 자동. "
+            "Path B (카탈로그에 맞는 얼굴 없는 경우) 진입 시 create_agent_profile + "
+            "set_profile_image + request_dm 묶음 대신 **이 도구 하나만** 호출. "
+            "오너에게 사전 안내 ('내가 직접 그릴게, 6-7분 후에 등장') 필수. "
+            "[opt-in: GLIMI_IMAGEGEN=1 / `./run.sh --imagegen`]"
+        ),
+        params={
+            "agent_json": {
+                "type": "str",
+                "required": True,
+                "desc": (
+                    "create_agent_profile 와 동일 포맷의 페르소나 JSON (string). "
+                    "profile_image_filename 필드는 자동으로 '<id>.png' 로 셋업되니 비워둬도 됨."
+                ),
+            },
+            "character_block": {
+                "type": "str",
+                "required": True,
+                "desc": (
+                    "영어 LoRA prompt block. 형식: "
+                    "'korean female with HAIR, OUTFIT, EXPRESSION, BG gradient background'. "
+                    "quality / glimistyle / style suffix 자동 wrap — 직접 쓰지 말 것."
+                ),
+            },
+            "yuna_message": {
+                "type": "str",
+                "required": True,
+                "desc": (
+                    "이미지 완성 + 에이전트 활성화 후 자동으로 Yuna 에게 발사할 request_dm 메시지. "
+                    "예: '나리 만들어졌어. ENFP 25살 너드, 첫만남 관계.' "
+                    "비워두면 Yuna 보고 스킵."
+                ),
+            },
+            "version": {
+                "type": "str",
+                "required": False,
+                "desc": "'v3' (default — 신 캐릭) 또는 'v2'",
+            },
+        },
+        category="management",
+        applies_to=frozenset({"creator"}),
+        examples=[
+            ('{"agent_json":"{\\"id\\":\\"agent-persona-005\\",\\"name\\":\\"나리\\",\\"type\\":\\"persona\\",'
+             '\\"gender\\":\\"여자\\",\\"age\\":25,\\"mbti\\":\\"ENFP\\",...}",'
+             '"character_block":"korean female with short red bob, round glasses, freckles, white hoodie, '
+             'cheerful nerdy smile, mint gradient background",'
+             '"yuna_message":"나리 만들어졌어. 빨간 단발 안경 너드 ENFP 25살. 첫만남 관계."}')
         ],
         requires_env="GLIMI_IMAGEGEN",
     ),

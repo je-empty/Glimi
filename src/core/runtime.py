@@ -111,6 +111,52 @@ _REASONING_TAIL_BRACKET_RE = re.compile(
 # 단독 "..." 또는 "....." 라인 — persona 가 침묵 표현으로 점만 출력하는 회귀
 _DOTS_ONLY_RE = re.compile(r"^[\s.…]+$")
 
+# Markdown status report leak — assistant-style 구조화 응답 (관찰: 2026-05-04 서하은
+# internal-dm-지수-서하은 채널에 "현재 상황을 정리하면:" + bullet list 그대로 흘림).
+# 채팅엔 이런 메타 정리·계획 출력이 절대 들어가면 안 됨.
+_STATUS_REPORT_PHRASE_RE = re.compile(
+    r"(현재\s*상황을?\s*정리|상황\s*정리하면|이어나가겠습니다|이어가겠습니다|"
+    r"진행\s*상황[은:]|다음\s*반응이\s*오면|natural(?:ly)?\s+continue\s+the\s+conversation|"
+    r"summary\s+of\s+the\s+(?:current\s+)?(?:state|situation)|let me (?:summari[sz]e|continue))",
+    re.IGNORECASE,
+)
+# bold-key bullet ("- **심재빈과의 DM**: 진행 중") — 자연 채팅엔 없는 형식.
+_BOLD_BULLET_RE = re.compile(r"^\s*[-*]\s*\*\*[^*]+\*\*\s*:")
+
+
+def _auto_report_leak(agent_id: str, channel_name: str, leaked_text: str, source: str):
+    """leak 감지 시 dev_requests 큐에 자동 적재. dedup 윈도우는 dev 모듈이 처리.
+
+    매니저/오너가 직접 보지 못하는 internal-dm 같은 채널에서도 leak 이 dev 큐로
+    올라오게 하는 안전망. 너무 시끄러우면 severity=low + dedup 60min 으로 자제.
+    """
+    try:
+        from src.core.dev_agent import enqueue_dev_request, find_similar_recent_request
+        from src import community as _community
+        community_id = _community.get_community_id() or "unknown"
+        payload = {
+            "channel": channel_name or "(unknown)",
+            "severity": "low",
+            "repro": (
+                f"agent={agent_id} 가 채팅에 reasoning/status 텍스트를 그대로 출력. "
+                f"감지된 leak (앞 200자): {leaked_text[:200]!r}. 소스: {source}."
+            ),
+            "expected": "정상 채팅 발화. 메타·정리·계획 텍스트는 절대 채널에 안 보여야 함.",
+            "actual": f"채팅 라인에 메타 출력. (drop 됨, 사용자엔 미노출)",
+            "notes": (
+                "auto-filed by runtime._auto_report_leak. "
+                "패턴 추가나 prompt 수정 필요할 수 있음. "
+                "src/core/runtime.py 의 _is_reasoning_leak / _STATUS_REPORT_PHRASE_RE / "
+                "_BOLD_BULLET_RE 참조."
+            ),
+        }
+        # 같은 agent+channel+severity 60분 내 중복이면 silently skip
+        if find_similar_recent_request(community_id, payload, window_minutes=60):
+            return
+        enqueue_dev_request(community_id, agent_id or "system", payload)
+    except Exception as e:
+        log_writer.system(f"[leak auto-report] enqueue 실패 (무시): {type(e).__name__}: {e}")
+
 
 def _is_reasoning_leak(text: str) -> bool:
     """채팅에 새어나간 LLM 의 침묵·결정·내레이션을 감지. True 면 메시지 drop."""
@@ -126,6 +172,10 @@ def _is_reasoning_leak(text: str) -> bool:
     if _REASONING_PAREN_RE.match(s):
         return True
     if _REASONING_TAIL_BRACKET_RE.search(s):
+        return True
+    if _STATUS_REPORT_PHRASE_RE.search(s):
+        return True
+    if _BOLD_BULLET_RE.match(s):
         return True
     # "..." 단독 — 빈 메시지 placeholder 인 경우 _parse_response 가 별도 처리하므로
     # 여기서는 진짜 점만 있는 짧은 라인만 잡음
@@ -1134,6 +1184,7 @@ class AgentRuntime:
                 # bracket reasoning 출력하는 회귀.
                 if _is_reasoning_leak(cleaned):
                     log_writer.system(f"[Reasoning leak] ⚠ stream drop ({name}): {cleaned[:80]}")
+                    _auto_report_leak(agent_id, channel, cleaned, source="stream")
                     continue
 
                 # 실시간 중복 체크 (exact match)
@@ -1253,6 +1304,7 @@ class AgentRuntime:
             # NO_REPLY 토큰 + bracket-enclosed reasoning + "응답 없음"/"빈 응답"/"[침묵]"
             # 같은 회귀 패턴. 자세한 사례는 docs/edge_cases.md (reasoning leakage).
             if _is_reasoning_leak(cleaned):
+                _auto_report_leak(agent_id, channel, cleaned, source="non-stream")
                 continue
             messages.append(cleaned)
 

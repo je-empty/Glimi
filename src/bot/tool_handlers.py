@@ -691,10 +691,11 @@ async def _h_generate_profile_image(args: dict, ctx: ToolContext):
                     pass
             log_writer.system(f"[generate_profile_image] webhook avatar 갱신: {updated}개")
 
-        # 채널에 완료 통지 + 이미지
+        # 채널에 완료 통지 + 이미지 (full 버전 — 드러내기 좋게 832×1216).
+        # crop 은 silently 에이전트 webhook avatar 로 적용 완료.
         await send_image_as_agent(
             channel_obj, caller_agent_id,
-            result["crop_path"],
+            result["full_path"],
             caption=f"{name} 그렸어! 어때?",
         )
 
@@ -707,6 +708,175 @@ async def _h_generate_profile_image(args: dict, ctx: ToolContext):
         "status": "started",
         "estimated_seconds": 420,
         "note": "약 6-7분 후 자동으로 채널에 이미지가 올라가. 그동안 다른 일 하면 됨.",
+    }
+
+
+async def _h_create_agent_with_image(args: dict, ctx: ToolContext):
+    """신규 페르소나 + 직접 그린 이미지 deferred reveal — 단일 도구 (Path B).
+
+    flow:
+        1) 동기: agent_json 검증 (gender lock / duplicate / id format) → "started" 반환
+        2) 비동기 task:
+           a. generate_for_pending_agent (~6분) — 파일만 저장, DB UPDATE 없음
+           b. _cmd_profile_create — 에이전트 활성화 + dm 채널 + greet
+           c. profile_image_filename UPDATE + cache invalidate
+           d. 모든 채널 webhook avatar 갱신
+           e. mgr-creator 에 reveal: full 이미지 + caption '{name} 만들었어! 어때?'
+           f. yuna_message 가 있으면 _forward_action_to_yuna 로 자동 보고
+    """
+    import asyncio as _asyncio
+    import json as _json
+
+    raw_json = args["agent_json"]
+    character_block = args["character_block"]
+    yuna_message = (args.get("yuna_message") or "").strip()
+    version = args.get("version", "v3") or "v3"
+
+    # ── JSON 파싱 + 사전 검증 ──────────────────────
+    try:
+        payload = _json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+    except Exception as e:
+        return {"ok": False, "error": f"agent_json JSON parse 실패: {e}"}
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "agent_json 은 object 여야 함"}
+
+    name = payload.get("name")
+    agent_id = payload.get("id")
+    if not name or not agent_id:
+        return {"ok": False, "error": "agent_json 에 id 와 name 필수"}
+
+    # 중복 검사
+    existing = db.get_agent_by_name(name)
+    if existing and existing.get("type") == "persona":
+        log_writer.system(
+            f"[create_agent_with_image] duplicate '{name}' — skip (existing id={existing['id']})"
+        )
+        return {"accepted": False, "reason": "already_exists",
+                "existing_id": existing["id"], "name": name}
+
+    # Gender lock — 임시 (샘플 아바타 뱅크 여자만 — 직접 생성도 동일 적용)
+    gender_raw = (payload.get("gender") or "").strip().lower()
+    FEMALE_OK = {"여자", "female", "f", "여성"}
+    MALE_FORBIDDEN = {"남자", "male", "m", "남성"}
+    if gender_raw in MALE_FORBIDDEN:
+        log_writer.system(
+            f"[create_agent_with_image] gender='{gender_raw}' rejected — female-only lock"
+        )
+        return {
+            "accepted": False, "reason": "gender_locked_female_only",
+            "note": "현재 남자 캐릭터 LoRA 미학습 — gender='여자' 로 다시 호출.",
+        }
+    if gender_raw not in FEMALE_OK:
+        payload["gender"] = "여자"
+        log_writer.system(
+            f"[create_agent_with_image] gender 자동 보정 → '여자' (was '{gender_raw or 'empty'}')"
+        )
+
+    # profile_image_filename 자동 셋업 (LoRA 출력 file 명과 일치)
+    payload["profile_image_filename"] = f"{agent_id}.png"
+    final_json_str = _json.dumps(payload, ensure_ascii=False)
+
+    # 캡쳐 (task 내부에서 ctx 직접 참조 시 stale 가능성)
+    caller_agent_id = ctx.caller_agent_id or "agent-creator-001"
+    channel_obj = ctx.channel_obj
+    guild = ctx.guild
+
+    async def _bg():
+        from src.core.profile_image import generate_for_pending_agent
+        from src.bot.mgr_system import _cmd_profile_create, _forward_action_to_yuna
+        from src.bot.core import (
+            send_as_agent, send_image_as_agent, update_agent_webhook_profile_image,
+        )
+        from src.core.profile import invalidate_cache
+
+        # ── 1) 이미지 생성 (DB 갱신 없이 파일만) ─────────
+        try:
+            result = await generate_for_pending_agent(agent_id, character_block, version=version)
+        except FileNotFoundError as e:
+            log_writer.system(f"[create_agent_with_image] LoRA missing: {e}")
+            await send_as_agent(channel_obj, caller_agent_id,
+                                f"{name} 그리려는데 그림 도구 파일이 빠졌네 ㅠㅠ 세나한테 알려야겠다")
+            return
+        except Exception as e:
+            log_writer.system(
+                f"[create_agent_with_image] generation 실패: {type(e).__name__}: {e}"
+            )
+            await send_as_agent(channel_obj, caller_agent_id,
+                                f"{name} 그리다가 오류 났어 ㅠㅠ ({type(e).__name__})")
+            return
+
+        # ── 2) 에이전트 활성화 (DB insert + relationships + dm 채널 + greet) ──
+        # _cmd_profile_create 가 profile_image_filename 도 보존 (payload 에 셋업해뒀음).
+        try:
+            await _cmd_profile_create(channel_obj, final_json_str)
+        except Exception as e:
+            log_writer.system(
+                f"[create_agent_with_image] _cmd_profile_create 실패: {type(e).__name__}: {e}"
+            )
+            await send_as_agent(channel_obj, caller_agent_id,
+                                f"{name} 활성화 단계에서 오류 ㅠㅠ ({type(e).__name__})")
+            return
+
+        # ── 3) 이미지 적용 확실히 (cache invalidate) ─────
+        invalidate_cache(agent_id)
+
+        # ── 4) 모든 채널의 webhook avatar 갱신 ─────────
+        if guild is not None:
+            updated = 0
+            for ch in guild.text_channels:
+                try:
+                    whs = await ch.webhooks()
+                    if any(wh.name == f"glimi-{agent_id}" for wh in whs):
+                        if await update_agent_webhook_profile_image(ch, agent_id):
+                            updated += 1
+                except Exception:
+                    pass
+            log_writer.system(f"[create_agent_with_image] webhook avatar 갱신: {updated}개")
+
+        # ── 5) mgr-creator 에 reveal (full 이미지) ─────
+        await send_image_as_agent(
+            channel_obj, caller_agent_id,
+            result["full_path"],
+            caption=f"{name} 만들었어! 어때?",
+        )
+
+        # ── 6) Yuna 자동 보고 (yuna_message 있으면) ─────
+        if yuna_message:
+            try:
+                yuna_payload = _json.dumps(
+                    {"type": "DM", "target": "Yuna", "message": yuna_message},
+                    ensure_ascii=False,
+                )
+                await _forward_action_to_yuna(caller_agent_id, yuna_payload, guild)
+                log_writer.system(
+                    f"[create_agent_with_image] Yuna 보고: {yuna_message[:60]}"
+                )
+            except Exception as e:
+                log_writer.system(
+                    f"[create_agent_with_image] Yuna 보고 실패 (무시): {e}"
+                )
+
+        # ── 7) 멤버합류 이벤트 ───────────────────────
+        try:
+            db.log_event("멤버합류", ["owner", name],
+                         f"{name} 합류 (직접 그린 이미지, MBTI: {payload.get('mbti', '?')}, "
+                         f"관계: {(payload.get('relationship_to_owner') or {}).get('type', '?')})",
+                         impact="긍정")
+        except Exception:
+            pass
+
+    _asyncio.create_task(_bg())
+    return {
+        "ok": True,
+        "name": name,
+        "agent_id": agent_id,
+        "version": version,
+        "status": "started",
+        "estimated_seconds": 420,
+        "note": (
+            "약 6-7분 후 이미지 생성 완료 → 에이전트 자동 활성화 + dm 채널 생성 + "
+            "mgr-creator 에 이미지 reveal + Yuna 보고. 그동안 추가 호출/재촉 금지."
+        ),
     }
 
 
@@ -1139,6 +1309,7 @@ _MAP = {
     "delete_agent_profile": _h_delete_agent_profile,
     "set_profile_image": _h_set_profile_image,
     "generate_profile_image": _h_generate_profile_image,
+    "create_agent_with_image": _h_create_agent_with_image,
     "approve_request": _h_approve_request,
     "pin_memory": _h_pin_memory,
     # query
