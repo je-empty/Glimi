@@ -62,6 +62,7 @@ def _setup_qa_server(bot_token: str):
         "QA_USER_AGE",
         "QA_USER_BIRTH_YEAR",
         "QA_USER_GENDER",
+        "GLIMI_IMAGEGEN",  # opt-in 도구 (로컬 LoRA 이미지 생성) — QA 에서 영구 활성
     )
     if env_path.exists():
         with open(env_path) as f:

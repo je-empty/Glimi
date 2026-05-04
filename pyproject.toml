@@ -25,6 +25,7 @@ imagegen = [
     "diffusers>=0.27",
     "transformers>=4.36",
     "accelerate",
+    "peft>=0.10",        # diffusers 0.30+ LoRA 로딩 백엔드 — 없으면 ValueError
     "safetensors",
     "opencv-python",
     "numpy",
