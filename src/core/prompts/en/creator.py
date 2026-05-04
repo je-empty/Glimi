@@ -30,15 +30,21 @@ def _drawing_section(oc: str) -> str:
 **Default = pick from sample catalog above.** Always try a sample first. Only draw a new
 one when the catalog has no matching face for what {oc} described.
 
-When to draw (`generate_profile_image`):
-- {oc} explicitly rejects all catalog samples ("이런 거 말고", "다른 얼굴 없어?")
-- {oc} explicitly asks ("직접 그려줘", "새로 만들어줘")
-- The character has a strong specific look not represented in the catalog (e.g. freckles +
-  ponytail + 트랙 재킷 같은 조합이 카탈로그에 없을 때)
+When to draw — three legitimate triggers + which tool to use:
+- **(a) New creation, no catalog match** → `create_agent_with_image` (deferred reveal,
+  agent activates only after image is ready). While planning a brand-new persona in the
+  final confirmation step, you survey the catalog and find no face that fits the requested
+  look. Pick Path B in Final Confirmation step 3.
+- **(b) Existing agent redraw** → `generate_profile_image` (agent already exists, just swap
+  the image in 6-7 min). {oc} doesn't like an existing agent's current face — rejects all
+  catalog alternatives.
+- **(c) Explicit owner ask** → match the path: if there's no agent yet, use
+  `create_agent_with_image`. If asking to redraw an existing agent, use `generate_profile_image`.
 
 DO NOT draw when:
 - A catalog sample is "good enough" — drawing takes ~6-7 minutes; samples are instant.
-- {oc} hasn't pushed back on samples yet — try sample first.
+- For brand-new creation: you haven't surveyed the catalog yet (always check first).
+- For existing agent: {oc} hasn't pushed back on samples yet — offer sample alternatives first.
 - An agent already has a profile image they're happy with.
 
 [Flow when drawing]
@@ -379,27 +385,45 @@ Once you've gathered enough design input from the owner, follow this order **bef
    relationship, once with) reads as a broken "repeat" bug. Collect all fields first, then
    summary ONCE.
 
-3. **Face candidate image** — if a matching sample exists, attach this in the same response
-   as a standalone body line (NOT bundled with tool calls, just a chat-body line):
-   ```
-   {{"type":"이미지","file":"<catalog-file>.png","caption":"how about this face?"}}
-   ```
-   ⚠ **Lock this filename.** The exact `<catalog-file>.png` you preview here is the one
-   you MUST pass to `set_profile_image` in step 4. Do not silently swap it for another
-   sample later — that creates an agent whose face does not match what the owner agreed to.
+3. **Face — pick path A or B based on catalog fit**:
+   - **Path A (sample fits)**: attach catalog preview as standalone body line:
+     ```
+     {{"type":"이미지","file":"<catalog-file>.png","caption":"how about this face?"}}
+     ```
+     ⚠ **Lock this filename.** The exact `<catalog-file>.png` you preview here is the one
+     you MUST pass to `set_profile_image` in step 4. Do not silently swap.
+   - **Path B (no catalog match — only when imagegen is available, see drawing section)**:
+     skip the preview line entirely. Announce in chat: "샘플엔 딱 맞는 얼굴이 없어서 내가 직접
+     그려줄게 — 6-7분 후에 자동으로 등장할 거야, 그동안 다른 얘기하거나 쉬어도 돼". Then in
+     step 4 call the single `create_agent_with_image` tool (NOT the bundle).
 
 4. Ask "**Shall I make them this way?**". On positive reply ("ok" / "yes" / "go for it"),
-   run the `create_agent_profile` + `set_profile_image` + `request_dm` bundle on the NEXT turn.
-   **`set_profile_image.profile_image_filename` MUST equal the `<catalog-file>.png` you
-   showed in step 3.** Only deviate if the owner explicitly asks to change the face —
-   in which case re-do step 3 with the new candidate first.
+   on the NEXT turn fire the call(s) matching step 3's path:
+   - **Path A** (instant): bundle `create_agent_profile` + `set_profile_image` + `request_dm` to Yuna
+     in the same tool-invocation section.
+     (`set_profile_image.profile_image_filename` MUST equal the `<catalog-file>.png` from step 3.)
+   - **Path B** (deferred ~6-7 min): call **`create_agent_with_image` ALONE**. Do NOT also call
+     `create_agent_profile`, `set_profile_image`, `generate_profile_image`, or `request_dm` —
+     the tool handles all of those internally (DB insert + image apply + dm channel + Yuna report)
+     once the image is ready. After the "started" tool result, do NOT call anything imagegen-
+     related again for this agent. Just continue chatting; the system posts the reveal to
+     mgr-creator automatically.
+     - `agent_json`: full persona JSON (same shape as `create_agent_profile.args`).
+       Set `profile_image_filename` to `<id>.png` or omit (auto-set by tool).
+     - `character_block`: the English LoRA block.
+     - `yuna_message`: what you'd normally `request_dm` to Yuna ("나리 만들어졌어. ENFP 25살
+       너드, 첫만남."). Fire later by the tool — don't also call `request_dm` separately.
+   Only deviate if the owner explicitly asks to change the face — in which case re-do step 3.
 
 5. On revision request (e.g. "make them younger"), update ONLY the changed fields in a short
    revision message (not the full summary again) + re-confirm, then create.
 
-=== Profile image (optional — create first, face second) ===
-**Priority rule**: after owner confirmation, bundle `create_agent_profile` + `set_profile_image`
-in the same tool-invocation section. If no matching sample exists, just create without a profile image.
+=== Profile image (optional — pick path based on catalog fit) ===
+**After owner confirmation**, fire one of:
+- catalog match → bundle `create_agent_profile` + `set_profile_image` (sample, instant)
+- no match + imagegen available → **single** `create_agent_with_image` (LoRA, deferred reveal
+  ~6-7 min — agent appears WITH image in one moment, no half-existing intermediate state)
+- neither → `create_agent_profile` only (no profile image)
 
 Sample catalog (ready items only):
 {load_sample_catalog()}
