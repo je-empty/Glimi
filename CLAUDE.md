@@ -1,10 +1,26 @@
-# Project Glimi — CLAUDE.md
+# Glimi — CLAUDE.md
+
+> 이 파일은 Claude Code 가 이 repo 에서 자동 로드한다. **외부 기여자 / 다른 사람의 Claude Code 세션도 이 파일을 자동 읽는다** — 즉 여기 적힌 모든 규칙이 모든 contributor 의 작업에 자동 적용됨.
 
 ## 한 줄 피칭
-AI 친구들이 오너 없이도 자기들끼리 살아가는 커뮤니티. 오너가 돌아오면 그사이 무슨 일이 있었는지 알려준다.
+Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리) + AI 친구 커뮤니티 sim (Glimi Hangout, flagship 앱). 모노레포.
 
 ## 🚨 세션 시작 시 필독
-**`docs/dev_guide.md` 먼저 읽어.** 타깃·설계 락인·현재 스프린트·금지 사항.
+**처음 들어오는 contributor 라면 `START_HERE.html` (프로젝트 루트) 먼저 열어봐** — 프로젝트 정체, 셋업, 첫 task, 브랜치 전략, 워크플로우 다 거기 있음.
+유지보수 작업 / 스프린트 컨텍스트는 **`docs/dev_guide.md`** — 타깃, 설계 락인, 금지 사항.
+
+## 🌳 브랜치 전략 — 외부 기여자 포함 모두 적용
+- `main` = 안정판. 외부 사용자가 보는 기본 브랜치. **직접 작업 / 직접 push 절대 금지**.
+- `develop` = working 브랜치. 모든 일반 작업의 통합 지점. 메인테이너가 안정화 사이클에서 main 으로 fast-forward.
+- 새 작업은 **반드시 `develop` 에서 새 브랜치 분기**: `feat/<name>`, `fix/<name>`, `docs/<name>`, `refactor/<name>` 등. PR base = `develop`.
+- `dev-requests/run-{ts}` = 자동 dev 시스템 (Sena → Opus) 전용. 사람이 직접 만들지 말 것.
+- `claude/*` = 과거 임시 브랜치. 더 이상 사용 안 함 (2026-05-17 정리).
+
+## 🤖 Claude Code 로 작업할 때
+- **여러 단계 task → TodoWrite / TaskCreate 사용**. 진행 상황 추적이 사용자에게도 보이고, 컨텍스트 손실 시 복구 쉬움.
+- 큰 검색 / 탐색은 Agent (Explore) 로 위임 — 메인 컨텍스트 보호.
+- 작업 전 의도 1-2 줄로 공유. 끝낸 후 변경 요지 1-2 줄로 마무리. 그 사이는 침묵 OK.
+- 절대 안 함: 묻지 않은 작업 추가, AI co-author trailer, `--no-verify`, main 직접 push.
 
 ## 🔌 아키텍처 원칙 — Discord = 어댑터
 **최종 목표는 웹 자체 채팅 + 앱. 디스코드는 현재 채팅 UI 직접 구현 공수 때문에 쓰는 임시 출구.**
