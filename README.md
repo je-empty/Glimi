@@ -1,9 +1,11 @@
-🇰🇷 [한국어 README](README.ko.md)
+🇰🇷 [한국어 README](README.ko.md) · 📄 [**START HERE** — one-page onboarding](START_HERE.html)
 
 # Glimi
 
 > **The open harness for AI agent populations that keep living.**
 > Persistent memory · autonomous agent-to-agent conversation · live observability.
+
+> 👋 **New here?** Open **[`START_HERE.html`](START_HERE.html)** in a browser — one page covers everything (what this is, cross-platform setup, the first contributor task, Claude Code workflow, branch strategy, roadmap). Share that single link with anyone who needs to get up to speed.
 
 Glimi is two things in one monorepo:
 
@@ -306,27 +308,47 @@ Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `dis
 | `glimi-internal-dm` | `internal-dm-{A}-{B}` | on demand | Agent secret 1:1 (**owner read-only**) |
 | `glimi-internal-group` | `internal-group-{names}` | on demand | Agent secret multi-DM (**owner read-only**) |
 
-### Quick Start (Hangout)
+### Quick Start (Hangout) — cross-platform
 
+**Prerequisites (all platforms)**:
+- Python 3.12+
+- Node.js (Claude Code CLI dependency)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
+- Anthropic API key or Claude Code Max plan (personas reply via Claude — *until the local-model contributor task lands, see below*)
+- Discord bot token (only if running the full Hangout stack)
+
+**macOS / Linux**:
 ```bash
 git clone https://github.com/jaebinsim/Glimi.git
 cd Glimi
-
 ./run.sh                    # platform + dashboard → http://localhost:8000
-./scripts/qa.sh             # E2E QA runner (tmux session: Glimi-QA-Runner)
-./scripts/stop.sh           # graceful shutdown
+                            # login: admin / rmfflal  or  test / 0000
 ```
 
-**Requirements**: Python 3.12+, Node.js, [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`npm install -g @anthropic-ai/claude-code`).
-Default login: `admin / rmfflal` or `test / 0000`.
+**Windows** (WSL2 recommended; native `run.ps1` is a planned contributor task):
+```powershell
+# Inside an admin PowerShell, set up WSL once:
+wsl --install
+# Then inside WSL Ubuntu:
+sudo apt install python3.12-venv nodejs npm git
+npm install -g @anthropic-ai/claude-code
+git clone https://github.com/jaebinsim/Glimi.git
+cd Glimi
+./run.sh
+```
 
+**Useful commands**:
 ```bash
 ./run.sh --port 9000                    # change dashboard port
 ./run.sh --imagegen                     # enable local LoRA portrait generation (opt-in, ~6min/portrait)
 ./run.sh --legacy <community>           # legacy single-bot mode (QA / debugging)
+./scripts/qa.sh                         # E2E QA runner (tmux: Glimi-QA-Runner)
+./scripts/stop.sh                       # graceful shutdown
 python -m src.platform.accounts list    # list platform accounts
 python -m src.community list            # list communities (CLI)
 ```
+
+> 🚀 **Need more detail?** See [`START_HERE.html`](START_HERE.html) for the full cross-platform walkthrough + first-time checklist.
 
 | DM Channel View | Achievements |
 |---|---|
@@ -389,14 +411,49 @@ Lightweight starters that demonstrate Glimi Core directly, without Hangout's soc
 
 ## Contributing
 
-External contributions are welcome. Highest-leverage entry points during the kernel extraction phase:
+> 🆕 **First time?** Open **[`START_HERE.html`](START_HERE.html)** — covers cross-platform setup, the first contributor task (local model support), Claude Code workflow, branch strategy, and the full TODO roadmap. **Read it before opening a PR.**
 
-- `src/core/*` → `src/glimi/*` migration (track in `analysis/kernel_extraction_plan.md` if you have repo access)
-- New local-model backends (Ollama / vLLM / llama.cpp)
-- New Hangout scenes (`apps/hangout/src/scenes/*` once layout lands)
-- New examples — any domain (research, education, dev, ops) that exercises the harness
+### First contributor task — local-model support (Gemma 4 / Qwen 3.5)
 
-See `CLAUDE.md` for project guardrails (Discord-as-adapter principle, timestamps must be UTC-aware, prompt placement rules, etc.).
+The highest-impact opening contribution: implement an Ollama-based local LLM backend and benchmark Gemma 4 vs Qwen 3.5 on the three model roles (persona chat, supervisor judge, memory extraction JSON). Why: today Glimi depends on Anthropic API; the model-neutral promise needs proof. See the full task spec in [`START_HERE.html` §5](START_HERE.html#first-task).
+
+| | |
+|---|---|
+| **Scope** | New `src/llm/ollama.py` (impl `LLMBackend` ABC), wire `AVAILABLE_MODELS`, add comparison doc |
+| **Files** | New: `src/llm/ollama.py`, `tests/llm/test_ollama.py`, `docs/llm_backends.md` · Modify: `src/llm/__init__.py`, `src/core/runtime.py` |
+| **Acceptance** | Dashboard model selector exposes both models; persona/supervisor/memory all work; comparison table in `docs/llm_backends.md` |
+| **Reference impls** | `src/llm/claude_cli.py` (subprocess), `src/llm/anthropic_sdk.py` (SDK) |
+
+### Other entry points
+
+- **easy**: new `examples/` demos, doc fixes, new Hangout `src/scenes/`
+- **medium**: vLLM / llama.cpp backends, dashboard visualizations, new ToolSpecs
+- **hard**: native Windows support (`run.ps1`), Telegram adapter (`src/adapters/telegram/`), kernel extraction (`src/core/*` → `src/glimi/*`), embedding-based memory retrieval
+
+### Branch strategy
+
+| Branch | Role |
+|---|---|
+| `main` | Stable. **No direct work / push.** Maintainers fast-forward from `develop`. |
+| `develop` | Working branch. All integration happens here. |
+| `feat/<name>` · `fix/<name>` · `docs/<name>` · `refactor/<name>` | Short-lived contributor branches. **PR base = `develop`**. |
+
+### Code conventions (the easy-to-regress ones)
+
+- **Discord = adapter.** `src/core/*` never imports `discord`. Hangout-specific code lives under `src/bot/`, `src/scenes/`, `src/achievements/`, etc.
+- **Memory / emotion are user-prompt injections**, never system-prompt baked. `AgentRuntime` assembles them per channel, per turn.
+- **Timestamps are UTC-aware ISO** (`src.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` is naive — don't use it directly.
+- **Meta words** like "agent" / "bot" / "AI" are forbidden in user-visible text. `<tools>` blocks only surface in `mgr-system-log`.
+- **Profile edits** require `invalidate_cache()` + `runtime.refresh_agent()` paired.
+
+### Commit rules
+
+- 1-line subject, 50 chars-ish. Body only if necessary (1-2 lines).
+- Prefixes: `feat:` / `fix:` / `docs:` / `ui:` / `refactor:` / `test:`.
+- **No AI co-author trailers** (`Co-Authored-By: Claude` etc.) — strictly forbidden.
+- **No `--no-verify` / `--no-gpg-sign` bypasses** — fix the hook failure instead.
+
+See `CLAUDE.md` for the full project guardrails (auto-loaded by Claude Code).
 
 ---
 
