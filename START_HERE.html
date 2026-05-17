@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glimi — Start Here</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --bg-card-2: #1c2128;
+    --border: #30363d;
+    --border-strong: #484f58;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent-blue: #4a9eff;
+    --accent-green: #4aff9e;
+    --accent-orange: #ffaa4a;
+    --accent-purple: #a78bfa;
+    --accent-yellow: #f5c542;
+    --accent-red: #ff6b6b;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    margin: 0;
+    padding: 40px 24px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  header { margin-bottom: 24px; }
+  header .eyebrow {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  header h1 {
+    font-size: 48px;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+  }
+  header .tagline {
+    margin-top: 16px;
+    font-size: 19px;
+    font-style: italic;
+    color: var(--text);
+    opacity: 0.85;
+  }
+  header .meta {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  header .meta span { margin-right: 18px; }
+
+  .hero-cta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 32px 0 48px;
+  }
+  .hero-cta a {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    text-decoration: none;
+    color: var(--text);
+    display: block;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .hero-cta a:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-2px);
+  }
+  .hero-cta a .label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+  }
+  .hero-cta a .title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .hero-cta a .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hero-cta a.primary { border-color: var(--accent-green); }
+  .hero-cta a.primary .label { color: var(--accent-green); }
+
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 48px;
+  }
+  .toc strong { display: block; margin-bottom: 12px; color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; }
+  .toc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 14px; }
+  .toc-grid a {
+    color: var(--accent-blue);
+    text-decoration: none;
+    padding: 4px 0;
+    font-size: 14px;
+    display: block;
+  }
+  .toc-grid a:hover { color: var(--accent-green); }
+  .toc-grid a .num { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; display: inline-block; min-width: 22px; }
+
+  section { margin-bottom: 64px; }
+  section h2 {
+    font-size: 26px;
+    margin: 0 0 8px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  section h2 .num {
+    background: var(--bg-card-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: var(--accent-blue);
+  }
+  section .lead { color: var(--muted); margin: 0 0 24px; font-size: 15px; max-width: 760px; }
+  section h3 { font-size: 18px; margin: 28px 0 10px; color: var(--text); }
+  section h4 { font-size: 14px; margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  section p { margin: 10px 0; }
+  section ul { padding-left: 22px; margin: 10px 0; }
+  section ul li { margin: 6px 0; }
+  section a { color: var(--accent-blue); }
+  section a:hover { color: var(--accent-green); }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 16px 0;
+    box-shadow: var(--shadow);
+  }
+  .card.accent-green { border-left: 4px solid var(--accent-green); }
+  .card.accent-blue { border-left: 4px solid var(--accent-blue); }
+  .card.accent-orange { border-left: 4px solid var(--accent-orange); }
+  .card.accent-red { border-left: 4px solid var(--accent-red); }
+  .card.accent-yellow { border-left: 4px solid var(--accent-yellow); }
+  .card.accent-purple { border-left: 4px solid var(--accent-purple); }
+  .card h3:first-child, .card h4:first-child { margin-top: 0; }
+
+  .umbrella {
+    text-align: center;
+    padding: 32px 24px;
+    margin: 20px 0;
+  }
+  .umbrella .brand {
+    font-size: 42px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .umbrella .role {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 4px 0 24px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .umbrella .children {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .umbrella .child {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 26px;
+    min-width: 280px;
+    max-width: 340px;
+    text-align: left;
+    box-shadow: var(--shadow);
+  }
+  .umbrella .child.core { border-top: 3px solid var(--accent-green); }
+  .umbrella .child.app { border-top: 3px solid var(--accent-orange); }
+  .umbrella .child .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .umbrella .child .name { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+  .umbrella .child .name.core { color: var(--accent-green); }
+  .umbrella .child .name.app { color: var(--accent-orange); }
+  .umbrella .child .pip {
+    font-family: 'SF Mono', Consolas, monospace;
+    color: var(--accent-blue);
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  .umbrella .child p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.55; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--bg-card-2);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  tr:hover { background: rgba(255,255,255,0.02); }
+  td.center { text-align: center; }
+  td.muted { color: var(--muted); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge.do { background: rgba(74,255,158,0.15); color: var(--accent-green); border: 1px solid rgba(74,255,158,0.3); }
+  .badge.dont { background: rgba(255,107,107,0.1); color: var(--accent-red); border: 1px solid rgba(255,107,107,0.3); }
+  .badge.warn { background: rgba(255,170,74,0.1); color: var(--accent-orange); border: 1px solid rgba(255,170,74,0.3); }
+  .badge.info { background: rgba(74,158,255,0.1); color: var(--accent-blue); border: 1px solid rgba(74,158,255,0.3); }
+  .badge.tag { background: rgba(167,139,250,0.1); color: var(--accent-purple); border: 1px solid rgba(167,139,250,0.3); }
+  .badge.priority { background: rgba(245,197,66,0.15); color: var(--accent-yellow); border: 1px solid rgba(245,197,66,0.3); }
+
+  pre {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #c9d1d9;
+  }
+  code {
+    background: var(--bg-card-2);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+    color: var(--accent-blue);
+  }
+  pre code { background: none; border: 0; padding: 0; color: inherit; }
+
+  .platform-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 16px 0;
+  }
+  .platform-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+  }
+  .platform-card h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .platform-card .icon {
+    font-size: 22px;
+  }
+  .platform-card.macos { border-left: 3px solid var(--accent-green); }
+  .platform-card.linux { border-left: 3px solid var(--accent-yellow); }
+  .platform-card.windows { border-left: 3px solid var(--accent-blue); }
+  .platform-card p { font-size: 13px; color: var(--muted); margin: 6px 0; }
+  .platform-card pre { font-size: 12px; padding: 10px 14px; }
+
+  .checklist {
+    list-style: none;
+    padding-left: 0;
+  }
+  .checklist li {
+    padding: 8px 0 8px 32px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+  .checklist li:last-child { border-bottom: 0; }
+  .checklist li::before {
+    content: "○";
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .checklist li.done::before { content: "✓"; color: var(--accent-green); }
+  .checklist li.todo::before { content: "□"; color: var(--accent-yellow); }
+  .checklist li.priority::before { content: "★"; color: var(--accent-orange); }
+
+  .branch-flow {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 16px 0;
+  }
+  .branch-flow .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+  }
+  .branch-flow .branch {
+    background: var(--bg-card-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 13px;
+    color: var(--accent-blue);
+  }
+  .branch-flow .branch.main { color: var(--accent-red); }
+  .branch-flow .branch.develop { color: var(--accent-green); }
+  .branch-flow .branch.feat { color: var(--accent-yellow); }
+  .branch-flow .arrow { color: var(--muted); font-size: 18px; }
+  .branch-flow .desc { font-size: 13px; color: var(--muted); flex: 1; min-width: 200px; }
+
+  .dos-donts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .dos-donts .col {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+  }
+  .dos-donts .col h4 { margin-top: 0; }
+  .dos-donts .col.do { border-left: 4px solid var(--accent-green); }
+  .dos-donts .col.dont { border-left: 4px solid var(--accent-red); }
+  .dos-donts .col ul { padding-left: 18px; margin: 0; font-size: 14px; }
+  .dos-donts .col ul li { margin-bottom: 8px; color: var(--text); }
+
+  .task-card {
+    background: linear-gradient(135deg, rgba(255,170,74,0.05), rgba(74,158,255,0.03));
+    border: 1px solid var(--accent-orange);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin: 24px 0;
+    box-shadow: 0 4px 16px rgba(255,170,74,0.1);
+  }
+  .task-card .task-eyebrow {
+    color: var(--accent-orange);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .task-card h3 {
+    margin: 0 0 12px;
+    font-size: 22px;
+    color: var(--text);
+  }
+  .task-card .task-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin: 18px 0;
+  }
+  .task-card .task-grid > div {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+  }
+  .task-card .task-grid h4 {
+    margin: 0 0 6px;
+    color: var(--accent-blue);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .task-card .task-grid p { font-size: 13px; margin: 0; color: var(--muted); }
+
+  .timeline {
+    margin: 20px 0;
+    position: relative;
+    padding-left: 30px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+  .timeline .phase {
+    position: relative;
+    padding: 14px 0 22px 18px;
+  }
+  .timeline .phase::before {
+    content: '';
+    position: absolute;
+    left: -27px;
+    top: 20px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 3px solid var(--border-strong);
+  }
+  .timeline .phase.now::before { border-color: var(--accent-green); background: var(--accent-green); }
+  .timeline .phase.next::before { border-color: var(--accent-yellow); }
+  .timeline .phase.later::before { border-color: var(--accent-purple); }
+  .timeline .phase.future::before { border-color: var(--muted); }
+  .timeline .phase .phase-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .timeline .phase.now .phase-label { color: var(--accent-green); }
+  .timeline .phase.next .phase-label { color: var(--accent-yellow); }
+  .timeline .phase.later .phase-label { color: var(--accent-purple); }
+  .timeline .phase h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+  .timeline .phase ul { padding-left: 18px; font-size: 14px; }
+  .timeline .phase ul li { color: var(--muted); margin-bottom: 4px; }
+
+  .quote {
+    border-left: 3px solid var(--accent-yellow);
+    padding: 12px 20px;
+    margin: 16px 0;
+    background: rgba(245,197,66,0.05);
+    color: var(--text);
+    font-style: italic;
+  }
+
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  footer a { color: var(--accent-blue); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  footer p { margin: 6px 0; }
+
+  @media (max-width: 820px) {
+    body { padding: 20px 14px; }
+    header h1 { font-size: 32px; }
+    section h2 { font-size: 20px; }
+    .dos-donts, .platform-tabs { grid-template-columns: 1fr; }
+    .umbrella .brand { font-size: 32px; }
+    table { font-size: 12px; }
+    th, td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="eyebrow">Start Here · 이 한 페이지가 Glimi 의 전부</div>
+    <h1>Glimi</h1>
+    <div class="tagline">"The open harness for AI agent populations that keep living."<br>살아있는 멀티 에이전트 하네스 + AI 친구 커뮤니티 sim.</div>
+    <div class="meta">
+      <span>📅 Last updated: 2026-05-17</span>
+      <span>📜 License: Apache-2.0</span>
+      <span>🏗 Status: Kernel extraction in progress</span>
+    </div>
+  </header>
+
+  <div class="hero-cta">
+    <a href="#setup" class="primary">
+      <div class="label">→ 바로 시작</div>
+      <div class="title">로컬에서 실행하기</div>
+      <div class="desc">Windows · macOS · Linux 셋업 가이드</div>
+    </a>
+    <a href="#first-task" class="primary">
+      <div class="label">★ 첫 기여</div>
+      <div class="title">첫 contributor task</div>
+      <div class="desc">로컬 모델 (Gemma 4 · Qwen 3.5) 지원</div>
+    </a>
+    <a href="#claude-code">
+      <div class="label">🤖 도구</div>
+      <div class="title">Claude Code 로 개발</div>
+      <div class="desc">자동 컨텍스트 + 브랜치 + TodoWrite</div>
+    </a>
+    <a href="#branches">
+      <div class="label">🌳 브랜치</div>
+      <div class="title">main · develop 만</div>
+      <div class="desc">feature 는 develop 에서 분기</div>
+    </a>
+  </div>
+
+  <div class="toc">
+    <strong>이 문서</strong>
+    <div class="toc-grid">
+      <a href="#what"><span class="num">1.</span>이 프로젝트가 뭔지</a>
+      <a href="#status"><span class="num">2.</span>현재 상태 (May 2026)</a>
+      <a href="#layers"><span class="num">3.</span>두 개의 레이어</a>
+      <a href="#setup"><span class="num">4.</span>로컬 셋업 (cross-platform)</a>
+      <a href="#first-task"><span class="num">5.</span>첫 contributor task</a>
+      <a href="#claude-code"><span class="num">6.</span>Claude Code 로 개발</a>
+      <a href="#branches"><span class="num">7.</span>브랜치 전략</a>
+      <a href="#workflow"><span class="num">8.</span>워크플로우 (커밋·PR)</a>
+      <a href="#conventions"><span class="num">9.</span>코드 규칙</a>
+      <a href="#roadmap"><span class="num">10.</span>TODO 로드맵</a>
+      <a href="#docs"><span class="num">11.</span>참고 문서 맵</a>
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <section id="what">
+    <h2><span class="num">1</span>이 프로젝트가 뭔지</h2>
+    <p class="lead">한 줄: <strong>Glimi 는 살아있는 멀티 에이전트 하네스다.</strong> LLM 호출을 8 레이어로 감싸 "오너가 타이핑을 멈춰도 침묵하지 않는" 에이전트 인구를 만든다.</p>
+
+    <div class="card accent-blue">
+      <h3>왜 만들어졌나</h3>
+      <p>LLM 은 본질적으로 <strong>request-response</strong>. 프롬프트 → 응답. 끝. 혼자서 깨어나지 않고, 후속도 안 하고, 먼저 말 걸지도 않는다. 몇 개를 방에 넣어두면 오너가 타이핑 멈추는 순간 방은 조용해진다.</p>
+      <p>Glimi 는 LLM 호출 하나를 <strong>7 reactive 레이어</strong> 로 감싸 응답 품질을 잡고, 그 전체를 <strong>proactive supervisor 레이어</strong> 로 둘러싼다. Supervisor 는 자체 타이머로 돌며 에이전트의 <em>내면 생각</em> 처럼 nudge 를 주입한다.</p>
+      <ul>
+        <li>Reactive 는 <strong>이미 있는 대화를 다듬는다.</strong></li>
+        <li>Proactive 는 <strong>없던 대화를 시작한다.</strong></li>
+      </ul>
+      <p>대부분의 멀티 에이전트 프레임워크는 1번밖에 없다. Glimi 는 2번을 추가했다.</p>
+    </div>
+
+    <h3>30초 데모 시나리오 (Hangout)</h3>
+    <pre><code>14:02 — 너가 잠든 사이, OrchestratorSupervisor 가 3분 타이머에 깨어남
+        Haiku judge: "A 와 B 는 1.2h idle, 친밀도 30. 페어 후보."
+        → internal-dm-A-B 채널 자동 개설, context="가볍게 근황 토크"
+
+14:03 — A 가 internal-dm-A-B 에서 먼저 말 건다 (오너 모름)
+        A: "야 B, 너 요즘 뭐하고 지내?"
+
+14:30 — 너가 dm-B 에 들어가 "뭐해?" 물음
+        B: "업무 마감중이야, 방금 A 랑도 얘기했어 ㅋㅋ"
+        (방금 대화가 B 메모리에 L1 summary 로 들어가 있음. 친밀도 31.)</code></pre>
+    <p>이게 Glimi 의 핵심 가치 — <strong>네가 자리를 비워도 무언가 일어난다.</strong></p>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="status">
+    <h2><span class="num">2</span>현재 상태 (2026-05-17)</h2>
+    <p class="lead">이 프로젝트가 어디 와 있고 어디로 가는지.</p>
+
+    <div class="card accent-yellow">
+      <h3>중요 — 전환 중인 프로젝트</h3>
+      <ul>
+        <li><span class="badge tag">완료</span> <strong>방향 전환</strong>: 사업화 → OSS career capital. 분석 문서: <code>analysis/pivot_subagent_review.md</code> (gitignored)</li>
+        <li><span class="badge tag">완료</span> <strong>네이밍 재정의</strong>: Glimi = umbrella 브랜드. <code>Glimi Core</code> (라이브러리) + <code>Glimi Hangout</code> (flagship 앱)</li>
+        <li><span class="badge tag">완료</span> <strong>라이선스</strong>: Apache-2.0 확정. <code>LICENSE</code> 파일 존재</li>
+        <li><span class="badge priority">진행 중</span> <strong>커널 추출</strong>: 도메인 무관 코어를 <code>src/core/*</code> 에서 <code>src/glimi/*</code> 로 분리. 2-3주 예상</li>
+        <li><span class="badge priority">진행 중</span> <strong>첫 contributor task</strong>: 로컬 모델 (Gemma 4, Qwen 3.5) 지원 — 아래 섹션 5 참조</li>
+        <li><span class="badge do">활성</span> <strong>Hangout 풀-스택</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 동작 (<code>./run.sh</code>)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="layers">
+    <h2><span class="num">3</span>두 개의 레이어 — Glimi = umbrella</h2>
+    <p class="lead">Glimi 는 단일 제품이 아니라 우산 브랜드. 라이브러리(Core) + flagship 앱(Hangout). LangChain → LangGraph/LangSmith 와 같은 패턴.</p>
+
+    <div class="umbrella">
+      <div class="brand">Glimi</div>
+      <div class="role">umbrella · 이 repo 의 정체</div>
+      <div class="children">
+        <div class="child core">
+          <div class="label">라이브러리 · OSS</div>
+          <div class="name core">Glimi Core</div>
+          <div class="pip">pip install glimi (예정)</div>
+          <p>멀티 에이전트 하네스. 8 레이어 wrapper, 5-layer memory, autonomous A2A, 라이브 observability dashboard. 모델 벤더 중립 (Claude · Ollama · vLLM · llama.cpp).</p>
+        </div>
+        <div class="child app">
+          <div class="label">flagship 앱</div>
+          <div class="name app">Glimi Hangout</div>
+          <div class="pip">apps/hangout/ (재배치 예정)</div>
+          <p>"AI friends that keep living when you're not looking." Glimi Core 로 만든 첫 official 앱. 가벼운 example 이 아닌 독립 정체성을 가진 application.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>새 코드 추가할 때 첫 질문</h4>
+      <p><strong>이건 Core 냐 Hangout 이냐?</strong></p>
+      <ul>
+        <li><strong>Core</strong> = 도메인 무관. "리서치 두 명이 짝지어 토픽 분석" 시나리오에도 똑같이 적용되나? → YES 면 Core</li>
+        <li><strong>Hangout</strong> = 도메인 종속. "유나가 친구 셋 만들기 튜토리얼" 같은 community-sim 메타가 필요 → Hangout</li>
+        <li>모호하면 Hangout 쪽에 두고, 패턴이 굳어지면 Core 로 승격</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="setup">
+    <h2><span class="num">4</span>로컬 셋업 — 30분 안에 실행</h2>
+    <p class="lead">Windows / macOS / Linux 어디서든 동작. 우선은 Hangout 풀-스택 (Discord 봇 + 웹 대시보드) 가동을 목표로.</p>
+
+    <h3>공통 사전 요구</h3>
+    <table>
+      <thead><tr><th>요구</th><th>설치</th></tr></thead>
+      <tbody>
+        <tr><td>Python 3.12+</td><td>macOS: <code>brew install python@3.12</code> · Linux: 배포판 패키지 매니저 · Windows: <a href="https://www.python.org/downloads/">python.org</a></td></tr>
+        <tr><td>Node.js (Claude Code CLI 의존)</td><td><a href="https://nodejs.org">nodejs.org</a> 또는 <code>nvm</code></td></tr>
+        <tr><td>Claude Code CLI</td><td><code>npm install -g @anthropic-ai/claude-code</code></td></tr>
+        <tr><td>Anthropic API key 또는 Claude Code Max 플랜</td><td>페르소나가 Claude 모델로 응답 (로컬 모델 지원 = 첫 contributor task)</td></tr>
+        <tr><td>Discord 봇 토큰</td><td><a href="https://discord.com/developers/applications">discord.com/developers</a> — Hangout 풀-스택만 필요. Core 만 만지면 불필요</td></tr>
+        <tr><td>git</td><td>당연히</td></tr>
+      </tbody>
+    </table>
+
+    <h3>플랫폼별 실행</h3>
+    <div class="platform-tabs">
+      <div class="platform-card macos">
+        <h3><span class="icon">🍎</span> macOS</h3>
+        <p>네이티브 지원. zsh 또는 bash.</p>
+        <pre><code>git clone https://github.com/jaebinsim/Glimi.git
+cd Glimi
+
+./run.sh
+# → http://localhost:8000
+# → admin / rmfflal  or  test / 0000</code></pre>
+        <p>첫 실행 시 venv 자동 생성 + 의존성 설치 (5-10분).</p>
+      </div>
+
+      <div class="platform-card linux">
+        <h3><span class="icon">🐧</span> Linux</h3>
+        <p>Ubuntu / Debian / Fedora / Arch 모두 OK. bash 기본.</p>
+        <pre><code>git clone https://github.com/jaebinsim/Glimi.git
+cd Glimi
+
+# 필요 시 시스템 빌드 의존성:
+# sudo apt install python3.12-venv python3.12-dev build-essential
+
+./run.sh
+# → http://localhost:8000</code></pre>
+        <p>Discord 봇 + 웹 대시보드 모두 정상 동작.</p>
+      </div>
+
+      <div class="platform-card windows">
+        <h3><span class="icon">🪟</span> Windows</h3>
+        <p><strong>현재 권장 = WSL2.</strong> 네이티브 Windows 지원은 추후.</p>
+        <pre><code># PowerShell (관리자)
+wsl --install              # 처음이라면 WSL2 설치 + Ubuntu
+
+# WSL Ubuntu 안에서:
+sudo apt install python3.12-venv nodejs npm git
+npm install -g @anthropic-ai/claude-code
+
+git clone https://github.com/jaebinsim/Glimi.git
+cd Glimi
+./run.sh
+# → 윈도우 브라우저에서 http://localhost:8000</code></pre>
+        <p style="color:var(--accent-orange);">📝 네이티브 Windows 지원 (<code>run.ps1</code>) 은 후속 contributor task 후보.</p>
+      </div>
+    </div>
+
+    <h3>실행 후 체크</h3>
+    <ul class="checklist">
+      <li><code>./run.sh</code> 가 에러 없이 부팅 (5-10분 첫 실행 시)</li>
+      <li><code>http://localhost:8000</code> 로그인 화면 보임</li>
+      <li>커뮤니티 하나 생성 → 봇 부팅 → Discord 서버에 유나(매니저) 가 첫 인사</li>
+      <li>유나에게 DM 보내면 응답 옴</li>
+      <li>대시보드 그래프 탭에서 노드 표시</li>
+    </ul>
+
+    <h3>유용한 기타 명령</h3>
+    <pre><code>./run.sh --port 9000                    # 대시보드 포트 변경
+./run.sh --imagegen                     # 로컬 LoRA 초상화 생성 (opt-in, ~6분/장)
+./run.sh --legacy &lt;community&gt;           # 레거시 단일 봇 모드 (QA / 디버깅)
+./scripts/qa.sh                         # E2E QA runner (tmux: Glimi-QA-Runner)
+./scripts/stop.sh                       # graceful shutdown
+
+python -m src.platform.accounts list    # 계정 목록
+python -m src.community list            # 커뮤니티 목록</code></pre>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="first-task">
+    <h2><span class="num">5</span>첫 contributor task — 로컬 모델 지원</h2>
+    <p class="lead">Glimi 의 model-neutral 약속을 실증하는 가장 가치 있는 첫 작업. 현재 Claude 만 의존 중인 LLM 백엔드에 Gemma 4 · Qwen 3.5 같은 로컬 모델을 붙이고 비교한다.</p>
+
+    <div class="task-card">
+      <div class="task-eyebrow">★ Priority Task · 첫 PR 추천</div>
+      <h3>Ollama 기반 로컬 LLM 백엔드 — Gemma 4 vs Qwen 3.5 비교</h3>
+
+      <p><strong>왜:</strong> (1) Anthropic API 비용 의존 제거 / (2) 데이터 로컬 유지 / (3) Glimi Core 의 "모델 벤더 중립" 약속 실증 / (4) 로컬 LLM ops 경험 = 강한 hiring signal.</p>
+
+      <div class="task-grid">
+        <div>
+          <h4>목표</h4>
+          <p>대시보드에서 페르소나에게 <code>local:gemma-4</code> / <code>local:qwen-3.5</code> 모델을 할당 가능. 3가지 역할 (persona chat · supervisor judge · memory extraction) 모두 동작.</p>
+        </div>
+        <div>
+          <h4>변경 파일</h4>
+          <p><strong>신규:</strong> <code>src/llm/ollama.py</code>, <code>tests/llm/test_ollama.py</code>, <code>docs/llm_backends.md</code><br>
+          <strong>수정:</strong> <code>src/llm/__init__.py</code> (factory), <code>src/core/runtime.py</code> (<code>AVAILABLE_MODELS</code> 활성화 + 라우팅)</p>
+        </div>
+        <div>
+          <h4>비교 축</h4>
+          <p>① 페르소나 자연스러움 (단문 ack · 한국어 톤)<br>② Supervisor JSON 판정 정확도<br>③ 메모리 추출 JSON validity rate (≥95% 목표)<br>④ 응답 지연 시간<br>⑤ VRAM 요구</p>
+        </div>
+        <div>
+          <h4>완료 기준</h4>
+          <p>✅ 대시보드에서 모델 선택 → 페르소나 즉시 적용<br>✅ 두 모델 모두 3가지 역할 동작<br>✅ <code>docs/llm_backends.md</code> 비교표 + 권장 모델<br>✅ unit test 통과</p>
+        </div>
+      </div>
+
+      <h4 style="margin-top:24px;">시작 포인트</h4>
+      <ul>
+        <li><code>src/llm/base.py</code> 의 <code>LLMBackend</code> ABC 가 추상 인터페이스 — 이걸 구현하면 됨</li>
+        <li><code>src/llm/claude_cli.py</code> 가 reference 구현 (subprocess 기반)</li>
+        <li><code>src/llm/anthropic_sdk.py</code> 가 또 다른 reference 구현 (SDK 기반)</li>
+        <li><code>src/core/runtime.py</code> 의 <code>AVAILABLE_MODELS</code> 에 stub 주석이 이미 있음 → 활성화 + 정식 등록</li>
+        <li>Ollama 로컬 설치: <a href="https://ollama.com/download">ollama.com/download</a>. <code>ollama pull gemma2</code>, <code>ollama pull qwen2.5</code> (구체 모델명은 ollama 최신 카탈로그 참조)</li>
+      </ul>
+
+      <h4 style="margin-top:18px;">기대 산출물</h4>
+      <ol>
+        <li><code>src/llm/ollama.py</code> — <code>OllamaBackend(LLMBackend)</code> 구현</li>
+        <li><code>tests/llm/test_ollama.py</code> — 기본 unit test (request/response 형식)</li>
+        <li><code>docs/llm_backends.md</code> — 모델별 비교표 (테스트 결과 표기)</li>
+        <li><code>src/core/runtime.py</code> <code>AVAILABLE_MODELS</code> 에 <code>local:gemma-4</code> · <code>local:qwen-3.5</code> 엔트리 정식 등록 + <code>_resolve_agent_model</code> 라우팅</li>
+        <li>PR description 에 짧은 데모 영상 / 스크린샷 (선택)</li>
+      </ol>
+
+      <h4 style="margin-top:18px;">Out of scope (이 PR 에서 X)</h4>
+      <ul>
+        <li>vLLM, llama.cpp 백엔드 — 별도 후속 PR</li>
+        <li>웹 대시보드 모델 선택 UI — 이미 존재 (<code>AVAILABLE_MODELS</code> 만 갱신하면 자동 노출됨)</li>
+        <li>Glimi Core 자체 디렉토리 추출 (<code>src/core/*</code> → <code>src/glimi/*</code>) — 메인테이너 작업</li>
+      </ul>
+
+      <div class="quote" style="margin-top:20px;">
+        막히면 GitHub Issue 로 "intent + 막힌 지점" 공유. 메인테이너가 (a) 진행 중인 리팩터와 충돌하는지 확인, (b) 방향 제안.
+      </div>
+    </div>
+
+    <h3>이 task 이후 후보 task</h3>
+    <ul class="checklist">
+      <li class="todo">vLLM 백엔드 (성능 우선 케이스)</li>
+      <li class="todo">llama.cpp 백엔드 (Apple Silicon 최적화 · 작은 VRAM)</li>
+      <li class="todo">네이티브 Windows 지원 (<code>run.ps1</code> + 의존성 가이드)</li>
+      <li class="todo">Telegram 어댑터 (Discord 와 같은 자리에)</li>
+      <li class="todo">새 Hangout scene: birthday / healing / outing</li>
+      <li class="todo">메모리 retrieval 에 임베딩 기반 semantic 추가</li>
+    </ul>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="claude-code">
+    <h2><span class="num">6</span>Claude Code 로 개발</h2>
+    <p class="lead">이 프로젝트는 Claude Code 친화적으로 설계됨. 클론 → Claude Code 실행 → 자동으로 모든 컨텍스트 로드됨.</p>
+
+    <div class="card accent-blue">
+      <h3>자동 로드되는 컨텍스트</h3>
+      <p>이 repo 에서 Claude Code 를 실행하면 다음이 <strong>자동 주입</strong>됨:</p>
+      <ul>
+        <li><code>CLAUDE.md</code> (루트) — 아키텍처 원칙, 작업 규칙, do/don't, 브랜치 전략</li>
+        <li>각 subdirectory 의 <code>CLAUDE.md</code> 가 있다면 그것도 (예: <code>src/glimi_imagegen/CLAUDE.md</code>)</li>
+      </ul>
+      <p>즉 너가 별도 설명 안 해도 Claude 가 "Discord = 어댑터", "AI co-author trailer 금지", "타임스탬프 UTC-aware" 같은 규칙을 이미 알고 시작.</p>
+    </div>
+
+    <h3>Claude Code 로 작업하는 워크플로우</h3>
+    <ol>
+      <li><strong>repo 클론 + Claude Code 실행</strong>
+        <pre><code>git clone https://github.com/jaebinsim/Glimi.git
+cd Glimi
+claude                                  # Claude Code CLI 실행</code></pre>
+      </li>
+      <li><strong>첫 명령으로 컨텍스트 확인</strong>
+        <pre><code>이 프로젝트가 뭐고 무엇부터 하면 좋을지 START_HERE.html 기반으로 정리해줘</code></pre>
+        <p style="font-size:13px;color:var(--muted);margin-top:4px;">→ Claude 가 CLAUDE.md + 이 HTML 을 읽고 요약. 진행 방향 sync.</p>
+      </li>
+      <li><strong>새 task 마다 새 브랜치</strong>
+        <pre><code>develop 에서 feat/ollama-backend 브랜치 새로 파줘. 그리고 task 시작</code></pre>
+        <p style="font-size:13px;color:var(--muted);margin-top:4px;">→ Claude 가 자동으로 <code>git checkout -b feat/ollama-backend</code></p>
+      </li>
+      <li><strong>여러 단계 작업이면 TodoWrite / TaskCreate 요청</strong>
+        <pre><code>이 작업 단계별로 todo 만들어서 진행</code></pre>
+        <p style="font-size:13px;color:var(--muted);margin-top:4px;">→ 진행 상황이 사용자에게도 보이고, 컨텍스트 손실 복구 쉬움.</p>
+      </li>
+      <li><strong>커밋은 명시적으로 요청</strong>
+        <p style="font-size:13px;color:var(--muted);">Claude Code 는 기본적으로 자동 커밋 안 함. "지금 커밋해" 라고 명시해야 커밋. 메시지는 짧게 (1줄 제목).</p>
+      </li>
+      <li><strong>PR 도 명시적으로</strong>
+        <pre><code>이 브랜치 develop 에 PR 올려줘</code></pre>
+      </li>
+    </ol>
+
+    <h3>Claude Code 에게 절대 시키면 안 되는 것</h3>
+    <div class="dos-donts">
+      <div class="col do">
+        <h4>✓ Do</h4>
+        <ul>
+          <li>"develop 에서 새 브랜치 파줘" 명시</li>
+          <li>"이 task 완료 후 커밋해" 명시</li>
+          <li>여러 단계면 "todo 만들어서" 요청</li>
+          <li>막히면 "왜 이게 안 되는지 분석해" 부터</li>
+        </ul>
+      </div>
+      <div class="col dont">
+        <h4>✗ Don't</h4>
+        <ul>
+          <li>"main 에 바로 push 해" — 절대 금지</li>
+          <li>"커밋 메시지에 Claude 표시 넣어" — AI co-author 금지</li>
+          <li>"--no-verify 로 우회해" — 훅 실패하면 원인 fix</li>
+          <li>"한 번에 다 해" — 검증 안 된 대량 변경은 위험</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card accent-yellow">
+      <h4>💡 팁 — CLAUDE.md 가 알아서 막아준다</h4>
+      <p>이 repo 의 <code>CLAUDE.md</code> 에 "AI co-author 금지", "main 직접 작업 금지", "<code>--no-verify</code> 금지" 같은 규칙이 명시되어 있어서 Claude Code 가 이 규칙을 알고 시작함. 별도 매번 알려줄 필요 없음.</p>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="branches">
+    <h2><span class="num">7</span>브랜치 전략 — main + develop 만</h2>
+    <p class="lead">간단한 두 영구 브랜치. feature/fix 는 한시적 브랜치로 분기 → develop 으로 PR.</p>
+
+    <div class="branch-flow">
+      <div class="row">
+        <span class="branch main">main</span>
+        <span class="arrow">←</span>
+        <span class="branch develop">develop</span>
+        <span class="arrow">←</span>
+        <span class="branch feat">feat/&lt;name&gt;</span>
+        <span class="desc">새 작업 분기 / PR base = develop / 메인테이너가 안정화 후 develop → main 머지</span>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>브랜치</th><th>역할</th><th>누가 push 하나</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>main</code></td>
+          <td>안정판. 외부 사용자가 클론하면 기본으로 받는 브랜치</td>
+          <td><span class="badge dont">메인테이너 전용 · 직접 push 금지</span></td>
+        </tr>
+        <tr>
+          <td><code>develop</code></td>
+          <td>working 브랜치. 모든 일반 작업의 통합 지점</td>
+          <td><span class="badge warn">메인테이너 / PR 머지로만</span></td>
+        </tr>
+        <tr>
+          <td><code>feat/&lt;name&gt;</code></td>
+          <td>기능 개발 한시적 브랜치</td>
+          <td><span class="badge do">기여자 자유 · PR base = develop</span></td>
+        </tr>
+        <tr>
+          <td><code>fix/&lt;name&gt;</code></td>
+          <td>버그 fix 한시적 브랜치</td>
+          <td><span class="badge do">기여자 자유 · PR base = develop</span></td>
+        </tr>
+        <tr>
+          <td><code>docs/&lt;name&gt;</code></td>
+          <td>문서 갱신 한시적 브랜치</td>
+          <td><span class="badge do">기여자 자유 · PR base = develop</span></td>
+        </tr>
+        <tr>
+          <td><code>refactor/&lt;name&gt;</code></td>
+          <td>리팩터링 한시적 브랜치</td>
+          <td><span class="badge do">기여자 자유 · PR base = develop</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="card accent-red">
+      <h4>금지 사항</h4>
+      <ul>
+        <li><span class="badge dont">금지</span> <code>main</code> 에 직접 커밋 / push</li>
+        <li><span class="badge dont">금지</span> <code>main</code> 으로 PR (모든 PR 은 <code>develop</code> 대상)</li>
+        <li><span class="badge dont">금지</span> 한시적 브랜치를 길게 살려둠 (머지되면 즉시 삭제)</li>
+        <li><span class="badge dont">금지</span> <code>claude/*</code> 류 자동 브랜치 (과거 도구 잔재, 2026-05-17 정리됨)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="workflow">
+    <h2><span class="num">8</span>워크플로우 — 클론에서 PR 까지</h2>
+    <p class="lead">외부 기여자 표준 시퀀스.</p>
+
+    <ol>
+      <li><strong>Fork + Clone</strong>
+        <pre><code>git clone https://github.com/&lt;your&gt;/Glimi.git
+cd Glimi
+git remote add upstream https://github.com/jaebinsim/Glimi.git</code></pre>
+      </li>
+      <li><strong>develop 최신화</strong>
+        <pre><code>git checkout develop
+git pull upstream develop</code></pre>
+      </li>
+      <li><strong>feature 브랜치 분기</strong>
+        <pre><code>git checkout -b feat/ollama-backend</code></pre>
+      </li>
+      <li><strong>작업 + 로컬 테스트</strong>
+        <pre><code># 코드 변경 작업
+./scripts/qa.sh                # E2E QA 회귀 (시간 걸림)
+pytest tests/                  # unit test</code></pre>
+      </li>
+      <li><strong>커밋 (짧은 메시지)</strong>
+        <pre><code>git add &lt;변경 파일&gt;
+git commit -m "feat: ollama backend — Gemma 4 / Qwen 3.5 비교 추가"</code></pre>
+      </li>
+      <li><strong>push + PR 생성 (base: develop)</strong>
+        <pre><code>git push origin feat/ollama-backend
+# GitHub 에서 PR 생성, base branch = develop</code></pre>
+      </li>
+      <li><strong>리뷰 + 머지</strong>: 메인테이너가 리뷰. 통과하면 develop 에 squash 또는 merge 머지.</li>
+    </ol>
+
+    <h3>커밋 메시지 규칙</h3>
+    <ul>
+      <li><strong>1줄 제목</strong>. 50자 내외. 본문은 정말 필요한 경우만 1-2줄</li>
+      <li>접두사: <code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>ui:</code>, <code>refactor:</code>, <code>test:</code></li>
+      <li>한국어 / 영어 둘 다 OK. 일관성만 유지</li>
+      <li><span class="badge dont">금지</span> <code>Co-Authored-By: Claude</code> 또는 AI co-author trailer 일체</li>
+      <li><span class="badge dont">금지</span> "Generated with Claude Code", 🤖 등 AI 생성 표식</li>
+      <li><span class="badge dont">금지</span> <code>--no-verify</code> / <code>--no-gpg-sign</code> 우회</li>
+    </ul>
+
+    <h4>예시 (실제 history 에서)</h4>
+    <pre><code>feat: bring_friend 도구 — 친한 페르소나가 자기 친구 데려오는 메커니즘
+fix: A2A 대화 모두 실패 회귀 — _parse_response 의 _auto_report_leak 호출 제거
+docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></pre>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="conventions">
+    <h2><span class="num">9</span>코드 규칙 — 한번에 회귀 만들기 좋은 것들</h2>
+    <p class="lead">대부분 <code>CLAUDE.md</code> 에서 가져옴. 처음 만지면 가장 쉽게 회귀 나는 항목.</p>
+
+    <h3>아키텍처 레이어링</h3>
+    <div class="dos-donts">
+      <div class="col do">
+        <h4>✓ Do</h4>
+        <ul>
+          <li>새 기능: "이 로직을 Telegram·웹챗 어댑터에서 재사용 가능한가?" 통과해야 Core 자격</li>
+          <li>플랫폼 중립 타입만 사용 (<code>str</code>, <code>int</code>, dataclass)</li>
+          <li>Discord 결합 코드는 <code>src/bot/</code> 안에 (또는 향후 <code>apps/hangout/</code>)</li>
+        </ul>
+      </div>
+      <div class="col dont">
+        <h4>✗ Don't</h4>
+        <ul>
+          <li><code>src/core/*</code> 에서 <code>import discord</code> — 절대 금지</li>
+          <li>Discord 타입이 코어 함수 시그니처에 새는 것</li>
+          <li><code>src/core/prompts/</code> 에서 <code>src/bot/</code> import</li>
+          <li>예외: <code>src/core/sync.py</code> 는 과도기적으로 OK</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>프롬프트 작성</h3>
+    <div class="dos-donts">
+      <div class="col do">
+        <h4>✓ Do</h4>
+        <ul>
+          <li>위치: 범용 = <code>src/core/prompts/en/</code> · scene 전용 = <code>src/scenes/{scene}/</code></li>
+          <li>영어 정본. 한국 특화 (ㅇㅇ / 카톡) 는 <code>locale.py</code> helper</li>
+          <li>모델 dialect 는 <code>model.tool_call_syntax_hint()</code> helper</li>
+        </ul>
+      </div>
+      <div class="col dont">
+        <h4>✗ Don't</h4>
+        <ul>
+          <li><code>&lt;tools&gt;</code> 같은 syntax 하드코딩 (provider 마다 다름)</li>
+          <li>레거시 <code>[CMD:...]</code> / <code>[ACTION:...]</code> / <code>[QUERY:...]</code> — 전수 제거됨</li>
+          <li>한국어 f-string 안에 <code>{한글_변수}</code> placeholder — NameError 주의</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>사용자 보이는 텍스트 (UX)</h3>
+    <div class="card accent-red">
+      <h4><span class="badge dont">금지</span> 메타 용어 노출</h4>
+      <p>사용자가 보는 텍스트에서 "에이전트", "멤버", "봇", "AI" 등 메타 용어 절대 X. 시스템 프롬프트에선 "다른 사람은 이름/친구들" 같은 자연스러운 표현. <code>&lt;tools&gt;</code> 블록은 <code>mgr-system-log</code> 에만 노출.</p>
+    </div>
+
+    <h3>상태 / 캐시</h3>
+    <ul>
+      <li>메모리·감정은 <strong>system prompt 에 안 넣음</strong> — <code>agent_runtime</code> 이 user prompt 에 채널별 동적 주입</li>
+      <li>프로필 수정 후 <code>invalidate_cache()</code> + <code>runtime.refresh_agent()</code> 쌍으로 호출</li>
+      <li>타임스탬프 = UTC-aware ISO (<code>src.core.timeutil.now_utc_iso()</code>) — SQLite <code>CURRENT_TIMESTAMP</code> 직접 사용 금지</li>
+      <li><code>dm-</code> / <code>mgr-</code> 채널 삭제 금지 (보호됨)</li>
+      <li>루트에 봇 토큰·커뮤니티 DB·런타임 상태 X (<code>dev/test_defaults.json</code> 만 예외)</li>
+    </ul>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="roadmap">
+    <h2><span class="num">10</span>TODO 로드맵 — 어디로 가나</h2>
+    <p class="lead">우선순위 순. 메인테이너 작업 + contributor 가 잡을 수 있는 작업 표시.</p>
+
+    <div class="timeline">
+      <div class="phase now">
+        <div class="phase-label">★ 진행 중 · 우선</div>
+        <h3>Phase 1 — 커널 추출 (메인테이너)</h3>
+        <ul>
+          <li><code>src/core/{runtime, tools, memory, llm, conversation}</code> → <code>src/glimi/*</code></li>
+          <li>도메인 종속 코드 → <code>apps/hangout/</code></li>
+          <li><code>KernelStore</code> ABC + <code>AgentProfile</code> protocol 정의</li>
+          <li>2-3주 예상</li>
+        </ul>
+      </div>
+
+      <div class="phase now">
+        <div class="phase-label">★ 진행 중 · 첫 contributor</div>
+        <h3>Phase 1.5 — 로컬 모델 지원 (Ollama)</h3>
+        <ul>
+          <li><code>src/llm/ollama.py</code> — Gemma 4, Qwen 3.5 비교</li>
+          <li>대시보드에서 per-agent 로컬 모델 할당</li>
+          <li><code>docs/llm_backends.md</code> 비교표</li>
+          <li>섹션 5 참조</li>
+        </ul>
+      </div>
+
+      <div class="phase next">
+        <div class="phase-label">다음</div>
+        <h3>Phase 2 — Examples + pypi alpha</h3>
+        <ul>
+          <li><code>examples/research_buddies/</code> — 두 에이전트 리서치 협업</li>
+          <li><code>examples/dev_pair/</code> — planner + executor</li>
+          <li>커널 unit tests</li>
+          <li>첫 <code>pip install glimi</code> 0.1.0 알파</li>
+        </ul>
+      </div>
+
+      <div class="phase next">
+        <div class="phase-label">다음 · contributor 가능</div>
+        <h3>Phase 2.5 — 추가 로컬 백엔드</h3>
+        <ul>
+          <li>vLLM 백엔드 (성능 우선)</li>
+          <li>llama.cpp 백엔드 (Apple Silicon · 작은 VRAM)</li>
+          <li>네이티브 Windows 지원 (<code>run.ps1</code>)</li>
+        </ul>
+      </div>
+
+      <div class="phase later">
+        <div class="phase-label">그다음</div>
+        <h3>Phase 3 — OSS visibility</h3>
+        <ul>
+          <li>영문 architecture 블로그</li>
+          <li>HN Show post · Reddit · X 스레드</li>
+          <li>한국 커뮤니티 (geeknews, OKKY)</li>
+          <li>Issues/PR 응대 = hiring funnel</li>
+        </ul>
+      </div>
+
+      <div class="phase future">
+        <div class="phase-label">미래</div>
+        <h3>Phase 4 — 비-Discord 어댑터 (Hangout 확장)</h3>
+        <ul>
+          <li>Telegram 어댑터</li>
+          <li>웹챗 어댑터 (Glimi 자체 client)</li>
+          <li>Hangout 새 scene: birthday, healing, outing</li>
+          <li>오너 부재 시뮬레이션 + 복귀 브리핑</li>
+        </ul>
+      </div>
+
+      <div class="phase future">
+        <div class="phase-label">미래 · 연구</div>
+        <h3>Phase 5 — 메모리 / Retrieval 개선</h3>
+        <ul>
+          <li>임베딩 기반 semantic retrieval</li>
+          <li>Retrieval eval 시스템</li>
+          <li>Cross-agent memory 가시성 (제한된 공유)</li>
+          <li>감정 application layer (sentiment → 상태)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>contributor 가 잡을 수 있는 task 정리</h3>
+    <table>
+      <thead><tr><th>난이도</th><th>task</th><th>핵심 파일</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge do">easy</span></td><td>새 example 추가 (<code>examples/</code> 도메인별)</td><td><code>examples/</code></td></tr>
+        <tr><td><span class="badge do">easy</span></td><td>문서 / README 개선 · 다이어그램 추가</td><td><code>README.md</code>, <code>docs/</code></td></tr>
+        <tr><td><span class="badge do">easy</span></td><td>새 Hangout scene (birthday 등)</td><td><code>src/scenes/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td><strong>★ Ollama 로컬 모델 백엔드 (첫 task)</strong></td><td><code>src/llm/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td>vLLM / llama.cpp 백엔드</td><td><code>src/llm/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td>대시보드 시각화 확장</td><td><code>src/platform/dashboard/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td>새 ToolSpec (도구)</td><td><code>src/core/tools/registry.py</code></td></tr>
+        <tr><td><span class="badge tag">hard</span></td><td>네이티브 Windows 지원</td><td><code>run.ps1</code>, scripts</td></tr>
+        <tr><td><span class="badge tag">hard</span></td><td>Telegram 어댑터</td><td><code>src/adapters/telegram/</code> (신설)</td></tr>
+        <tr><td><span class="badge tag">hard</span></td><td>커널 추출 (Phase 1) 보조</td><td><code>src/core/*</code> → <code>src/glimi/*</code></td></tr>
+        <tr><td><span class="badge tag">hard</span></td><td>임베딩 기반 memory retrieval</td><td><code>src/core/memory.py</code></td></tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top:18px;"><strong>큰 task 는 시작 전 GitHub Issue 로 의도 공유</strong>. 메인테이너가 (a) 진행 중인 리팩터와 충돌 여부 확인 (b) 방향 sync.</p>
+  </section>
+
+  <!-- ============================================ -->
+  <section id="docs">
+    <h2><span class="num">11</span>참고 문서 맵</h2>
+    <p class="lead">이 HTML 다음으로 읽을 문서들.</p>
+
+    <h3>최우선 (public)</h3>
+    <table>
+      <thead><tr><th>문서</th><th>내용</th></tr></thead>
+      <tbody>
+        <tr><td><a href="CLAUDE.md">CLAUDE.md</a></td><td>아키텍처 원칙 + 작업 규칙. Claude Code 가 자동 로드.</td></tr>
+        <tr><td><a href="README.md">README.md</a></td><td>프로젝트 소개 + Quick Start (영문, public-facing)</td></tr>
+        <tr><td><a href="README.ko.md">README.ko.md</a></td><td>한국어 미러</td></tr>
+        <tr><td><a href="LICENSE">LICENSE</a></td><td>Apache-2.0 전문</td></tr>
+        <tr><td><a href="docs/onboarding.html">docs/onboarding.html</a></td><td>contributor 상세 매뉴얼 (이 HTML 의 deep-dive)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>깊은 기술 docs</h3>
+    <table>
+      <thead><tr><th>문서</th><th>주제</th></tr></thead>
+      <tbody>
+        <tr><td><a href="docs/architecture.md">docs/architecture.md</a></td><td>디렉토리 구조, DB 스키마, &lt;tools&gt; 프로토콜, 채널 구조</td></tr>
+        <tr><td><a href="docs/prompt_development.md">docs/prompt_development.md</a></td><td>프롬프트 작성 규칙 (위치, i18n, model dialect)</td></tr>
+        <tr><td><a href="docs/memory_system.md">docs/memory_system.md</a></td><td>5 레이어 메모리 내부 동작</td></tr>
+        <tr><td><a href="docs/scenes_and_supervisors.md">docs/scenes_and_supervisors.md</a></td><td>Scene / Achievement / Supervisor</td></tr>
+        <tr><td><a href="docs/formatting.md">docs/formatting.md</a></td><td><code>#channel</code> → <code>&lt;#id&gt;</code> 치환</td></tr>
+        <tr><td><a href="docs/community_isolation.md">docs/community_isolation.md</a></td><td>멀티 커뮤니티 격리</td></tr>
+        <tr><td><a href="docs/execution.md">docs/execution.md</a></td><td>실행 명령 + 플랫폼 CLI + QA 자동화</td></tr>
+        <tr><td><a href="docs/edge_cases.md">docs/edge_cases.md</a></td><td>특이 케이스 이력</td></tr>
+        <tr><td><a href="docs/dev_guide.md">docs/dev_guide.md</a></td><td>메인테이너용 스프린트 컨텍스트</td></tr>
+        <tr><td><a href="docs/yuna_knowledge.md">docs/yuna_knowledge.md</a></td><td>유나 매니저 공개 FAQ</td></tr>
+        <tr><td><a href="src/glimi_imagegen/README.md">src/glimi_imagegen/README.md</a></td><td>로컬 LoRA 초상화 생성 (opt-in)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>메인테이너 전용 (gitignored)</h3>
+    <ul>
+      <li><code>analysis/pivot_subagent_review.md</code> — 피벗 결정 분석</li>
+      <li><code>analysis/kernel_extraction_plan.md</code> — Core 분리 실행 플랜</li>
+      <li><code>analysis/pivot_summary.html</code> — 피벗 결정 시각화</li>
+      <li><code>analysis/zeta_vs_glimi_analysis.md</code> — 경쟁 분석</li>
+      <li><code>analysis/business_strategy.md</code> — 사업 전략 (피벗으로 우선순위 down)</li>
+    </ul>
+  </section>
+
+  <!-- ============================================ -->
+  <section>
+    <h2><span class="num">+</span>커뮤니케이션 / 도움 받기</h2>
+    <p class="lead">막혔을 때 어디로 가나.</p>
+    <ul>
+      <li><strong>GitHub Issues</strong> — 버그 리포트, 기능 제안, 큰 task 의도 공유</li>
+      <li><strong>GitHub Discussions</strong> — 아키텍처 토의, 방향 sync</li>
+      <li><strong>PR comments</strong> — 코드 리뷰 + 빠른 sync</li>
+      <li><strong>이 HTML + CLAUDE.md + docs/</strong> — 90% 답은 이미 어딘가에 있음</li>
+    </ul>
+
+    <div class="quote">
+      Glimi 는 "오너가 자리를 비워도 살아있는 AI 인구" 라는 정서적 아이디어에서 출발했습니다. 5-layer 메모리, autonomous A2A, proactive supervisor 같은 기술적 깊이가 그 정서를 받치는 구조입니다. 기여하실 때 두 축 (정서 + 기술) 을 모두 함께 생각해주시면 좋겠습니다.
+    </div>
+  </section>
+
+  <footer>
+    <p>이 문서: <code>START_HERE.html</code> (프로젝트 루트) · 마지막 갱신 2026-05-17</p>
+    <p>관련: <a href="README.md">README</a> · <a href="README.ko.md">README.ko.md</a> · <a href="CLAUDE.md">CLAUDE.md</a> · <a href="LICENSE">LICENSE</a> · <a href="docs/onboarding.html">docs/onboarding.html</a></p>
+    <p style="margin-top:12px;color:var(--accent-blue);">Glimi — The open harness for AI agent populations that keep living.</p>
+    <p style="font-size:11px;margin-top:6px;">GitHub Pages 설정 시 이 파일을 entry 로 두면 <code>https://&lt;user&gt;.github.io/Glimi/START_HERE.html</code> 로 직접 공유 가능. 그 전에는 <code>htmlpreview.github.io</code> 같은 서비스로 렌더링 가능.</p>
+  </footer>
+
+</div>
+</body>
+</html>
