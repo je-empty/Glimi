@@ -626,6 +626,100 @@ QUERY: list[ToolSpec] = [
         category="query",
         applies_to=frozenset({"mgr"}),
     ),
+    # 가수 페르소나 전용 — 자기 디스코그래피/가사/콘서트/연혁 (곡 파일 있는 페르소나만 의미 있음)
+    ToolSpec(
+        name="get_my_songs",
+        description=(
+            "자기가 부른 곡 목록 조회 (가수 페르소나 전용). "
+            "type 으로 'original'|'collab'|'cover' 필터, q 로 제목 부분검색. "
+            "곡명·발매일·콜라보 상대만 반환 (가사는 별도 get_lyrics 호출). "
+            "본인이 가수가 아니면 '등록된 곡 없음' 반환."
+        ),
+        params={
+            "type": {"type": "str", "required": False, "desc": "'original'|'collab'|'cover' — 생략 시 전체"},
+            "q": {"type": "str", "required": False, "desc": "제목 부분 검색 (대소문자 무시)"},
+            "limit": {"type": "int", "required": False, "desc": "기본 30, 최대 200"},
+        },
+        category="query",
+        applies_to=frozenset({"persona"}),
+        examples=[
+            '{"type":"original"}',
+            '{"q":"Stellar"}',
+        ],
+    ),
+    ToolSpec(
+        name="get_lyrics",
+        description=(
+            "자기 곡 가사 조회 (가수 페르소나 전용). "
+            "title 정확매치 우선, 실패 시 부분매치. 후보 여러 개면 목록 반환. "
+            "가사 데이터 미등록 곡이면 '가사 미등록' 반환 — 그 경우 학습 메모리에서 임의 인용 금지, "
+            "그냥 모른다고 답하거나 곡 분위기·발매 시점만 얘기할 것."
+        ),
+        params={"title": {"type": "str", "required": True, "desc": "곡 제목 (대소문자/부분매치 OK)"}},
+        category="query",
+        applies_to=frozenset({"persona"}),
+        examples=[
+            '{"title":"Stellar Stellar"}',
+            '{"title":"GHOST"}',
+        ],
+    ),
+    ToolSpec(
+        name="get_my_concerts",
+        description=(
+            "자기 콘서트/라이브 이력 조회 (가수 페르소나 전용). "
+            "type 으로 'youtube_3d'|'live' 필터, q 로 제목·부제 부분검색. "
+            "메타만 반환 (제목·부제·날짜·곡 수). 셋리스트는 별도 get_concert_setlist 호출."
+        ),
+        params={
+            "type": {"type": "str", "required": False, "desc": "'youtube_3d'|'live' — 생략 시 전체"},
+            "q": {"type": "str", "required": False, "desc": "제목/부제 부분 검색"},
+            "limit": {"type": "int", "required": False, "desc": "기본 30, 최대 100"},
+        },
+        category="query",
+        applies_to=frozenset({"persona"}),
+        examples=[
+            '{"type":"live"}',
+            '{"q":"GALAXY"}',
+        ],
+    ),
+    ToolSpec(
+        name="get_concert_setlist",
+        description=(
+            "특정 콘서트의 셋리스트·세션 멤버 등 상세 조회 (가수 페르소나 전용). "
+            "title 정확매치 우선, 실패 시 부분매치. 같은 제목 여러 일자 (예: Spectra of Nova 투어) 면 "
+            "subtitle/date 추가 지정해 좁혀야 함."
+        ),
+        params={
+            "title": {"type": "str", "required": True, "desc": "콘서트 제목 (대소문자/부분매치 OK)"},
+            "date": {"type": "str", "required": False, "desc": "동명 콘서트 구분용 'YYYY-MM-DD'"},
+        },
+        category="query",
+        applies_to=frozenset({"persona"}),
+        examples=[
+            '{"title":"STELLAR into the GALAXY"}',
+            '{"title":"Spectra of Nova","date":"2024-12-10"}',
+        ],
+    ),
+    ToolSpec(
+        name="get_my_history",
+        description=(
+            "자기 공식 연혁/milestone 조회 (해당 페르소나 lore 파일 있을 때만). "
+            "데뷔일·구독자 milestone·소속 변경·브랜딩 변경 등 정확한 날짜 정보. "
+            "category 로 'career'|'subscriber'|'branding' 등 필터, q 로 제목/메모 부분검색. "
+            "학습 메모리에서 임의 인용 금지 — 이 도구 결과만 사용."
+        ),
+        params={
+            "category": {"type": "str", "required": False, "desc": "'career'|'subscriber'|'branding' 등 — 생략 시 전체"},
+            "q": {"type": "str", "required": False, "desc": "제목/메모 부분 검색"},
+            "limit": {"type": "int", "required": False, "desc": "기본 30, 최대 100"},
+        },
+        category="query",
+        applies_to=frozenset({"persona"}),
+        examples=[
+            '{"category":"subscriber"}',
+            '{"q":"무도관"}',
+        ],
+    ),
     # 메모리 조회 — persona/mgr 모두 사용 (자기 기억 deep search)
     ToolSpec(
         name="recall_memory",
