@@ -64,9 +64,15 @@ async def healthz():
 
 
 def _term_handler(signum, frame):
+    print(f"\n[platform] *** SIGTERM 수신 (signum={signum}) — 봇 정리 중 ***", flush=True)
     supervisor.shutdown_all(timeout=5.0)
     sys.exit(0)
 
 
-signal.signal(signal.SIGTERM, _term_handler)
+# Windows 에서는 SIGTERM 이 의도치 않게 트리거되는 케이스 있어 (자식 process 의 console
+# event 전파). SIGTERM handler 등록은 POSIX 만. Windows 는 atexit 으로 충분 — 사용자가
+# Ctrl+C 로 끄면 KeyboardInterrupt 가 uvicorn 까지 자연스럽게 전파.
+if sys.platform != "win32":
+    signal.signal(signal.SIGTERM, _term_handler)
+
 atexit.register(lambda: supervisor.shutdown_all(timeout=3.0))
