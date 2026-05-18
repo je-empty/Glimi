@@ -60,6 +60,13 @@ BUDGET_RELATIONSHIP = 200
 BUDGET_EPISODIC_CURRENT = 1800  # 700 → 1800 — 풍부한 L2 가 끝부터 잘려 자각/최신 메모리 손실 회귀 fix
 BUDGET_EPISODIC_RETRIEVED = 400
 BUDGET_FACTS = 400
+BUDGET_SELF_RECENT = 500
+
+# Self-recent cross-channel: 본인이 다른 채널에서 방금 한 발화 — L1 rollup 전이라
+# retrieved/facts 블록이 못 잡는 짧은 시간창 cover. 떡볶이 회귀 (그룹채팅에서 1분 전
+# "떡볶이 좋아" → dm 에서 "갑자기 왜?" 모르는 척) 가 대표 사례.
+SELF_RECENT_WITHIN_MINUTES = 90
+SELF_RECENT_LIMIT = 8
 
 # Retrieval scoring 가중치
 W_SEMANTIC = 0.4
@@ -824,7 +831,8 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
     # canonical predicate 가이드 — 동의어 난립 방지
     canonical_predicates = (
         "personality, likes, dislikes, hobby, speech_style, occupation, mbti, "
-        "preferred_friend_type, preferred_mood, request"
+        "preferred_friend_type, preferred_mood, request, currently_doing, "
+        "current_action_ended"
     )
 
     prompt = (
@@ -862,6 +870,12 @@ def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optio
         "     은 'personality'. 목록에 없는 개념이면 짧은 영문 snake_case 로 새로 만들되 동의어 난립 금지.\n"
         "  3. 일시 상태 저장 금지. object 이 '오늘', '지금', '방금', '오랜만', '잠깐', '이따', '나중',\n"
         "     '요즘' 같은 시간성 단어만으로 이루어지면 그 fact 는 넣지 마. 시간 지나면 무의미함.\n"
+        "     예외: predicate='currently_doing' 은 본질적으로 시간성이지만 핵심 활동이므로 허용.\n"
+        f"  3-1. 활동 종료 신호: {agent_name} 가 진행 중이던 공동 활동/게임/이벤트를 명확히 끝낸다고\n"
+        f"     발화하면 (예: '마크 끝났어', '이제 그만할게', '게임 다 했다', '나갈게 안녕'),\n"
+        f"     {{\"subject\":\"{agent_name}\", \"predicate\":\"current_action_ended\", \"object\":\"<무슨 활동이었는지>\", \"importance\":5}}\n"
+        f"     항목을 facts 에 넣어. 시스템이 자동으로 currently_doing → last_activity 이전 처리.\n"
+        f"     단순 자리 비움/잠깐 빠짐(예: '잠깐 화장실 다녀올게', '이따 또 보자')은 종료 아님.\n"
         f"  4. 자기 자신({agent_name}) 에 대한 fact 는 **프로필에 이미 있는 정보면 skip**.\n"
         "     (기본 성격·likes/dislikes·말투·직업·MBTI 는 이미 알고 있으니 중복 저장 금지.\n"
         "     자기 자신 fact 는 오직 '이번 대화에서 새로 드러난 자기 발견' 만 허용.)\n"
@@ -1431,10 +1445,22 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> s
         if current_block:
             parts.append(current_block)
 
+        # ─ Self-recent cross-channel (raw, L1 rollup 못 따라잡는 1~2분 발화 cover) ─
+        self_recent_block = _format_self_recent_cross_channel(agent_id, channel)
+        if self_recent_block:
+            parts.append(self_recent_block)
+
         # ─ Episodic — retrieved (다른 채널에서 partner/mentioned 에이전트 관련) ─
         query_entities = _mentioned_entities(user_message)
         if partner_name:
             query_entities.add(partner_name)
+        # 자기 이름도 query_entities 에 추가 — 자기 자신을 entity 로 태깅한
+        # 다른 채널 메모리/facts 도 surface (L1 이미 만들어진 케이스 cover).
+        from .profile import load_profile as _load_profile
+        my_profile = _load_profile(agent_id)
+        my_name = my_profile.get("name") if my_profile else None
+        if my_name:
+            query_entities.add(my_name)
         retrieved_block, retrieved_ids = _format_retrieved_memories(
             agent_id, channel, query_entities, partner_name
         )
@@ -1632,6 +1658,81 @@ def _format_retrieved_memories(agent_id: str, exclude_channel: str,
     return "\n".join(truncated), touched
 
 
+def _format_self_recent_cross_channel(
+    agent_id: str,
+    current_channel: str,
+    within_minutes: int = SELF_RECENT_WITHIN_MINUTES,
+    limit: int = SELF_RECENT_LIMIT,
+) -> str:
+    """본인이 최근 N분 내 다른 채널에서 한 발화를 raw conversations 에서 직접 surface.
+
+    L1 rollup 은 5메시지 단위로 비동기 — 1~2분 전 발화는 아직 메모리화 안 돼서
+    `_format_retrieved_memories` 에 안 잡힘. 동일 페르소나가 그룹/dm/internal 사이에서
+    모순 발화하는 회귀 (떡볶이 케이스: 그룹에서 "떡볶이 좋아" → 1분 후 dm 에서
+    "갑자기 왜?" 모르는 척) 를 raw 타임라인 직접 조회로 차단.
+
+    Universe scoping 은 자기 메시지에는 무의미 (동일 페르소나 = 동일 universe).
+    Disclosure: 현재가 owner 채널 (dm-/group-) 인데 surface 출처가 internal-* 면
+    🔒 마커 부착 — 페르소나가 오너에게 사적 대화 내용 먼저 꺼내지 않게.
+    """
+    # SQLite datetime('now', '-N minutes') 사용 — naive UTC 기준 비교 (DB 의 기본
+    # CURRENT_TIMESTAMP 포맷과 매치). get_messages_in_range 와 동일 패턴.
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT channel, message, timestamp FROM conversations "
+        "WHERE speaker=? AND channel != ? "
+        "  AND timestamp >= datetime('now', ?) "
+        "ORDER BY timestamp DESC LIMIT ?",
+        (agent_id, current_channel, f"-{int(within_minutes)} minutes", limit)
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return ""
+
+    is_owner_channel_now = (
+        current_channel.startswith("dm-")
+        or current_channel.startswith("group-")
+        or current_channel.startswith("mgr-")
+    )
+
+    # Group by channel, oldest first within each group (자연스러운 시간순)
+    by_channel: dict[str, list[dict]] = {}
+    for r in reversed(rows):
+        by_channel.setdefault(r["channel"], []).append(dict(r))
+
+    lines = ["## 🪞 내가 방금 다른 채널에서 한 말 (모순 없게 일관성 유지)"]
+    for ch, msgs in by_channel.items():
+        is_internal = ch.startswith("internal-")
+        disclosure = is_owner_channel_now and is_internal
+        # short label
+        label = ch
+        for prefix in ("internal-dm-", "internal-group-", "dm-", "group-"):
+            if ch.startswith(prefix):
+                label = ch[len(prefix):]
+                break
+        header = f"[#{label}]"
+        if disclosure:
+            header += " (🔒 사적 대화 — 오너 앞에서 먼저 꺼내지 말기)"
+        lines.append(header)
+        for m in msgs:
+            ts = m.get("timestamp", "") or ""
+            hhmm = ts[11:16] if len(ts) >= 16 else ""
+            msg = (m.get("message") or "").replace("\n", " ")
+            if len(msg) > 100:
+                msg = msg[:100] + "…"
+            lines.append(f"  {hhmm} \"{msg}\"")
+
+    truncated = _truncate_block(lines, BUDGET_SELF_RECENT)
+    return "\n".join(truncated)
+
+
+_PRED_LABELS = {
+    "currently_doing": "지금 하는 중",
+    "last_activity": "최근 활동 (이미 끝남)",
+}
+
+
 def _format_facts_block(agent_id: str, query_entities: set[str]) -> str:
     """파트너/언급 엔티티에 대한 facts."""
     if not query_entities:
@@ -1648,7 +1749,8 @@ def _format_facts_block(agent_id: str, query_entities: set[str]) -> str:
             obj = f.get("object", "")
             imp = f.get("importance", 5)
             mark = "⭐" if imp >= 8 else ""
-            lines.append(f"- {mark}{pred}: {obj}")
+            label = _PRED_LABELS.get(pred, pred)
+            lines.append(f"- {mark}{label}: {obj}")
             shown += 1
             if shown >= 10:
                 break
