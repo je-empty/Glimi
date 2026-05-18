@@ -134,7 +134,9 @@ def _get_token() -> Optional[str]:
     env_path = community.get_community_dir() / ".env"
     if not env_path.exists():
         return None
-    with open(env_path, "r") as f:
+    # encoding="utf-8" 명시 — Windows 기본 codepage (cp949) 가 .env 안 UTF-8 한글
+    # 주석 못 읽는 회귀 fix. errors="replace" 로 손상된 바이트도 무시.
+    with open(env_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.strip()
             if line.startswith("DISCORD_BOT_TOKEN=") and not line.startswith("#"):
