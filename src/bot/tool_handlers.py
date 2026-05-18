@@ -1246,6 +1246,279 @@ async def _h_recall_memory(args: dict, ctx: ToolContext):
     return {"count": len(results), "results": results}
 
 
+# ── 가수 페르소나 전용 — 디스코그래피/가사/콘서트/연혁 ──────────────
+
+def _load_agent_songs(agent_id: str) -> list[dict]:
+    """`{community}/songs/{agent_id}.json` 로드. 파일 없으면 [] 반환."""
+    try:
+        from src.community import get_community_dir
+        path = get_community_dir() / "songs" / f"{agent_id}.json"
+        if not path.exists():
+            return []
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("songs") or []
+    except Exception:
+        return []
+
+
+async def _h_get_my_songs(args: dict, ctx: ToolContext):
+    songs = _load_agent_songs(ctx.caller_agent_id)
+    if not songs:
+        return {"result": "[조회결과] 등록된 곡 데이터 없음"}
+
+    type_filter = (args.get("type") or "").strip().lower() or None
+    q_filter = (args.get("q") or "").strip().lower()
+    try:
+        limit = max(1, min(int(args.get("limit") or 30), 200))
+    except (TypeError, ValueError):
+        limit = 30
+
+    filtered = []
+    for s in songs:
+        if type_filter and s.get("type") != type_filter:
+            continue
+        if q_filter and q_filter not in (s.get("title") or "").lower():
+            continue
+        filtered.append(s)
+
+    if not filtered:
+        return {"result": "[조회결과] 조건 일치 곡 없음"}
+
+    type_label = {"original": "오리", "collab": "콜라", "cover": "커버"}
+    lines = [f"[내 곡 {len(filtered)}/{len(songs)}건]"]
+    for s in filtered[:limit]:
+        title = s.get("title", "?")
+        date = s.get("date", "")
+        tag = type_label.get(s.get("type"), "?")
+        collab = f" w/ {s['collab_with']}" if s.get("collab_with") else ""
+        mark = "♪" if s.get("lyrics") else ""
+        lines.append(f"- [{tag}] {title} ({date}){collab} {mark}".rstrip())
+    if len(filtered) > limit:
+        lines.append(f"... 외 {len(filtered) - limit}건 (limit 초과)")
+    lines.append("(♪ = 가사 등록됨, get_lyrics 로 조회 가능)")
+    return {"result": "\n".join(lines)}
+
+
+async def _h_get_lyrics(args: dict, ctx: ToolContext):
+    title_q = (args.get("title") or "").strip()
+    if not title_q:
+        return {"result": "[조회결과] title 필요"}
+
+    songs = _load_agent_songs(ctx.caller_agent_id)
+    if not songs:
+        return {"result": "[조회결과] 등록된 곡 데이터 없음"}
+
+    # 1) 정확매치
+    target = next((s for s in songs if s.get("title") == title_q), None)
+    if not target:
+        # 2) 부분매치 (대소문자 무시)
+        ql = title_q.lower()
+        candidates = [s for s in songs if ql in (s.get("title") or "").lower()]
+        if not candidates:
+            return {"result": f"[조회결과] '{title_q}' 일치 곡 없음"}
+        if len(candidates) > 1:
+            titles = ", ".join(s["title"] for s in candidates[:5])
+            tail = "..." if len(candidates) > 5 else ""
+            return {"result": f"[조회결과] '{title_q}' 후보 여러 개: {titles}{tail} — 더 명확히 지정"}
+        target = candidates[0]
+
+    title = target.get("title", "?")
+    date = target.get("date", "")
+    collab = target.get("collab_with")
+    lyrics = target.get("lyrics")
+    header = f"[{title} ({date})" + (f" — w/ {collab}" if collab else "") + "]"
+
+    if lyrics is None or (isinstance(lyrics, str) and not lyrics.strip()):
+        return {
+            "result": (
+                f"{header}\n[가사 미등록] 이 곡 가사 데이터는 아직 저장되어 있지 않음. "
+                f"학습 메모리에서 임의로 끌어와 인용하지 말 것 — 모른다고 답하거나 곡 분위기·발매 시점 정도만 자연스럽게 얘기하기."
+            )
+        }
+
+    return {"result": f"{header}\n{lyrics}"}
+
+
+def _load_agent_concerts(agent_id: str) -> list[dict]:
+    """`{community}/concerts/{agent_id}.json` 로드. 파일 없으면 [] 반환."""
+    try:
+        from src.community import get_community_dir
+        path = get_community_dir() / "concerts" / f"{agent_id}.json"
+        if not path.exists():
+            return []
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("concerts") or []
+    except Exception:
+        return []
+
+
+async def _h_get_my_concerts(args: dict, ctx: ToolContext):
+    concerts = _load_agent_concerts(ctx.caller_agent_id)
+    if not concerts:
+        return {"result": "[조회결과] 등록된 콘서트 데이터 없음"}
+
+    type_filter = (args.get("type") or "").strip().lower() or None
+    q_filter = (args.get("q") or "").strip().lower()
+    try:
+        limit = max(1, min(int(args.get("limit") or 30), 100))
+    except (TypeError, ValueError):
+        limit = 30
+
+    filtered = []
+    for c in concerts:
+        if type_filter and c.get("type") != type_filter:
+            continue
+        if q_filter:
+            haystack = ((c.get("title") or "") + " " + (c.get("subtitle") or "")).lower()
+            if q_filter not in haystack:
+                continue
+        filtered.append(c)
+
+    if not filtered:
+        return {"result": "[조회결과] 조건 일치 콘서트 없음"}
+
+    type_label = {"youtube_3d": "3D", "live": "라이브"}
+    lines = [f"[내 콘서트 {len(filtered)}/{len(concerts)}건]"]
+    for c in filtered[:limit]:
+        title = c.get("title", "?")
+        subtitle = c.get("subtitle") or ""
+        date = c.get("date", "")
+        tag = type_label.get(c.get("type"), "?")
+        n = len(c.get("setlist") or [])
+        venue = f" @ {c['venue']}" if c.get("venue") else ""
+        sub_str = f" — {subtitle}" if subtitle else ""
+        lines.append(f"- [{tag}] {title}{sub_str} ({date}){venue} · {n}곡")
+    if len(filtered) > limit:
+        lines.append(f"... 외 {len(filtered) - limit}건 (limit 초과)")
+    lines.append("(셋리스트는 get_concert_setlist 로 조회)")
+    return {"result": "\n".join(lines)}
+
+
+async def _h_get_concert_setlist(args: dict, ctx: ToolContext):
+    title_q = (args.get("title") or "").strip()
+    date_q = (args.get("date") or "").strip()
+    if not title_q:
+        return {"result": "[조회결과] title 필요"}
+
+    concerts = _load_agent_concerts(ctx.caller_agent_id)
+    if not concerts:
+        return {"result": "[조회결과] 등록된 콘서트 데이터 없음"}
+
+    # 1) date 가 있으면 우선 좁히기
+    pool = concerts
+    if date_q:
+        pool = [c for c in concerts if c.get("date") == date_q]
+        if not pool:
+            return {"result": f"[조회결과] date={date_q} 일치 콘서트 없음"}
+
+    # 2) 정확매치
+    target = next((c for c in pool if c.get("title") == title_q), None)
+    if not target:
+        ql = title_q.lower()
+        candidates = [c for c in pool if ql in (c.get("title") or "").lower()]
+        if not candidates:
+            return {"result": f"[조회결과] '{title_q}' 일치 콘서트 없음"}
+        if len(candidates) > 1:
+            opts = [f"{c['title']} ({c.get('date','?')}, {c.get('subtitle','')})" for c in candidates[:6]]
+            tail = "..." if len(candidates) > 6 else ""
+            return {
+                "result": (
+                    f"[조회결과] '{title_q}' 후보 여러 개:\n"
+                    + "\n".join(f"  - {o}" for o in opts)
+                    + tail
+                    + "\ndate 파라미터로 더 좁히기"
+                )
+            }
+        target = candidates[0]
+
+    title = target.get("title", "?")
+    subtitle = target.get("subtitle") or ""
+    date = target.get("date", "")
+    venue = target.get("venue") or ""
+    tour = target.get("tour") or ""
+    sessions = target.get("session_members") or []
+    setlist = target.get("setlist") or []
+    notes = target.get("notes") or ""
+
+    head_parts = [title]
+    if subtitle:
+        head_parts.append(f"({subtitle})")
+    head = " ".join(head_parts) + f" — {date}"
+    if venue:
+        head += f" @ {venue}"
+
+    lines = [f"[{head}]"]
+    if tour:
+        lines.append(f"투어: {tour}")
+    if notes:
+        lines.append(f"비고: {notes}")
+    if sessions:
+        lines.append(f"세션: {', '.join(sessions)}")
+    lines.append(f"셋리스트 ({len(setlist)}곡):")
+    for i, song in enumerate(setlist, 1):
+        lines.append(f"  {i}. {song}")
+    return {"result": "\n".join(lines)}
+
+
+def _load_agent_lore(agent_id: str) -> list[dict]:
+    """`{community}/lore/{agent_id}.json` 로드. 파일 없으면 [] 반환."""
+    try:
+        from src.community import get_community_dir
+        path = get_community_dir() / "lore" / f"{agent_id}.json"
+        if not path.exists():
+            return []
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("milestones") or []
+    except Exception:
+        return []
+
+
+async def _h_get_my_history(args: dict, ctx: ToolContext):
+    milestones = _load_agent_lore(ctx.caller_agent_id)
+    if not milestones:
+        return {"result": "[조회결과] 등록된 연혁 데이터 없음"}
+
+    cat_filter = (args.get("category") or "").strip().lower() or None
+    q_filter = (args.get("q") or "").strip().lower()
+    try:
+        limit = max(1, min(int(args.get("limit") or 30), 100))
+    except (TypeError, ValueError):
+        limit = 30
+
+    filtered = []
+    for m in milestones:
+        if cat_filter and (m.get("category") or "").lower() != cat_filter:
+            continue
+        if q_filter:
+            haystack = ((m.get("title") or "") + " " + (m.get("note") or "")).lower()
+            if q_filter not in haystack:
+                continue
+        filtered.append(m)
+
+    if not filtered:
+        return {"result": "[조회결과] 조건 일치 연혁 없음"}
+
+    # 날짜 오름차순으로 정렬 — 시간순 흐름이 자연스러움
+    filtered.sort(key=lambda m: m.get("date") or "")
+
+    lines = [f"[내 연혁 {len(filtered)}/{len(milestones)}건]"]
+    for m in filtered[:limit]:
+        date = m.get("date", "?")
+        cat = m.get("category", "?")
+        title = m.get("title", "?")
+        note = m.get("note") or ""
+        line = f"- [{cat}] {date} {title}"
+        if note:
+            line += f" — {note}"
+        lines.append(line)
+    if len(filtered) > limit:
+        lines.append(f"... 외 {len(filtered) - limit}건 (limit 초과)")
+    return {"result": "\n".join(lines)}
+
+
 async def _h_pin_memory(args: dict, ctx: ToolContext):
     """유나가 target_agent의 기억 한 건을 고정/해제."""
     from src.core.memory import pin_memory
@@ -1334,6 +1607,12 @@ _MAP = {
     "discord_get_server": _h_discord_get_server,
     "discord_get_pins": _h_discord_get_pins,
     "recall_memory": _h_recall_memory,
+    # 가수 페르소나 전용 query
+    "get_my_songs": _h_get_my_songs,
+    "get_lyrics": _h_get_lyrics,
+    "get_my_concerts": _h_get_my_concerts,
+    "get_concert_setlist": _h_get_concert_setlist,
+    "get_my_history": _h_get_my_history,
     # request
     "request_dm": _h_request_dm,
     "request_room": _h_request_room,
