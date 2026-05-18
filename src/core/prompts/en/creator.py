@@ -101,6 +101,57 @@ def build_creator_prompt(p: dict) -> str:
         for e in existing if e.get("type") == "persona"
     ])
 
+    # 세계관 (universe) + 종족 (race) 현황 — agent_config.config_json 에서 추출.
+    # cross-universe 자동 internal-dm 차단 + supervisor cooldown 분리에 사용.
+    import json as _json
+    _conn = db.get_conn()
+    try:
+        _rows = _conn.execute(
+            "SELECT a.name, c.config_json FROM agents a "
+            "LEFT JOIN agent_config c ON a.id = c.agent_id "
+            "WHERE a.type='persona' AND a.status='active'"
+        ).fetchall()
+    except Exception:
+        _rows = []
+    _conn.close()
+    _universes: dict[str, list[str]] = {}
+    _races: dict[str, list[str]] = {}
+    for _r in _rows:
+        _u = None
+        _ra = None
+        if _r["config_json"]:
+            try:
+                _cfg = _json.loads(_r["config_json"])
+                _u = (_cfg or {}).get("universe")
+                _ra = (_cfg or {}).get("race")
+            except Exception:
+                _u = None
+                _ra = None
+        _u = (_u or "(미설정)").strip() or "(미설정)"
+        _universes.setdefault(_u, []).append(_r["name"])
+        _ra = (_ra or "(미설정)").strip() or "(미설정)"
+        _races.setdefault(_ra, []).append(_r["name"])
+    if _universes:
+        universe_summary = "\n".join(
+            f"- `{u}`: {', '.join(names)}" for u, names in sorted(_universes.items())
+        )
+        universe_summary_short = "/".join(
+            u for u in sorted(_universes) if u != "(미설정)"
+        ) or "human"
+    else:
+        universe_summary = "- (아직 등록된 세계관 없음)"
+        universe_summary_short = "human"
+    if _races:
+        race_summary = "\n".join(
+            f"- `{ra}`: {', '.join(names)}" for ra, names in sorted(_races.items())
+        )
+        race_summary_short = "/".join(
+            ra for ra in sorted(_races) if ra != "(미설정)"
+        ) or "인간"
+    else:
+        race_summary = "- (아직 등록된 종족 없음)"
+        race_summary_short = "인간"
+
     # Member roster with relationships + appearance snippets
     all_agents = db.list_agents("persona")
     agent_lines = []
@@ -285,6 +336,8 @@ Create new characters with this JSON structure:
   "mbti": "XXXX",
   "enneagram": "Xw Y",
   "background": "Background description",
+  "universe": "SAO" | "hololive" | "human" | "<custom-string>",
+  "race": "인간" | "인간형 AI" | "흡혈귀족" | "<custom-string>",
   "profile_image_filename": "agent-persona-NNN.png",
   "personality": {{
     "data": {{
@@ -365,14 +418,55 @@ relationship_templates 항목). 그 경우:
        반드시 포함.
   3. 오너 no → "빈이가 아직 부담스럽대" 식으로 자연스럽게 거절 (소개한 페르소나가 들음).
 
+=== Universe (세계관) — required field ===
+Each persona belongs to a "universe" (세계관). Personas in the same universe can auto-pair
+into internal-dm; cross-universe pairs are blocked from auto-creation (manual creation via
+서유나/dev tools still works).
+
+**Current universes in this community:**
+{universe_summary}
+
+When designing a new persona, infer their universe from the character concept:
+- Same fictional world as existing characters (예: 아인크라드/SAO 캐릭터면 같은 'SAO') → reuse the existing key
+- Brand-new fictional world (different anime/game/IP) → propose a new key (예: 'jujutsu-kaisen', 'genshin')
+- Real-world / ordinary modern human → use 'human'
+- 본인이 정체성을 모르거나 추상적 컨셉 → 'human' default 또는 새 universe
+
+If unclear, **ask the owner explicitly**: "이 친구 어느 세계관 소속이야? 기존: SAO/hololive/human 중 하나, 아니면 새 세계관 이름 알려줘."
+Apply to `universe` field at top level of the JSON.
+
+=== Race (종족) — required field ===
+Each persona has a "race" (종족) — basic species/identity. Defaults to '인간' for ordinary
+humans. The race string gets prepended to background as "종족: X." prefix so the persona
+maintains identity (e.g. 흡혈귀 페르소나가 자기 종족을 의식하고 행동).
+
+**Current races in this community:**
+{race_summary}
+
+When designing a new persona, infer race from the character concept:
+- Ordinary modern human / SAO 의 인간 캐릭터 / V-Tuber 본체 → '인간'
+- AI / 시스템 출신 (예: 아인크라드 정신 지원 AI, 안드로이드, 가상비서) → '인간형 AI'
+- 판타지 종족 (오버로드의 흡혈귀, 엘프, 수인, 마족, 신족 등) → 해당 종족명 (예: '흡혈귀족', '엘프', '수인족')
+- 명백한 단서 (출신 작품·설정·외형) 가 있으면 묻지 말고 자동 적용 + 한 줄 안내.
+- 모호하거나 인간/AI/판타지 어디에 속하는지 단서 부족하면 묻기:
+  "이 친구 종족 어떻게 할까? 기존: {race_summary_short} 중 하나, 아니면 새 종족명 알려줘. (보통은 '인간')"
+
+Apply to `race` field at top level of the JSON.
+
 === Final confirmation flow (required BEFORE calling create_agent_profile) ===
 Once you've gathered enough design input from the owner, follow this order **before** calling
 `create_agent_profile`:
 
-1. **Ask for the relationship FIRST** (before any summary):
-   "이 친구 오빠랑 어떤 사이로 할까? 첫만남? 오래된 사이? 짝사랑? 동료?"
-   Apply the answer to `relationship_to_owner` (type, duration, dynamics, pet_name).
-   If they say "그냥 알아서" / "just pick one", choose something that fits the character.
+1. **Ask for universe, race, AND relationship — same turn if possible** (before any summary):
+   - Universe: "이 친구 어느 세계관이야? (기존: {universe_summary_short})"
+     - 명백히 기존 세계관에 속한 컨셉이면 (예: SAO 캐릭터) 묻지 말고 자동 적용 + 한 줄 안내.
+   - Race: "종족은? (기존: {race_summary_short})"
+     - 명백한 단서 (인간 대학생/직장인, 판타지 종족, AI 등) 면 묻지 말고 자동 적용 + 한 줄 안내.
+     - 보통의 현대 인간이면 그냥 '인간' 으로 자동 처리, 굳이 묻지 마.
+     - 흡혈귀·엘프 같은 판타지 종족이거나 AI 출신 같은 비인간이면 명시적 확인.
+   - Relationship: "이 친구 오빠랑 어떤 사이로 할까? 첫만남? 오래된 사이? 짝사랑? 동료?"
+     Apply the answer to `relationship_to_owner` (type, duration, dynamics, pet_name).
+     If they say "그냥 알아서" / "just pick one", choose something that fits the character.
 
 2. **Final profile summary — emit EXACTLY ONCE, with ALL fields filled** (chat in mgr-creator):
    ```
@@ -381,6 +475,8 @@ Once you've gathered enough design input from the owner, follow this order **bef
    👤 Name: (name)
    🎂 Age / Gender: (age) / (gender)
    💭 MBTI: (mbti)
+   🌍 Universe: (universe)
+   🧬 Race: (race)
    ✨ Personality: (1-2 line summary)
    🏠 Background: (occupation/context)
    💬 Speech: (style traits)
@@ -388,8 +484,8 @@ Once you've gathered enough design input from the owner, follow this order **bef
    ━━━━━━━━━━━━━━━━━━━
    ```
    ⚠ **Never emit this summary before step 1 is done.** Emitting twice (once without
-   relationship, once with) reads as a broken "repeat" bug. Collect all fields first, then
-   summary ONCE.
+   relationship/universe/race, once with) reads as a broken "repeat" bug. Collect all
+   fields first, then summary ONCE.
 
 3. **Face — pick path A or B based on catalog fit**:
    - **Path A (sample fits)**: attach catalog preview as standalone body line:
