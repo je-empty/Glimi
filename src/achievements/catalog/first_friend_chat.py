@@ -5,6 +5,7 @@ from src.achievements.base import Achievement
 
 
 def check(user_id: str) -> Optional[dict]:
+    from src.bot import _norm_name_for_channel
     conn = db.get_conn()
     personas = [r[0] for r in conn.execute(
         "SELECT name FROM agents WHERE type='persona'"
@@ -15,10 +16,18 @@ def check(user_id: str) -> Optional[dict]:
     total_owner_msgs = 0
     friend_hit = None
     for name in personas:
-        ch = f"dm-{name}"
+        # raw + normalized 둘 다 매칭 — '유키 아스나' 같은 공백 페르소나 호환
+        ch_raw = f"dm-{name}"
+        ch_norm = f"dm-{_norm_name_for_channel(name)}"
+        if ch_raw == ch_norm:
+            placeholders = "?"
+            params = (ch_raw, user_id)
+        else:
+            placeholders = "?,?"
+            params = (ch_raw, ch_norm, user_id)
         cnt = conn.execute(
-            "SELECT COUNT(*) FROM conversations WHERE channel=? AND speaker=?",
-            (ch, user_id)
+            f"SELECT COUNT(*) FROM conversations WHERE channel IN ({placeholders}) AND speaker=?",
+            params
         ).fetchone()[0]
         total_owner_msgs = max(total_owner_msgs, cnt)
         if cnt >= 3 and friend_hit is None:
