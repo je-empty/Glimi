@@ -875,13 +875,72 @@ def _canonicalize_predicate(pred: str) -> str:
     return p
 
 
+def _retire_currently_doing(conn, agent_id: str, subject: str,
+                             source_channel: Optional[str] = None,
+                             source_memory_id: Optional[int] = None) -> Optional[int]:
+    """active currently_doing 을 last_activity 로 이전. 처리할 게 없으면 None.
+
+    동작:
+      1. (subject) 의 valid currently_doing 찾기 → valid_to 닫음
+      2. 그 object 를 last_activity 로 INSERT (시작 시각 metadata 포함)
+      3. 기존 last_activity 가 있으면 같이 supersede
+
+    호출자가 conn.commit() 책임. 트랜잭션 일관성 위해 여기선 commit 안 함.
+    """
+    existing = conn.execute(
+        "SELECT id, object, created_at FROM agent_facts "
+        "WHERE agent_id = ? AND subject = ? AND predicate = 'currently_doing' "
+        "AND valid_to IS NULL ORDER BY id DESC LIMIT 1",
+        (agent_id, subject)
+    ).fetchone()
+    if not existing:
+        return None
+    # currently_doing 닫기
+    conn.execute("UPDATE agent_facts SET valid_to = CURRENT_TIMESTAMP WHERE id = ?",
+                 (existing["id"],))
+    # 이전 last_activity 도 supersede
+    prev_last = conn.execute(
+        "SELECT id FROM agent_facts WHERE agent_id = ? AND subject = ? "
+        "AND predicate = 'last_activity' AND valid_to IS NULL ORDER BY id DESC LIMIT 1",
+        (agent_id, subject)
+    ).fetchone()
+    if prev_last:
+        conn.execute("UPDATE agent_facts SET valid_to = CURRENT_TIMESTAMP WHERE id = ?",
+                     (prev_last["id"],))
+    started = (existing["created_at"] or "")[:16]
+    obj = f"{existing['object']} (~{started} 시작)" if started else existing["object"]
+    cur = conn.execute(
+        """INSERT INTO agent_facts
+           (agent_id, subject, predicate, object, source_channel, source_memory_id,
+            confidence, importance, last_accessed_at)
+           VALUES (?, ?, 'last_activity', ?, ?, ?, 1.0, 4, CURRENT_TIMESTAMP)""",
+        (agent_id, subject, obj, source_channel, source_memory_id)
+    )
+    return cur.lastrowid
+
+
 def add_fact(agent_id: str, subject: str, predicate: str, object_value: str,
              source_channel: str = None, source_memory_id: int = None,
              confidence: float = 1.0, importance: int = 5) -> int:
     """새 fact 저장. 기존 동일 (subject, predicate) 있으면 valid_to 닫고 새로 INSERT (supersession).
-    같은 object면 no-op. predicate 는 canonical form 으로 자동 정규화됨."""
+    같은 object면 no-op. predicate 는 canonical form 으로 자동 정규화됨.
+
+    특수 predicate:
+      - current_action_ended: 저장하지 않고 routing 만 — active currently_doing 을
+        last_activity 로 이전. object_value 는 무시 (현재 활동 무엇이었든 종료).
+      - currently_doing: supersession 시 옛 활동을 last_activity 로 자동 백업.
+    """
     predicate = _canonicalize_predicate(predicate)
     conn = get_conn()
+
+    # SPECIAL: current_action_ended — 의사-fact, 저장하지 않음. 활동 종료 routing 만.
+    if predicate == "current_action_ended":
+        new_id = _retire_currently_doing(conn, agent_id, subject,
+                                          source_channel, source_memory_id)
+        conn.commit()
+        conn.close()
+        return new_id or 0
+
     # 기존 valid 체크
     existing = conn.execute(
         "SELECT id, object FROM agent_facts WHERE agent_id = ? AND subject = ? AND predicate = ? "
@@ -892,9 +951,13 @@ def add_fact(agent_id: str, subject: str, predicate: str, object_value: str,
         if existing["object"] == object_value:
             conn.close()
             return existing["id"]
-        # supersede
-        conn.execute("UPDATE agent_facts SET valid_to = CURRENT_TIMESTAMP WHERE id = ?",
-                     (existing["id"],))
+        # SPECIAL: currently_doing 의 supersession 은 _retire 헬퍼로 (last_activity 자동 백업).
+        # 다른 predicate 는 단순 supersession.
+        if predicate == "currently_doing":
+            _retire_currently_doing(conn, agent_id, subject, source_channel, source_memory_id)
+        else:
+            conn.execute("UPDATE agent_facts SET valid_to = CURRENT_TIMESTAMP WHERE id = ?",
+                         (existing["id"],))
     cur = conn.execute(
         """INSERT INTO agent_facts
            (agent_id, subject, predicate, object, source_channel, source_memory_id,
@@ -1685,6 +1748,13 @@ def save_agent_profile(profile: dict):
     # profile_image_filename: 신규 키 우선, 레거시 avatar_filename 폴백
     profile_image_filename = profile.get("profile_image_filename") or profile.get("avatar_filename")
 
+    # background 에 종족 prefix 자동 부착 — race 필드 있고 background 가 아직
+    # '종족:' 으로 시작하지 않을 때만. 페르소나 self-prompt 에서 종족 정체성 일관 유지.
+    bg = profile.get("background") or ""
+    race = (profile.get("race") or "").strip()
+    if race and not bg.lstrip().startswith("종족:"):
+        bg = f"종족: {race}. {bg}".strip()
+
     conn.execute("""
         INSERT INTO agents (id, type, name, name_i18n, birth_year, age, gender, mbti, enneagram,
                             background, profile_image_filename, version, created_at)
@@ -1699,7 +1769,7 @@ def save_agent_profile(profile: dict):
         agent_id, profile.get("type", "persona"), profile["name"], name_i18n,
         profile.get("birth_year"), profile.get("age"), profile.get("gender"),
         profile.get("mbti"), profile.get("enneagram"),
-        profile.get("background"), profile_image_filename,
+        bg, profile_image_filename,
         profile.get("version", 1), profile.get("created_at", now_utc_iso()),
     ))
 
@@ -1735,10 +1805,18 @@ def save_agent_profile(profile: dict):
             VALUES (?, ?, ?, ?, 0)
         """, (agent_id, target_id, rel_info.get("type", ""), rel_info.get("note", "")))
 
-    # config (mgr_config, creator_config 등)
+    # config (mgr_config, creator_config 등) + 세계관 universe + 종족 race 필드.
+    # universe: cross-universe 자동 페어링 차단 / supervisor cooldown 분리에 사용.
+    # race: 페르소나 self-prompt + cross-reference (다른 페르소나가 이 사람 언급 시) 에 사용.
     config_keys = [k for k in profile if k.endswith("_config")]
+    config: dict = {}
     if config_keys:
         config = {k: profile[k] for k in config_keys}
+    if profile.get("universe"):
+        config["universe"] = str(profile["universe"]).strip()
+    if profile.get("race"):
+        config["race"] = str(profile["race"]).strip()
+    if config:
         conn.execute(
             "INSERT OR REPLACE INTO agent_config (agent_id, config_json) VALUES (?, ?)",
             (agent_id, _json_col(config))
