@@ -54,6 +54,14 @@ class OrchestratorSupervisor(Supervisor):
         if guild is None:
             return
 
+        # Quiet hours (01:00~07:59 KST) — 새벽 자동 페어링 차단.
+        from src.core.scoping import is_quiet_hour, quiet_hour_label
+        if is_quiet_hour():
+            log_writer.system(
+                f"[sup:orchestrator] pairing skip — quiet hour ({quiet_hour_label()})"
+            )
+            return
+
         # 튜토리얼 미완료면 방해 X
         if db.get_meta("tutorial_phase") != "complete":
             return
