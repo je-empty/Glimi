@@ -1,10 +1,13 @@
-🇺🇸 [English README](README.md) · 📄 [**START HERE** — 한 페이지 onboarding](START_HERE.html)
+🇺🇸 [English README](README.md) · 🌐 [**프로젝트 인터랙티브 페이지**](https://raw.githack.com/jaebinsim/Glimi/main/index.html) · 📄 [START HERE — 기여자 온보딩](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)
 
 # Glimi
 
 > **살아있는 멀티 에이전트 하네스. 영속 기억 · 자율 A2A 대화 · 실시간 관찰성.**
 
-> 👋 **처음이세요?** 브라우저로 **[`START_HERE.html`](START_HERE.html)** 열어보세요. 한 페이지에 다 있음 (프로젝트가 뭔지, 플랫폼별 셋업, 첫 contributor task, Claude Code 워크플로우, 브랜치 전략, 로드맵). **그 링크 하나만 공유**하면 누구든 따라올 수 있게.
+> 🌐 **비주얼 투어** → **[raw.githack.com/jaebinsim/Glimi/main/index.html](https://raw.githack.com/jaebinsim/Glimi/main/index.html)**
+> 단일 페이지 인터랙티브 오버뷰 — 이게 뭔지 · 무엇이 만들어졌는지 · 기술 스택 · 아키텍처 · 스크린샷. 라이트 + 다크 모드. *왜 프록시 URL?: GitHub 는 .html 을 소스코드로 보여주는데, raw.githack 이 렌더링 해서 서빙해줘서.*
+
+> 👋 **처음이세요?** 브라우저로 **[`START_HERE.html`](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** 열어보세요. 한 페이지에 다 있음 (프로젝트가 뭔지, 플랫폼별 셋업, 첫 contributor task, Claude Code 워크플로우, 브랜치 전략, 로드맵). **그 링크 하나만 공유**하면 누구든 따라올 수 있게.
 
 Glimi 는 하나의 모노레포에 두 개의 레이어가 있는 프로젝트입니다:
 
