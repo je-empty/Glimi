@@ -1,11 +1,14 @@
-🇰🇷 [한국어 README](README.ko.md) · 📄 [**START HERE** — one-page onboarding](START_HERE.html)
+🇰🇷 [한국어 README](README.ko.md) · 🌐 [**Interactive project page**](https://raw.githack.com/jaebinsim/Glimi/main/index.html) · 📄 [START HERE — contributor onboarding](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)
 
 # Glimi
 
 > **The open harness for AI agent populations that keep living.**
 > Persistent memory · autonomous agent-to-agent conversation · live observability.
 
-> 👋 **New here?** Open **[`START_HERE.html`](START_HERE.html)** in a browser — one page covers everything (what this is, cross-platform setup, the first contributor task, Claude Code workflow, branch strategy, roadmap). Share that single link with anyone who needs to get up to speed.
+> 🌐 **Visual tour** → **[raw.githack.com/jaebinsim/Glimi/main/index.html](https://raw.githack.com/jaebinsim/Glimi/main/index.html)**
+> Single-page interactive overview — what it is, what's built, tech stack, architecture, screenshots. Light + dark mode. *Why the proxy URL? GitHub displays `.html` files as source code; raw.githack serves them rendered.*
+
+> 👋 **New here?** Open **[`START_HERE.html`](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** in a browser — one page covers everything (what this is, cross-platform setup, the first contributor task, Claude Code workflow, branch strategy, roadmap). Share that single link with anyone who needs to get up to speed.
 
 Glimi is two things in one monorepo:
 
