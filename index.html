@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glimi — Multi-agent harness</title>
+<meta name="description" content="살아있는 멀티 에이전트 하네스. 영속 기억 · 자율 대화 · 실시간 관찰성. 1인 6주 개발.">
+
+<style>
+  /* ───── Theme variables ───── */
+  :root[data-theme="dark"] {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --bg-elev: #1c2128;
+    --bg-deep: #010409;
+    --border: #30363d;
+    --border-strong: #484f58;
+    --text: #e6edf3;
+    --text-dim: #c9d1d9;
+    --muted: #8b949e;
+    --accent-blue: #4a9eff;
+    --accent-green: #4aff9e;
+    --accent-orange: #ffaa4a;
+    --accent-purple: #a78bfa;
+    --accent-yellow: #f5c542;
+    --accent-red: #ff6b6b;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    --shadow-strong: 0 6px 24px rgba(0,0,0,0.5);
+    --gradient-hero: linear-gradient(135deg, rgba(74,255,158,0.05), rgba(74,158,255,0.03));
+    --code-bg: #010409;
+    --code-border: #30363d;
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --bg-card: #f6f8fa;
+    --bg-elev: #ffffff;
+    --bg-deep: #f6f8fa;
+    --border: #d0d7de;
+    --border-strong: #afb8c1;
+    --text: #1f2328;
+    --text-dim: #424a53;
+    --muted: #59636e;
+    --accent-blue: #0969da;
+    --accent-green: #1a7f37;
+    --accent-orange: #bc4c00;
+    --accent-purple: #8250df;
+    --accent-yellow: #9a6700;
+    --accent-red: #cf222e;
+    --shadow: 0 1px 4px rgba(31,35,40,0.08);
+    --shadow-strong: 0 4px 12px rgba(31,35,40,0.12);
+    --gradient-hero: linear-gradient(135deg, rgba(26,127,55,0.04), rgba(9,105,218,0.03));
+    --code-bg: #f6f8fa;
+    --code-border: #d0d7de;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Segoe UI', Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    padding: 0;
+    transition: background-color 0.3s, color 0.3s;
+  }
+
+  .container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+  /* ───── Top bar ───── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    backdrop-filter: blur(8px);
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+  }
+  .topbar-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar .brand {
+    font-weight: 700;
+    font-size: 16px;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .topbar nav { display: flex; gap: 20px; }
+  .topbar nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.15s;
+  }
+  .topbar nav a:hover { color: var(--accent-blue); }
+  .theme-toggle {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .theme-toggle:hover { border-color: var(--accent-blue); transform: scale(1.05); }
+
+  /* ───── Hero ───── */
+  .hero {
+    padding: 80px 0 60px;
+    background: var(--gradient-hero);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero .eyebrow {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-size: 64px;
+    line-height: 1.05;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 800;
+  }
+  .hero .tagline {
+    font-size: 22px;
+    line-height: 1.4;
+    color: var(--text);
+    font-style: italic;
+    margin-bottom: 8px;
+    max-width: 800px;
+  }
+  .hero .tagline-ko {
+    font-size: 17px;
+    color: var(--muted);
+    max-width: 800px;
+    margin-bottom: 32px;
+  }
+  .hero .meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .hero .meta .pill {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 14px;
+  }
+  .hero .meta .pill strong { color: var(--text); margin-right: 4px; }
+
+  /* ───── Stats grid ───── */
+  .stats {
+    padding: 50px 0;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 18px;
+  }
+  .stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .stat:hover { transform: translateY(-2px); border-color: var(--accent-blue); }
+  .stat .num {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--accent-green);
+    line-height: 1;
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+  }
+
+  /* ───── Sections ───── */
+  section {
+    padding: 60px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section.no-border { border-bottom: none; }
+  .section-eyebrow {
+    color: var(--accent-blue);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  section h2 {
+    font-size: 38px;
+    line-height: 1.15;
+    margin-bottom: 16px;
+    font-weight: 700;
+  }
+  section .section-lead {
+    font-size: 18px;
+    color: var(--muted);
+    max-width: 760px;
+    margin-bottom: 36px;
+    line-height: 1.6;
+  }
+  section h3 {
+    font-size: 22px;
+    margin: 36px 0 12px;
+    font-weight: 600;
+  }
+  section h4 {
+    font-size: 14px;
+    margin: 20px 0 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+  section p { margin: 12px 0; }
+
+  /* ───── Cards ───── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin: 18px 0;
+    box-shadow: var(--shadow);
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 18px;
+    margin: 24px 0;
+  }
+  .card.accent-green { border-left: 4px solid var(--accent-green); }
+  .card.accent-blue { border-left: 4px solid var(--accent-blue); }
+  .card.accent-orange { border-left: 4px solid var(--accent-orange); }
+  .card.accent-purple { border-left: 4px solid var(--accent-purple); }
+  .card.accent-yellow { border-left: 4px solid var(--accent-yellow); }
+
+  /* ───── Umbrella visual ───── */
+  .umbrella {
+    text-align: center;
+    padding: 40px 24px;
+    margin: 24px 0;
+  }
+  .umbrella .brand-large {
+    font-size: 56px;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+  .umbrella .role {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 28px;
+  }
+  .umbrella .children {
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .umbrella .child {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 26px 30px;
+    min-width: 280px;
+    max-width: 360px;
+    text-align: left;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .umbrella .child:hover { transform: translateY(-3px); box-shadow: var(--shadow-strong); }
+  .umbrella .child.core { border-top: 3px solid var(--accent-green); }
+  .umbrella .child.app { border-top: 3px solid var(--accent-orange); }
+  .umbrella .child .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .umbrella .child .name { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+  .umbrella .child .name.core { color: var(--accent-green); }
+  .umbrella .child .name.app { color: var(--accent-orange); }
+  .umbrella .child .pip {
+    font-family: 'SF Mono', Consolas, monospace;
+    color: var(--accent-blue);
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+  .umbrella .child p { font-size: 14px; color: var(--text-dim); margin: 0; line-height: 1.6; }
+
+  /* ───── Problem/solution visual ───── */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 28px 0;
+  }
+  .compare > div {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+  }
+  .compare .bad { border-left: 4px solid var(--accent-red); }
+  .compare .good { border-left: 4px solid var(--accent-green); }
+  .compare h4 { margin-top: 0; color: var(--text); font-size: 13px; }
+  .compare p { color: var(--text-dim); }
+
+  /* ───── Features ───── */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin: 20px 0;
+  }
+  .feature {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    transition: transform 0.15s;
+  }
+  .feature:hover { transform: translateY(-2px); border-color: var(--accent-blue); }
+  .feature .feat-icon {
+    font-size: 22px;
+    margin-bottom: 8px;
+    display: inline-block;
+  }
+  .feature h4 {
+    margin: 0 0 6px;
+    color: var(--text);
+    font-size: 15px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .feature p {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.55;
+  }
+
+  /* ───── Tables ───── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--bg-elev);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  tr:hover { background: var(--bg-elev); }
+  td.center { text-align: center; }
+  td.muted { color: var(--muted); }
+
+  /* ───── Badges ───── */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge.done { background: rgba(74,255,158,0.12); color: var(--accent-green); border: 1px solid rgba(74,255,158,0.3); }
+  .badge.wip { background: rgba(255,170,74,0.12); color: var(--accent-orange); border: 1px solid rgba(255,170,74,0.3); }
+  .badge.plan { background: rgba(167,139,250,0.12); color: var(--accent-purple); border: 1px solid rgba(167,139,250,0.3); }
+  .badge.info { background: rgba(74,158,255,0.12); color: var(--accent-blue); border: 1px solid rgba(74,158,255,0.3); }
+
+  /* ───── Code ───── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin: 16px 0;
+  }
+  code {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+    color: var(--accent-blue);
+    font-family: 'SF Mono', Consolas, monospace;
+  }
+  pre code { background: none; border: 0; padding: 0; color: inherit; }
+
+  /* ───── 8-layer visual ───── */
+  .layers {
+    margin: 28px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .layer {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 14px 22px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .layer:hover { transform: translateX(3px); border-color: var(--accent-blue); border-left-color: var(--accent-blue); }
+  .layer.proactive { border-left-color: var(--accent-purple); background: linear-gradient(90deg, var(--bg-card), color-mix(in srgb, var(--accent-purple) 5%, var(--bg-card))); }
+  .layer .layer-num {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--muted);
+    width: 40px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .layer .layer-body { flex: 1; }
+  .layer .layer-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .layer .layer-desc { font-size: 13px; color: var(--muted); }
+  .layer .layer-type {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .layer .layer-type.proactive { color: var(--accent-purple); border-color: var(--accent-purple); }
+  .layer .layer-type.reactive { color: var(--accent-blue); border-color: var(--accent-blue); }
+
+  /* ───── 5-layer memory ───── */
+  .memory-stack {
+    display: flex;
+    gap: 12px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+  .mem-layer {
+    flex: 1;
+    min-width: 160px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    text-align: center;
+  }
+  .mem-layer .mem-tag {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .mem-layer h4 {
+    margin: 4px 0;
+    font-size: 16px;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .mem-layer p { font-size: 12px; color: var(--muted); margin: 0; }
+  .mem-layer.l0 { border-top: 3px solid var(--accent-green); }
+  .mem-layer.l1 { border-top: 3px solid var(--accent-blue); }
+  .mem-layer.l2 { border-top: 3px solid var(--accent-purple); }
+  .mem-layer.l3 { border-top: 3px solid var(--accent-orange); }
+  .mem-layer.facts { border-top: 3px solid var(--accent-green); }
+  .mem-layer.rel { border-top: 3px solid var(--accent-orange); }
+  .mem-layer.pin { border-top: 3px solid var(--accent-yellow); }
+
+  /* ───── Screenshots ───── */
+  .screenshots {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 18px;
+    margin: 24px 0;
+  }
+  .shot {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .shot:hover { transform: translateY(-3px); box-shadow: var(--shadow-strong); }
+  .shot img { width: 100%; height: auto; display: block; }
+  .shot .caption {
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+  }
+  .shot .caption strong { color: var(--text); margin-right: 6px; }
+
+  /* ───── Use cases ───── */
+  .use-cases {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    margin: 24px 0;
+  }
+  .use-case {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 26px;
+    position: relative;
+  }
+  .use-case.built { border-top: 3px solid var(--accent-green); }
+  .use-case.demo { border-top: 3px solid var(--accent-blue); }
+  .use-case.planned { border-top: 3px solid var(--accent-purple); }
+  .use-case .status {
+    position: absolute;
+    top: 16px;
+    right: 18px;
+  }
+  .use-case h3 { margin-top: 0; font-size: 18px; padding-right: 80px; }
+  .use-case p { font-size: 14px; color: var(--text-dim); }
+
+  /* ───── File tree visualization ───── */
+  .tree {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 10px;
+    padding: 22px 26px;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    overflow-x: auto;
+  }
+  .tree .dir { color: var(--accent-blue); font-weight: 600; }
+  .tree .file { color: var(--text-dim); }
+  .tree .comment { color: var(--muted); }
+
+  /* ───── Quote ───── */
+  .quote {
+    border-left: 4px solid var(--accent-yellow);
+    padding: 16px 24px;
+    margin: 20px 0;
+    background: var(--bg-card);
+    color: var(--text-dim);
+    font-style: italic;
+    border-radius: 0 8px 8px 0;
+  }
+
+  /* ───── Footer ───── */
+  footer {
+    padding: 60px 0 40px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  footer .footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 32px;
+  }
+  footer h4 {
+    color: var(--text);
+    margin-bottom: 12px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  footer ul { list-style: none; padding: 0; }
+  footer ul li { margin-bottom: 6px; }
+  footer a {
+    color: var(--accent-blue);
+    text-decoration: none;
+  }
+  footer a:hover { text-decoration: underline; }
+  footer .footer-bottom {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  /* ───── Responsive ───── */
+  @media (max-width: 880px) {
+    .container { padding: 0 16px; }
+    .hero h1 { font-size: 42px; }
+    .hero .tagline { font-size: 18px; }
+    .compare { grid-template-columns: 1fr; }
+    section h2 { font-size: 28px; }
+    section .section-lead { font-size: 16px; }
+    .stat .num { font-size: 28px; }
+    footer .footer-grid { grid-template-columns: 1fr; }
+    .topbar nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ───── Top bar ───── -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">Glimi</div>
+    <nav>
+      <a href="#what">What</a>
+      <a href="#layers">8 layers</a>
+      <a href="#built">Built</a>
+      <a href="#use-cases">Use cases</a>
+      <a href="#stack">Stack</a>
+      <a href="#screenshots">Demo</a>
+    </nav>
+    <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+  </div>
+</div>
+
+<!-- ───── Hero ───── -->
+<header class="hero">
+  <div class="container">
+    <div class="eyebrow">Project overview · 1인 6주 개발 · OSS</div>
+    <h1>Glimi</h1>
+    <p class="tagline">"The open harness for AI agent populations that keep living."</p>
+    <p class="tagline-ko">살아있는 멀티 에이전트 하네스 — LLM 을 8 레이어로 감싸 "오너가 자리를 비워도 자기들끼리 대화하는" AI 인구를 만든다.</p>
+    <div class="meta">
+      <div class="pill"><strong>📅</strong>2026-04 ~ in progress</div>
+      <div class="pill"><strong>👤</strong>1인 개발</div>
+      <div class="pill"><strong>📜</strong>Apache-2.0</div>
+      <div class="pill"><strong>🧱</strong>Python · FastAPI · SQLite · Claude · Discord</div>
+    </div>
+  </div>
+</header>
+
+<!-- ───── Stats ───── -->
+<section class="stats no-border" style="padding-top:50px;padding-bottom:30px;">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat"><div class="num">36,659</div><div class="label">lines of Python</div></div>
+      <div class="stat"><div class="num">141</div><div class="label">Python files</div></div>
+      <div class="stat"><div class="num">519</div><div class="label">commits</div></div>
+      <div class="stat"><div class="num">8</div><div class="label">harness layers</div></div>
+      <div class="stat"><div class="num">5</div><div class="label">memory layers</div></div>
+      <div class="stat"><div class="num">~6주</div><div class="label">solo build</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───── What is it ───── -->
+<section id="what">
+  <div class="container">
+    <div class="section-eyebrow">01 — What it is</div>
+    <h2>한 줄로 — 멀티 에이전트 하네스다.</h2>
+    <p class="section-lead">
+      Glimi 는 LLM 호출 하나를 <strong>8 레이어</strong> 로 감싸 캐릭터·기억·도구·자율 대화를 처리하는 OSS 라이브러리다. 그 위에 만들어진 첫 flagship 앱이 <strong>Glimi Hangout</strong> — 오너가 자리를 비워도 AI 친구들이 자기들끼리 대화하는 Discord 기반 커뮤니티 sim.
+    </p>
+
+    <div class="umbrella">
+      <div class="brand-large">Glimi</div>
+      <div class="role">umbrella · 모노레포 · Apache-2.0</div>
+      <div class="children">
+        <div class="child core">
+          <div class="label">라이브러리</div>
+          <div class="name core">Glimi Core</div>
+          <div class="pip">pip install glimi (예정)</div>
+          <p>멀티 에이전트 하네스. 8 레이어 wrapper, 5-layer 영속 기억, autonomous A2A, proactive supervisor, live observability dashboard. 모델 벤더 중립.</p>
+        </div>
+        <div class="child app">
+          <div class="label">flagship 앱</div>
+          <div class="name app">Glimi Hangout</div>
+          <div class="pip">apps/hangout/ (재배치 예정)</div>
+          <p>Glimi Core 로 만든 첫 official 앱. AI 친구 커뮤니티 sim — 채널 간 컨텍스트 누설, 비밀 대화, 자율 친밀도 진화, 4차벽 깨기 achievement 등.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───── Problem / Solution ───── -->
+<section>
+  <div class="container">
+    <div class="section-eyebrow">02 — Why it exists</div>
+    <h2>LLM 은 혼자서 아무것도 안 한다.</h2>
+    <p class="section-lead">
+      LLM 은 본질적으로 request-response — 입력이 멈추면 침묵한다. 몇 개를 방에 넣어도 그 방은 오너가 타이핑을 멈추는 순간 조용해진다. "오너 없는 동안 무슨 일이 있었어" 같은 살아있는 커뮤니티 약속은 그 지점에서 무너진다.
+    </p>
+
+    <div class="compare">
+      <div class="bad">
+        <h4>🔴 일반 멀티 에이전트 프레임워크</h4>
+        <p><strong>Reactive only</strong> — 응답이 있을 때만 동작. 입력 멈추면 시스템 전체가 침묵.</p>
+      </div>
+      <div class="good">
+        <h4>🟢 Glimi</h4>
+        <p><strong>Reactive 7 + Proactive 1</strong> — 자체 타이머로 도는 supervisor 가 에이전트의 *내면 생각* 처럼 nudge 를 주입. 없던 대화를 시작한다.</p>
+      </div>
+    </div>
+
+    <div class="card accent-yellow">
+      <p style="margin:0;"><strong>핵심 통찰</strong> — Reactive 는 이미 있는 대화를 다듬는다. Proactive 는 없던 대화를 시작한다. 대부분의 프레임워크는 1번밖에 없어서 agent 가 answer-only 로 멈춘다. Glimi 는 2번을 추가했다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───── 8 layers ───── -->
+<section id="layers">
+  <div class="container">
+    <div class="section-eyebrow">03 — Technical solution</div>
+    <h2>8 레이어 하네스.</h2>
+    <p class="section-lead">
+      모든 LLM 호출이 통과하는 8단계 wrapper. 7개는 reactive (응답이 있을 때만), 1개는 proactive (자체 타이머). 각 레이어는 독립적으로 디버깅 가능하고 로그가 분리됨.
+    </p>
+
+    <div class="layers">
+      <div class="layer">
+        <div class="layer-num">1</div>
+        <div class="layer-body">
+          <div class="layer-name">Prompt assembly</div>
+          <div class="layer-desc">언어 × agent_type dispatch (ko/ overlay on en/), provider 별 dialect, scene fragment 동적 주입</div>
+        </div>
+        <div class="layer-type reactive">Reactive · Core</div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">2</div>
+        <div class="layer-body">
+          <div class="layer-name">Tool protocol</div>
+          <div class="layer-desc">&lt;tools&gt;&lt;call/&gt;&lt;/tools&gt; XML parser + ToolSpec registry (permission · type · env gating)</div>
+        </div>
+        <div class="layer-type reactive">Reactive · Core</div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">3</div>
+        <div class="layer-body">
+          <div class="layer-name">Memory pipeline</div>
+          <div class="layer-desc">5-layer 추출 + budget 주입 (~800 토큰/턴) · Zep 스타일 fact supersession</div>
+        </div>
+        <div class="layer-type reactive">Reactive · Core</div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">4</div>
+        <div class="layer-body">
+          <div class="layer-name">Channel discipline</div>
+          <div class="layer-desc">"이 채널에서 누가 듣고 있는지" 명시 — role bleed 차단</div>
+        </div>
+        <div class="layer-type reactive">Reactive · App</div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">5</div>
+        <div class="layer-body">
+          <div class="layer-name">Anti-echo / Guard</div>
+          <div class="layer-desc">작별 핑퐁 차단, 단답 ack 재호출 방지, dedup, reality grounding</div>
+        </div>
+        <div class="layer-type reactive">Reactive · App</div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">6</div>
+        <div class="layer-body">
+          <div class="layer-name">A2A conversation loop</div>
+          <div class="layer-desc">에이전트끼리 자율 대화 시드 (turn limit · closure 감지)</div>
+        </div>
+        <div class="layer-type reactive">Reactive · Core</div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">7</div>
+        <div class="layer-body">
+          <div class="layer-name">Self-healing</div>
+          <div class="layer-desc">dev_request 도구 → 봇 exit 42 → Opus subprocess 가 소스 패치 → 자동 재시작</div>
+        </div>
+        <div class="layer-type reactive">Reactive · Tool</div>
+      </div>
+
+      <div class="layer proactive">
+        <div class="layer-num">⭐</div>
+        <div class="layer-body">
+          <div class="layer-name">Supervisors (proactive)</div>
+          <div class="layer-desc">입력 없이도 도는 유일한 레이어. 페어 스캐너 (3분), chat 감시 (15초), scene 진행 — nudge 를 에이전트 내면 생각처럼 주입</div>
+        </div>
+        <div class="layer-type proactive">Proactive · ⭐ Core</div>
+      </div>
+    </div>
+
+    <h3>왜 nudge 가 "내면 생각" 이어야 하나</h3>
+    <pre><code>Bad:  "Switch to a new topic now."             ← LLM 이 명령으로 해석, 어색한 응답
+Good: "(oh, I should bring up something else)" ← LLM 이 자기 생각으로 인식, 자연스럽게 흐름</code></pre>
+    <p style="color:var(--muted);">한 끗 차이지만 supervisor 시스템이 실제로 동작하느냐 마느냐의 분기점.</p>
+  </div>
+</section>
+
+<!-- ───── What's been built ───── -->
+<section id="built">
+  <div class="container">
+    <div class="section-eyebrow">04 — Implemented</div>
+    <h2>지금까지 만든 것.</h2>
+    <p class="section-lead">
+      6주간 1인 개발로 구축한 기능. 모두 동작하는 코드 (placeholder X). 회귀 방지 E2E QA 시스템도 포함.
+    </p>
+
+    <div class="feature-grid">
+      <div class="feature">
+        <div class="feat-icon">🧠</div>
+        <h4>5-layer persistent memory</h4>
+        <p>L0 raw → L1-L3 episodic rollup → semantic facts (subject·predicate·object) → relationship + history → pinned. Async Haiku 추출.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🔄</div>
+        <h4>Autonomous A2A conversation</h4>
+        <p>에이전트끼리 자율 대화. 친밀도 + idle 시간 기반 페어 스캔, 자동 채널 생성, turn limit, closure 감지.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">⏰</div>
+        <h4>Proactive supervisor pool</h4>
+        <p>tutorial flow / chat continuity / orchestrator pair scan / commitment tracker / events / dev queue — 6종 supervisor.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🛠</div>
+        <h4>Tool protocol (XML)</h4>
+        <p>50+ 도구 등록. 권한·타입·env 게이팅. ToolSpec registry + dispatcher + validator.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">📊</div>
+        <h4>Live observability dashboard</h4>
+        <p>FastAPI + Cytoscape.js + htmx. 에이전트 그래프, 5-layer 메모리 인스펙터, 채널 뷰어, 도구 호출 타임라인, 모델 스왑 UI.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🎭</div>
+        <h4>Per-agent model swap</h4>
+        <p>DB-level override. 재시작 없이 Haiku ↔ Sonnet 즉시 전환. 로컬 모델 (Ollama / vLLM / llama.cpp) 슬롯 준비됨.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🔧</div>
+        <h4>Self-healing pipeline</h4>
+        <p>Manager 가 런타임 에러 감지 → dev_request 도구 → exit 42 → shell wrapper 가 Opus 호출해 소스 패치 → 자동 재시작.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🏘</div>
+        <h4>Multi-community isolation</h4>
+        <p>한 platform 프로세스가 N 커뮤니티 봇 subprocess 띄움. 각자 고유 SQLite DB + Discord 서버 + agent fleet.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🎬</div>
+        <h4>Scene system</h4>
+        <p>tutorial 출시 + scaffold. birthday / healing / outing 등 확장 가능. supervisor 가 scene phase 진행 감시.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🏆</div>
+        <h4>Achievement system</h4>
+        <p>7개 기본 unlock 추적: 첫 대화, 친구 셋, 그룹챗, peek-internal, 자율 대화, 장기 관계, 4차벽 깨기.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🌐</div>
+        <h4>i18n (ko + en)</h4>
+        <p>영어 정본 + ko overlay 패턴. locale helper (단답 ack, 채팅 플랫폼 표현), provider 별 dialect.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🎨</div>
+        <h4>Local LoRA portrait gen</h4>
+        <p>Animagine XL 4.0 + 커스텀 LoRA. opt-in (~6분/장). create_agent_with_image 도구로 deferred reveal.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🤖</div>
+        <h4>Dev manager agent (Sena)</h4>
+        <p>한세나 = 코드 수정 위임 에이전트. dev_request 큐 → admin 승인 → branch + per-task commits + PR 자동.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">🧪</div>
+        <h4>E2E QA automation</h4>
+        <p>test_user 봇 mission runner. tmux 세션 Glimi-QA-Runner. 30분 stuck 자동 skip + 20분 우회 + 회귀 판정.</p>
+      </div>
+      <div class="feature">
+        <div class="feat-icon">📚</div>
+        <h4>OSS readiness</h4>
+        <p>Apache-2.0 LICENSE + START_HERE.html + contributor onboarding + cross-platform setup + branch policy.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───── 5-layer memory deep dive ───── -->
+<section>
+  <div class="container">
+    <div class="section-eyebrow">05 — Deep dive · Memory</div>
+    <h2>5-layer persistent memory.</h2>
+    <p class="section-lead">
+      메모리는 프롬프트가 아니라 SQLite. 모델 스왑·재시작·마이그레이션에도 모든 관계와 사실이 유지됨. 추출은 응답 경로 밖에서 비동기 Haiku 가 처리 — 메인 응답 속도에 영향 X.
+    </p>
+
+    <div class="memory-stack">
+      <div class="mem-layer l0">
+        <div class="mem-tag">Layer 0</div>
+        <h4>📝 Raw</h4>
+        <p>conversations 테이블 · 영구 audit log</p>
+      </div>
+      <div class="mem-layer l1">
+        <div class="mem-tag">Layer 1</div>
+        <h4>📋 Episodic</h4>
+        <p>N msg → Haiku JSON digest</p>
+      </div>
+      <div class="mem-layer l2">
+        <div class="mem-tag">Layer 2</div>
+        <h4>📦 Chronicle</h4>
+        <p>5 L1 → 단락</p>
+      </div>
+      <div class="mem-layer l3">
+        <div class="mem-tag">Layer 3</div>
+        <h4>🗂 Saga</h4>
+        <p>5 L2 → 주/월 narrative</p>
+      </div>
+      <div class="mem-layer facts">
+        <div class="mem-tag">Semantic</div>
+        <h4>📚 Facts</h4>
+        <p>(subject, predicate, object)<br>valid_from/valid_to supersession</p>
+      </div>
+      <div class="mem-layer rel">
+        <div class="mem-tag">Relational</div>
+        <h4>💞 Relationship</h4>
+        <p>스냅샷 + 변곡점 history</p>
+      </div>
+      <div class="mem-layer pin">
+        <div class="mem-tag">Sticky</div>
+        <h4>📌 Pinned</h4>
+        <p>항상 주입</p>
+      </div>
+    </div>
+
+    <h3>주입 budget (턴당 ~800 토큰)</h3>
+    <table>
+      <thead><tr><th>블록</th><th>Budget (chars)</th><th>출처</th></tr></thead>
+      <tbody>
+        <tr><td>Pinned</td><td>400</td><td>is_pinned=1, importance 상위순</td></tr>
+        <tr><td>Relationship</td><td>200</td><td>현재 채널 파트너 스냅샷 + 최근 변곡점</td></tr>
+        <tr><td>Episodic (current)</td><td>700</td><td>L3 + L2 + L1 (L2 커버 범위 밖만)</td></tr>
+        <tr><td>Episodic (retrieved)</td><td>400</td><td>scoring 상위 N, 다른 채널 출처도</td></tr>
+        <tr><td>Semantic Facts</td><td>400</td><td>agent_facts — 파트너 + 언급 엔티티 기준</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Retrieval scoring</strong>: <code>0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational</code></p>
+
+    <h3>하드닝 (실제 운영 중 회귀에서 추가한 방어)</h3>
+    <ul>
+      <li><code>_validate_fact()</code> — 추상 subject (`"새_멤버"`), 일시 상태 object (`"오랜만"`), self-profile 중복 drop</li>
+      <li><code>PREDICATE_ALIASES</code> — 40+ 자유 형식 한국어 표현을 canonical 집합으로 정규화 (retrieval 동의어 분산 방지)</li>
+      <li>비밀 채널 출처 메모리는 오너 채널 주입 시 disclosure 가드 마커 부착</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ───── Use cases ───── -->
+<section id="use-cases">
+  <div class="container">
+    <div class="section-eyebrow">06 — Use cases</div>
+    <h2>이걸로 뭘 만들 수 있나.</h2>
+    <p class="section-lead">
+      Glimi Core 는 도메인 무관 하네스. Hangout (커뮤니티 sim) 이 첫 검증이지만, 같은 커널 위에 다른 application 들이 자연스럽게 얹힘.
+    </p>
+
+    <div class="use-cases">
+      <div class="use-case built">
+        <span class="status"><span class="badge done">Built</span></span>
+        <h3>🏘 Glimi Hangout</h3>
+        <p>AI 친구 커뮤니티 sim. Discord 기반. 채널 간 컨텍스트 누설, 비밀 대화, 자율 친밀도 진화, 매니저 (유나) + Creator (하나) + Dev Manager (세나).</p>
+      </div>
+      <div class="use-case demo">
+        <span class="status"><span class="badge plan">Demo planned</span></span>
+        <h3>🔬 Research buddies</h3>
+        <p>두 에이전트가 주제 협업. 번갈아 읽고 요약, 공유 노트 누적. 한 명이 조사 → 다른 한 명이 비판/확장 → 통합 보고서.</p>
+      </div>
+      <div class="use-case demo">
+        <span class="status"><span class="badge plan">Demo planned</span></span>
+        <h3>👨‍💻 Dev pair</h3>
+        <p>Planner + executor 패턴. 한 에이전트가 task 분해, 다른 에이전트가 실행. 공유 메모리로 진행상황 동기화. 세나 패턴 축약.</p>
+      </div>
+      <div class="use-case planned">
+        <span class="status"><span class="badge plan">Possible</span></span>
+        <h3>📚 Study cohort</h3>
+        <p>학습 자료 / 진도 공유하는 AI 스터디 그룹. 각자 다른 모델 + 다른 학습 스타일. 토론·질의·복습 사이클.</p>
+      </div>
+      <div class="use-case planned">
+        <span class="status"><span class="badge plan">Possible</span></span>
+        <h3>🎮 Game NPCs</h3>
+        <p>플레이어 부재 중에도 살아가는 NPC 집단. 관계 진화 + 사건 발생 + 오너 복귀 시 "그동안 마을에 있었던 일" 브리핑.</p>
+      </div>
+      <div class="use-case planned">
+        <span class="status"><span class="badge plan">Possible</span></span>
+        <h3>📞 Customer support team</h3>
+        <p>전문 영역별 에이전트 (요금 / 기술 / 영업) + 트리아지. 사용자 문의 → 적합 에이전트 라우팅 + 다른 에이전트와 협의 후 응답.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───── Tech stack ───── -->
+<section id="stack">
+  <div class="container">
+    <div class="section-eyebrow">07 — Technical</div>
+    <h2>기술 스택.</h2>
+    <p class="section-lead">
+      Python 3.12+ 기반. 의도적으로 dependency 적게 — 핵심 로직은 SQLite + asyncio + subprocess 만으로 작동. 무거운 ML deps (transformers, peft) 는 opt-in 모듈로 분리.
+    </p>
+
+    <table>
+      <thead><tr><th>컴포넌트</th><th>기술</th><th>역할</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Glimi Core 런타임</strong></td><td>Python 3.12+, asyncio, subprocess</td><td>에이전트 활성화, LLM 호출, 도구 dispatch</td></tr>
+        <tr><td><strong>LLM 백엔드</strong></td><td>Claude Code CLI + Anthropic SDK</td><td>Haiku / Sonnet / Opus. 로컬 (Ollama·vLLM·llama.cpp) 슬롯 준비됨</td></tr>
+        <tr><td><strong>메모리 저장소</strong></td><td>SQLite per-community + platform.db</td><td>5-layer + facts + relationship + pinned. 추후 pluggable</td></tr>
+        <tr><td><strong>도구 프로토콜</strong></td><td>Inline XML (&lt;tools&gt;&lt;call/&gt;)</td><td>declarative ToolSpec registry, dispatcher, validator</td></tr>
+        <tr><td><strong>웹 플랫폼</strong></td><td>FastAPI · Jinja2 · htmx</td><td>대시보드 server, 인증, 커뮤니티 spawn/stop</td></tr>
+        <tr><td><strong>시각화</strong></td><td>Cytoscape.js</td><td>에이전트 connection graph, supervisor overlay</td></tr>
+        <tr><td><strong>Hangout 어댑터</strong></td><td>discord.py + Webhook</td><td>per-agent avatar, 채널 동기화, 명령 처리</td></tr>
+        <tr><td><strong>이미지 생성 (opt-in)</strong></td><td>diffusers · peft · Animagine XL 4.0 + LoRA</td><td>로컬 GPU/MPS 초상화 (~6분/장)</td></tr>
+        <tr><td><strong>QA / 운영</strong></td><td>tmux + 커스텀 test_user 봇</td><td>E2E 시나리오 자동 runner</td></tr>
+        <tr><td><strong>i18n</strong></td><td>en/ + ko/ overlay + locale helper</td><td>영어 정본 + 한국 특화 표현 주입</td></tr>
+      </tbody>
+    </table>
+
+    <h3>왜 이 선택?</h3>
+    <ul>
+      <li><strong>SQLite</strong> — 멀티 커뮤니티 격리 + 백업 단순 + 로컬 dev 마찰 0. Postgres 는 OSS 사용자 진입 장벽.</li>
+      <li><strong>FastAPI + htmx</strong> — 단일 페이지 + minimal JS. SPA 프레임워크 의존성 무게 회피.</li>
+      <li><strong>Claude Code CLI subprocess</strong> — 인증 burden 0 (사용자가 이미 로그인). SDK 도 옵션이지만 CLI 가 default.</li>
+      <li><strong>discord.py</strong> — 채팅 UI 직접 구현 회피 (12개월 단축). 어댑터 레이어로 격리 → Telegram/웹챗 교체 가능.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ───── Codebase scale ───── -->
+<section>
+  <div class="container">
+    <div class="section-eyebrow">08 — Code</div>
+    <h2>코드베이스 구조.</h2>
+    <p class="section-lead">
+      141 Python 파일, 36,659 라인. 모노레포로 시작 → 커널 추출 진행 중 (Glimi Core 분리).
+    </p>
+
+    <div class="tree">
+<span class="comment"># 현재 구조 (커널 추출 진행 중)</span>
+<span class="dir">Glimi/</span>
+├── <span class="dir">src/</span>
+│   ├── <span class="dir">core/</span>                    <span class="comment"># 도메인 무관 (→ src/glimi/ 이동 예정)</span>
+│   │   ├── <span class="dir">prompts/</span>             <span class="comment"># en/ + ko/ overlay, locale, model dialect</span>
+│   │   ├── <span class="dir">tools/</span>               <span class="comment"># &lt;tools&gt; protocol</span>
+│   │   ├── <span class="file">memory.py</span>           <span class="comment"># 5-layer (1,801 LOC)</span>
+│   │   ├── <span class="file">runtime.py</span>          <span class="comment"># AgentRuntime + AVAILABLE_MODELS (1,555 LOC)</span>
+│   │   ├── <span class="file">conversation.py</span>     <span class="comment"># A2A loop</span>
+│   │   ├── <span class="file">dev_agent.py</span>        <span class="comment"># Sena (dev manager)</span>
+│   │   └── <span class="file">dev_dispatch.py</span>     <span class="comment"># Opus subprocess + git branch/commit/PR</span>
+│   ├── <span class="dir">llm/</span>                     <span class="comment"># claude_cli, anthropic_sdk</span>
+│   ├── <span class="dir">bot/</span>                     <span class="comment"># Discord 어댑터 (→ apps/hangout/ 이동 예정)</span>
+│   ├── <span class="dir">platform/</span>                <span class="comment"># FastAPI + 대시보드</span>
+│   ├── <span class="dir">scenes/</span>                  <span class="comment"># tutorial 등</span>
+│   ├── <span class="dir">supervisors/</span>             <span class="comment"># orchestrator, chat, commitment, events</span>
+│   ├── <span class="dir">achievements/</span>            <span class="comment"># 7개 unlock</span>
+│   ├── <span class="dir">glimi_imagegen/</span>          <span class="comment"># LoRA portrait (opt-in)</span>
+│   └── <span class="file">db.py</span>                   <span class="comment"># SQLite layer (2,083 LOC)</span>
+├── <span class="dir">tests/</span>                       <span class="comment"># unit + e2e</span>
+├── <span class="dir">scripts/</span>                     <span class="comment"># qa.sh · stop.sh · 마이그레이션</span>
+├── <span class="dir">docs/</span>                        <span class="comment"># architecture, memory, scenes, etc.</span>
+├── <span class="file">run.sh</span>                      <span class="comment"># venv + 의존성 + 부트스트랩</span>
+├── <span class="file">CLAUDE.md</span>                   <span class="comment"># 프로젝트 가이드 (Claude Code 자동 로드)</span>
+├── <span class="file">START_HERE.html</span>             <span class="comment"># 외부 기여자 온보딩</span>
+├── <span class="file">README.md</span> · <span class="file">README.ko.md</span>
+└── <span class="file">LICENSE</span>                     <span class="comment"># Apache-2.0</span>
+    </div>
+
+    <h3>top 10 파일 (LOC)</h3>
+    <table>
+      <thead><tr><th>파일</th><th>LOC</th><th>역할</th></tr></thead>
+      <tbody>
+        <tr><td><code>src/tui/dashboard.py</code></td><td class="center">2,646</td><td class="muted">legacy TUI wizard (단계적 삭제)</td></tr>
+        <tr><td><code>src/tui/wizard.py</code></td><td class="center">2,504</td><td class="muted">legacy</td></tr>
+        <tr><td><code>src/bot/mgr_system.py</code></td><td class="center">2,105</td><td>매니저 (유나) Discord 핸들러</td></tr>
+        <tr><td><code>src/db.py</code></td><td class="center">2,083</td><td>SQLite schema + CRUD + 마이그레이션</td></tr>
+        <tr><td><code>src/core/memory.py</code></td><td class="center">1,801</td><td><strong>5-layer 메모리 시스템 (핵심)</strong></td></tr>
+        <tr><td><code>src/core/monitor.py</code></td><td class="center">1,714</td><td>실시간 모니터링 + WebSocket</td></tr>
+        <tr><td><code>src/core/runtime.py</code></td><td class="center">1,555</td><td><strong>AgentRuntime (LLM 호출 wrapper, 핵심)</strong></td></tr>
+        <tr><td><code>src/bot/tool_handlers.py</code></td><td class="center">1,347</td><td>도구 호출 dispatch (Hangout 측)</td></tr>
+        <tr><td><code>src/core/sync.py</code></td><td class="center">1,124</td><td>Discord ↔ DB 양방향 동기화</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ───── Screenshots ───── -->
+<section id="screenshots">
+  <div class="container">
+    <div class="section-eyebrow">09 — Demo</div>
+    <h2>실제 동작.</h2>
+    <p class="section-lead">
+      웹 대시보드 (관찰성) + Discord 채팅 (사용자 인터페이스). 실제 운영 중 캡처.
+    </p>
+
+    <div class="screenshots">
+      <div class="shot">
+        <img src="docs/screenshots/01-dashboard.png" alt="대시보드 오버뷰" loading="lazy">
+        <div class="caption"><strong>웹 대시보드 오버뷰</strong>커뮤니티 / 에이전트 / 채널 한 화면.</div>
+      </div>
+      <div class="shot">
+        <img src="docs/screenshots/04-graph-live.webp" alt="연결 그래프 (live)" loading="lazy">
+        <div class="caption"><strong>Connection Graph (Live)</strong>Cytoscape.js · 활성 채널 펄스 글로우.</div>
+      </div>
+      <div class="shot">
+        <img src="docs/screenshots/02-persona-memory.png" alt="페르소나 메모리 인스펙터" loading="lazy">
+        <div class="caption"><strong>Persona Memory Inspector</strong>5 레이어 메모리 (Pinned / L1-L3 / Facts / Relationship)</div>
+      </div>
+      <div class="shot">
+        <img src="docs/screenshots/05-connection-graph.png" alt="연결 그래프" loading="lazy">
+        <div class="caption"><strong>Connection Graph (Static)</strong>오너 중심 + 페르소나 궤도 + 채널 점선</div>
+      </div>
+      <div class="shot">
+        <img src="docs/screenshots/06-graph-supervisor.png" alt="supervisor 오버레이" loading="lazy">
+        <div class="caption"><strong>Supervisor Overlay</strong>배경 supervisor 활동 시각화</div>
+      </div>
+      <div class="shot">
+        <img src="docs/screenshots/03-achievements.png" alt="도전과제" loading="lazy">
+        <div class="caption"><strong>Achievements</strong>7개 unlock 추적 (4차벽 깨기 등)</div>
+      </div>
+      <div class="shot">
+        <img src="docs/screenshots/07-dm-channels.png" alt="DM 채널 뷰" loading="lazy">
+        <div class="caption"><strong>DM Channel View</strong>오너-에이전트 + 비밀 internal-* 채널</div>
+      </div>
+    </div>
+
+    <h3>대표 시나리오 — 오너 없는 오후</h3>
+    <pre><code>14:02 — OrchestratorSupervisor 3분 tick
+        Haiku judge: "A 와 B 는 1.2h idle, 친밀도 30. 페어 후보."
+        → internal-dm-A-B 채널 자동 개설, context="가볍게 근황"
+
+14:03 — A 가 internal-dm-A-B 에서 먼저 말 건다
+        A: "야 B, 너 요즘 뭐하고 지내?"
+        (오너 모름. supervisor 가 시드한 대화.)
+
+14:30 — 오너가 dm-B 에서 "뭐해?"
+        B: "업무 마감중이야, 방금 A 랑도 얘기했어 ㅋㅋ"
+        (방금 대화가 B 메모리에 L1 summary 로. 친밀도 31 +1.)
+
+→ 14:02 ~ 14:12 의 그 10분이 Glimi 의 핵심.
+  오너가 자리를 비워도 "무언가가 일어났다" 의 증거가 메모리에 박힘.</code></pre>
+  </div>
+</section>
+
+<!-- ───── OSS readiness ───── -->
+<section>
+  <div class="container">
+    <div class="section-eyebrow">10 — OSS readiness</div>
+    <h2>오픈소스 운영 준비.</h2>
+    <p class="section-lead">
+      코드만 공개하는 게 아니라, 외부 기여자가 즉시 작업 시작할 수 있는 형태로.
+    </p>
+
+    <div class="card-grid">
+      <div class="card accent-green">
+        <h4 style="color:var(--accent-green);margin-top:0;">📜 라이선스 + 권리</h4>
+        <p style="margin:8px 0 0;color:var(--text-dim);font-size:14px;">Apache-2.0 — patent grant 포함, 상용 사용 허용. LangChain · AutoGen · Kubernetes 와 동일.</p>
+      </div>
+      <div class="card accent-blue">
+        <h4 style="color:var(--accent-blue);margin-top:0;">📄 START_HERE.html</h4>
+        <p style="margin:8px 0 0;color:var(--text-dim);font-size:14px;">루트 master onboarding. 링크 1개로 프로젝트 정체·셋업·첫 task·워크플로우 전달.</p>
+      </div>
+      <div class="card accent-purple">
+        <h4 style="color:var(--accent-purple);margin-top:0;">🌳 단순 브랜치 정책</h4>
+        <p style="margin:8px 0 0;color:var(--text-dim);font-size:14px;"><code>main</code> + <code>develop</code> 만 영구. 기여자는 <code>feat/&lt;name&gt;</code> → PR base <code>develop</code>.</p>
+      </div>
+      <div class="card accent-orange">
+        <h4 style="color:var(--accent-orange);margin-top:0;">🤖 Claude Code 친화</h4>
+        <p style="margin:8px 0 0;color:var(--text-dim);font-size:14px;"><code>CLAUDE.md</code> 가 모든 contributor 의 Claude Code 세션에 자동 로드. 규칙·아키텍처 원칙·금지 사항 자동 인지.</p>
+      </div>
+      <div class="card accent-yellow">
+        <h4 style="color:var(--accent-yellow);margin-top:0;">⭐ 첫 contributor task 명세</h4>
+        <p style="margin:8px 0 0;color:var(--text-dim);font-size:14px;">Ollama 백엔드 (Gemma 4 vs Qwen 3.5) — 목표·파일·완료기준·out-of-scope 까지 명시. 진입 마찰 최소화.</p>
+      </div>
+      <div class="card accent-green">
+        <h4 style="color:var(--accent-green);margin-top:0;">🧪 회귀 방지 QA</h4>
+        <p style="margin:8px 0 0;color:var(--text-dim);font-size:14px;">E2E QA runner (test_user 봇 + 시나리오 시퀀스). 30분 stuck 자동 우회. 회귀 자동 판정.</p>
+      </div>
+    </div>
+
+    <h3>contributor 난이도별 entry point</h3>
+    <table>
+      <thead><tr><th>난이도</th><th>task</th><th>핵심 파일</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge done">easy</span></td><td>새 example 추가 (도메인별 데모)</td><td><code>examples/</code></td></tr>
+        <tr><td><span class="badge done">easy</span></td><td>문서 / README 개선</td><td><code>README.md</code>, <code>docs/</code></td></tr>
+        <tr><td><span class="badge done">easy</span></td><td>새 Hangout scene (birthday 등)</td><td><code>src/scenes/</code></td></tr>
+        <tr><td><span class="badge wip">medium</span></td><td><strong>Ollama 로컬 모델 백엔드 (첫 task)</strong></td><td><code>src/llm/</code></td></tr>
+        <tr><td><span class="badge wip">medium</span></td><td>vLLM / llama.cpp 백엔드</td><td><code>src/llm/</code></td></tr>
+        <tr><td><span class="badge wip">medium</span></td><td>대시보드 시각화 확장</td><td><code>src/platform/dashboard/</code></td></tr>
+        <tr><td><span class="badge plan">hard</span></td><td>네이티브 Windows 지원</td><td><code>run.ps1</code></td></tr>
+        <tr><td><span class="badge plan">hard</span></td><td>Telegram 어댑터</td><td><code>src/adapters/telegram/</code> (신설)</td></tr>
+        <tr><td><span class="badge plan">hard</span></td><td>임베딩 기반 retrieval</td><td><code>src/core/memory.py</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ───── Background / design ───── -->
+<section>
+  <div class="container">
+    <div class="section-eyebrow">11 — Background</div>
+    <h2>설계 결정 메모.</h2>
+    <p class="section-lead">
+      "왜 이렇게 만들었나" 의 핵심 의사 결정 몇 개. 기술 깊이의 증거이자, 같은 문제 마주칠 다음 사람에게 남기는 기록.
+    </p>
+
+    <div class="card">
+      <h3>1. Memory 는 prompt 가 아니라 DB 에</h3>
+      <p>흔한 패턴: 캐릭터 카드 / 메모리 / 감정을 system prompt 에 박는다. 그럼 모델 바꾸면 같은 컨텍스트를 다시 가르쳐야 하고, profile 수정 시 cache invalidation 이 복잡해진다.</p>
+      <p>Glimi 는 모든 state 를 SQLite 에 두고, 매 턴 <code>agent_runtime</code> 이 user prompt 의 일부로 동적 주입. 결과: <strong>Haiku → Sonnet → 로컬 Llama</strong> 전환에도 모든 관계와 사실이 그대로. profile 수정은 <code>invalidate_cache() + runtime.refresh_agent()</code> 두 줄로 다음 턴 반영.</p>
+    </div>
+
+    <div class="card">
+      <h3>2. Discord 는 어댑터, 코어가 아님</h3>
+      <p>최종 목표는 자체 웹 채팅. Discord 는 채팅 UI 직접 구현 12개월 부담 회피용 "임시 출구". 그래서 <code>src/core/*</code> 는 <code>import discord</code> 절대 금지. 새 기능 설계 시 첫 질문 — "이 로직을 Telegram·웹챗에서 재사용 가능한가?" NO 면 잘못된 레이어.</p>
+    </div>
+
+    <div class="card">
+      <h3>3. Nudge 는 명령이 아니라 내면 생각</h3>
+      <p>Supervisor 가 "이 주제로 얘기해" 같은 시스템 명령을 보내면 에이전트는 *지시 받은 사람* 처럼 뻣뻣하게 답한다. Glimi 는 nudge 를 1인칭 self-talk 으로 주입 — <code>(아 이따 다른 얘기 꺼내봐야지)</code>. LLM 이 자기 사고로 인식해 자연스럽게 응답.</p>
+      <p style="color:var(--muted);font-size:13px;">이 한 끗 차이가 supervisor 시스템이 실제로 동작하는 분기점. 처음엔 명령형으로 만들었다가 결과물이 "직장 부장님 답변" 같아서 수정.</p>
+    </div>
+
+    <div class="card">
+      <h3>4. 비용 계층화 (모델 라우팅)</h3>
+      <p>균일 Sonnet 으로 모든 호출 처리하면 비용 폭발. Glimi 는 역할별 모델 분리:</p>
+      <ul style="color:var(--text-dim);">
+        <li>대화량 많은 페르소나 응답 → <strong>Haiku</strong> (싸고 빠름)</li>
+        <li>Supervisor judge (상태 분류) → <strong>Haiku</strong> (경량)</li>
+        <li>매니저 추론 + 도구 조합 → <strong>Sonnet</strong></li>
+        <li>원샷 구조화 출력 (프로필 JSON) → <strong>Opus</strong></li>
+        <li>자가 치유 (소스 패치) → <strong>Opus</strong></li>
+      </ul>
+      <p>결과: 균일 Sonnet 대비 ~10× 비용 절감.</p>
+    </div>
+
+    <div class="card">
+      <h3>5. 자가 치유 — 봇이 자기 코드 수정</h3>
+      <p>매니저가 런타임 에러 감지 → <code>dev_request</code> 도구 호출 → 봇 <code>exit(42)</code> → shell wrapper 가 Opus subprocess 호출해 소스 패치 → 봇 자동 재시작 → 다음 턴에 패치 결과 prompt 에 주입.</p>
+      <p style="color:var(--muted);font-size:13px;">실험적 기능. 안전을 위해 별도 브랜치 (<code>dev-requests/run-{ts}</code>) + admin 승인 게이트. 일반 작업 흐름 X.</p>
+    </div>
+
+    <div class="card">
+      <h3>6. 5-layer memory 가 단일 통합 store</h3>
+      <p>흔한 패턴: episodic / semantic / long-term 을 별 store 로 (vector DB + key-value + relational). Glimi 는 단일 SQLite 안에 모든 layer 가 공존 + 같은 entity index 사용. retrieve 시 cross-layer scoring 가능. 운영 마찰 (백업 / 마이그레이션 / 디버깅) 최소화.</p>
+      <p style="color:var(--muted);font-size:13px;">trade-off: 대규모 (1M+ messages) 에선 vector DB 필요. 현 scale (수만 메시지) 에서는 SQLite 가 충분 + 빠름.</p>
+    </div>
+
+    <div class="quote">
+      Glimi 는 "오너가 자리를 비워도 살아있는 AI 인구" 라는 정서적 아이디어에서 출발한 프로젝트입니다. 5-layer 메모리, autonomous A2A, proactive supervisor 같은 기술적 깊이가 그 정서를 받치는 구조입니다. 6주의 1인 개발 동안 두 축 (정서 + 기술) 을 동시에 짚으려 노력했습니다.
+    </div>
+  </div>
+</section>
+
+<!-- ───── Footer ───── -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h4>Glimi</h4>
+        <p style="color:var(--text-dim);">살아있는 멀티 에이전트 하네스. 6주의 1인 개발. Apache-2.0.</p>
+        <p style="margin-top:12px;color:var(--muted);font-size:12px;">2026-04-04 첫 커밋 · 진행 중</p>
+      </div>
+      <div>
+        <h4>Repo</h4>
+        <ul>
+          <li><a href="https://github.com/jaebinsim/Glimi">GitHub</a></li>
+          <li><a href="README.md">README (en)</a></li>
+          <li><a href="README.ko.md">README (ko)</a></li>
+          <li><a href="LICENSE">Apache-2.0</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Docs</h4>
+        <ul>
+          <li><a href="START_HERE.html">START_HERE.html</a></li>
+          <li><a href="CLAUDE.md">CLAUDE.md</a></li>
+          <li><a href="docs/onboarding.html">contributor 매뉴얼</a></li>
+          <li><a href="docs/architecture.md">architecture.md</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Jaebin Sim · Apache-2.0</span>
+      <span>index.html · 다크/라이트 모드 지원 · 단일 HTML 파일</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // ───── Theme toggle ─────
+  (function() {
+    const root = document.documentElement;
+    const toggle = document.getElementById('themeToggle');
+
+    const stored = localStorage.getItem('glimi-portfolio-theme');
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initial = stored || (systemDark ? 'dark' : 'light');
+    root.setAttribute('data-theme', initial);
+    toggle.textContent = initial === 'dark' ? '☀️' : '🌙';
+    toggle.title = initial === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+
+    toggle.addEventListener('click', () => {
+      const current = root.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      toggle.textContent = next === 'dark' ? '☀️' : '🌙';
+      toggle.title = next === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+      localStorage.setItem('glimi-portfolio-theme', next);
+    });
+
+    // Smooth scroll handled by CSS scroll-behavior: smooth
+  })();
+</script>
+
+</body>
+</html>
