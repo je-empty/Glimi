@@ -529,6 +529,10 @@ class AgentRuntime:
         """
         is_bridge = agent_type in ("mgr", "creator")
         peek_limit = 5 if is_bridge else 1
+        # persona 가 internal-* (오너 부재) 채널에 있을 때, 오너-참여 채널(dm-/group-)의 오너 발화가
+        # peek 으로 새어들어가 "오너가 방금 답장했다" 식 환각을 유발 (QA: internal-dm 에서 옛 오너 DM
+        # 한 줄을 방금 온 답장처럼 narration). → 오너 발화 라인 제거 (과거 오너 메시지 주입 차단).
+        strip_owner_lines = (not is_bridge) and current_channel.startswith("internal-")
         conn = db.get_conn()
 
         # 이 에이전트가 참여한 채널 (현재 채널 제외)
@@ -596,12 +600,17 @@ class AgentRuntime:
                 label = ch_name
 
             # 여러 줄 — 시간 순 (oldest → newest)
-            ch_lines = [f"- [{label}]"]
+            msg_lines = []
             for r in recent:
+                if strip_owner_lines and r["speaker"] == get_user_id():
+                    continue  # 오너 발화는 internal 채널 peek 에서 제외 (환각 유발 차단)
                 speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
                 preview = r["message"][:80]
-                ch_lines.append(f"  {speaker}: \"{preview}\"")
-            lines.extend(ch_lines)
+                msg_lines.append(f"  {speaker}: \"{preview}\"")
+            if not msg_lines:
+                continue  # 오너 발화만 있던 채널이면 통째로 스킵
+            lines.append(f"- [{label}]")
+            lines.extend(msg_lines)
 
         if not lines:
             return ""
@@ -666,7 +675,11 @@ class AgentRuntime:
                 )
             return (
                 f"[지금 대화 중: {partner}과(와) 둘만의 사적인 대화. "
-                f"여기엔 너와 {partner}만 있어. 다른 사람은 아무도 못 봐.]"
+                f"여기엔 너와 {partner}만 있어. 다른 사람은 아무도 못 봐. "
+                f"{owner_name} 도 지금 여기 없어 — 이 자리엔 너와 {partner} 둘뿐이야. "
+                f"이 대화 안에서 {owner_name} 에게 연락이 닿거나 답장·반응이 돌아오는 일은 없어. "
+                f"{owner_name} 가 방금 무슨 말을 했다거나 답장이 왔다고 지어내지 말고, "
+                f"실제로 오지 않은 {owner_name} 의 말·반응을 사실처럼 {partner} 에게 전하지 마.]"
             )
         elif channel.startswith("internal-group-"):
             members = ", ".join(names) if names else "?"
@@ -679,7 +692,10 @@ class AgentRuntime:
                 )
             return (
                 f"[지금 대화 중: {members}과(와) 단체 대화. "
-                f"여기엔 지금 있는 멤버만 참여 중이야. 다른 사람은 아무도 못 봐. "
+                f"여기엔 지금 있는 사람들만 참여 중이야. 다른 사람은 아무도 못 봐. "
+                f"{owner_name} 도 지금 여기 없어 — 이 자리엔 지금 함께 있는 사람들뿐이야. "
+                f"이 대화 안에서 {owner_name} 에게 연락이 닿거나 답장·반응이 돌아오는 일은 없어. "
+                f"{owner_name} 가 방금 무슨 말을 했다거나 답장이 왔다고 지어내지 마. "
                 f"다른 사람을 초대하고 싶으면 유나한테 요청해.]"
             )
         elif channel == "mgr-dashboard":
