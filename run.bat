@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 REM Project Glimi - Windows entry point (run.sh equivalent)
 REM
 REM Default (platform daemon, FastAPI + web UI):
