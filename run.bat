@@ -48,6 +48,25 @@ if not exist "%MARKER%" (
 
 if not exist dev mkdir dev
 
+REM === Ollama 로컬 LLM 백엔드 자동 기동 ===
+REM 자동시작을 꺼둔 경우 대비 — 서버가 안 떠 있으면 백그라운드로 ollama serve 시작.
+REM PATH 의존 대신 실제 exe 경로를 해석 (where → 표준 설치 위치 fallback).
+set "OLLAMA_BIN="
+for /f "delims=" %%i in ('where ollama 2^>nul') do set "OLLAMA_BIN=%%i"
+if not defined OLLAMA_BIN if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" set "OLLAMA_BIN=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+if not defined OLLAMA_BIN (
+    echo [ollama] 실행파일 못 찾음 - 로컬 LLM 사용 시 Ollama 설치 필요 ^(claude 백엔드엔 영향 없음^)
+) else (
+    "!OLLAMA_BIN!" ps >nul 2>nul
+    if errorlevel 1 (
+        echo [ollama] 서버 시작 중... ^("!OLLAMA_BIN!"^)
+        start "Ollama" /MIN "!OLLAMA_BIN!" serve
+        timeout /t 5 /nobreak >nul
+    ) else (
+        echo [ollama] 이미 실행 중
+    )
+)
+
 REM === cleanup existing processes ===
 REM Use PowerShell Get-CimInstance for commandline-based process matching (wmic deprecated).
 powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | Where-Object { $_.CommandLine -match 'src\.(platform|discord_bot|tui\.dashboard|tui\.wizard|tools\.dev_runner)' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" 2>nul
