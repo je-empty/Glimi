@@ -55,11 +55,11 @@ AVAILABLE_MODELS = [
      "kind": "cloud", "provider": "claude", "tier": "balanced", "icon": "☁️"},
     {"id": "claude-haiku-4-5", "label": "Haiku 4.5",
      "kind": "cloud", "provider": "claude", "tier": "fast", "icon": "☁️"},
-    # Phase 2 로컬 모델 예시 (주석 — 실제 구현 시 해제 + src/llm/local.py 추가):
-    # {"id": "ollama:llama3.3:8b", "label": "Llama 3.3 8B",
-    #  "kind": "local", "provider": "ollama", "tier": "fast", "icon": "🖥️"},
-    # {"id": "ollama:qwen2.5:14b", "label": "Qwen 2.5 14B",
-    #  "kind": "local", "provider": "ollama", "tier": "balanced", "icon": "🖥️"},
+    # 로컬 (Ollama) — 실제 모델 태그는 GLIMI_OLLAMA_MODEL env 가 override.
+    # 이 id 는 "ollama 백엔드로 라우팅" 마커 역할 (src/llm/ollama.py _resolve_model 참조).
+    {"id": "ollama:local", "label": "로컬 (Ollama)",
+     "kind": "local", "provider": "ollama", "tier": "balanced", "icon": "🖥️"},
+    # 향후 추가 예: vllm / llamacpp provider.
     # {"id": "vllm:mistral-small-3", "label": "Mistral Small 3",
     #  "kind": "local", "provider": "vllm", "tier": "balanced", "icon": "🖥️"},
 ]
@@ -77,6 +77,78 @@ def _resolve_agent_model(agent_id: str, agent_type: str) -> str:
         pass
     return AGENT_MODELS.get(agent_type, "claude-sonnet-4-6")
 OPUS_MODEL = "claude-opus-4-6"
+
+
+def _provider_for(agent_type: str, model: str) -> str:
+    """이 호출이 어느 백엔드로 갈지 결정 — 'claude' (직접 CLI) | 'ollama' (src.llm).
+
+    우선순위 (src/llm/__init__._select_backend 와 일관):
+      1) GLIMI_LLM_AGENT_MAP (agent_type 별 매핑) — 하이브리드 탈출구
+         예: {"persona":"ollama","mgr":"claude_cli"}
+      2) GLIMI_LLM_BACKEND (전역 강제)
+      3) model id prefix ("ollama:...")
+      4) AVAILABLE_MODELS 레지스트리의 provider
+    """
+    # 1) agent_type 별 매핑
+    raw = os.environ.get("GLIMI_LLM_AGENT_MAP", "").strip()
+    if raw:
+        try:
+            m = json.loads(raw)
+            if isinstance(m, dict):
+                v = (m.get(agent_type) or m.get("_default") or "").strip().lower()
+                if v:
+                    return "ollama" if v == "ollama" else "claude"
+        except Exception:
+            pass
+    # 2) 전역 백엔드
+    glob = os.environ.get("GLIMI_LLM_BACKEND", "").strip().lower()
+    if glob == "ollama":
+        return "ollama"
+    if glob in ("claude_cli", "anthropic_sdk", "claude"):
+        return "claude"
+    # 3) model id prefix
+    if model.startswith("ollama:"):
+        return "ollama"
+    # 4) 레지스트리
+    for mm in AVAILABLE_MODELS:
+        if mm["id"] == model:
+            return "ollama" if mm.get("provider") == "ollama" else "claude"
+    return "claude"
+
+
+def _ollama_model_arg(model: str) -> str:
+    """runtime 의 model id 를 ollama 백엔드에 넘길 model 인자로 변환.
+    "ollama:local" / "ollama:gemma..." → prefix 제거. 실제 태그는 GLIMI_OLLAMA_MODEL
+    env 가 다시 override 하므로 (src/llm/ollama.py _resolve_model), 여기 값은 fallback.
+    """
+    if model.startswith("ollama:"):
+        return model.split(":", 1)[1] or "local"
+    return model
+
+
+def _ollama_display_model(model: str) -> str:
+    """로그 표시용 — 실제 ollama 가 쓸 모델명 (GLIMI_OLLAMA_MODEL override 우선)."""
+    return os.environ.get("GLIMI_OLLAMA_MODEL", "").strip() or _ollama_model_arg(model)
+
+
+# ollama 가용성은 True 면 캐시 (세션 중 안 죽는다고 가정). False/미확인이면 매번 재확인 —
+# 봇 기동 후 ollama 가 늦게 떠도 다음 호출에서 잡히도록.
+_OLLAMA_OK = {"v": False}
+
+
+def _backend_available(provider: str) -> bool:
+    """해당 provider 백엔드가 호출 가능한지. False 면 placeholder 로 폴백."""
+    if provider != "ollama":
+        return CLAUDE_AVAILABLE
+    if _OLLAMA_OK["v"]:
+        return True
+    try:
+        from src.llm.ollama import OllamaBackend
+        ok = OllamaBackend().available()
+    except Exception:
+        ok = False
+    _OLLAMA_OK["v"] = ok
+    return ok
 
 
 def _normalize(s):
@@ -255,7 +327,11 @@ class AgentRuntime:
         # 다음 호출 시 prompt에 주입할 <tool_results> 블록 (key=agent_id:channel)
         self._pending_tool_results: dict[str, str] = {}
 
-        if CLAUDE_AVAILABLE:
+        _glob = os.environ.get("GLIMI_LLM_BACKEND", "").strip().lower()
+        if _glob == "ollama":
+            _m = os.environ.get("GLIMI_OLLAMA_MODEL", "?")
+            print(f"[Runtime] LLM 백엔드: Ollama (model={_m}) — 로컬 대화 모드")
+        elif CLAUDE_AVAILABLE:
             print("[Runtime] Claude Code CLI 감지됨 — 실제 대화 모드")
         else:
             print("[Runtime] Claude Code CLI 미감지 — placeholder 모드")
@@ -498,21 +574,34 @@ class AgentRuntime:
             lines.append(f"{speaker}: {r['message']}")
         conversation = "\n".join(lines[-10:])
 
+        summary_prompt = (
+            f"아래 대화를 3~4문장으로 요약해. 누가 뭘 요청했고 어디까지 진행됐는지 핵심만:\n\n{conversation}"
+        )
+        provider = _provider_for("persona", "claude-haiku-4-5")
         try:
-            result = subprocess.run(
-                ["claude", "-p",
-                 f"아래 대화를 3~4문장으로 요약해. 누가 뭘 요청했고 어디까지 진행됐는지 핵심만:\n\n{conversation}",
-                 "--output-format", "text", "--model", "claude-haiku-4-5"],
-                capture_output=True, text=True, timeout=15,
-                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-                cwd=_CLI_CWD,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return f"[이전 대화 요약] {result.stdout.strip()}"
+            if provider == "ollama":
+                from src import llm
+                _r = llm.generate(
+                    system="", user=summary_prompt,
+                    model=_ollama_model_arg("ollama:local"), agent_type="persona",
+                    max_tokens=512, timeout=60,
+                )
+                if not _r.error and (_r.text or "").strip():
+                    return f"[이전 대화 요약] {_r.text.strip()}"
+            else:
+                result = subprocess.run(
+                    ["claude", "-p", summary_prompt,
+                     "--output-format", "text", "--model", "claude-haiku-4-5"],
+                    capture_output=True, text=True, timeout=15,
+                    env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                    cwd=_CLI_CWD,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return f"[이전 대화 요약] {result.stdout.strip()}"
         except Exception:
             pass
 
-        # haiku 실패 시 최근 3턴만 직접 포함
+        # 요약 실패 시 최근 3턴만 직접 포함
         return "[이전 대화 (최근)] " + " / ".join(lines[-3:])
 
     def _get_cross_channel_recent(self, agent_id: str, current_channel: str,
@@ -802,45 +891,54 @@ class AgentRuntime:
             context = self._build_context(agent_info, channel, recent, user_message=user_message)
             full_prompt = context + "(자연스럽게 먼저 말 걸어)"
 
-            model = _resolve_agent_model(agent_id, profile.get("type", "persona"))
+            atype = profile.get("type", "persona")
+            model = _resolve_agent_model(agent_id, atype)
+            provider = _provider_for(atype, model)
 
-            # Timeout 120s — force 경로는 prompt 크기 큼 (메모리 + cross-channel + recent).
-            # 60s 로는 Haiku + CLI overhead 까지 감안 빈번히 초과 → 매번 실패하던 버그.
-            result = subprocess.run(
-                [
-                    "claude",
-                    "-p", full_prompt,
-                    "--system-prompt", force_system,
-                    "--output-format", "text",
-                    "--model", model,
-                ],
-                capture_output=True, text=True, timeout=120,
-                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-                cwd=_CLI_CWD,
-            )
+            if provider == "ollama":
+                responses = self._ollama_blocking(
+                    agent_id=agent_id, name=name,
+                    system=force_system, user=full_prompt,
+                    model=model, agent_type=atype, timeout=120,
+                )
+            else:
+                # Timeout 120s — force 경로는 prompt 크기 큼 (메모리 + cross-channel + recent).
+                # 60s 로는 Haiku + CLI overhead 까지 감안 빈번히 초과 → 매번 실패하던 버그.
+                result = subprocess.run(
+                    [
+                        "claude",
+                        "-p", full_prompt,
+                        "--system-prompt", force_system,
+                        "--output-format", "text",
+                        "--model", model,
+                    ],
+                    capture_output=True, text=True, timeout=120,
+                    env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                    cwd=_CLI_CWD,
+                )
 
-            if result.returncode != 0:
-                err = (result.stderr or result.stdout or "")[:180]
-                log_writer.system(f"⚠ 강제지시 실패 ({name} @ {channel}): exit={result.returncode} {err}")
-                return []
+                if result.returncode != 0:
+                    err = (result.stderr or result.stdout or "")[:180]
+                    log_writer.system(f"⚠ 강제지시 실패 ({name} @ {channel}): exit={result.returncode} {err}")
+                    return []
 
-            raw = result.stdout.strip()
-            if not raw:
-                log_writer.system(f"⚠ 강제지시 빈 응답 ({name} @ {channel})")
-                return []
+                raw = result.stdout.strip()
+                if not raw:
+                    log_writer.system(f"⚠ 강제지시 빈 응답 ({name} @ {channel})")
+                    return []
 
-            if _looks_like_claude_error(raw):
-                _report_claude_error(name, raw, source="force")
-                return []
+                if _looks_like_claude_error(raw):
+                    _report_claude_error(name, raw, source="force")
+                    return []
 
-            # <tools> 블록 먼저 분리 — chat 만 메시지로, tool_calls 는 stash 후 dispatcher 처리.
-            # 이전엔 force 경로가 parse 안 해서 dev/mgr 의 tool 호출이 모두 chat 으로 leak +
-            # 실제 호출 0건. (e.g. 세나 dev_organize 가 호출 안 돼 status 'pending' 무한 정체)
-            parsed = parse_tools_in_output(raw)
-            self._last_tool_calls[agent_id] = parsed.tool_calls
-            if parsed.errors:
-                log_writer.system(f"[Tools] 강제 지시 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
-            responses = self._parse_response(parsed.chat, agent_name=name)
+                # <tools> 블록 먼저 분리 — chat 만 메시지로, tool_calls 는 stash 후 dispatcher 처리.
+                # 이전엔 force 경로가 parse 안 해서 dev/mgr 의 tool 호출이 모두 chat 으로 leak +
+                # 실제 호출 0건. (e.g. 세나 dev_organize 가 호출 안 돼 status 'pending' 무한 정체)
+                parsed = parse_tools_in_output(raw)
+                self._last_tool_calls[agent_id] = parsed.tool_calls
+                if parsed.errors:
+                    log_writer.system(f"[Tools] 강제 지시 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                responses = self._parse_response(parsed.chat, agent_name=name)
 
         except subprocess.TimeoutExpired:
             log_writer.system(f"⚠ 강제지시 타임아웃 ({name} @ {channel}, 120s)")
@@ -895,9 +993,11 @@ class AgentRuntime:
         _wd_timer.daemon = True
         _wd_timer.start()
 
+        atype = profile.get("type", "persona")
+        provider = _provider_for(atype, _resolve_agent_model(agent_id, atype))
         try:
-            if CLAUDE_AVAILABLE:
-                responses = self._call_claude_code(agent_info, channel, recent, user_message)
+            if _backend_available(provider):
+                responses = self._call_claude_code(agent_info, channel, recent, user_message, provider=provider)
             else:
                 responses = self._placeholder_response(profile, user_message)
             elapsed = _time.monotonic() - _t0
@@ -933,8 +1033,9 @@ class AgentRuntime:
         return responses
 
     def _call_claude_code(self, agent_info: dict, channel: str,
-                          recent: list[dict], user_message: str) -> list[str]:
-        """Claude CLI 호출 (블로킹)"""
+                          recent: list[dict], user_message: str,
+                          provider: str = "") -> list[str]:
+        """LLM 호출 (블로킹). provider="ollama" 면 src.llm, 아니면 Claude CLI."""
         profile = agent_info["profile"]
         name = profile["name"]
         agent_id = profile["id"]
@@ -955,6 +1056,14 @@ class AgentRuntime:
                 if handoff:
                     full_prompt = handoff + "\n\n" + full_prompt
                 log_writer.agent_thinking(agent_id, f"모델 전환: {base_model} → {model}")
+
+        if provider == "ollama":
+            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model)})")
+            return self._ollama_blocking(
+                agent_id=agent_id, name=name,
+                system=system_prompt, user=full_prompt,
+                model=model, agent_type=profile.get("type", "persona"), timeout=60,
+            )
 
         log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
@@ -1016,7 +1125,130 @@ class AgentRuntime:
         log_writer.system(f"❌ CLI 재시도 실패: {last_err}")
         return self._placeholder_response(profile, user_message)
 
+    # ── Ollama (src.llm) blocking ────────────────────
+
+    def _ollama_blocking(
+        self, *, agent_id: str, name: str, system: str, user: str,
+        model: str, agent_type: str, timeout: int = 120,
+    ) -> list[str]:
+        """src.llm.generate (ollama) 블로킹 호출 + <tools> 파싱 + _parse_response.
+
+        Claude CLI 경로와 동일한 후처리를 거쳐 메시지 리스트 반환. 실패/빈 응답은
+        빈 리스트 — 호출자가 empty 면 송출 skip 또는 placeholder 처리.
+        """
+        try:
+            from src import llm
+            resp = llm.generate(
+                system=system, user=user,
+                model=_ollama_model_arg(model), agent_type=agent_type,
+                max_tokens=2048, timeout=timeout,
+            )
+        except Exception as e:
+            log_writer.system(f"❌ ollama 호출 예외 ({name}): {type(e).__name__}: {str(e)[:140]}")
+            return []
+        if resp.error:
+            log_writer.system(f"❌ ollama 오류 ({name}): {resp.error[:160]}")
+            return []
+        raw = (resp.text or "").strip()
+        if not raw:
+            log_writer.system(f"⚠ ollama 빈 응답 ({name})")
+            return []
+        parsed = parse_tools_in_output(raw)
+        self._last_tool_calls[agent_id] = parsed.tool_calls
+        if parsed.errors:
+            log_writer.system(f"[Tools] ollama 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+        return self._parse_response(parsed.chat, agent_name=name)
+
     # ── Streaming ────────────────────────────────────
+
+    def _consume_response_stream(
+        self, line_iter, *, agent_id: str, name: str, channel: str,
+        max_messages: int, on_message: Callable[[str], None],
+    ) -> tuple[list[str], list[str], Optional[str]]:
+        """라인 이터레이터를 소비해 (messages, tool_buffer, stop_reason) 반환.
+
+        백엔드 무관 공유 처리 — claude=process.stdout, ollama=src.llm.stream_lines
+        둘 다 라인 단위라 동일 로직 적용.
+        - <tools> 블록은 tool_buffer 로 분리 (chat 방출 금지)
+        - [MSG]/placeholder strip, 이름 prefix 제거, leak 필터, dedup
+        - 통과한 라인은 on_message 콜백으로 즉시 방출
+
+        stop_reason: None(정상 종료) | "max"(최대 응답 도달) | "error"(에러 감지)
+        호출자가 stop_reason 으로 백엔드별 teardown(process.kill 등) 결정.
+        """
+        import re as _re
+        messages: list[str] = []
+        seen: set = set()
+        tool_buffer: list[str] = []
+        in_tools = False
+        stop_reason: Optional[str] = None
+
+        for line in line_iter:
+            raw_line = line.rstrip("\n")
+            line = raw_line.strip()
+            if not line:
+                if in_tools:
+                    tool_buffer.append("")
+                continue
+
+            # <tools> 블록 진입 감지 — 이 시점 이후는 chat으로 방출 금지
+            if "<tools>" in line.lower() and not in_tools:
+                in_tools = True
+                tool_buffer.append(raw_line)
+                continue
+            if in_tools:
+                tool_buffer.append(raw_line)
+                continue
+
+            # [MSG] 태그 + 프롬프트 example placeholder ({name}/{topic} 등) 제거.
+            # 영어 lowercase 식별자만 한정 — 한국어/이모지는 안 건드림.
+            line = line.replace("[MSG]", "")
+            line = _re.sub(r'\{[a-z_][a-z0-9_]*\}', '', line)
+            cleaned = " ".join(line.split())
+            if not cleaned:
+                continue
+
+            # LLM 에러 메시지 누출 차단 (사용량 한도, API 에러 등)
+            if _looks_like_claude_error(cleaned):
+                _report_claude_error(name, cleaned, source="stream")
+                stop_reason = "error"
+                break
+
+            # 자기 이름 prefix 제거 ("윤하나: 메시지" → "메시지")
+            if cleaned.startswith(f"{name}:"):
+                cleaned = cleaned[len(name)+1:].strip()
+            elif cleaned.startswith(f"{name} :"):
+                cleaned = cleaned[len(name)+2:].strip()
+            if not cleaned:
+                continue
+
+            # Safety net — <tools>/<call> 이 in_tools 감지 뚫고 도달하면 drop.
+            if "<tools>" in cleaned.lower() or "<call" in cleaned.lower() or "</tools>" in cleaned.lower():
+                log_writer.system(f"[Tools] ⚠ stream leak 차단 ({name}): {cleaned[:60]}")
+                continue
+
+            # Internal-monologue / silence-reasoning leak 차단 (NO_REPLY, [침묵] 등)
+            if _is_reasoning_leak(cleaned):
+                log_writer.system(f"[Reasoning leak] ⚠ stream drop ({name}): {cleaned[:80]}")
+                _auto_report_leak(agent_id, channel, cleaned, source="stream")
+                continue
+
+            # 실시간 중복 체크 (exact match)
+            key = _normalize(cleaned)
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+
+            messages.append(cleaned)
+            on_message(cleaned)
+
+            if len(messages) >= max_messages:
+                log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
+                stop_reason = "max"
+                break
+
+        return messages, tool_buffer, stop_reason
 
     def generate_response_streaming(
         self, agent_id: str, channel: str, user_message: str,
@@ -1051,7 +1283,9 @@ class AgentRuntime:
         log_writer.mark_thinking(agent_id, channel)
         log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
-        if not CLAUDE_AVAILABLE:
+        atype = profile.get("type", "persona")
+        provider = _provider_for(atype, _resolve_agent_model(agent_id, atype))
+        if not _backend_available(provider):
             log_writer.mark_done(agent_id)
             msgs = self._placeholder_response(profile, user_message)
             for m in msgs:
@@ -1076,12 +1310,13 @@ class AgentRuntime:
         if _bp_elapsed > 5:
             log_writer.system(f"⏱ {agent_id} _build_prompt {_bp_elapsed:.1f}s")
 
-        log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
+        if provider == "ollama":
+            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model)})")
+        else:
+            log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
-        messages = []
-        seen = set()
-        tool_buffer: list[str] = []  # <tools> 블록 누적 (chat 스트림에서 제외)
-        in_tools = False
+        messages: list[str] = []
+        tool_buffer: list[str] = []  # <tools> 블록 누적 (_consume_response_stream 이 채움)
 
         # 에이전트 타입별 최대 응답 수 제한.
         # creator(하나) 는 confirm 카드 (이름/나이/성별/MBTI/성격/배경/말투/관계 7-8줄)
@@ -1095,6 +1330,41 @@ class AgentRuntime:
         }
         agent_type = profile.get("type", "persona")
         max_messages = MAX_STREAMING_MESSAGES.get(agent_type, 10)
+
+        # ── Ollama 스트리밍 분기 (src.llm.stream_lines + 공유 헬퍼) ──
+        # 프로세스가 없으므로 watchdog kill 대신 stream_lines(timeout=...) 으로 종료.
+        if provider == "ollama":
+            _ollama_to = {"persona": 180, "mgr": 300, "creator": 360, "dev": 300}.get(agent_type, 180)
+            try:
+                from src import llm
+                line_iter = llm.stream_lines(
+                    system=system_prompt, user=full_prompt,
+                    model=_ollama_model_arg(model), agent_type=agent_type,
+                    max_tokens=2048, timeout=_ollama_to,
+                )
+                messages, tool_buffer, _stop = self._consume_response_stream(
+                    line_iter, agent_id=agent_id, name=name, channel=channel,
+                    max_messages=max_messages, on_message=on_message,
+                )
+                if tool_buffer:
+                    try:
+                        parsed = parse_tools_in_output("\n".join(tool_buffer))
+                        self._last_tool_calls[agent_id] = parsed.tool_calls
+                        if parsed.errors:
+                            log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                    except Exception as e:
+                        log_writer.system(f"[Tools] 스트림 파싱 실패: {e}")
+            except Exception as e:
+                log_writer.system(f"❌ ollama 스트림 오류 ({name}): {type(e).__name__}: {str(e)[:160]}")
+                if not messages:
+                    fallback = self._placeholder_response(profile, user_message)
+                    for m in fallback:
+                        on_message(m)
+                    messages = fallback
+            finally:
+                log_writer.mark_done(agent_id)
+                log_writer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
+            return messages
 
         try:
             process = subprocess.Popen(
@@ -1141,84 +1411,19 @@ class AgentRuntime:
             _wd.daemon = True
             _wd.start()
 
-            for line in process.stdout:
-                raw_line = line.rstrip("\n")
-                line = raw_line.strip()
-                if not line:
-                    if in_tools:
-                        tool_buffer.append("")
-                    continue
-
-                # <tools> 블록 진입 감지 — 이 시점 이후는 chat으로 방출 금지
-                if "<tools>" in line.lower() and not in_tools:
-                    in_tools = True
-                    tool_buffer.append(raw_line)
-                    continue
-                if in_tools:
-                    tool_buffer.append(raw_line)
-                    if "</tools>" in line.lower():
-                        # 블록 끝 — 이후 line이 또 있을 경우 무시 또는 체크
-                        pass
-                    continue
-
-                # [MSG] 태그 처리
-                line = line.replace("[MSG]", "")
-                import re as _re
-                # 프롬프트 example placeholder ({name}, {topic}, {field} 등)가 그대로
-                # 채팅에 새는 거 차단. 영어 lowercase 식별자만 한정해서 한국어/이모지는 안 건드림.
-                line = _re.sub(r'\{[a-z_][a-z0-9_]*\}', '', line)
-                cleaned = " ".join(line.split())
-                if not cleaned:
-                    continue
-
-                # Claude CLI 에러 메시지 누출 차단 (사용량 한도, API 에러 등)
-                if _looks_like_claude_error(cleaned):
-                    _report_claude_error(name, cleaned, source="stream")
-                    # 에러 감지 시 즉시 스트리밍 종료 — 추가 에러 텍스트 방출 방지
-                    try:
-                        process.kill()
-                    except Exception:
-                        pass
-                    break
-
-                # 자기 이름 prefix 제거 ("윤하나: 메시지" → "메시지")
-                if cleaned.startswith(f"{name}:"):
-                    cleaned = cleaned[len(name)+1:].strip()
-                elif cleaned.startswith(f"{name} :"):
-                    cleaned = cleaned[len(name)+2:].strip()
-                if not cleaned:
-                    continue
-
-                # Safety net — <tools>/<call> 이 in_tools 감지 뚫고 여기 도달하면 drop.
-                # (e.g. 전체 응답이 <tools>...</tools> 한 줄로 시작했는데 in_tools 트랜지션이 안 먹은 경우)
-                if "<tools>" in cleaned.lower() or "<call" in cleaned.lower() or "</tools>" in cleaned.lower():
-                    log_writer.system(f"[Tools] ⚠ stream leak 차단 ({name}): {cleaned[:60]}")
-                    continue
-
-                # Internal-monologue / silence-reasoning leak 차단 (NO_REPLY, [침묵], 응답 없음 등).
-                # persona 시스템 프롬프트가 NO_REPLY 토큰을 가르쳐도 모델이 이유 덧붙이거나
-                # bracket reasoning 출력하는 회귀.
-                if _is_reasoning_leak(cleaned):
-                    log_writer.system(f"[Reasoning leak] ⚠ stream drop ({name}): {cleaned[:80]}")
-                    _auto_report_leak(agent_id, channel, cleaned, source="stream")
-                    continue
-
-                # 실시간 중복 체크 (exact match)
-                key = _normalize(cleaned)
-                if key and key in seen:
-                    continue
-                if key:
-                    seen.add(key)
-
-                messages.append(cleaned)
-                on_message(cleaned)
-
-                # 최대 응답 수 초과 시 중단
-                if len(messages) >= max_messages:
-                    log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
+            messages, tool_buffer, _stop = self._consume_response_stream(
+                process.stdout, agent_id=agent_id, name=name, channel=channel,
+                max_messages=max_messages, on_message=on_message,
+            )
+            if _stop == "error":
+                # 에러 감지 시 즉시 종료 — 추가 에러 텍스트 방출 방지
+                try:
                     process.kill()
-                    _intentional_kill = True
-                    break
+                except Exception:
+                    pass
+            elif _stop == "max":
+                process.kill()
+                _intentional_kill = True
 
             try:
                 _wd.cancel()
@@ -1427,49 +1632,70 @@ class AgentRuntime:
 
         speaker_type = speaker_info["profile"].get("type", "persona")
         model = _resolve_agent_model(speaker_id, speaker_type)
+        provider = _provider_for(speaker_type, model)
 
         log_writer.mark_thinking(speaker_id, channel)
         try:
-            if CLAUDE_AVAILABLE:
+            if _backend_available(provider):
                 result = None
                 last_exc = None
-                # timeout/empty-stdout 시 1회 retry. Haiku 가 큰 프롬프트에서 간헐적 지연
-                # (cross-channel peek + facts + 메모리 누적). 첫 시도 실패해도 대부분 재시도에서 성공.
-                # prompt 길이 + system prompt 길이를 진단에 포함. 거대한 prompt 가 timeout
-                # 주범인지 확인 가능.
-                _prompt_len = len(full_prompt)
-                _sys_len = len(speaker_info.get("system_prompt", ""))
-                for attempt in (1, 2):
+                if provider == "ollama":
+                    # ollama 출력을 기존 claude 다운스트림(역할 leak/독백 필터)에 그대로
+                    # 흘리기 위해 result 를 CompletedProcess 흉내 shim 으로 채움.
+                    from src import llm
+                    from types import SimpleNamespace
                     try:
-                        result = subprocess.run(
-                            [
-                                "claude",
-                                "-p", full_prompt,
-                                "--system-prompt", speaker_info["system_prompt"],
-                                "--output-format", "text",
-                                "--model", model,
-                            ],
-                            capture_output=True, text=True, timeout=180,
-                            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-                            cwd=_CLI_CWD,
+                        _r = llm.generate(
+                            system=speaker_info["system_prompt"], user=full_prompt,
+                            model=_ollama_model_arg(model), agent_type=speaker_type,
+                            max_tokens=2048, timeout=180,
                         )
-                        if result.returncode == 0 and result.stdout.strip():
-                            break  # 성공
-                        # 실패 원인 상세화 — stderr, returncode 포함 (empty stdout 의 진짜 원인 추적)
-                        _err_head = (result.stderr or "").strip()[:200]
-                        last_exc = (
-                            f"empty stdout (rc={result.returncode}, "
-                            f"prompt={_prompt_len}/sys={_sys_len} chars, "
-                            f"stderr={_err_head!r})"
-                        )
-                    except subprocess.TimeoutExpired as e:
-                        last_exc = f"timeout {e.timeout}s (prompt={_prompt_len}/sys={_sys_len} chars)"
+                        if _r.error:
+                            last_exc = f"ollama: {_r.error[:160]}"
+                        elif (_r.text or "").strip():
+                            result = SimpleNamespace(returncode=0, stdout=_r.text, stderr="")
+                        else:
+                            last_exc = "ollama: empty response"
                     except Exception as e:
-                        last_exc = f"{type(e).__name__}: {e}"
-                    if attempt == 1:
-                        log_writer.system(
-                            f"⚠ A2A retry ({speaker_name}→{listener_name}): {last_exc}"
-                        )
+                        last_exc = f"ollama: {type(e).__name__}: {str(e)[:140]}"
+                else:
+                    # timeout/empty-stdout 시 1회 retry. Haiku 가 큰 프롬프트에서 간헐적 지연
+                    # (cross-channel peek + facts + 메모리 누적). 첫 시도 실패해도 대부분 재시도에서 성공.
+                    # prompt 길이 + system prompt 길이를 진단에 포함. 거대한 prompt 가 timeout
+                    # 주범인지 확인 가능.
+                    _prompt_len = len(full_prompt)
+                    _sys_len = len(speaker_info.get("system_prompt", ""))
+                    for attempt in (1, 2):
+                        try:
+                            result = subprocess.run(
+                                [
+                                    "claude",
+                                    "-p", full_prompt,
+                                    "--system-prompt", speaker_info["system_prompt"],
+                                    "--output-format", "text",
+                                    "--model", model,
+                                ],
+                                capture_output=True, text=True, timeout=180,
+                                env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                                cwd=_CLI_CWD,
+                            )
+                            if result.returncode == 0 and result.stdout.strip():
+                                break  # 성공
+                            # 실패 원인 상세화 — stderr, returncode 포함 (empty stdout 의 진짜 원인 추적)
+                            _err_head = (result.stderr or "").strip()[:200]
+                            last_exc = (
+                                f"empty stdout (rc={result.returncode}, "
+                                f"prompt={_prompt_len}/sys={_sys_len} chars, "
+                                f"stderr={_err_head!r})"
+                            )
+                        except subprocess.TimeoutExpired as e:
+                            last_exc = f"timeout {e.timeout}s (prompt={_prompt_len}/sys={_sys_len} chars)"
+                        except Exception as e:
+                            last_exc = f"{type(e).__name__}: {e}"
+                        if attempt == 1:
+                            log_writer.system(
+                                f"⚠ A2A retry ({speaker_name}→{listener_name}): {last_exc}"
+                            )
                 try:
                     if result and result.returncode == 0 and result.stdout.strip():
                         # <tools> 블록 먼저 파싱 → tool_calls stash, chat 텍스트만 분리
@@ -1559,7 +1785,7 @@ class AgentRuntime:
             # LLM 호출 실패 — 이전엔 [테스트] 플레이스홀더를 채팅으로 노출시켰으나
             # 유저 경험 저해. 빈 list 반환 → 호출부에서 "전송할 내용 없음" 처리.
             log_writer.system(
-                f"⚠ A2A 응답 생성 실패 (CLAUDE_AVAILABLE={CLAUDE_AVAILABLE}) — "
+                f"⚠ A2A 응답 생성 실패 (provider={provider}) — "
                 f"{speaker_name}→{listener_name} — 최종 사유: {last_exc or 'unknown'}"
             )
             return []
