@@ -16,13 +16,13 @@ import hashlib
 import json as _json
 import os
 import re as _re
-import subprocess
 from typing import Optional
 
 from src import log_writer
 
 JUDGE_MODEL = "claude-haiku-4-5"
-JUDGE_TIMEOUT_SEC = 30
+# 로컬 모델(ollama)은 Haiku 보다 느릴 수 있어 여유 확보. claude 경로엔 max 상한일 뿐 영향 없음.
+JUDGE_TIMEOUT_SEC = 60
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # In-memory cache: { (achievement_key, message_id, hash): bool }
@@ -106,44 +106,37 @@ def batch_classify(
     cands_only = [c for _, c in to_judge]
     prompt = _build_batch_prompt(prompt_template, cands_only)
 
+    # src.llm 경유 — GLIMI_LLM_BACKEND=ollama 면 로컬 gemma, 아니면 claude(haiku) 폴백.
+    # 백엔드 선택은 _select_backend 가 env 기반으로 결정. 실패는 모두 False (보수적).
     try:
-        proc = subprocess.run(
-            ["claude", "-p", prompt,
-             "--model", JUDGE_MODEL,
-             "--output-format", "text"],
-            capture_output=True, text=True,
-            timeout=JUDGE_TIMEOUT_SEC,
-            cwd=PROJECT_ROOT,
-            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+        from src import llm
+        resp = llm.generate(
+            system="", user=prompt,
+            model=JUDGE_MODEL, agent_type="judge",
+            max_tokens=512, timeout=JUDGE_TIMEOUT_SEC,
         )
-    except subprocess.TimeoutExpired:
-        log_writer.system(f"[ach.judge] {achievement_key} timeout — 모두 False 처리")
-        for i, _ in to_judge:
-            results[i] = False
-        return [bool(r) for r in results]
-    except FileNotFoundError:
-        log_writer.system(f"[ach.judge] claude CLI 없음 — judge skip")
-        for i, _ in to_judge:
-            results[i] = False
-        return [bool(r) for r in results]
     except Exception as e:
         log_writer.system(f"[ach.judge] {achievement_key} 오류: {type(e).__name__}: {e}")
         for i, _ in to_judge:
             results[i] = False
         return [bool(r) for r in results]
 
-    if proc.returncode != 0:
+    if resp.error:
         log_writer.system(
-            f"[ach.judge] {achievement_key} exit {proc.returncode}: {(proc.stderr or '')[:120]}"
+            f"[ach.judge] {achievement_key} LLM 오류: {resp.error[:120]} — 모두 False 처리"
         )
         for i, _ in to_judge:
             results[i] = False
         return [bool(r) for r in results]
 
-    verdicts = _parse_verdicts(proc.stdout or "", len(to_judge))
+    verdicts = _parse_verdicts(resp.text or "", len(to_judge))
     pos_count = sum(1 for v in verdicts if v)
+    try:
+        _backend = llm.current_backend_name("judge")
+    except Exception:
+        _backend = "?"
     log_writer.system(
-        f"[ach.judge] {achievement_key}: {pos_count}/{len(to_judge)} 양성 (model={JUDGE_MODEL})"
+        f"[ach.judge] {achievement_key}: {pos_count}/{len(to_judge)} 양성 (backend={_backend})"
     )
 
     # Write back + cache
