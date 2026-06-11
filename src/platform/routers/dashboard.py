@@ -79,6 +79,39 @@ async def models_endpoint(user: dict = Depends(require_user)):
     return dash_api.api_models()
 
 
+@router.get("/api/elastic-memory")
+async def elastic_memory_get(request: Request, user: dict = Depends(require_user)):
+    """Elastic Memory — 현재 컨텍스트 설정 + 사양 + 권장값."""
+    _ensure_community_access(request, user)
+    cid = request.query_params.get("community")
+    if not cid:
+        return JSONResponse({"error": "missing community"}, status_code=400)
+    from src.core import system_specs
+    return JSONResponse(system_specs.elastic_memory_status(cid))
+
+
+@router.post("/api/elastic-memory/set")
+async def elastic_memory_set(request: Request, user: dict = Depends(require_user)):
+    """컨텍스트(num_ctx) 변경 — community .env 에 저장. 다음 봇 (재)기동 시 적용."""
+    body = await request.json()
+    cid = body.get("community")
+    if not cid:
+        return JSONResponse({"error": "missing community"}, status_code=400)
+    if not accounts.user_can_access(user, cid):
+        raise HTTPException(403, "no access")
+    from src.core import system_specs
+    # num_ctx 직접 지정 또는 use_recommended 플래그
+    if body.get("use_recommended"):
+        target = system_specs.recommend_num_ctx()["num_ctx"]
+    else:
+        try:
+            target = int(body.get("num_ctx"))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "invalid num_ctx"}, status_code=400)
+    saved = system_specs.write_community_num_ctx(cid, target)
+    return JSONResponse({"ok": True, **system_specs.elastic_memory_status(cid), "saved_num_ctx": saved})
+
+
 @router.get("/logo")
 async def serve_logo():
     from pathlib import Path
