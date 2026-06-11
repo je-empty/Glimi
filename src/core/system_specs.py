@@ -109,25 +109,31 @@ def recommend_num_ctx(specs: dict | None = None) -> dict:
     """
     s = specs or detect()
     usable = s.get("usable_gb", 0.0)
+    gb = f"{usable:.0f}GB"
 
     if usable >= 28:
         tier = "high"      # 16GB+ 헤드룸 — 16384 여유 (분리 구성도)
-        reason_ko = f"가용 메모리 {usable:.0f}GB — 긴 컨텍스트 여유"
+        reason_ko = f"가용 메모리 {gb} — 긴 컨텍스트 여유"
+        reason_en = f"{gb} available — room for a long context"
     elif usable >= 14:
         tier = "mid"       # 8192 권장 (모델 + KV)
-        reason_ko = f"가용 메모리 {usable:.0f}GB — 기본 8192 적합"
+        reason_ko = f"가용 메모리 {gb} — 기본 8192 적합"
+        reason_en = f"{gb} available — default 8192 fits well"
     elif usable >= 8:
         tier = "low"       # 4096 — 페르소나 위주, KV 절약
-        reason_ko = f"가용 메모리 {usable:.0f}GB — 컨텍스트 절약 권장"
+        reason_ko = f"가용 메모리 {gb} — 컨텍스트 절약 권장"
+        reason_en = f"{gb} available — conserve context"
     else:
         tier = "low"
-        reason_ko = f"가용 메모리 {usable:.0f}GB — 최소 구성 (저사양)"
+        reason_ko = f"가용 메모리 {gb} — 최소 구성 (저사양)"
+        reason_en = f"{gb} available — minimal (low spec)"
 
     tier_info = next(t for t in CONTEXT_TIERS if t["key"] == tier)
     return {
         "tier": tier,
         "num_ctx": tier_info["num_ctx"],
         "reason_ko": reason_ko,
+        "reason_en": reason_en,
         "specs": s,
     }
 
@@ -203,5 +209,6 @@ def elastic_memory_status(community_id: str) -> dict:
         "recommended_tier": rec["tier"],
         "recommended_num_ctx": rec["num_ctx"],
         "recommended_reason_ko": rec["reason_ko"],
+        "recommended_reason_en": rec["reason_en"],
         "hard_floor": HARD_FLOOR,
     }
