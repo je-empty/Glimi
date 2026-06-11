@@ -864,6 +864,66 @@ async function resetAgentModel(agentId) {
   }
 }
 
+// ── Elastic Memory — 커뮤니티별 컨텍스트(num_ctx) 사양 조절 ──
+function _emRender(d) {
+  const specs = d.specs || {};
+  const accelLabel = {nvidia_vram: 'GPU VRAM', apple_unified: '통합 메모리', cpu_or_unknown: '시스템 RAM'}[specs.accel] || '메모리';
+  const cards = (d.tiers || []).map(t => {
+    const cur = t.key === d.current_tier;
+    const rec = t.key === d.recommended_tier;
+    return `<label class="em-tier" style="display:flex;gap:10px;padding:11px;border:${cur ? '2px solid var(--accent,#2563eb)' : '1px solid var(--border)'};border-radius:10px;margin-bottom:7px;cursor:pointer;align-items:center">
+      <input type="radio" name="em-pick" value="${t.num_ctx}" ${cur ? 'checked' : ''}>
+      <div style="font-size:20px;font-weight:700;width:24px;text-align:center">${esc(t.label_ko)}</div>
+      <div style="flex:1">
+        <div style="font-weight:600">${esc(t.label_en)} · <span style="font-family:monospace">${t.num_ctx.toLocaleString()}</span> tok ${rec ? '<span style="font-size:10.5px;color:var(--ok,#10b981);font-weight:600">· 권장</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--text-dim)">${esc(t.note_ko)}</div>
+      </div>
+    </label>`;
+  }).join('');
+  return `
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.6">
+      <b>Elastic Memory</b> — 주입 기억을 컨텍스트 크기에 맞춰 탄력 조절. 클수록 기억을 더 풍부하게,
+      작을수록 절약 (VRAM 모델당 ~+1GB/8192). 로컬 모델에만 적용 · 봇 재기동 시 반영.
+    </div>
+    <div style="background:var(--bg-soft,#f6f7f9);border-radius:8px;padding:9px 11px;margin-bottom:12px;font-size:12px">
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text-dim)">감지된 사양</span>
+        <span><b>${(specs.usable_gb||0)}GB</b> ${esc(accelLabel)} <span style="color:var(--text-dim)">(${esc(specs.platform||'?')})</span></span></div>
+      <div style="display:flex;justify-content:space-between;margin-top:3px"><span style="color:var(--text-dim)">권장</span>
+        <span>${esc(d.recommended_reason_ko||'')}</span></div>
+    </div>
+    <form id="em-form">${cards}</form>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="act-btn" onclick="event.stopPropagation(); emApply(true)">사양 감지 → 권장값</button>
+      <button class="act-btn primary" onclick="event.stopPropagation(); emApply(false)">적용</button>
+    </div>`;
+}
+
+async function openElasticMemory() {
+  if (!COMMUNITY) { toast('커뮤니티를 먼저 선택해줘', 'err'); return; }
+  const d = await j(q('/api/elastic-memory'));
+  if (!d || d.error) { toast(`불러오기 실패: ${d?.error || '알 수 없음'}`, 'err'); return; }
+  openModal('🧠', 'Elastic Memory · 컨텍스트 사양', _emRender(d));
+}
+
+async function emApply(useRecommended) {
+  const body = {community: COMMUNITY};
+  if (useRecommended) {
+    body.use_recommended = true;
+  } else {
+    const form = document.getElementById('em-form');
+    const picked = form && form.querySelector('input[name="em-pick"]:checked');
+    if (!picked) { toast('값 선택 필요', 'err'); return; }
+    body.num_ctx = parseInt(picked.value, 10);
+  }
+  const r = await postJson('/api/elastic-memory/set', body);
+  if (r && r.ok) {
+    toast(`컨텍스트 ${r.saved_num_ctx.toLocaleString()} tok 저장 — 봇 재기동 시 반영`, 'ok');
+    document.getElementById('d-body').innerHTML = _emRender(r);
+  } else {
+    toast(`실패: ${r?.error || '알 수 없음'}`, 'err');
+  }
+}
+
 async function openAgent(id) {
   // 모달 = 요약 상단 (항상 펼침) + 상세 섹션 4개 (details/summary 접힘).
   // 풀페이지 링크는 하단 유지. 세로 밀도는 max-height: 100vh-48px (panel) 안에서 overflow.
