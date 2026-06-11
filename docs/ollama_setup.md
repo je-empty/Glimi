@@ -165,6 +165,21 @@ ollama ps
 | 변수 | 용도 | 기본값 |
 |---|---|---|
 | `OLLAMA_HOST` | Ollama 서버 base URL | `http://localhost:11434` |
-| `GLIMI_OLLAMA_MODEL` | 호출 시 `model` 인자 override (Claude 모델명 회피용) | (없으면 호출자가 넘긴 model 사용) |
+| `GLIMI_OLLAMA_MODEL` | 전역 모델 태그 (아래 우선순위 3순위) | (없으면 호출자가 넘긴 model 사용) |
+| `GLIMI_OLLAMA_MODEL_MAP` | agent_type 별 모델 태그 JSON (2순위) | (없음) |
 | `GLIMI_LLM_AGENT_MAP` | agent_type 별 백엔드 매핑 JSON | (없으면 전역 기본 사용) |
 | `GLIMI_LLM_BACKEND` | 전역 기본 백엔드 강제 | (없으면 SDK → CLI 순 자동 선택) |
+
+## 모델 선택 우선순위 (타입별 / 에이전트별 분리)
+
+큰 모델(mgr/creator)과 작은 모델(persona)을 같이 올려놓고 쓰는 구성 지원:
+
+1. **에이전트 개별** — DB `agents.model_override` 에 `ollama:<태그>` (예: `ollama:gemma4:e2b-it-q4_K_M`)
+2. **타입별** — `GLIMI_OLLAMA_MODEL_MAP` JSON. `_default` 키는 미지정 타입 폴백
+   ```bash
+   GLIMI_OLLAMA_MODEL_MAP={"mgr":"gemma4:26b-a4b-it-q4_K_M","creator":"gemma4:26b-a4b-it-q4_K_M","persona":"gemma4:e4b-it-q4_K_M"}
+   ```
+3. **전역** — `GLIMI_OLLAMA_MODEL` (1·2 가 없을 때, Claude 모델명이 그대로 들어오는 경로 회피)
+
+주의: 여러 모델 혼용 시 VRAM 에 동시 상주 못 하면 호출마다 ollama 모델 스왑(콜드 로드 수십 초)이 발생.
+`ollama ps` 로 상주 상태 확인. 단일 GPU 가 작으면 전역 단일 모델이 체감 더 빠를 수 있음.

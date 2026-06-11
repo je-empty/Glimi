@@ -116,19 +116,45 @@ def _provider_for(agent_type: str, model: str) -> str:
     return "claude"
 
 
-def _ollama_model_arg(model: str) -> str:
-    """runtime 의 model id 를 ollama 백엔드에 넘길 model 인자로 변환.
-    "ollama:local" / "ollama:gemma..." → prefix 제거. 실제 태그는 GLIMI_OLLAMA_MODEL
-    env 가 다시 override 하므로 (src/llm/ollama.py _resolve_model), 여기 값은 fallback.
+def _ollama_model_map() -> dict:
+    """GLIMI_OLLAMA_MODEL_MAP (JSON) — agent_type 별 ollama 모델 태그 매핑.
+    예: {"mgr": "gemma4:26b-a4b-it-q4_K_M", "persona": "gemma4:e4b-it-q4_K_M"}
+    "_default" 키는 미지정 타입의 폴백."""
+    raw = os.environ.get("GLIMI_OLLAMA_MODEL_MAP", "").strip()
+    if not raw:
+        return {}
+    try:
+        m = json.loads(raw)
+        return m if isinstance(m, dict) else {}
+    except Exception:
+        return {}
+
+
+def _ollama_model_arg(model: str, agent_type: str = "") -> str:
+    """ollama 백엔드에 넘길 모델 태그 결정. 우선순위:
+      1) 에이전트 개별 — model 이 "ollama:<tag>" (DB agents.model_override 경유)
+      2) 타입별 — GLIMI_OLLAMA_MODEL_MAP[agent_type] (없으면 "_default")
+      3) 전역 — GLIMI_OLLAMA_MODEL (src/llm/ollama.py _resolve_model 폴백)
+    구체 태그를 반환하면 ollama.py 가 그대로 사용, "local"/claude id 면 전역 env 적용.
     """
     if model.startswith("ollama:"):
-        return model.split(":", 1)[1] or "local"
-    return model
+        tag = model.split(":", 1)[1]
+        if tag and tag != "local":
+            return tag
+        model = "local"
+    mm = _ollama_model_map()
+    v = (mm.get(agent_type) or mm.get("_default") or "").strip() if mm else ""
+    if v:
+        return v
+    return model or "local"
 
 
-def _ollama_display_model(model: str) -> str:
-    """로그 표시용 — 실제 ollama 가 쓸 모델명 (GLIMI_OLLAMA_MODEL override 우선)."""
-    return os.environ.get("GLIMI_OLLAMA_MODEL", "").strip() or _ollama_model_arg(model)
+def _ollama_display_model(model: str, agent_type: str = "") -> str:
+    """로그 표시용 — 실제 ollama 가 쓸 모델명."""
+    resolved = _ollama_model_arg(model, agent_type)
+    if resolved and resolved != "local" and not resolved.startswith("claude"):
+        return resolved
+    return os.environ.get("GLIMI_OLLAMA_MODEL", "").strip() or resolved
 
 
 # ollama 가용성은 True 면 캐시 (세션 중 안 죽는다고 가정). False/미확인이면 매번 재확인 —
@@ -330,7 +356,9 @@ class AgentRuntime:
         _glob = os.environ.get("GLIMI_LLM_BACKEND", "").strip().lower()
         if _glob == "ollama":
             _m = os.environ.get("GLIMI_OLLAMA_MODEL", "?")
-            print(f"[Runtime] LLM 백엔드: Ollama (model={_m}) — 로컬 대화 모드")
+            _mm = _ollama_model_map()
+            _map_note = f", type_map={_mm}" if _mm else ""
+            print(f"[Runtime] LLM 백엔드: Ollama (model={_m}{_map_note}) — 로컬 대화 모드")
         elif CLAUDE_AVAILABLE:
             print("[Runtime] Claude Code CLI 감지됨 — 실제 대화 모드")
         else:
@@ -583,7 +611,7 @@ class AgentRuntime:
                 from src import llm
                 _r = llm.generate(
                     system="", user=summary_prompt,
-                    model=_ollama_model_arg("ollama:local"), agent_type="persona",
+                    model=_ollama_model_arg("ollama:local", "persona"), agent_type="persona",
                     max_tokens=512, timeout=60,
                 )
                 if not _r.error and (_r.text or "").strip():
@@ -1058,11 +1086,12 @@ class AgentRuntime:
                 log_writer.agent_thinking(agent_id, f"모델 전환: {base_model} → {model}")
 
         if provider == "ollama":
-            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model)})")
+            _atype = profile.get("type", "persona")
+            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, _atype)})")
             return self._ollama_blocking(
                 agent_id=agent_id, name=name,
                 system=system_prompt, user=full_prompt,
-                model=model, agent_type=profile.get("type", "persona"), timeout=60,
+                model=model, agent_type=_atype, timeout=60,
             )
 
         log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
@@ -1140,7 +1169,7 @@ class AgentRuntime:
             from src import llm
             resp = llm.generate(
                 system=system, user=user,
-                model=_ollama_model_arg(model), agent_type=agent_type,
+                model=_ollama_model_arg(model, agent_type), agent_type=agent_type,
                 max_tokens=2048, timeout=timeout,
             )
         except Exception as e:
@@ -1315,7 +1344,7 @@ class AgentRuntime:
             log_writer.system(f"⏱ {agent_id} _build_prompt {_bp_elapsed:.1f}s")
 
         if provider == "ollama":
-            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model)})")
+            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, atype)})")
         else:
             log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
@@ -1343,7 +1372,7 @@ class AgentRuntime:
                 from src import llm
                 line_iter = llm.stream_lines(
                     system=system_prompt, user=full_prompt,
-                    model=_ollama_model_arg(model), agent_type=agent_type,
+                    model=_ollama_model_arg(model, agent_type), agent_type=agent_type,
                     max_tokens=2048, timeout=_ollama_to,
                 )
                 messages, tool_buffer, _stop = self._consume_response_stream(
@@ -1651,7 +1680,7 @@ class AgentRuntime:
                     try:
                         _r = llm.generate(
                             system=speaker_info["system_prompt"], user=full_prompt,
-                            model=_ollama_model_arg(model), agent_type=speaker_type,
+                            model=_ollama_model_arg(model, speaker_type), agent_type=speaker_type,
                             max_tokens=2048, timeout=180,
                         )
                         if _r.error:
