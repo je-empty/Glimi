@@ -213,19 +213,18 @@ The dashboard is part of Glimi Core, not Hangout — agent graph, 5-layer memory
 
 `GLIMI_LLM_BACKEND=ollama` routes **every** LLM call (persona chat, manager tool calls,
 memory extraction, supervisor judgment, achievement judging) to local Ollama models — no
-Anthropic API key. Recommended default is a two-model split: a larger model for the
-tool-calling managers, a fast small model for everyone else.
+Anthropic API key. Pick a tier with `GLIMI_LOCAL_TIER` (`run.sh --local-models` auto-sets it):
 
-| Agent type | Model | Resident VRAM |
-|---|---|---|
-| Manager / Creator (tool calls) | `gemma4-26b-a4b-abl:iq3` (25.2B MoE / 4B active) | ~13 GB |
-| Persona · Memory · Supervisor · Judge · Dev | `gemma4 e4b abl` (8B / 4B effective) | ~10 GB |
-| **Both resident** | | **≈ 23 GB** |
+| Tier | Config | Mac | VRAM | Notes |
+|---|---|---|---|---|
+| lite | `e2b` single | 16 GB | 8 GB | fastest, weaker tool calls |
+| standard *(default)* | `e4b` single | 16 GB | 12 GB | balanced |
+| quality | `iq3-26b` single | 24 GB | **12 GB** | 26b quality on 12 GB (MoE, ~1 GB offload) |
+| prod | `iq3-26b` manager + `e4b` rest (split) | 32 GB | 24 GB | both resident, no swap |
 
-**Recommended hardware to hold all in VRAM** — Mac (unified): 32 GB · Windows/Linux
-(dedicated VRAM): 24 GB (RTX 4090 / 3090). A light single-model variant (all `e4b`, ~10 GB)
-runs on Mac 16 GB / 12 GB VRAM. Full per-agent table, the model-selection experiment, and
-setup → **[`docs/local_models.md`](docs/local_models.md)**.
+On a 12 GB GPU the two-model split doesn't fit — `quality` (single 26b) is the sweet spot.
+Per-agent table, the model-selection experiment, and setup →
+**[`docs/local_models.md`](docs/local_models.md)**.
 
 ---
 
