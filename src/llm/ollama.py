@@ -44,6 +44,19 @@ def _resolve_model(model: str) -> str:
     return os.environ.get("GLIMI_OLLAMA_MODEL", "").strip() or m or "local"
 
 
+def _num_ctx() -> int:
+    """컨텍스트 윈도우(num_ctx). ollama 기본(4096)은 Glimi 프롬프트에 턱없이 부족 —
+    도구 레퍼런스(mgr ≈2300tok) + 5-레이어 메모리 주입(≈1200tok) + 시스템/최근대화 가
+    합쳐 5000~6000tok 라 4096 면 메모리·도구정의가 통째로 잘려 캐릭터·기억 손실.
+    요청에서 명시적으로 키운다. 기본 8192, GLIMI_OLLAMA_NUM_CTX 로 override.
+    KV 캐시가 VRAM 을 더 먹으므로 저사양은 줄이고, 긴 기억 보존엔 16384 권장."""
+    try:
+        v = int(os.environ.get("GLIMI_OLLAMA_NUM_CTX", "8192").strip())
+        return v if v >= 2048 else 8192
+    except Exception:
+        return 8192
+
+
 def _think_setting():
     """`think` 필드 값 결정 (GLIMI_OLLAMA_THINK env).
 
@@ -109,6 +122,7 @@ class OllamaBackend(LLMBackend):
             "messages": messages,
             "stream": False,
             "options": {
+                "num_ctx": _num_ctx(),
                 "num_predict": max_tokens,
                 "temperature": temperature,
             },
@@ -172,6 +186,7 @@ class OllamaBackend(LLMBackend):
             "messages": messages,
             "stream": True,
             "options": {
+                "num_ctx": _num_ctx(),
                 "num_predict": max_tokens,
                 "temperature": temperature,
             },
