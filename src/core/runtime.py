@@ -20,6 +20,7 @@ from src import db
 from .profile import load_profile, build_system_prompt, get_user_name, get_user_id, get_user_display_name
 from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
 from .tools import parse_response as parse_tools_in_output, ToolCall
+from .tools import strip_control_tokens as _strip_control_tokens
 from src import log_writer
 
 
@@ -1233,6 +1234,8 @@ class AgentRuntime:
             # 영어 lowercase 식별자만 한정 — 한국어/이모지는 안 건드림.
             line = line.replace("[MSG]", "")
             line = _re.sub(r'\{[a-z_][a-z0-9_]*\}', '', line)
+            # 모델 control/special token 누출 제거 (<channel|>, <end_of_turn> 등 — gemma 계열)
+            line = _strip_control_tokens(line)
             cleaned = " ".join(line.split())
             if not cleaned:
                 continue

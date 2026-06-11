@@ -45,6 +45,29 @@ _TOOLS_BLOCK = re.compile(r'<tools>(.*?)</tools>', re.DOTALL | re.IGNORECASE)
 _FENCE_WRAPPED_TOOLS = re.compile(
     r'```[a-zA-Z]*\s*(<tools>.*?</tools>)\s*```', re.DOTALL | re.IGNORECASE
 )
+
+# 모델 control/special token 누출 (특히 gemma 계열 로컬 모델) — 채팅에 절대 노출 금지.
+# 예: <channel|>, <|channel|>, <start_of_turn>, <end_of_turn>, <eos>, <unused42>,
+#     <|im_start|>, <pad>. 일반 사용자 텍스트의 부등호(<, >, <3 등)는 건드리지 않도록
+#     "토큰처럼 생긴" 패턴만 한정.
+_CONTROL_TOKEN = re.compile(
+    r'<\|?(?:'
+    r'channel|start_of_turn|end_of_turn|eos|bos|pad|sep|mask|cls|unk'
+    r'|unused\d*|im_start|im_end|tool_call|message|assistant|user|system'
+    r')\b[^>]*\|?>',
+    re.IGNORECASE,
+)
+# 파이프로 감싼 control token 일반형 (<|...|>) — 내용 짧은 것만 (오인 최소화)
+_PIPE_TOKEN = re.compile(r'<\|[^>\n]{0,40}?\|>')
+
+
+def strip_control_tokens(text: str) -> str:
+    """모델 special/control token 누출 제거. 일반 텍스트는 보존."""
+    if not text or "<" not in text:
+        return text
+    text = _CONTROL_TOKEN.sub("", text)
+    text = _PIPE_TOKEN.sub("", text)
+    return text
 _CALL_BLOCK = re.compile(
     r'<call\s+([^>]*)>\s*(.*?)\s*</call>',
     re.DOTALL | re.IGNORECASE
@@ -70,10 +93,10 @@ def parse_response(text: str) -> ParsedResponse:
     text = _FENCE_WRAPPED_TOOLS.sub(r'\1', text)
     m = _TOOLS_BLOCK.search(text)
     if not m:
-        return ParsedResponse(chat=text.strip(), tool_calls=[], errors=errors)
+        return ParsedResponse(chat=strip_control_tokens(text).strip(), tool_calls=[], errors=errors)
 
     # chat = <tools> 이전
-    chat = text[:m.start()].rstrip()
+    chat = strip_control_tokens(text[:m.start()]).rstrip()
     tools_body = m.group(1)
 
     tool_calls: list[ToolCall] = []
