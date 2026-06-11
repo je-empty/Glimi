@@ -101,6 +101,22 @@ Glimi 백엔드(`src.llm` + runtime 스트림 소비기) 경유로 동일 하네
 
 ## 4. 설정 방법
 
+### 원커맨드 부트스트랩 (권장)
+
+아무것도 세팅 안 된 머신에서 한 줄로 끝낸다 — venv/deps + Ollama 설치(맥=brew, 윈도우=winget)
++ 서버 기동 + 기본 모델(e4b) 다운로드까지. **이미 된 단계는 전부 자동 스킵** (idempotent).
+
+```bash
+./run.sh --local-models          # Mac — 그대로 로컬 모드로 플랫폼 기동
+run.bat --local-models           # Windows
+./run.sh --local-models --setup-only   # 세팅만 하고 서버는 안 띄움
+```
+
+`GLIMI_OLLAMA_MODEL` 을 미리 export 해두면 기본 모델 대신 그 태그를 확인/다운로드한다.
+ENV `GLIMI_LOCAL_MODELS=1` 은 플래그와 동등.
+
+### 수동 설정
+
 커뮤니티 `.env` (또는 환경변수):
 
 ```bash
