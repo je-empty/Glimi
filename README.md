@@ -206,9 +206,26 @@ The dashboard is part of Glimi Core, not Hangout — agent graph, 5-layer memory
 | Reasoning / orchestration | `claude-sonnet-4-6` | Per-agent override from dashboard |
 | One-shot structured output | `claude-opus-4-6` | Profile JSON, complex generation |
 | Self-healing | `claude-opus-4-6` | Runtime-error source patching |
-| *Planned* | Ollama · vLLM · llama.cpp | Stubs in `AVAILABLE_MODELS` |
 
 ~10× cheaper than running everything on Sonnet.
+
+### Fully local mode (zero Claude dependency)
+
+`GLIMI_LLM_BACKEND=ollama` routes **every** LLM call (persona chat, manager tool calls,
+memory extraction, supervisor judgment, achievement judging) to local Ollama models — no
+Anthropic API key. Recommended default is a two-model split: a larger model for the
+tool-calling managers, a fast small model for everyone else.
+
+| Agent type | Model | Resident VRAM |
+|---|---|---|
+| Manager / Creator (tool calls) | `gemma4-26b-a4b-abl:iq3` (25.2B MoE / 4B active) | ~13 GB |
+| Persona · Memory · Supervisor · Judge · Dev | `gemma4 e4b abl` (8B / 4B effective) | ~10 GB |
+| **Both resident** | | **≈ 23 GB** |
+
+**Recommended hardware to hold all in VRAM** — Mac (unified): 32 GB · Windows/Linux
+(dedicated VRAM): 24 GB (RTX 4090 / 3090). A light single-model variant (all `e4b`, ~10 GB)
+runs on Mac 16 GB / 12 GB VRAM. Full per-agent table, the model-selection experiment, and
+setup → **[`docs/local_models.md`](docs/local_models.md)**.
 
 ---
 
@@ -416,16 +433,14 @@ Lightweight starters that demonstrate Glimi Core directly, without Hangout's soc
 
 > 🆕 **First time?** Open **[`START_HERE.html`](START_HERE.html)** — covers cross-platform setup, the first contributor task (local model support), Claude Code workflow, branch strategy, and the full TODO roadmap. **Read it before opening a PR.**
 
-### First contributor task — local-model support (Gemma 4 / Qwen 3.5)
+### Local-model support — shipped ✅ (Gemma 4 / Qwen 3.5)
 
-The highest-impact opening contribution: implement an Ollama-based local LLM backend and benchmark Gemma 4 vs Qwen 3.5 on the three model roles (persona chat, supervisor judge, memory extraction JSON). Why: today Glimi depends on Anthropic API; the model-neutral promise needs proof. See the full task spec in [`START_HERE.html` §5](START_HERE.html#first-task).
-
-| | |
-|---|---|
-| **Scope** | New `src/llm/ollama.py` (impl `LLMBackend` ABC), wire `AVAILABLE_MODELS`, add comparison doc |
-| **Files** | New: `src/llm/ollama.py`, `tests/llm/test_ollama.py`, `docs/llm_backends.md` · Modify: `src/llm/__init__.py`, `src/core/runtime.py` |
-| **Acceptance** | Dashboard model selector exposes both models; persona/supervisor/memory all work; comparison table in `docs/llm_backends.md` |
-| **Reference impls** | `src/llm/claude_cli.py` (subprocess), `src/llm/anthropic_sdk.py` (SDK) |
+The Ollama backend now routes every LLM call locally; Gemma 4 (26b-a4b / e4b / e2b) and
+Qwen 3.5 were benchmarked across all model roles (persona chat, supervisor judge, memory
+extraction, manager tool calls). Per-agent model config, VRAM, recommended hardware, and the
+full comparison live in **[`docs/local_models.md`](docs/local_models.md)**. Setup:
+[`docs/ollama_setup.md`](docs/ollama_setup.md). Good follow-on tasks: vLLM / llama.cpp
+backends, reranker-based memory retrieval, smaller-model tool-call accuracy tuning.
 
 ### Other entry points
 
