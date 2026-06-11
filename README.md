@@ -160,6 +160,24 @@ Hardening:
 - State lives outside the prompt. Swapping an agent from Haiku → Sonnet → local Llama keeps every relationship, fact, and pinned memory intact — the new model reads the same injection.
 - Profile-edit tools pair an `invalidate_cache()` with `runtime.refresh_agent()`, so edits propagate on the next turn without a restart — avoids the classic "bot keeps asking the question you just answered" bug.
 
+### Elastic Memory — memory that fits any context window
+
+Local models have small context windows (Ollama defaults to 4096). A full Glimi turn — character
+system prompt + 5-layer memory injection + recent conversation — runs several thousand tokens, so
+on a small window the model silently truncates the front, and **character + memory evaporate**.
+Elastic Memory (a context-budgeting layer, `src/core/context_budget.py`) solves this:
+
+- **Memory richness scales with the window** — `num_ctx` 8192 = baseline, 4096 shrinks the
+  injection, 16384 injects ~2× more memory. Bigger machine → better recall, automatically.
+- **Hard fit guarantee** — recent conversation is trimmed oldest-first so the assembled prompt
+  *never* exceeds the window. No silent truncation; a warning logs if the system prompt alone is
+  too big for the chosen window.
+- **Backend-agnostic** — the same machinery applies to Claude or any backend; it's gated to local
+  models today because cloud context windows (200k) rarely need it, but it's a one-flag extension.
+- **Per-community, hardware-aware** — the web dashboard (🧠) detects the server's RAM/VRAM, recommends
+  a context tier (Low 4096 / Mid 8192 / High 16384), and writes it per community. Tune it like a
+  game's quality slider; actual token values shown.
+
 ### Quick Start (library)
 
 ```python
