@@ -594,45 +594,39 @@ class TestUserBot(discord.Client):
 
         try:
             loop = asyncio.get_event_loop()
-            # executor로 위임 — subprocess.run이 event loop를 블록하지 않도록.
-            # (블록되면 생성 중 Creator/다른 에이전트의 on_message가 처리 안 돼서
-            #  target_channel 전환이 밀림)
-            result = await loop.run_in_executor(
+            # src.llm 백엔드 경유 — GLIMI_LLM_BACKEND 설정을 따름.
+            # ollama 모드면 테스트 유저(가상 오너)도 로컬 모델로 돌아감 (완전 로컬 테스트).
+            # executor로 위임 — 동기 generate 가 event loop 를 블록하지 않도록.
+            from src.llm import generate as _llm_generate
+            resp = await loop.run_in_executor(
                 None,
-                lambda: subprocess.run(
-                    [
-                        "claude", "-p", prompt,
-                        "--system-prompt", PERSONA,
-                        "--output-format", "text",
-                        "--model", "claude-haiku-4-5",
-                    ],
-                    capture_output=True, text=True, timeout=180,
-                    env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+                lambda: _llm_generate(
+                    system=PERSONA, user=prompt,
+                    model="claude-haiku-4-5", agent_type="test_user",
+                    max_tokens=512, timeout=180,
                 ),
             )
-            if result.returncode == 0 and result.stdout.strip():
-                out = result.stdout.strip()
-                # Claude CLI 에러 메시지(사용량 한도 등) 감지 — 이건 응답 아님
-                out_low = out.lower()
-                error_markers = (
-                    "you've hit your limit", "you have hit your limit",
-                    "usage limit", "rate limit exceeded",
-                    "anthropic api error", "api error:",
-                    "request was too large", "overloaded",
-                    "too many requests",
-                )
-                if any(m in out_low[:200] for m in error_markers):
-                    print(f"[TestUser] Claude CLI 에러 텍스트 감지 — 응답 버림: {out[:120]}")
-                    return ""
-                return out
-            else:
-                print(f"[TestUser] Claude 오류: {result.stderr[:100]}")
+            if resp.error:
+                print(f"[TestUser] LLM 오류: {resp.error[:120]}")
                 return ""
-        except subprocess.TimeoutExpired:
-            print("[TestUser] Claude 타임아웃")
-            return ""
-        except FileNotFoundError:
-            print("[TestUser] claude CLI 없음")
+            out = (resp.text or "").strip()
+            if not out:
+                return ""
+            # CLI fallback 경로에서 에러 텍스트가 본문에 섞여오는 경우 방어
+            out_low = out.lower()
+            error_markers = (
+                "you've hit your limit", "you have hit your limit",
+                "usage limit", "rate limit exceeded",
+                "anthropic api error", "api error:",
+                "request was too large", "overloaded",
+                "too many requests",
+            )
+            if any(m in out_low[:200] for m in error_markers):
+                print(f"[TestUser] LLM 에러 텍스트 감지 — 응답 버림: {out[:120]}")
+                return ""
+            return out
+        except Exception as e:
+            print(f"[TestUser] 생성 예외: {type(e).__name__}: {str(e)[:120]}")
             return ""
 
     def _pick_reply_channel(self):

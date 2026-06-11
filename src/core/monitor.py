@@ -980,7 +980,12 @@ def _get_test_user_detail() -> dict:
     nickname = _os.environ.get("QA_USER_NICKNAME", "빈이")
     age = _os.environ.get("QA_USER_AGE", "26")
     mbti = "ENTP"
-    background = "QA 자동 테스트용 가상 유저 — 프로젝트를 전혀 모르는 신규 유저로 튜토리얼 시나리오를 재현함. Claude Haiku 모델로 실시간 응답 생성."
+    # 실제 사용 모델 — test_user 도 src.llm 백엔드를 따르므로 ollama 모드면 로컬.
+    _tu_model, _tu_provider = _effective_model("claude-haiku-4-5", "test_user")
+    background = (
+        "QA 자동 테스트용 가상 유저 — 프로젝트를 전혀 모르는 신규 유저로 튜토리얼 시나리오를 "
+        f"재현함. {_tu_model} 모델로 실시간 응답 생성."
+    )
 
     # 이 agent가 남긴 메시지 (test-user가 DB에 speaker='test-user'로 log)
     primary_chat = get_recent_messages(limit=20)
@@ -1014,10 +1019,8 @@ def _get_test_user_detail() -> dict:
         "thinking_logs": thinking_logs,
         "primary_channel": "mgr-dashboard",
         "primary_chat": primary_chat,
-        "model": "claude-haiku-4-5",
-        "provider": "claude",
-        # test-user 는 default Haiku 라 override 아님 — true 로 박으면 .model-tag.override
-        # 가 accent 색으로 페르소나 m-haiku 뱃지랑 색깔 안 맞음 (modal·상세 페이지 회귀).
+        "model": _tu_model,
+        "provider": _tu_provider,
         "model_override": False,
         "synthetic": True,
     }
