@@ -400,13 +400,22 @@
           // fetch 와 로그 감지 중 먼저 resolve 되는 쪽 승리.
           // fetch 성공: {ok, result, logs} — 정상 경로.
           // fetch 실패 + 로그 완료: {ok:true, _fromLog:true} — 모바일 timeout 이어도 성공 판정.
-          // fetch 실패 + 로그 없음: 5분 대기 후 error.
-          const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ error: '복구 타임아웃 (5분)', _timeout: true }), 5 * 60 * 1000));
+          // fetch 실패 + 로그 없음: timeout 까지 대기.
+          // 60분 hard cap (이전 5분 → 메시지 많은 채널은 못 끝남): 도달 시 실패 단정 X,
+          // 'recovering_long' 으로 phase 전환하고 logPromise 무기한 대기 (백엔드는 그대로 진행 중).
+          const TIMEOUT_MIN = 60;
+          const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ _timeout: true }), TIMEOUT_MIN * 60 * 1000));
           const syncRes = await Promise.race([fetchPromise, logPromise, timeoutPromise]);
           // fetch 만 실패하고 로그는 아직 안 왔으면, 로그 기반 완료까지 기다려봄 (+90초)
           let finalRes = syncRes;
           if (syncRes && syncRes._fetchFailed) {
             finalRes = await Promise.race([logPromise, new Promise(r => setTimeout(() => r({ error: syncRes.error || 'fetch 실패', _fromFetch: true }), 90 * 1000))]);
+          }
+          if (syncRes && syncRes._timeout) {
+            // hard cap 도달 — 백엔드는 여전히 진행 중일 가능성 높음. 실패 단정 금지.
+            // 사용자에게 "장시간 진행 중" 알리고 logPromise (백엔드 완료 시그널) 무기한 대기.
+            _setOverlayPhase('recovering_long', { rows, minutes: TIMEOUT_MIN });
+            finalRes = await logPromise;
           }
           _recoveryLogPolling = false;
           _resolveSyncLog = null;
@@ -531,10 +540,11 @@
       dots.style.display = 'none';
       actions.style.display = 'flex';
       progress.textContent = '';
-    } else if (phase === 'recovering' || phase === 'recovered') {
+    } else if (phase === 'recovering' || phase === 'recovered' || phase === 'recovering_long') {
       const done = phase === 'recovered';
-      emoji.textContent = done ? '✅' : '🔧';
-      title.textContent = done ? '복구 완료' : '디스코드 복구 중';
+      const longRunning = phase === 'recovering_long';
+      emoji.textContent = done ? '✅' : (longRunning ? '⏳' : '🔧');
+      title.textContent = done ? '복구 완료' : (longRunning ? '장시간 복구 진행 중' : '디스코드 복구 중');
       const rows = (ctx.rows || []).slice().sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
 
       const statusFor = (r) => {
@@ -588,6 +598,9 @@
       sub.innerHTML = '<div style="text-align:left">' + table + logHtml + '</div>';
       if (done) {
         sub.innerHTML += '<div style="color:#10b981;font-size:12.5px;margin-top:10px;text-align:center">✓ 모든 채널 복구 — 가동 이어갑니다</div>';
+      } else if (longRunning) {
+        const mins = ctx.minutes || 60;
+        sub.innerHTML += `<div style="color:#fbbf24;font-size:12px;margin-top:10px;text-align:center;line-height:1.6">⏳ ${mins}분 경과 — 메시지 많은 채널 처리 중<br><span style="color:#9ca3af;font-size:11px">백엔드는 정상 진행 중. 콘솔/로그에서 확인 가능. 이 창은 백엔드 완료 시 자동 갱신.</span></div>`;
       } else {
         sub.innerHTML += '<div style="color:#9ca3af;font-size:11.5px;margin-top:8px;text-align:center">(1~3분 걸릴 수 있어)</div>';
       }

@@ -14,6 +14,43 @@ from src import db
 # persona 자율 사교 도전과제 (peek_internal / agent_auto_chat) 에서 매니저간 대화는 제외.
 MANAGER_NAMES = ("윤하나", "서유나", "유나", "하나")
 
+# 버튜버 페르소나 식별용 background 키워드 — oshikatsu / hakooshi 공통.
+VTUBER_KEYWORDS = ("버튜버", "VTuber", "vtuber", "V튜버", "브이튜버")
+
+
+def get_persona_universes() -> dict[str, str]:
+    """모든 active persona 의 universe 매핑 (없으면 미포함). universe_collector / new_universe 공유."""
+    import json as _json
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT a.id, a.name, c.config_json FROM agents a "
+        "LEFT JOIN agent_config c ON a.id = c.agent_id "
+        "WHERE a.type='persona' AND a.status='active'"
+    ).fetchall()
+    conn.close()
+    out: dict[str, str] = {}
+    for r in rows:
+        u = None
+        if r["config_json"]:
+            try:
+                u = (_json.loads(r["config_json"]) or {}).get("universe")
+            except Exception:
+                u = None
+        if u:
+            out[r["name"]] = u
+    return out
+
+
+def get_vtuber_personas() -> list[dict]:
+    """background 에 VTuber 키워드 포함된 active persona 목록 (id, name)."""
+    pat = " OR ".join(f"background LIKE '%{kw}%'" for kw in VTUBER_KEYWORDS)
+    conn = db.get_conn()
+    rows = conn.execute(
+        f"SELECT id, name FROM agents WHERE type='persona' AND status='active' AND ({pat})"
+    ).fetchall()
+    conn.close()
+    return [{"id": r["id"], "name": r["name"]} for r in rows]
+
 
 def is_manager_only_channel(ch_name: str) -> bool:
     if not ch_name:

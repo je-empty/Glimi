@@ -106,10 +106,13 @@ async def cmd_internal(ctx, speaker_name: str, listener_name: str, *, context: s
         await ctx.send("에이전트 이름을 확인해주세요")
         return
 
-    from src.bot import internal_dm_channel_name
+    from src.bot import internal_dm_channel_name, _norm_name_for_channel
     channel_name = internal_dm_channel_name(speaker_name, listener_name)
-    channel_name_alt = f"internal-dm-{listener_name}-{speaker_name}"  # 구 order 호환
-    channel_name_alt2 = f"internal-dm-{speaker_name}-{listener_name}"
+    # 구 order 호환 — Discord normalize 와 일관성 유지 위해 이름 부품도 normalize
+    _ns = _norm_name_for_channel(speaker_name)
+    _nl = _norm_name_for_channel(listener_name)
+    channel_name_alt = f"internal-dm-{_nl}-{_ns}"
+    channel_name_alt2 = f"internal-dm-{_ns}-{_nl}"
 
     async with ctx.typing():
         loop = asyncio.get_event_loop()
@@ -244,8 +247,9 @@ async def cmd_create_agent(ctx, *, concept: str):
             dynamics=rel_dynamics,
         )
 
-        # 채널 매핑 갱신
-        ch_name = f"dm-{profile['name']}"
+        # 채널 매핑 갱신 — Discord normalize 와 일관성 유지
+        from src.bot import _norm_name_for_channel
+        ch_name = f"dm-{_norm_name_for_channel(profile['name'])}"
         CHANNEL_AGENT_MAP[ch_name] = new_id
         AGENT_CHANNEL_MAP[new_id] = ch_name
 
@@ -277,7 +281,7 @@ async def cmd_create_agent(ctx, *, concept: str):
         runtime.refresh_agent(hana_id)
 
         await send_as_agent(ctx.channel, hana_id, " / ".join(summary_parts))
-        await send_as_agent(ctx.channel, hana_id, f"dm-{profile['name']} 채널에서 대화할 수 있어")
+        await send_as_agent(ctx.channel, hana_id, f"dm-{_norm_name_for_channel(profile['name'])} 채널에서 대화할 수 있어")
 
     except (json_module.JSONDecodeError, KeyError) as e:
         await send_as_agent(ctx.channel, hana_id,
@@ -307,8 +311,9 @@ async def cmd_remove_agent(ctx, agent_name: str):
     conn.commit()
     conn.close()
 
-    # 채널 매핑에서 제거
-    ch_name = f"dm-{agent_name}"
+    # 채널 매핑에서 제거 — Discord normalize 일관성
+    from src.bot import _norm_name_for_channel
+    ch_name = f"dm-{_norm_name_for_channel(agent_name)}"
     CHANNEL_AGENT_MAP.pop(ch_name, None)
     AGENT_CHANNEL_MAP.pop(target["id"], None)
 
@@ -337,8 +342,9 @@ async def cmd_restore_agent(ctx, agent_name: str):
     conn.commit()
     conn.close()
 
-    # 채널 매핑 복구
-    ch_name = f"dm-{agent_name}"
+    # 채널 매핑 복구 — Discord normalize 일관성
+    from src.bot import _norm_name_for_channel
+    ch_name = f"dm-{_norm_name_for_channel(agent_name)}"
     CHANNEL_AGENT_MAP[ch_name] = row["id"]
     AGENT_CHANNEL_MAP[row["id"]] = ch_name
     runtime.activate_agent(row["id"])
@@ -838,7 +844,9 @@ async def cmd_create_room(ctx, *args):
 
     topic = " ".join(topic_parts) if topic_parts else None
     names = [p["name"] for p in participants]
-    ch_name = f"group-{'-'.join(names)}"
+    # group-{a}-{b}-{c} — 각 이름 normalize (Discord normalize 일관성)
+    from src.bot import _norm_name_for_channel
+    ch_name = f"group-{'-'.join(_norm_name_for_channel(n) for n in names)}"
 
     # 채널 생성
     guild = ctx.guild
