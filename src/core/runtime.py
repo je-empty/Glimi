@@ -1208,6 +1208,10 @@ class AgentRuntime:
             if not cleaned:
                 continue
 
+            # 마크다운 코드펜스 단독 라인 drop — 로컬 모델이 <tools> 를 ```로 감싸는 케이스
+            if _re.fullmatch(r'`{3,}[a-zA-Z]*', cleaned):
+                continue
+
             # LLM 에러 메시지 누출 차단 (사용량 한도, API 에러 등)
             if _looks_like_claude_error(cleaned):
                 _report_claude_error(name, cleaned, source="stream")
