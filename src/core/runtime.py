@@ -399,8 +399,10 @@ class AgentRuntime:
     # ── Prompt building ──────────────────────────────
 
     def _build_context(self, agent_info: dict, channel: str, recent: list[dict],
-                       user_message: str = "") -> str:
-        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력)."""
+                       user_message: str = "", mem_scale: float = 1.0) -> str:
+        """에이전트 맥락 구성 (채널 정보 + 감정 + 메모리 + 대화이력).
+
+        mem_scale: 메모리 주입 예산 배수 (context_budget.plan 이 num_ctx 기준 산출)."""
         import time as _time
         _t = _time.monotonic()
         def _checkpoint(label):
@@ -457,7 +459,7 @@ class AgentRuntime:
         # ── 기억 섹션 (5 레이어 통합) ──
         # user_message + 최근 대화 텍스트를 entity 매칭용 힌트로 넘김
         focus_hint = user_message + "\n" + "\n".join(m.get("message", "") for m in recent[-5:])
-        memory_text = get_memory_context(agent_id, channel, user_message=focus_hint)
+        memory_text = get_memory_context(agent_id, channel, user_message=focus_hint, scale=mem_scale)
         _checkpoint("memory_context")
 
         if memory_text:
@@ -529,7 +531,8 @@ class AgentRuntime:
         """프롬프트 구성. Returns: (full_prompt, system_prompt, model)"""
         agent_id = agent_info["profile"]["id"]
         atype = agent_info["profile"].get("type", "persona")
-        context = self._build_context(agent_info, channel, recent, user_message=user_message)
+        system_prompt = agent_info["system_prompt"]
+        model = _resolve_agent_model(agent_id, atype)
 
         # 이전 턴의 tool_results가 있으면 user_message 앞에 주입
         tool_results = self._consume_tool_results(agent_id, channel)
@@ -542,6 +545,38 @@ class AgentRuntime:
         if atype in ("mgr", "creator"):
             tool_history = self._build_recent_tool_history(agent_id)
 
+        # ── 컨텍스트 예산 (ollama 등 작은 컨텍스트만) ──────────
+        # num_ctx 에 맞춰 메모리 풍부도(scale) 결정 + 최근 대화 trim → 절대 초과 안 함.
+        # Claude 등 대용량 컨텍스트는 scale=1.0 / trim 없음 (기존 동작 보존).
+        mem_scale = 1.0
+        if _provider_for(atype, model) == "ollama":
+            try:
+                from src.core import context_budget as _cb
+                _num_ctx = _cb.resolve_num_ctx()
+                _fixed_extra = (tool_history or "") + (tool_results or "")
+                _plan = _cb.plan(_num_ctx, atype, system_prompt, user_message, _fixed_extra)
+                mem_scale = _plan["mem_scale"]
+                _before = len(recent)
+                recent = _cb.trim_recent_to_budget(recent, _plan["recent_token_budget"])
+                # 시스템 프롬프트만으로 예산 초과 — 메모리/대화 0 으로도 못 막음.
+                # (mgr 캐릭터+도구 ≈5000tok 라 num_ctx 8192 미만이면 발생.) 관찰 가능하게 경고.
+                if _plan["system_tokens"] >= _plan["prompt_budget"]:
+                    log_writer.system(
+                        f"⚠ [ctx-budget] {agent_id} 시스템 프롬프트({_plan['system_tokens']}tok)가 "
+                        f"예산({_plan['prompt_budget']}tok) 초과 — num_ctx={_num_ctx} 너무 작음. "
+                        f"{atype} 는 8192+ 권장 (GLIMI_OLLAMA_NUM_CTX)"
+                    )
+                elif len(recent) < _before or mem_scale < 0.999:
+                    log_writer.system(
+                        f"[ctx-budget] {agent_id} num_ctx={_num_ctx} mem_scale={mem_scale} "
+                        f"recent {_before}→{len(recent)} (budget {_plan['recent_token_budget']}tok)"
+                    )
+            except Exception as _e:
+                log_writer.system(f"[ctx-budget] 예산 계산 실패 (무시): {type(_e).__name__}: {_e}")
+
+        context = self._build_context(agent_info, channel, recent,
+                                      user_message=user_message, mem_scale=mem_scale)
+
         pieces = [context]
         if tool_history:
             pieces.append(tool_history)
@@ -549,9 +584,6 @@ class AgentRuntime:
             pieces.append(tool_results)
         pieces.append(f"{name}: {user_message}")
         full_prompt = "\n".join(pieces) if len(pieces) > 1 else pieces[0]
-
-        system_prompt = agent_info["system_prompt"]
-        model = _resolve_agent_model(agent_id, atype)
 
         return full_prompt, system_prompt, model
 

@@ -62,6 +62,19 @@ BUDGET_EPISODIC_RETRIEVED = 400
 BUDGET_FACTS = 400
 BUDGET_SELF_RECENT = 500
 
+# 동적 컨텍스트 예산 — get_memory_context(scale=) 가 설정. num_ctx 작으면 <1, 크면 >1.
+# 모든 budget 사용처는 _scaled() 로 감싸 이 배수를 반영. floor 60자 (레이어 완전 증발 방지).
+import contextvars as _ctxvars
+_MEM_SCALE: _ctxvars.ContextVar = _ctxvars.ContextVar("glimi_mem_scale", default=1.0)
+
+
+def _scaled(budget: int) -> int:
+    """현재 메모리 scale 을 적용한 budget (floor 60자)."""
+    s = _MEM_SCALE.get()
+    if s >= 0.999:
+        return budget
+    return max(60, int(budget * s))
+
 # Self-recent cross-channel: 본인이 다른 채널에서 방금 한 발화 — L1 rollup 전이라
 # retrieved/facts 블록이 못 잡는 짧은 시간창 cover. 떡볶이 회귀 (그룹채팅에서 1분 전
 # "떡볶이 좋아" → dm 에서 "갑자기 왜?" 모르는 척) 가 대표 사례.
@@ -1387,13 +1400,16 @@ def _affection_behavior_hint(score: int) -> str:
             "사적 부탁 거부하는 게 자연스러움.")
 
 
-def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> str:
+def get_memory_context(agent_id: str, channel: str, user_message: str = "",
+                       scale: float = 1.0) -> str:
     """
     현재 채널 기억 + pinned + 관계 스냅샷 — runtime이 system-reminder에 주입.
 
     user_message: 현재 턴 유저 입력 (없으면 빈 문자열). 엔티티 매칭에 사용.
+    scale: 컨텍스트 예산 배수 (작은 num_ctx → <1 축소, 큰 num_ctx → >1 풍부). 기본 1.0.
     """
     parts: list[str] = []
+    _scale_token = _MEM_SCALE.set(scale)
 
     try:
         _touch_ids: list[int] = []
@@ -1402,7 +1418,7 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> s
         pinned = db.get_pinned_memories(agent_id, limit=10)
         if pinned:
             block = [_format_memory_line(m, STALE_L2_DAYS * 24) for m in pinned]
-            block = _truncate_block(block, BUDGET_PINNED)
+            block = _truncate_block(block, _scaled(BUDGET_PINNED))
             if block:
                 parts.append("## 📌 고정 기억")
                 parts.extend(block)
@@ -1438,7 +1454,7 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> s
                     reason = h.get("reason") or ""
                     if reason:
                         lines.append(f"- [변화] {h.get('delta_type')}: {h.get('from_state') or '?'}→{h.get('to_state') or '?'} ({reason[:40]})")
-                parts.append("\n".join(_truncate_block(lines, BUDGET_RELATIONSHIP)))
+                parts.append("\n".join(_truncate_block(lines, _scaled(BUDGET_RELATIONSHIP))))
 
         # ─ Episodic — current channel (L3/L2/L1) ─
         current_block = _format_current_channel_memories(agent_id, channel)
@@ -1482,6 +1498,8 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "") -> s
 
     except Exception as e:
         print(f"[Memory] get_memory_context 오류: {e}")
+    finally:
+        _MEM_SCALE.reset(_scale_token)
 
     if not parts:
         return ""
@@ -1534,7 +1552,7 @@ def _format_current_channel_memories(agent_id: str, channel: str) -> str:
     def _total_chars(secs):
         return sum(len(h) + 1 + sum(len(l) + 1 for l in lines) for h, lines in secs)
 
-    budget = BUDGET_EPISODIC_CURRENT
+    budget = _scaled(BUDGET_EPISODIC_CURRENT)
     # priority order to drop from: L3 (가장 거시적) → L2 끝 → L1 끝
     while _total_chars(sections) > budget:
         # 자를 후보 — 오래된 섹션 + 그 안의 가장 오래된 라인
@@ -1654,7 +1672,7 @@ def _format_retrieved_memories(agent_id: str, exclude_channel: str,
             lines.append(_format_memory_line(m, VERY_STALE_DAYS * 24, disclose_marker=disclosure))
             touched.append(m["id"])
 
-    truncated = _truncate_block(lines, BUDGET_EPISODIC_RETRIEVED)
+    truncated = _truncate_block(lines, _scaled(BUDGET_EPISODIC_RETRIEVED))
     return "\n".join(truncated), touched
 
 
@@ -1723,7 +1741,7 @@ def _format_self_recent_cross_channel(
                 msg = msg[:100] + "…"
             lines.append(f"  {hhmm} \"{msg}\"")
 
-    truncated = _truncate_block(lines, BUDGET_SELF_RECENT)
+    truncated = _truncate_block(lines, _scaled(BUDGET_SELF_RECENT))
     return "\n".join(truncated)
 
 
@@ -1759,7 +1777,7 @@ def _format_facts_block(agent_id: str, query_entities: set[str]) -> str:
     if not lines:
         return ""
     out = ["## 📚 알고 있는 사실"] + lines
-    return "\n".join(_truncate_block(out, BUDGET_FACTS))
+    return "\n".join(_truncate_block(out, _scaled(BUDGET_FACTS)))
 
 
 # ────────────────────────────────────────────────────
