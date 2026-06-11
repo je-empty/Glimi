@@ -8,10 +8,11 @@ REM   run.bat --host 127.0.0.1
 REM
 REM Options (any mode):
 REM   --local-models                   -> local LLM mode (dev, opt-in). Auto-install Ollama
-REM                                       (winget) + start server + pull default model
-REM                                       (gemma4 e4b, ~9.6GB). Skips anything already set up.
-REM                                       ENV: GLIMI_LOCAL_MODELS=1 equivalent.
-REM                                       Split config (26b manager): docs/local_models.md
+REM                                       (winget) + start server + pull tier model.
+REM                                       Skips anything already set up.
+REM                                       Tier via GLIMI_LOCAL_TIER (default standard):
+REM                                         lite=e2b / standard=e4b / quality=iq3-26b single (12GB)
+REM                                         / prod=26b+e4b split (24GB+). See docs/local_models.md
 REM   --setup-only                     -> run setup (venv/deps/ollama/model) then exit
 REM
 REM Legacy modes:
@@ -98,24 +99,54 @@ if not defined OLLAMA_BIN (
     )
 )
 
-REM === --local-models: 기본 모델 풀 + 백엔드 env (idempotent) ===
+REM === --local-models: 티어별 모델 풀 + 백엔드 env (idempotent) ===
+REM   GLIMI_LOCAL_TIER (기본 standard): lite=e2b단일 / standard=e4b단일 /
+REM   quality=iq3-26b단일(12GB최적) / prod=26b매니저+e4b분리(24GB+). 상세 docs/local_models.md
+set "_E2B=huihui_ai/gemma-4-abliterated:e2b"
+set "_E4B=huihui_ai/gemma-4-abliterated:e4b"
+set "_IQ3=gemma4-26b-a4b-abl:iq3"
 if "%LOCAL_MODELS%"=="1" (
     set "GLIMI_LLM_BACKEND=ollama"
-    if not defined GLIMI_OLLAMA_MODEL set "GLIMI_OLLAMA_MODEL=huihui_ai/gemma-4-abliterated:e4b"
     if not defined OLLAMA_KEEP_ALIVE set "OLLAMA_KEEP_ALIVE=30m"
-    "!OLLAMA_BIN!" list 2>nul | findstr /C:"!GLIMI_OLLAMA_MODEL!" >nul
-    if errorlevel 1 (
-        echo [local] 모델 다운로드: !GLIMI_OLLAMA_MODEL! ^(~10GB, 1회^)
-        "!OLLAMA_BIN!" pull "!GLIMI_OLLAMA_MODEL!"
+    if not defined GLIMI_LOCAL_TIER set "GLIMI_LOCAL_TIER=standard"
+
+    set "PULL_MODEL="
+    set "IMPORT_MODEL="
+    if /i "!GLIMI_LOCAL_TIER!"=="lite"     ( set "PRIMARY=!_E2B!" & set "PULL_MODEL=!_E2B!" )
+    if /i "!GLIMI_LOCAL_TIER!"=="standard" ( set "PRIMARY=!_E4B!" & set "PULL_MODEL=!_E4B!" )
+    if /i "!GLIMI_LOCAL_TIER!"=="quality"  ( set "PRIMARY=!_IQ3!" & set "IMPORT_MODEL=!_IQ3!" )
+    if /i "!GLIMI_LOCAL_TIER!"=="prod" (
+        set "PRIMARY=!_E4B!" & set "PULL_MODEL=!_E4B!" & set "IMPORT_MODEL=!_IQ3!"
+        if not defined OLLAMA_MAX_LOADED_MODELS set "OLLAMA_MAX_LOADED_MODELS=2"
+        if not defined GLIMI_OLLAMA_MODEL_MAP set "GLIMI_OLLAMA_MODEL_MAP={\"mgr\":\"!_IQ3!\",\"creator\":\"!_IQ3!\",\"persona\":\"!_E4B!\",\"_default\":\"!_E4B!\"}"
+    )
+    if not defined PRIMARY (
+        echo [local] 알 수 없는 티어: !GLIMI_LOCAL_TIER! ^(lite^|standard^|quality^|prod^)
+        exit /b 1
+    )
+    if not defined GLIMI_OLLAMA_MODEL set "GLIMI_OLLAMA_MODEL=!PRIMARY!"
+
+    if defined PULL_MODEL (
+        "!OLLAMA_BIN!" list 2>nul | findstr /C:"!PULL_MODEL!" >nul
         if errorlevel 1 (
-            echo [local] 모델 다운로드 실패
+            echo [local] 모델 다운로드: !PULL_MODEL! ^(1회^)
+            "!OLLAMA_BIN!" pull "!PULL_MODEL!"
+            if errorlevel 1 ( echo [local] 다운로드 실패 & exit /b 1 )
+        ) else (
+            echo [local] 모델 준비됨: !PULL_MODEL! ^(스킵^)
+        )
+    )
+    if defined IMPORT_MODEL (
+        "!OLLAMA_BIN!" list 2>nul | findstr /C:"!IMPORT_MODEL!" >nul
+        if errorlevel 1 (
+            echo [local] '!GLIMI_LOCAL_TIER!' 티어는 !IMPORT_MODEL! 필요 - GGUF 임포트 후 재실행
+            echo   ollama create !IMPORT_MODEL! -f Modelfile  ^(절차: docs/local_models.md^)
+            echo   standard^(e4b^)로 폴백하려면 set GLIMI_LOCAL_TIER=standard
             exit /b 1
         )
-    ) else (
-        echo [local] 모델 준비됨: !GLIMI_OLLAMA_MODEL! ^(스킵^)
     )
-    echo [local] 로컬 모델 모드 활성 ^(backend=ollama, model=!GLIMI_OLLAMA_MODEL!^)
-    echo   매니저 분리 구성^(26b^): docs/local_models.md
+    echo [local] 로컬 모드 활성 - tier=!GLIMI_LOCAL_TIER!, model=!GLIMI_OLLAMA_MODEL!
+    if /i "!GLIMI_LOCAL_TIER!"=="prod" echo   매니저/크리에이터=!_IQ3!, 그 외=!_E4B! ^(분리^)
 )
 
 if "%SETUP_ONLY%"=="1" (
