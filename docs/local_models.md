@@ -133,7 +133,21 @@ GLIMI_OLLAMA_MODEL_MAP='{"mgr":"gemma4-26b-a4b-abl:iq3","creator":"gemma4-26b-a4
 
 # 모델 2종 상주 유지 (스왑 방지)
 OLLAMA_KEEP_ALIVE=30m
+
+# 컨텍스트 윈도우 — 메모리 기능에 필수 (아래 ⚠)
+GLIMI_OLLAMA_NUM_CTX=8192
 ```
+
+### ⚠ num_ctx — 메모리 기능의 생명줄
+
+Ollama 기본 컨텍스트는 **4096** 인데, Glimi 한 턴 프롬프트는 도구 레퍼런스(mgr ≈2300tok)
+\+ 5-레이어 메모리 주입(≈1200tok) + 시스템/최근대화 가 합쳐 **5000~6000tok** 다. 4096 이면
+ollama 가 앞부분(시스템·메모리·도구정의)을 잘라내 → **캐릭터·기억·도구가 통째로 증발** →
+반복·온보딩 정지·맥락 상실. (이 프로젝트 강점인 메모리가 죽는 핵심 원인이었음.)
+
+→ `src/llm/ollama.py` 가 요청에 `num_ctx` 를 명시(기본 **8192**)해 해결. 긴 기억 보존이
+중요하면 `GLIMI_OLLAMA_NUM_CTX=16384`. 단 num_ctx 를 키우면 KV 캐시가 VRAM 을 더 먹으니
+저사양(12GB)은 8192 유지 권장. 검증: 입력 2572tok 프롬프트가 안 잘리고 메모리 정확 회상.
 
 모델 우선순위: **에이전트 개별**(DB `agents.model_override` = `ollama:<태그>`)
 > **종류별**(`GLIMI_OLLAMA_MODEL_MAP[type]`) > **전역**(`GLIMI_OLLAMA_MODEL`).
