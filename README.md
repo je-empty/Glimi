@@ -345,21 +345,19 @@ cd Glimi
                             # login: admin / rmfflal  or  test / 0000
 ```
 
-**Windows** (WSL2 recommended; native `run.ps1` is a planned contributor task):
+**Windows** (native):
 ```powershell
-# Inside an admin PowerShell, set up WSL once:
-wsl --install
-# Then inside WSL Ubuntu:
-sudo apt install python3.12-venv nodejs npm git
-npm install -g @anthropic-ai/claude-code
 git clone https://github.com/jaebinsim/Glimi.git
 cd Glimi
-./run.sh
+run.bat
 ```
+(WSL2 + `./run.sh` also works if you prefer a Linux environment.)
 
 **Useful commands**:
 ```bash
 ./run.sh --port 9000                    # change dashboard port
+./run.sh --local-models                 # local LLM mode (dev opt-in) — auto-installs Ollama + pulls default model, skips what exists. See docs/local_models.md
+./run.sh --setup-only                   # run setup (venv/deps/ollama/model) then exit
 ./run.sh --imagegen                     # enable local LoRA portrait generation (opt-in, ~6min/portrait)
 ./run.sh --legacy <community>           # legacy single-bot mode (QA / debugging)
 ./scripts/qa.sh                         # E2E QA runner (tmux: Glimi-QA-Runner)

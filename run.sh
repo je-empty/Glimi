@@ -10,6 +10,11 @@
 #   --imagegen                       → 로컬 LoRA 프로필 이미지 생성 활성화
 #                                       (1회: torch+diffusers ~수GB 설치 + Animagine XL 4.0 ~6.5GB
 #                                        HF cache 다운로드. ENV: GLIMI_IMAGEGEN=1 도 동등)
+#   --local-models                   → 로컬 LLM 모드 (개발중, opt-in). Ollama 자동 설치(brew) +
+#                                       서버 기동 + 기본 모델(gemma4 e4b, ~9.6GB) 다운로드.
+#                                       이미 설치/다운로드된 건 스킵. ENV: GLIMI_LOCAL_MODELS=1 동등.
+#                                       매니저 분리 구성 등 상세: docs/local_models.md
+#   --setup-only                     → 세팅(venv/deps/ollama/모델)만 하고 서버는 안 띄움
 #
 # 레거시 모드:
 #   ./run.sh --legacy <community>    → 구 단일 봇 (QA/디버깅용)
@@ -39,20 +44,26 @@ if [ ! -f "$MARKER" ] || [ requirements.txt -nt "$MARKER" ]; then
     touch "$MARKER"
 fi
 
-# ── --imagegen 플래그 추출 (모든 mode 공통, 위치 무관) ───
+# ── 공통 플래그 추출 (모든 mode 공통, 위치 무관) ─────────
 IMAGEGEN=0
+LOCAL_MODELS=0
+SETUP_ONLY=0
 _FILTERED_ARGS=()
 for arg in "$@"; do
-    if [ "$arg" = "--imagegen" ]; then
-        IMAGEGEN=1
-    else
-        _FILTERED_ARGS+=("$arg")
-    fi
+    case "$arg" in
+        --imagegen)     IMAGEGEN=1;;
+        --local-models) LOCAL_MODELS=1;;
+        --setup-only)   SETUP_ONLY=1;;
+        *)              _FILTERED_ARGS+=("$arg");;
+    esac
 done
 set -- "${_FILTERED_ARGS[@]}"
 # ENV 로 사전 활성화한 경우도 동일 처리
 if [ "${GLIMI_IMAGEGEN:-0}" = "1" ] || [ "${GLIMI_IMAGEGEN:-}" = "true" ]; then
     IMAGEGEN=1
+fi
+if [ "${GLIMI_LOCAL_MODELS:-0}" = "1" ] || [ "${GLIMI_LOCAL_MODELS:-}" = "true" ]; then
+    LOCAL_MODELS=1
 fi
 
 if [ "$IMAGEGEN" = "1" ]; then
@@ -71,6 +82,51 @@ if [ "$IMAGEGEN" = "1" ]; then
     else
         echo -e "${GREEN}[imagegen] 활성 (GLIMI_IMAGEGEN=1)${NC}"
     fi
+fi
+
+# ── --local-models: Ollama 로컬 LLM 자동 세팅 (idempotent) ──
+if [ "$LOCAL_MODELS" = "1" ]; then
+    export GLIMI_LLM_BACKEND=ollama
+    export GLIMI_OLLAMA_MODEL="${GLIMI_OLLAMA_MODEL:-huihui_ai/gemma-4-abliterated:e4b}"
+    export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-30m}"
+
+    # 1) Ollama 설치 확인 — 없으면 brew 로 설치
+    if ! command -v ollama >/dev/null 2>&1; then
+        if command -v brew >/dev/null 2>&1; then
+            echo -e "${CYAN}[local] Ollama 설치 중 (brew)...${NC}"
+            brew install ollama || { echo -e "${RED}[local] Ollama 설치 실패${NC}"; exit 1; }
+        else
+            echo -e "${RED}[local] Ollama 미설치 + Homebrew 없음${NC}"
+            echo -e "  https://ollama.com/download 에서 설치 후 다시 실행하세요"
+            exit 1
+        fi
+    fi
+
+    # 2) 서버 기동 확인 — 안 떠 있으면 백그라운드 시작
+    if ! ollama ps >/dev/null 2>&1; then
+        echo -e "${CYAN}[local] Ollama 서버 시작...${NC}"
+        nohup ollama serve > /tmp/ollama-serve.log 2>&1 &
+        for _i in $(seq 1 15); do
+            ollama ps >/dev/null 2>&1 && break
+            sleep 1
+        done
+        ollama ps >/dev/null 2>&1 || { echo -e "${RED}[local] Ollama 서버 시작 실패 (/tmp/ollama-serve.log)${NC}"; exit 1; }
+    fi
+
+    # 3) 기본 모델 — 이미 있으면 스킵
+    if ollama list 2>/dev/null | grep -Fq "$GLIMI_OLLAMA_MODEL"; then
+        echo -e "${GREEN}[local] 모델 준비됨: ${GLIMI_OLLAMA_MODEL} (스킵)${NC}"
+    else
+        echo -e "${CYAN}[local] 모델 다운로드: ${GLIMI_OLLAMA_MODEL} (~10GB, 1회)${NC}"
+        ollama pull "$GLIMI_OLLAMA_MODEL" || { echo -e "${RED}[local] 모델 다운로드 실패${NC}"; exit 1; }
+    fi
+    echo -e "${GREEN}[local] 로컬 모델 모드 활성 (backend=ollama, model=${GLIMI_OLLAMA_MODEL})${NC}"
+    echo -e "  매니저 정확도용 분리 구성(26b)은 docs/local_models.md 참고"
+fi
+
+if [ "$SETUP_ONLY" = "1" ]; then
+    echo -e "${GREEN}[setup] 세팅 완료 (--setup-only — 서버는 안 띄움)${NC}"
+    exit 0
 fi
 
 mkdir -p dev
