@@ -6,6 +6,14 @@ REM   run.bat                          -> http://localhost:8000
 REM   run.bat --port 9000
 REM   run.bat --host 127.0.0.1
 REM
+REM Options (any mode):
+REM   --local-models                   -> local LLM mode (dev, opt-in). Auto-install Ollama
+REM                                       (winget) + start server + pull default model
+REM                                       (gemma4 e4b, ~9.6GB). Skips anything already set up.
+REM                                       ENV: GLIMI_LOCAL_MODELS=1 equivalent.
+REM                                       Split config (26b manager): docs/local_models.md
+REM   --setup-only                     -> run setup (venv/deps/ollama/model) then exit
+REM
 REM Legacy modes:
 REM   run.bat --legacy ^<community^>     -> single bot (QA/debugging)
 REM   run.bat tui                      -> legacy TUI wizard
@@ -48,14 +56,37 @@ if not exist "%MARKER%" (
 
 if not exist dev mkdir dev
 
-REM === Ollama 로컬 LLM 백엔드 자동 기동 ===
-REM 자동시작을 꺼둔 경우 대비 — 서버가 안 떠 있으면 백그라운드로 ollama serve 시작.
-REM PATH 의존 대신 실제 exe 경로를 해석 (where → 표준 설치 위치 fallback).
+REM === common flags (any position): --local-models / --setup-only ===
+set "LOCAL_MODELS=0"
+set "SETUP_ONLY=0"
+echo %* | findstr /C:"--local-models" >nul 2>nul && set "LOCAL_MODELS=1"
+echo %* | findstr /C:"--setup-only" >nul 2>nul && set "SETUP_ONLY=1"
+if "%GLIMI_LOCAL_MODELS%"=="1" set "LOCAL_MODELS=1"
+
+REM === Ollama 실행파일 해석 (where -> 표준 설치 위치 fallback) ===
 set "OLLAMA_BIN="
 for /f "delims=" %%i in ('where ollama 2^>nul') do set "OLLAMA_BIN=%%i"
 if not defined OLLAMA_BIN if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" set "OLLAMA_BIN=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+
+REM === --local-models: Ollama 자동 설치 (winget, 1회) ===
+if "%LOCAL_MODELS%"=="1" if not defined OLLAMA_BIN (
+    where winget >nul 2>nul
+    if errorlevel 1 (
+        echo [local] Ollama 미설치 + winget 없음 - https://ollama.com/download 에서 설치 후 재실행
+        exit /b 1
+    )
+    echo [local] Ollama 설치 중 ^(winget, 1회^)...
+    winget install -e --id Ollama.Ollama --silent --accept-source-agreements --accept-package-agreements
+    if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" set "OLLAMA_BIN=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+    if not defined OLLAMA_BIN (
+        echo [local] 설치 후에도 실행파일 못 찾음 - 새 터미널에서 재실행 필요할 수 있음
+        exit /b 1
+    )
+)
+
+REM === Ollama 서버 기동 (있을 때만, 안 떠 있으면 시작) ===
 if not defined OLLAMA_BIN (
-    echo [ollama] 실행파일 못 찾음 - 로컬 LLM 사용 시 Ollama 설치 필요 ^(claude 백엔드엔 영향 없음^)
+    echo [ollama] 실행파일 못 찾음 - 로컬 LLM 사용 시 --local-models 로 자동 설치 ^(claude 백엔드엔 영향 없음^)
 ) else (
     "!OLLAMA_BIN!" ps >nul 2>nul
     if errorlevel 1 (
@@ -65,6 +96,31 @@ if not defined OLLAMA_BIN (
     ) else (
         echo [ollama] 이미 실행 중
     )
+)
+
+REM === --local-models: 기본 모델 풀 + 백엔드 env (idempotent) ===
+if "%LOCAL_MODELS%"=="1" (
+    set "GLIMI_LLM_BACKEND=ollama"
+    if not defined GLIMI_OLLAMA_MODEL set "GLIMI_OLLAMA_MODEL=huihui_ai/gemma-4-abliterated:e4b"
+    if not defined OLLAMA_KEEP_ALIVE set "OLLAMA_KEEP_ALIVE=30m"
+    "!OLLAMA_BIN!" list 2>nul | findstr /C:"!GLIMI_OLLAMA_MODEL!" >nul
+    if errorlevel 1 (
+        echo [local] 모델 다운로드: !GLIMI_OLLAMA_MODEL! ^(~10GB, 1회^)
+        "!OLLAMA_BIN!" pull "!GLIMI_OLLAMA_MODEL!"
+        if errorlevel 1 (
+            echo [local] 모델 다운로드 실패
+            exit /b 1
+        )
+    ) else (
+        echo [local] 모델 준비됨: !GLIMI_OLLAMA_MODEL! ^(스킵^)
+    )
+    echo [local] 로컬 모델 모드 활성 ^(backend=ollama, model=!GLIMI_OLLAMA_MODEL!^)
+    echo   매니저 분리 구성^(26b^): docs/local_models.md
+)
+
+if "%SETUP_ONLY%"=="1" (
+    echo [setup] 세팅 완료 ^(--setup-only - 서버는 안 띄움^)
+    exit /b 0
 )
 
 REM === cleanup existing processes ===
@@ -145,6 +201,8 @@ if defined GLIMI_PORT set "PORT=%GLIMI_PORT%"
 if "%~1"=="" goto args_done
 if /i "%~1"=="--host" (set "HOST=%~2" & shift & shift & goto parse_args)
 if /i "%~1"=="--port" (set "PORT=%~2" & shift & shift & goto parse_args)
+if /i "%~1"=="--local-models" (shift & goto parse_args)
+if /i "%~1"=="--setup-only" (shift & goto parse_args)
 if /i "%~1"=="--help" goto show_help
 if /i "%~1"=="-h" goto show_help
 echo Unknown option: %~1
