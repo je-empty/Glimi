@@ -47,13 +47,10 @@ def _sanitize_dm_name(agent_name: str) -> str:
     캐시는 공백 그대로 → 채널 lookup 미스매치 → 첫 인사 트리거 실패 + 채널 미인식.
     공백 + 일부 특수문자를 dash 로 정규화. 한글·영문·숫자는 보존.
     """
-    import re
+    from src.bot import _norm_name_for_channel
     if not agent_name:
         return "dm-unknown"
-    # whitespace → dash, 그 외 부적합 문자 제거 (한글·영문·숫자·dash·underscore 만 보존)
-    s = re.sub(r"\s+", "-", agent_name.strip())
-    s = re.sub(r"[^\w\-가-힣ㄱ-ㅎㅏ-ㅣ]", "", s)
-    s = re.sub(r"-+", "-", s).strip("-")
+    s = _norm_name_for_channel(agent_name)
     return f"dm-{s}" if s else "dm-unknown"
 
 
@@ -1380,10 +1377,13 @@ async def yuna_approve_action(report_channel, args_str, guild):
         target_id = target["id"]
 
         # internal-dm 채널 찾기/생성 — 유나 우선 정렬 convention
-        from src.bot import internal_dm_channel_name
+        from src.bot import internal_dm_channel_name, _norm_name_for_channel
         ch_name = internal_dm_channel_name(sender_name, target_name)
-        ch_name_alt = f"internal-dm-{target_name}-{sender_name}"  # 구 order 호환
-        ch_name_alt2 = f"internal-dm-{sender_name}-{target_name}"  # 구 order 호환
+        # 구 order 호환 alt — Discord normalize 일관성 위해 이름 부품 normalize
+        _ns = _norm_name_for_channel(sender_name)
+        _nt = _norm_name_for_channel(target_name)
+        ch_name_alt = f"internal-dm-{_nt}-{_ns}"
+        ch_name_alt2 = f"internal-dm-{_ns}-{_nt}"
         target_ch = discord.utils.get(guild.text_channels, name=ch_name)
         if not target_ch:
             target_ch = discord.utils.get(guild.text_channels, name=ch_name_alt) \
@@ -2002,10 +2002,13 @@ async def _forward_action_to_yuna(agent_id: str, action_str: str, guild):
             log_writer.system(f"[not_found] DM target agent={target_name}")
             return
         sender_name = runtime.get_agent_name(agent_id)
-        from src.bot import internal_dm_channel_name
+        from src.bot import internal_dm_channel_name, _norm_name_for_channel
         ch_name = internal_dm_channel_name(sender_name, target_name)
-        alt_ch_name = f"internal-dm-{target_name}-{sender_name}"  # 구 order 호환
-        alt_ch_name2 = f"internal-dm-{sender_name}-{target_name}"
+        # 구 order 호환 — Discord normalize 일관성 위해 이름 normalize
+        _ns = _norm_name_for_channel(sender_name)
+        _nt = _norm_name_for_channel(target_name)
+        alt_ch_name = f"internal-dm-{_nt}-{_ns}"
+        alt_ch_name2 = f"internal-dm-{_ns}-{_nt}"
         target_ch = (discord.utils.get(guild.text_channels, name=ch_name)
                      or discord.utils.get(guild.text_channels, name=alt_ch_name)
                      or discord.utils.get(guild.text_channels, name=alt_ch_name2))

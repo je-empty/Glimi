@@ -87,14 +87,33 @@ def _agent_name_priority(name: str) -> int:
     return PRIORITY.get(name, 9)
 
 
+def _norm_name_for_channel(name: str) -> str:
+    """페르소나/유저 이름을 채널명 부품으로 변환.
+    Discord 가 자동으로 normalize 하는 규칙과 일치:
+      - 공백 → 하이픈
+      - 영숫자/한글/하이픈/언더스코어 외 문자 제거
+      - 연속 하이픈 → 단일
+    '유키 아스나' → '유키-아스나'. DB ↔ Discord 채널명 일관성 보장.
+    """
+    import re as _re
+    s = _re.sub(r"\s+", "-", (name or "").strip())
+    s = _re.sub(r"[^\w\-가-힣ㄱ-ㅎㅏ-ㅣ]", "", s)
+    s = _re.sub(r"-+", "-", s).strip("-")
+    return s
+
+
 def internal_dm_channel_name(a_name: str, b_name: str) -> str:
-    """두 에이전트 이름으로 internal-dm 채널명 생성. 유나 우선 → 하나 → 그 외."""
+    """두 에이전트 이름으로 internal-dm 채널명 생성. 유나 우선 → 하나 → 그 외.
+
+    페르소나 이름의 공백은 하이픈으로 normalize — Discord 자동 변환과 일치시켜
+    DB/Discord 채널 이름 어긋남 방지.
+    """
     if not a_name or not b_name:
-        return f"internal-dm-{a_name or '?'}-{b_name or '?'}"
+        return f"internal-dm-{_norm_name_for_channel(a_name) or '?'}-{_norm_name_for_channel(b_name) or '?'}"
     pa, pb = _agent_name_priority(a_name), _agent_name_priority(b_name)
     # 우선순위 낮은(=앞) 쪽이 먼저. 동률이면 입력 순서 유지.
     first, second = (a_name, b_name) if pa <= pb else (b_name, a_name)
-    return f"internal-dm-{first}-{second}"
+    return f"internal-dm-{_norm_name_for_channel(first)}-{_norm_name_for_channel(second)}"
 
 # ── 채널 매핑 (공유 상태) ──────────────────────────────
 

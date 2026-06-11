@@ -357,12 +357,14 @@ def queue_system_log(msg: str, force: bool = False):
 
 def _build_channel_maps():
     """프로필 기반으로 채널 ↔ 에이전트 매핑 생성"""
+    from src.bot import _norm_name_for_channel, DEV_CHANNEL
     for p in list_all_profiles():
         agent_id = p["id"]
         name = p["name"]
         agent_type = p["type"]
         if agent_type == "persona":
-            ch = f"dm-{name}"
+            # normalize — Discord 가 공백 → 하이픈 변환하므로 DB 도 같은 형식
+            ch = f"dm-{_norm_name_for_channel(name)}"
             CHANNEL_AGENT_MAP[ch] = agent_id
             AGENT_CHANNEL_MAP[agent_id] = ch
         elif agent_type == "mgr":
@@ -371,6 +373,11 @@ def _build_channel_maps():
         elif agent_type == "creator":
             CHANNEL_AGENT_MAP[CREATOR_CHANNEL] = agent_id
             AGENT_CHANNEL_MAP[agent_id] = CREATOR_CHANNEL
+        elif agent_type == "dev":
+            # 한세나 — mgr-dev-request 채널. ensure_dev_seeded 가 DB 시드 후에만 등록하는
+            # 회귀 (재시작 시 매핑 비어서 owner 메시지 라우팅 실패) 차단.
+            CHANNEL_AGENT_MAP[DEV_CHANNEL] = agent_id
+            AGENT_CHANNEL_MAP[agent_id] = DEV_CHANNEL
 
 
 def _get_category_for_channel(ch_name: str) -> str:
