@@ -105,10 +105,29 @@ class Supervisor:
             env["GLIMI_COMMUNITY"] = community_id
             # 플랫폼 안에서 띄우므로 대시보드 자동 기동은 안 함
             env["GLIMI_NO_DASHBOARD"] = "1"
+            # Windows 기본 stdout codepage (cp949) 가 한글/em-dash 인코딩 못 해서
+            # 봇 startup print() 가 즉시 UnicodeEncodeError 로 죽는 회귀 fix.
+            # PYTHONIOENCODING=utf-8 로 강제 → log 파일에 UTF-8 그대로 기록.
+            env["PYTHONIOENCODING"] = "utf-8"
+            env["PYTHONUTF8"] = "1"
 
             # append mode + line buffered
             log_fh = open(log_path, "ab", buffering=0)
             log_fh.write(f"\n===== supervisor spawn {community_id} @ {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} =====\n".encode())
+
+            # Process group 분리 — OS 별로 다른 flag 사용.
+            # POSIX: start_new_session=True (setsid). Windows: CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW.
+            # CREATE_NEW_PROCESS_GROUP 만으로는 console attach 유지 → 봇 종료 시 console event 가
+            # 부모 platform 에 전파되어 같이 종료되는 회귀. CREATE_NO_WINDOW 로 봇을 console-detached 로
+            # 띄워야 부모 cmd 와 완전 분리. stdin=DEVNULL 로 fd inherit 도 차단.
+            popen_kwargs: dict = {}
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = (
+                    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                )
+                popen_kwargs["stdin"] = subprocess.DEVNULL
+            else:
+                popen_kwargs["start_new_session"] = True
 
             proc = subprocess.Popen(
                 [sys.executable, "-m", "src.discord_bot"],
@@ -116,7 +135,7 @@ class Supervisor:
                 env=env,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,  # 자체 process group → kill 시 깨끗
+                **popen_kwargs,
             )
             handle = BotHandle(
                 community_id=community_id,
@@ -128,7 +147,11 @@ class Supervisor:
             return handle
 
     def stop(self, community_id: str, timeout: float = 10.0) -> bool:
-        """SIGTERM → wait → 안 죽으면 SIGKILL. 실행 중 아니었으면 False."""
+        """SIGTERM → wait → 안 죽으면 SIGKILL. 실행 중 아니었으면 False.
+
+        POSIX: os.killpg 로 process group 단위 정리.
+        Windows: proc.terminate() / proc.kill() — CREATE_NEW_PROCESS_GROUP 으로 분리됨.
+        """
         with self._lock:
             handle = self._handles.get(community_id)
             if not handle or handle.process.poll() is not None:
@@ -136,17 +159,25 @@ class Supervisor:
                 return False
             proc = handle.process
 
+        # SIGTERM 단계
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except ProcessLookupError:
+            if sys.platform == "win32":
+                proc.terminate()
+            else:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, OSError):
             pass
 
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            # SIGKILL 단계
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except ProcessLookupError:
+                if sys.platform == "win32":
+                    proc.kill()
+                else:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, OSError):
                 pass
             proc.wait(timeout=3.0)
 

@@ -41,6 +41,10 @@ class ParsedResponse:
 
 
 _TOOLS_BLOCK = re.compile(r'<tools>(.*?)</tools>', re.DOTALL | re.IGNORECASE)
+# 로컬 모델이 <tools> 블록을 마크다운 코드펜스로 감싸는 케이스 — 펜스만 벗겨냄
+_FENCE_WRAPPED_TOOLS = re.compile(
+    r'```[a-zA-Z]*\s*(<tools>.*?</tools>)\s*```', re.DOTALL | re.IGNORECASE
+)
 _CALL_BLOCK = re.compile(
     r'<call\s+([^>]*)>\s*(.*?)\s*</call>',
     re.DOTALL | re.IGNORECASE
@@ -63,6 +67,7 @@ def parse_response(text: str) -> ParsedResponse:
     if not text:
         return ParsedResponse(chat="", tool_calls=[], errors=errors)
 
+    text = _FENCE_WRAPPED_TOOLS.sub(r'\1', text)
     m = _TOOLS_BLOCK.search(text)
     if not m:
         return ParsedResponse(chat=text.strip(), tool_calls=[], errors=errors)
@@ -119,4 +124,5 @@ def strip_tool_blocks(text: str) -> str:
     """<tools>...</tools> 완전 제거한 chat 텍스트. Discord 전송용 안전장치."""
     if not text:
         return ""
+    text = _FENCE_WRAPPED_TOOLS.sub(r'\1', text)
     return _TOOLS_BLOCK.sub("", text).strip()

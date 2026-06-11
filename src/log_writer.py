@@ -90,7 +90,7 @@ def mark_thinking(agent_id: str, channel: str = ""):
     """thinking flag 파일에 채널명 기록 — 그래프 / 대시보드가 어느 채널에서 thinking 중인지 식별."""
     p = os.path.join(_get_log_dir(), f".thinking-{agent_id}")
     try:
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write(channel or "")
     except OSError:
         pass
@@ -112,7 +112,7 @@ def thinking_channel(agent_id: str) -> str:
     """현재 thinking 중인 채널 이름. 안 하고 있거나 채널 정보 없으면 빈 문자열."""
     p = os.path.join(_get_log_dir(), f".thinking-{agent_id}")
     try:
-        with open(p) as f:
+        with open(p, encoding="utf-8", errors="replace") as f:
             return f.read().strip()
     except (FileNotFoundError, OSError):
         return ""
@@ -130,7 +130,7 @@ def thinking_seconds(agent_id: str) -> float:
 def mark_speaking(agent_id: str, channel: str = ""):
     p = os.path.join(_get_log_dir(), f".speaking-{agent_id}")
     try:
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write(channel or "")
     except OSError:
         pass
@@ -146,7 +146,7 @@ def mark_speaking_done(agent_id: str):
 def speaking_channel(agent_id: str) -> str:
     p = os.path.join(_get_log_dir(), f".speaking-{agent_id}")
     try:
-        with open(p) as f:
+        with open(p, encoding="utf-8", errors="replace") as f:
             return f.read().strip()
     except (FileNotFoundError, OSError):
         return ""

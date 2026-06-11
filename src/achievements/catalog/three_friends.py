@@ -5,17 +5,26 @@ from src.achievements.base import Achievement
 
 
 def check(user_id: str) -> Optional[dict]:
+    from src.bot import _norm_name_for_channel
     conn = db.get_conn()
     personas = [r[0] for r in conn.execute(
         "SELECT name FROM agents WHERE type='persona'"
     ).fetchall()]
     talked = []
     for name in personas:
-        ch = f"dm-{name}"
-        has = conn.execute(
-            "SELECT 1 FROM conversations WHERE channel=? AND speaker=? LIMIT 1",
-            (ch, user_id)
-        ).fetchone()
+        # raw + normalized 둘 다 매칭 — '유키 아스나' 같은 공백 페르소나 호환
+        ch_raw = f"dm-{name}"
+        ch_norm = f"dm-{_norm_name_for_channel(name)}"
+        if ch_raw == ch_norm:
+            has = conn.execute(
+                "SELECT 1 FROM conversations WHERE channel=? AND speaker=? LIMIT 1",
+                (ch_raw, user_id)
+            ).fetchone()
+        else:
+            has = conn.execute(
+                "SELECT 1 FROM conversations WHERE channel IN (?,?) AND speaker=? LIMIT 1",
+                (ch_raw, ch_norm, user_id)
+            ).fetchone()
         if has:
             talked.append(name)
     conn.close()

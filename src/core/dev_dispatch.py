@@ -250,22 +250,39 @@ async def run_batch(
         dev_agent.mark_processing(rid)
 
     # 3. subprocess
+    # ⚠ dev 자동 코드 수정(Opus claude)은 비활성화됨 — 아래 _run_subprocess 의 claude 호출 주석 처리.
+    #    여기서 먼저 차단해 claude 를 부르지 않고 깔끔하게 종료 (오류 없이 요청만 failed 마킹).
+    #    재활성화: GLIMI_DEV_DISPATCH=1 환경변수 + _run_subprocess 내부 주석 해제.
+    if os.environ.get("GLIMI_DEV_DISPATCH", "").strip().lower() not in ("1", "true", "on"):
+        msg = "dev 자동 코드 수정 비활성화 (claude Opus subprocess 주석 처리됨)"
+        log_writer.system(f"[dev] run #{run_id} skip — {msg}")
+        dev_agent.update_run_status(run_id, "failed", error=msg)
+        for rid in request_ids:
+            dev_agent.mark_failed(rid, msg)
+        return {"ok": False, "error": msg}
+
     log_writer.system(f"[dev] run #{run_id} starting Claude Code subprocess ({len(requests)} tasks)")
 
     full_output = []  # for parsing at end
 
     def _run_subprocess() -> subprocess.CompletedProcess:
-        return subprocess.run(
-            ["claude", "-p", prompt,
-             "--model", OPUS_MODEL,
-             "--permission-mode", "bypassPermissions",
-             "--output-format", "text"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-            timeout=DISPATCH_TIMEOUT_SEC,
-            env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
-        )
+        # === 비활성화: dev 자동 코드 수정 Opus 호출 (주석 처리, 삭제 금지) ===
+        # 위 가드(GLIMI_DEV_DISPATCH)가 여기 도달 전에 차단하므로 보통 호출 안 됨.
+        # 재활성화하려면 아래 return 주석 해제 + GLIMI_DEV_DISPATCH=1 설정.
+        # return subprocess.run(
+        #     ["claude", "-p", prompt,
+        #      "--model", OPUS_MODEL,
+        #      "--permission-mode", "bypassPermissions",
+        #      "--output-format", "text"],
+        #     cwd=str(PROJECT_ROOT),
+        #     capture_output=True,
+        #     text=True,
+        #     timeout=DISPATCH_TIMEOUT_SEC,
+        #     env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"},
+        # )
+        # 가드를 우회해 여기 도달한 경우라도 claude 를 부르지 않고 안전하게 실패시킴.
+        # (아래 except Exception 핸들러가 받아 요청을 failed 로 마킹 — 크래시 없음.)
+        raise RuntimeError("dev dispatch disabled — claude subprocess 주석 처리됨 (GLIMI_DEV_DISPATCH=1 로 재활성화)")
 
     loop = asyncio.get_event_loop()
     try:
