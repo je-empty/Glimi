@@ -127,29 +127,29 @@ def build_creator_prompt(p: dict) -> str:
             except Exception:
                 _u = None
                 _ra = None
-        _u = (_u or "(미설정)").strip() or "(미설정)"
+        _u = (_u or "(unset)").strip() or "(unset)"
         _universes.setdefault(_u, []).append(_r["name"])
-        _ra = (_ra or "(미설정)").strip() or "(미설정)"
+        _ra = (_ra or "(unset)").strip() or "(unset)"
         _races.setdefault(_ra, []).append(_r["name"])
     if _universes:
         universe_summary = "\n".join(
             f"- `{u}`: {', '.join(names)}" for u, names in sorted(_universes.items())
         )
         universe_summary_short = "/".join(
-            u for u in sorted(_universes) if u != "(미설정)"
-        ) or "human"
+            u for u in sorted(_universes) if u != "(unset)"
+        ) or "(none yet)"
     else:
-        universe_summary = "- (아직 등록된 세계관 없음)"
-        universe_summary_short = "human"
+        universe_summary = "- (no universes registered yet)"
+        universe_summary_short = "(none yet)"
     if _races:
         race_summary = "\n".join(
             f"- `{ra}`: {', '.join(names)}" for ra, names in sorted(_races.items())
         )
         race_summary_short = "/".join(
-            ra for ra in sorted(_races) if ra != "(미설정)"
+            ra for ra in sorted(_races) if ra != "(unset)"
         ) or "인간"
     else:
-        race_summary = "- (아직 등록된 종족 없음)"
+        race_summary = "- (no races registered yet)"
         race_summary_short = "인간"
 
     # Member roster with relationships + appearance snippets
