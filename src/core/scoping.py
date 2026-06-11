@@ -31,9 +31,34 @@ _HALLU_PAT_TIME_TOLD = re.compile(
 _HALLU_PAT_DIRECT_MSG = re.compile(
     r"^\s*(어\s+)?(DM|디엠|카톡|메시지|문자|연락|전화)\s*(왔|받았)\s*[!~ㅋㅎ.?]?"
 )
-_HALLU_PAT_EXTERNAL_SEND = re.compile(
-    r"(아빠|엄마|희준|키리토|오빠)[^.\n]{0,15}?(DM|디엠|메시지|카톡|연락|문자)[^.\n]{0,5}?(왔어|받았어|보냈어|보내줬어)"
-)
+# 외부 인물 DM 수신 클레임 — 주어는 일반 호칭 + DB 의 페르소나 이름으로 동적 구성.
+# 특정 커뮤니티의 캐릭터 이름을 코어에 하드코딩하지 않음 (5분 캐시).
+_KINSHIP_TERMS = ("아빠", "엄마", "오빠", "누나", "언니", "형")
+_EXTERNAL_SEND_CACHE: dict = {"pat": None, "ts": 0.0}
+_EXTERNAL_SEND_TTL_SEC = 300.0
+
+
+def _external_send_pattern() -> re.Pattern:
+    import time
+    now = time.monotonic()
+    if (_EXTERNAL_SEND_CACHE["pat"] is not None
+            and now - _EXTERNAL_SEND_CACHE["ts"] < _EXTERNAL_SEND_TTL_SEC):
+        return _EXTERNAL_SEND_CACHE["pat"]
+    names: list[str] = []
+    try:
+        conn = db.get_conn()
+        rows = conn.execute("SELECT name FROM agents WHERE type='persona'").fetchall()
+        conn.close()
+        names = [re.escape(n) for r in rows if (n := (r["name"] or "").strip())]
+    except Exception:
+        pass  # DB 미초기화 등 — 일반 호칭만으로 동작
+    subjects = "|".join(list(_KINSHIP_TERMS) + names)
+    pat = re.compile(
+        rf"({subjects})[^.\n]{{0,15}}?(DM|디엠|메시지|카톡|연락|문자)[^.\n]{{0,5}}?(왔어|받았어|보냈어|보내줬어)"
+    )
+    _EXTERNAL_SEND_CACHE["pat"] = pat
+    _EXTERNAL_SEND_CACHE["ts"] = now
+    return pat
 
 
 # 오너 "취침/종료" 시그널 — 매치되면 그 시점부터 N시간 효력.
@@ -58,7 +83,7 @@ def looks_hallucinated(text: str) -> str | None:
     for pat, label in (
         (_HALLU_PAT_TIME_MSG, "time-msg-arrival"),
         (_HALLU_PAT_DIRECT_MSG, "direct-msg-arrival"),
-        (_HALLU_PAT_EXTERNAL_SEND, "external-send"),
+        (_external_send_pattern(), "external-send"),
         (_HALLU_PAT_TIME_TOLD, "time-told"),
     ):
         m = pat.search(t)
@@ -80,9 +105,9 @@ QUIET_HOUR_END = 8     # 8시 전까지 (01:00 ~ 07:59)
 
 
 def is_quiet_hour() -> bool:
-    """현재 KST 시각이 quiet hour 범위 안인지.
+    """현재 KST 시각이 quiet hour 범위 안인지 (01:00 ~ 07:59).
 
-    23:00 ~ 06:59 면 True (자정 가로질러 처리). supervisor.check() 진입 직후 검사.
+    자정 가로지르는 범위도 처리. supervisor.check() 진입 직후 검사.
     """
     from datetime import datetime, timezone, timedelta
     kst = timezone(timedelta(hours=9))
