@@ -10,7 +10,7 @@ Glimi Tool System — Claude Code tool_use 패턴의 프롬프트 레벨 구현.
     dispatcher: handler 등록 + 실행 루틴
 """
 from .registry import ToolSpec, TOOLS, get_tool, tools_for_agent, set_handler
-from .parser import ToolCall, ParsedResponse, parse_response, strip_tool_blocks
+from .parser import ToolCall, ParsedResponse, parse_response, strip_tool_blocks, strip_control_tokens
 from .validator import ValidationError, validate_args, check_permission
 from .reference import build_reference, build_brief_list
 from .result import ToolResult, ok, fail, format_results_block
@@ -18,7 +18,7 @@ from .dispatcher import ToolContext, run_single, run_tools
 
 __all__ = [
     "ToolSpec", "TOOLS", "get_tool", "tools_for_agent", "set_handler",
-    "ToolCall", "ParsedResponse", "parse_response", "strip_tool_blocks",
+    "ToolCall", "ParsedResponse", "parse_response", "strip_tool_blocks", "strip_control_tokens",
     "ValidationError", "validate_args", "check_permission",
     "build_reference", "build_brief_list",
     "ToolResult", "ok", "fail", "format_results_block",

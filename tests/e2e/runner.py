@@ -64,6 +64,14 @@ def _setup_qa_server(bot_token: str):
         "QA_USER_BIRTH_YEAR",
         "QA_USER_GENDER",
         "GLIMI_IMAGEGEN",  # opt-in 도구 (로컬 LoRA 이미지 생성) — QA 에서 영구 활성
+        # LLM 백엔드 설정 — 로컬 모델 운영 테스트가 매 run 마다 날아가지 않도록 보존
+        "GLIMI_LLM_BACKEND",
+        "GLIMI_LLM_AGENT_MAP",
+        "GLIMI_OLLAMA_MODEL",
+        "GLIMI_OLLAMA_MODEL_MAP",
+        "GLIMI_OLLAMA_THINK",
+        "OLLAMA_KEEP_ALIVE",
+        "OLLAMA_HOST",
     )
     if env_path.exists():
         with open(env_path) as f:

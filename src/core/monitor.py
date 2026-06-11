@@ -156,13 +156,122 @@ def _intensity_band(intensity) -> str:
         return "low"
 
 
+def _supervisor_model_info() -> dict:
+    """supervisor 카드용 — judge(persona급) + inject(mgr급) 실제 모델 반영."""
+    jm, jp = _effective_model(_type_default_model("persona"), "persona")
+    im, ip = _effective_model(_type_default_model("mgr"), "mgr")
+    label = jm if jm == im else f"{jm} · {im}"
+    return {"model": label, "provider": jp if jp == ip else "mixed", "model_override": False}
+
+
+def _classify_provider(model: str) -> str:
+    """모델 태그 → UI provider 분류 (색상 구분용)."""
+    m = (model or "").lower()
+    if m.startswith("claude-"):
+        return "claude"
+    if m.startswith("gpt-") or m.startswith("openai"):
+        return "openai"
+    if ("llama" in m or "ollama" in m or "gemma" in m or "qwen" in m
+            or "mistral" in m or "/" in m or "local" in m):
+        return "local"
+    return "other"
+
+
+def _community_llm_env() -> dict:
+    """현재 커뮤니티 .env 의 LLM backend 설정 읽기.
+
+    대시보드는 멀티커뮤니티 서버 프로세스라 자기 os.environ 에 커뮤니티별 backend 설정이
+    없음. backend 설정은 각 커뮤니티 .env 에 있으므로 거기서 직접 읽어야 정확.
+    """
+    try:
+        from src import community
+        env_path = community.get_community_dir() / ".env"
+        if not env_path.exists():
+            return {}
+        out = {}
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k = k.strip()
+            if k in ("GLIMI_LLM_BACKEND", "GLIMI_LLM_AGENT_MAP", "GLIMI_OLLAMA_MODEL",
+                     "GLIMI_OLLAMA_MODEL_MAP"):
+                out[k] = v.strip().strip("'").strip('"')
+        return out
+    except Exception:
+        return {}
+
+
+def _effective_model(base_model: str, agent_type: str) -> tuple[str, str]:
+    """에이전트가 실제 호출하는 effective 모델 태그 + provider 반환.
+
+    runtime._provider_for / _ollama_model_arg 와 동일한 우선순위를 커뮤니티 .env 기준으로
+    재현 (os.environ 변경 없이 — 멀티커뮤니티 동시 요청 안전). 라우팅이 ollama 면 실제
+    로컬 모델 태그(예: gemma4-26b-a4b-abl:iq3)를, 아니면 base 모델을 보여줌.
+    """
+    import json as _json
+    cenv = _community_llm_env()
+
+    # provider 판정
+    provider = None
+    amap_raw = cenv.get("GLIMI_LLM_AGENT_MAP", "")
+    if amap_raw:
+        try:
+            m = _json.loads(amap_raw)
+            v = (m.get(agent_type) or m.get("_default") or "").strip().lower()
+            if v:
+                provider = "ollama" if v == "ollama" else "claude"
+        except Exception:
+            pass
+    if provider is None:
+        glob = cenv.get("GLIMI_LLM_BACKEND", "").strip().lower()
+        if glob == "ollama":
+            provider = "ollama"
+        elif glob in ("claude_cli", "anthropic_sdk", "claude"):
+            provider = "claude"
+    if provider is None and base_model.startswith("ollama:"):
+        provider = "ollama"
+    if provider is None:
+        provider = "claude"
+
+    if provider != "ollama":
+        return base_model, _classify_provider(base_model)
+
+    # ollama effective 태그: per-agent override > 타입별 MAP > 전역
+    if base_model.startswith("ollama:"):
+        tag = base_model.split(":", 1)[1]
+        if tag and tag != "local":
+            return tag, "local"
+    mmap_raw = cenv.get("GLIMI_OLLAMA_MODEL_MAP", "")
+    if mmap_raw:
+        try:
+            mm = _json.loads(mmap_raw)
+            v = (mm.get(agent_type) or mm.get("_default") or "").strip()
+            if v:
+                return v, "local"
+        except Exception:
+            pass
+    glob_model = cenv.get("GLIMI_OLLAMA_MODEL", "").strip()
+    return (glob_model or "local"), "local"
+
+
+def _type_default_model(agent_type: str) -> str:
+    """runtime.AGENT_MODELS 가 타입 기본값 single source of truth."""
+    try:
+        from src.core.runtime import AGENT_MODELS as _AM
+        return _AM.get(agent_type, "claude-sonnet-4-6")
+    except Exception:
+        return "claude-sonnet-4-6"
+
+
 def _get_agent_model(agent_id: str, agent_type: str) -> dict:
-    """에이전트 사용 모델 정보 조회.
+    """에이전트가 실제로 사용 중인 모델 정보 조회.
 
     우선순위:
-    1. agent_config 테이블에 model override 있으면 그것 (로컬 모델 스왑 대비)
-    2. runtime.AGENT_MODELS에 타입 기본값
-    3. 기본 "claude-sonnet-4-6"
+    1. agent_config 의 per-agent model override
+    2. runtime.AGENT_MODELS 타입 기본값
+    그 뒤 runtime 의 backend 라우팅(ollama/claude)을 반영해 effective 모델로 변환.
     """
     # per-agent override 체크
     override_model = None
@@ -180,27 +289,8 @@ def _get_agent_model(agent_id: str, agent_type: str) -> dict:
     except Exception:
         pass
 
-    # 기본값 — runtime.AGENT_MODELS 가 single source of truth.
-    # 이전엔 type_defaults 가 별도 하드코딩돼 runtime 바꿔도 대시보드엔 반영 X (QA 회귀).
-    try:
-        from src.core.runtime import AGENT_MODELS as _AM
-        default = _AM.get(agent_type, "claude-sonnet-4-6")
-    except Exception:
-        default = "claude-sonnet-4-6"
-    model = override_model or default
-
-    # provider 분류 (UI에서 색상 구분용)
-    if model.startswith("claude-"):
-        provider = "claude"
-    elif model.startswith("gpt-") or model.startswith("openai"):
-        provider = "openai"
-    elif "llama" in model.lower() or "ollama" in model.lower():
-        provider = "local"
-    elif "/" in model or "local" in model.lower():
-        provider = "local"
-    else:
-        provider = "other"
-
+    base = override_model or _type_default_model(agent_type)
+    model, provider = _effective_model(base, agent_type)
     return {"model": model, "provider": provider, "override": bool(override_model)}
 
 
@@ -857,10 +947,8 @@ def _get_supervisor_detail(sup_name: str) -> dict:
         "thinking_logs": thinking_logs,
         "primary_channel": "(다수 채널 감시)",
         "primary_chat": primary_chat,
-        # supervisor는 내부적으로 Haiku 기반 judge + SONNET 기반 inject 혼용
-        "model": "claude-haiku-4-5 · claude-sonnet-4-6",
-        "provider": "claude",
-        "model_override": False,
+        # supervisor는 내부적으로 judge(persona급) + inject(mgr급) 혼용 — 실제 backend 반영
+        **_supervisor_model_info(),
         "synthetic": True,
         "is_supervisor": True,
         # 활동 이벤트 — 모달이 모달 안 또는 별도 탭에서 표시.
