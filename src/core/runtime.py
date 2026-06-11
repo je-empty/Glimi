@@ -1194,6 +1194,7 @@ class AgentRuntime:
     def _consume_response_stream(
         self, line_iter, *, agent_id: str, name: str, channel: str,
         max_messages: int, on_message: Callable[[str], None],
+        drain_for_tools: bool = False,
     ) -> tuple[list[str], list[str], Optional[str]]:
         """라인 이터레이터를 소비해 (messages, tool_buffer, stop_reason) 반환.
 
@@ -1202,6 +1203,11 @@ class AgentRuntime:
         - <tools> 블록은 tool_buffer 로 분리 (chat 방출 금지)
         - [MSG]/placeholder strip, 이름 prefix 제거, leak 필터, dedup
         - 통과한 라인은 on_message 콜백으로 즉시 방출
+
+        drain_for_tools: True 면 max_messages 도달 후에도 break 하지 않고 chat 방출만
+        멈춘 채 나머지 라인을 계속 소비해 뒤따라오는 <tools> 블록을 회수. 수다 많은
+        로컬 모델이 chat 을 잔뜩 뱉은 뒤 맨 끝에 도구를 붙여 도구가 잘리던 회귀 fix.
+        (claude 는 max 시 process kill 이 더 경제적이라 False — break.)
 
         stop_reason: None(정상 종료) | "max"(최대 응답 도달) | "error"(에러 감지)
         호출자가 stop_reason 으로 백엔드별 teardown(process.kill 등) 결정.
@@ -1212,6 +1218,7 @@ class AgentRuntime:
         tool_buffer: list[str] = []
         in_tools = False
         stop_reason: Optional[str] = None
+        maxed = False  # max 도달 후 chat 방출 중단 (drain 모드)
 
         for line in line_iter:
             raw_line = line.rstrip("\n")
@@ -1230,6 +1237,10 @@ class AgentRuntime:
                 tool_buffer.append(raw_line)
                 continue
 
+            # max 도달 후 drain 모드 — chat 은 더 안 내보내고 <tools> 만 기다림
+            if maxed:
+                continue
+
             # [MSG] 태그 + 프롬프트 example placeholder ({name}/{topic} 등) 제거.
             # 영어 lowercase 식별자만 한정 — 한국어/이모지는 안 건드림.
             line = line.replace("[MSG]", "")
@@ -1240,8 +1251,12 @@ class AgentRuntime:
             if not cleaned:
                 continue
 
-            # 마크다운 코드펜스 단독 라인 drop — 로컬 모델이 <tools> 를 ```로 감싸는 케이스
-            if _re.fullmatch(r'`{3,}[a-zA-Z]*', cleaned):
+            # 마크다운 코드펜스 / 구분선 / reasoning 잔여물 단독 라인 drop.
+            # 로컬 모델(gemma)이 `---`, `think`, `===`, ``` 등을 채팅으로 뱉던 회귀.
+            if _re.fullmatch(r'`{3,}[a-zA-Z]*|[-=_*~]{2,}|#{1,6}', cleaned):
+                continue
+            if _re.fullmatch(r'(?:think|thinking|reasoning|analysis|response|answer|output)',
+                             cleaned, _re.IGNORECASE):
                 continue
 
             # LLM 에러 메시지 누출 차단 (사용량 한도, API 에러 등)
@@ -1280,8 +1295,12 @@ class AgentRuntime:
             on_message(cleaned)
 
             if len(messages) >= max_messages:
-                log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
                 stop_reason = "max"
+                if drain_for_tools:
+                    # break 하지 않고 chat 방출만 중단 — 뒤따라오는 <tools> 블록 회수.
+                    maxed = True
+                    continue
+                log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
                 break
 
         return messages, tool_buffer, stop_reason
@@ -1381,6 +1400,7 @@ class AgentRuntime:
                 messages, tool_buffer, _stop = self._consume_response_stream(
                     line_iter, agent_id=agent_id, name=name, channel=channel,
                     max_messages=max_messages, on_message=on_message,
+                    drain_for_tools=True,  # 로컬 모델: chat 뒤 <tools> 가 잘리지 않게
                 )
                 if tool_buffer:
                     try:
