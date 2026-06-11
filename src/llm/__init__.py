@@ -41,6 +41,9 @@ def _get_backend_instance(name: str) -> Optional[LLMBackend]:
         b = ClaudeCLIBackend()
     elif name == "anthropic_sdk":
         b = AnthropicSDKBackend()
+    elif name == "ollama":
+        from .ollama import OllamaBackend
+        b = OllamaBackend()
     else:
         return None
     _BACKENDS[name] = b
