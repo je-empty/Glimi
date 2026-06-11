@@ -450,6 +450,24 @@ async def _process_and_send(channel, agent_id, msg, is_mgr, guild, sent_msgs):
         db.log_message(ch_name, agent_id, part, emotion=emotion)
 
 
+def _check_owner_end_and_idle_universe(user_message: str, channel_personas: set):
+    """오너 메시지에 잠 시그널 있으면 같은 universe internal-* 채널 강제 idle.
+
+    환각 방지 (오너 잠든 시간에 페르소나끼리 마크 게임 시뮬 등) 의 마지막 안전망.
+    """
+    try:
+        from src.core.scoping import is_owner_end_signal, idle_internal_channels_for_universe
+        if not is_owner_end_signal(user_message):
+            return
+        idled = idle_internal_channels_for_universe(channel_personas, reason="owner end signal")
+        if idled:
+            log_writer.system(
+                f"[handlers] owner end signal — {len(idled)}개 channel idle: {sorted(idled)[:3]}"
+            )
+    except Exception as e:
+        log_writer.system(f"[handlers] _check_owner_end_and_idle_universe error: {e}")
+
+
 async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, user_message: str):
     """1:1 채널 메시지 처리 — 스트리밍: 메시지 생성 즉시 디스코드 전송"""
     from src.community import is_maintenance_mode
@@ -459,6 +477,9 @@ async def handle_dm(message: discord.Message, agent_id: str, channel_name: str, 
     profile = load_profile(agent_id)
     if not profile:
         return
+
+    # Owner end signal hook — "잘게/굿밤" 등 종료 시그널 시 same-universe internal-* 강제 idle
+    _check_owner_end_and_idle_universe(user_message, {agent_id})
 
     # 튜토리얼 collect_profile phase 에선 오너 메시지에서 즉시 프로필 자동 추출.
     # 유나가 update_profile 툴 호출 누락해도 다음 턴에 DB 가 최신 상태 → 재질문 방지.
@@ -578,6 +599,9 @@ async def handle_group(message: discord.Message, channel_name: str, user_message
             a for a in db.list_agents()
             if a["id"] in participant_ids and a["type"] == "persona"
         ]
+        # Owner end signal hook — 그룹 참여 페르소나 set 기준 universe scoped idle
+        group_personas = {a["id"] for a in persona_agents}
+        _check_owner_end_and_idle_universe(user_message, group_personas)
     else:
         persona_agents = _resolve_group_members(channel_name)
 
