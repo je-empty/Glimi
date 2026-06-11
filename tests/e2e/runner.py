@@ -14,6 +14,7 @@ Glimi E2E Test Runner — 튜토리얼 자동 테스트
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -301,7 +302,11 @@ def _wait_for_bot_ready(timeout=60) -> bool:
 def _start_test_user(token: str, turns: int = 150, seed_prompt: str = "") -> subprocess.Popen:
     """테스트 유저 봇 시작.
     seed_prompt: 비어있지 않으면 test_user 의 초기 응답에 해당 지시 주입 —
-    QA resume 시 "채린이한테 대시보드 바로잡기" 같은 시나리오 지시용."""
+    QA resume 시 "채린이한테 대시보드 바로잡기" 같은 시나리오 지시용.
+
+    stdout 은 PIPE 가 아니라 파일로 — PIPE 는 runner 가 종료까지 안 읽어서
+    64KB 버퍼가 차면 test bot 이 write() 에서 영구 블록 (118턴쯤에서 실측 교착).
+    """
     cmd = [
         sys.executable, "-m", "tests.e2e.test_user_bot",
         "--token", token,
@@ -309,14 +314,17 @@ def _start_test_user(token: str, turns: int = 150, seed_prompt: str = "") -> sub
     ]
     if seed_prompt:
         cmd.extend(["--seed-prompt", seed_prompt])
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = RESULTS_DIR / "testuser-latest.log"
+    out_fh = open(out_path, "w", encoding="utf-8")
     proc = subprocess.Popen(
         cmd,
         cwd=str(PROJECT_ROOT),
-        stdout=subprocess.PIPE,
+        stdout=out_fh,
         stderr=subprocess.STDOUT,
         text=True,
     )
-    print(f"[Runner] 테스트 유저 봇 시작 (PID {proc.pid})")
+    print(f"[Runner] 테스트 유저 봇 시작 (PID {proc.pid}, log={out_path.name})")
     return proc
 
 
@@ -430,14 +438,18 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
         if dupes > 0:
             result["issues"].append(f"프로필 중복 수정 {dupes}회")
 
-        # Race condition 체크 (같은 초에 동일 에이전트 2번 호출)
+        # Race condition 체크 (같은 초에 "동일" 에이전트 2번 호출 — 서로 다른
+        # 에이전트의 동시 호출은 병렬 채널 정상 동작이라 제외)
+        _agent_pat = re.compile(r"\[(agent-[a-z]+-\d+)\]")
         cli_calls = [l for l in log_text.split("\n") if "Claude CLI 호출" in l]
         for i in range(1, len(cli_calls)):
-            if cli_calls[i][:8] == cli_calls[i-1][:8]:  # 같은 시간
-                agent_a = cli_calls[i].split("]")[0] if "]" in cli_calls[i] else ""
-                agent_b = cli_calls[i-1].split("]")[0] if "]" in cli_calls[i-1] else ""
-                if agent_a == agent_b:
-                    result["issues"].append("동시 응답 호출 감지 (race condition)")
+            if cli_calls[i][:10] == cli_calls[i-1][:10]:  # 같은 시간 ([HH:MM:SS])
+                ma = _agent_pat.search(cli_calls[i])
+                mb = _agent_pat.search(cli_calls[i-1])
+                if ma and mb and ma.group(1) == mb.group(1):
+                    result["issues"].append(
+                        f"동시 응답 호출 감지 (race condition): {ma.group(1)}"
+                    )
                     break
 
     # ── DB 기반 세밀 검증 ─────────────────────────────────
@@ -557,11 +569,13 @@ def run_single_test(bot_token: str, test_token: str, run_id: str,
 
     elapsed = time.time() - start_time
 
-    # 7. 테스트 유저 봇 출력
-    stdout = test_proc.stdout.read() if test_proc.stdout else ""
-    if stdout:
-        print("\n[TestUser 출력]")
-        print(stdout[-2000:])  # 마지막 2000자
+    # 7. 테스트 유저 봇 출력 (파일에서 tail)
+    tu_log = RESULTS_DIR / "testuser-latest.log"
+    if tu_log.exists():
+        stdout = tu_log.read_text(encoding="utf-8", errors="replace")
+        if stdout:
+            print("\n[TestUser 출력]")
+            print(stdout[-2000:])  # 마지막 2000자
 
     # 8. Glimi 봇 종료
     _kill_proc(glimi_proc)
