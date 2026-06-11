@@ -85,43 +85,70 @@ if [ "$IMAGEGEN" = "1" ]; then
 fi
 
 # ── --local-models: Ollama 로컬 LLM 자동 세팅 (idempotent) ──
+# 티어 (GLIMI_LOCAL_TIER, 기본 standard) — 상세: docs/local_models.md
+#   lite     = e2b 단일      (8GB VRAM / 16GB Mac)  · 최속, 도구 정확도 낮음
+#   standard = e4b 단일      (12GB VRAM / 16GB Mac) · 균형 (기본)
+#   quality  = iq3-26b 단일  (12GB VRAM / 24GB Mac) · 도구 3/3, 약간 오프로드. ※IQ3 gguf 임포트 필요
+#   prod     = 26b 매니저 + e4b 그 외 분리 (24GB+ VRAM / 32GB Mac) · 최고품질. ※IQ3 임포트 필요
+_E2B="huihui_ai/gemma-4-abliterated:e2b"
+_E4B="huihui_ai/gemma-4-abliterated:e4b"
+_IQ3="gemma4-26b-a4b-abl:iq3"
 if [ "$LOCAL_MODELS" = "1" ]; then
     export GLIMI_LLM_BACKEND=ollama
-    export GLIMI_OLLAMA_MODEL="${GLIMI_OLLAMA_MODEL:-huihui_ai/gemma-4-abliterated:e4b}"
     export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-30m}"
+    TIER="${GLIMI_LOCAL_TIER:-standard}"
 
-    # 1) Ollama 설치 확인 — 없으면 brew 로 설치
+    PULL_MODEL=""       # ollama pull 로 받을 모델 (레지스트리)
+    IMPORT_MODEL=""     # gguf 임포트 필요 모델 (pull 불가)
+    case "$TIER" in
+        lite)     PRIMARY="$_E2B"; PULL_MODEL="$_E2B" ;;
+        standard) PRIMARY="$_E4B"; PULL_MODEL="$_E4B" ;;
+        quality)  PRIMARY="$_IQ3"; IMPORT_MODEL="$_IQ3" ;;
+        prod)     PRIMARY="$_E4B"; PULL_MODEL="$_E4B"; IMPORT_MODEL="$_IQ3"
+                  export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-2}"
+                  export GLIMI_OLLAMA_MODEL_MAP="${GLIMI_OLLAMA_MODEL_MAP:-{\"mgr\":\"$_IQ3\",\"creator\":\"$_IQ3\",\"persona\":\"$_E4B\",\"_default\":\"$_E4B\"}}" ;;
+        *) echo -e "${RED}[local] 알 수 없는 티어: $TIER (lite|standard|quality|prod)${NC}"; exit 1 ;;
+    esac
+    export GLIMI_OLLAMA_MODEL="${GLIMI_OLLAMA_MODEL:-$PRIMARY}"
+
+    # 1) Ollama 설치 — 없으면 brew
     if ! command -v ollama >/dev/null 2>&1; then
         if command -v brew >/dev/null 2>&1; then
             echo -e "${CYAN}[local] Ollama 설치 중 (brew)...${NC}"
             brew install ollama || { echo -e "${RED}[local] Ollama 설치 실패${NC}"; exit 1; }
         else
-            echo -e "${RED}[local] Ollama 미설치 + Homebrew 없음${NC}"
-            echo -e "  https://ollama.com/download 에서 설치 후 다시 실행하세요"
-            exit 1
+            echo -e "${RED}[local] Ollama 미설치 + Homebrew 없음 — https://ollama.com/download${NC}"; exit 1
         fi
     fi
 
-    # 2) 서버 기동 확인 — 안 떠 있으면 백그라운드 시작
+    # 2) 서버 기동
     if ! ollama ps >/dev/null 2>&1; then
         echo -e "${CYAN}[local] Ollama 서버 시작...${NC}"
         nohup ollama serve > /tmp/ollama-serve.log 2>&1 &
-        for _i in $(seq 1 15); do
-            ollama ps >/dev/null 2>&1 && break
-            sleep 1
-        done
+        for _i in $(seq 1 15); do ollama ps >/dev/null 2>&1 && break; sleep 1; done
         ollama ps >/dev/null 2>&1 || { echo -e "${RED}[local] Ollama 서버 시작 실패 (/tmp/ollama-serve.log)${NC}"; exit 1; }
     fi
 
-    # 3) 기본 모델 — 이미 있으면 스킵
-    if ollama list 2>/dev/null | grep -Fq "$GLIMI_OLLAMA_MODEL"; then
-        echo -e "${GREEN}[local] 모델 준비됨: ${GLIMI_OLLAMA_MODEL} (스킵)${NC}"
-    else
-        echo -e "${CYAN}[local] 모델 다운로드: ${GLIMI_OLLAMA_MODEL} (~10GB, 1회)${NC}"
-        ollama pull "$GLIMI_OLLAMA_MODEL" || { echo -e "${RED}[local] 모델 다운로드 실패${NC}"; exit 1; }
+    # 3) pull 모델 (idempotent)
+    if [ -n "$PULL_MODEL" ]; then
+        if ollama list 2>/dev/null | grep -Fq "$PULL_MODEL"; then
+            echo -e "${GREEN}[local] 모델 준비됨: ${PULL_MODEL} (스킵)${NC}"
+        else
+            echo -e "${CYAN}[local] 모델 다운로드: ${PULL_MODEL} (1회)${NC}"
+            ollama pull "$PULL_MODEL" || { echo -e "${RED}[local] 다운로드 실패${NC}"; exit 1; }
+        fi
     fi
-    echo -e "${GREEN}[local] 로컬 모델 모드 활성 (backend=ollama, model=${GLIMI_OLLAMA_MODEL})${NC}"
-    echo -e "  매니저 정확도용 분리 구성(26b)은 docs/local_models.md 참고"
+
+    # 4) 임포트 필요 모델 — 레지스트리에 없으므로 자동 다운로드 불가. 안내만.
+    if [ -n "$IMPORT_MODEL" ] && ! ollama list 2>/dev/null | grep -Fq "$IMPORT_MODEL"; then
+        echo -e "${YELLOW}[local] '${TIER}' 티어는 ${IMPORT_MODEL} 가 필요한데 미등록.${NC}"
+        echo -e "  GGUF 임포트 후 다시 실행: ${CYAN}ollama create ${IMPORT_MODEL} -f Modelfile${NC}"
+        echo -e "  (절차: docs/local_models.md) — 우선 standard(e4b)로 폴백하려면 GLIMI_LOCAL_TIER=standard"
+        exit 1
+    fi
+
+    echo -e "${GREEN}[local] 로컬 모드 활성 — tier=${TIER}, model=${GLIMI_OLLAMA_MODEL}${NC}"
+    [ "$TIER" = "prod" ] && echo -e "  매니저/크리에이터=${_IQ3}, 그 외=${_E4B} (분리)"
 fi
 
 if [ "$SETUP_ONLY" = "1" ]; then
