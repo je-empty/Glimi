@@ -35,9 +35,13 @@ def _base_url() -> str:
 
 
 def _resolve_model(model: str) -> str:
-    """env override 가 있으면 그것 우선. Claude 모델명이 그대로 들어오는 경로 회피용."""
-    override = os.environ.get("GLIMI_OLLAMA_MODEL", "").strip()
-    return override or model
+    """모델 태그 결정. 호출자(runtime._ollama_model_arg)가 구체 태그를 지정했으면
+    그대로 사용 — per-agent/타입별 모델 분리 지원. Claude 모델명이 그대로 들어오는
+    경로 / "local" 플레이스홀더 / 빈 값만 GLIMI_OLLAMA_MODEL env 로 폴백."""
+    m = (model or "").strip()
+    if m and m != "local" and not m.startswith("claude"):
+        return m
+    return os.environ.get("GLIMI_OLLAMA_MODEL", "").strip() or m or "local"
 
 
 def _think_setting():
