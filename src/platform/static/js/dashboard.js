@@ -308,13 +308,17 @@ function chIcon(ch) {
 }
 
 // ==== Theme ====
+function _themeIcon() {
+  document.getElementById('theme-toggle').innerHTML =
+    `<i class="ti ${THEME === 'light' ? 'ti-sun' : 'ti-moon'}" aria-hidden="true"></i>`;
+}
 document.getElementById('theme-toggle').addEventListener('click', () => {
   THEME = THEME === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', THEME);
-  document.getElementById('theme-toggle').textContent = THEME === 'light' ? '☀' : '🌙';
+  _themeIcon();
   localStorage.setItem('glimi-theme', THEME);
 });
-document.getElementById('theme-toggle').textContent = THEME === 'light' ? '☀' : '🌙';
+_themeIcon();
 
 // ==== Supervisor view toggle ====
 let SHOW_SUP = localStorage.getItem('glimi-show-supervisors') === 'true';
@@ -539,7 +543,7 @@ function renderAgent(a, clickable=true) {
       <div class="state-bar-fill"></div>
       <div class="state-bar-shine"></div>
       <div class="state-bar-text">
-        ${a.thinking ? '🧠 Thinking<span class="state-dots"></span>' : (a.speaking ? '💬 Speaking<span class="state-dots"></span>' : '')}
+        ${a.thinking ? '<i class="ti ti-brain" aria-hidden="true"></i> Thinking<span class="state-dots"></span>' : (a.speaking ? '<i class="ti ti-message-circle" aria-hidden="true"></i> Speaking<span class="state-dots"></span>' : '')}
         ${(a.thinking || a.speaking) ? `<span style="opacity:0.75;font-weight:400;font-size:11px;letter-spacing:0">${fmtElapsed(elapsed)}</span>` : ''}
       </div>
     </div>
