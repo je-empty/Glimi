@@ -43,8 +43,8 @@ AGENT_MODELS = {
     "dev": "claude-sonnet-4-6",      # triage / chat 응답은 Sonnet — 코드 수정은 별도 dev_dispatch_fix subprocess 가 Opus
 }
 AGENT_TASK_MODELS = {
-    "creator": "claude-opus-4-6",  # 프로필 JSON 생성은 opus
-    "dev": "claude-opus-4-7",      # 실제 코드 수정 subprocess (dev_dispatch_fix) — 최신 Opus
+    "creator": "claude-opus-4-8",  # 프로필 JSON 생성은 opus
+    "dev": "claude-opus-4-8",      # 실제 코드 수정 subprocess (dev_dispatch_fix) — 최신 Opus
 }
 
 # 대시보드에서 선택 가능한 모델 카탈로그.
@@ -52,17 +52,23 @@ AGENT_TASK_MODELS = {
 # kind: "cloud" | "local" — UI 에서 ☁️/🖥️ 아이콘으로 구분.
 # provider: "claude" | "ollama" | "vllm" | "llamacpp" — 백엔드 선택에도 사용.
 AVAILABLE_MODELS = [
+    {"id": "claude-opus-4-8", "label": "Opus 4.8",
+     "kind": "cloud", "provider": "claude", "tier": "powerful", "icon": "☁️"},
     {"id": "claude-sonnet-4-6", "label": "Sonnet 4.6",
      "kind": "cloud", "provider": "claude", "tier": "balanced", "icon": "☁️"},
     {"id": "claude-haiku-4-5", "label": "Haiku 4.5",
      "kind": "cloud", "provider": "claude", "tier": "fast", "icon": "☁️"},
-    # 로컬 (Ollama) — 실제 모델 태그는 GLIMI_OLLAMA_MODEL env 가 override.
-    # 이 id 는 "ollama 백엔드로 라우팅" 마커 역할 (src/llm/ollama.py _resolve_model 참조).
-    {"id": "ollama:local", "label": "로컬 (Ollama)",
+    # 로컬 (Ollama) — id 의 "ollama:" prefix 가 백엔드 라우팅 마커.
+    # "ollama:local" = GLIMI_OLLAMA_MODEL env 따름. 구체 태그는 그 모델 강제 (per-agent).
+    {"id": "ollama:local", "label": "로컬 (전역 설정)",
      "kind": "local", "provider": "ollama", "tier": "balanced", "icon": "🖥️"},
-    # 향후 추가 예: vllm / llamacpp provider.
-    # {"id": "vllm:mistral-small-3", "label": "Mistral Small 3",
-    #  "kind": "local", "provider": "vllm", "tier": "balanced", "icon": "🖥️"},
+    {"id": "ollama:gemma4-26b-a4b-abl:iq3", "label": "Gemma4 26B-A4B (local)",
+     "kind": "local", "provider": "ollama", "tier": "quality", "icon": "🖥️"},
+    {"id": "ollama:huihui_ai/gemma-4-abliterated:e4b", "label": "Gemma4 E4B (local)",
+     "kind": "local", "provider": "ollama", "tier": "balanced", "icon": "🖥️"},
+    {"id": "ollama:huihui_ai/gemma-4-abliterated:e2b", "label": "Gemma4 E2B (local)",
+     "kind": "local", "provider": "ollama", "tier": "fast", "icon": "🖥️"},
+    # 향후: vllm / llamacpp provider.
 ]
 
 
@@ -77,7 +83,7 @@ def _resolve_agent_model(agent_id: str, agent_type: str) -> str:
     except Exception:
         pass
     return AGENT_MODELS.get(agent_type, "claude-sonnet-4-6")
-OPUS_MODEL = "claude-opus-4-6"
+OPUS_MODEL = "claude-opus-4-8"
 
 
 def _provider_for(agent_type: str, model: str) -> str:
