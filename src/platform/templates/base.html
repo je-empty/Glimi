@@ -70,7 +70,9 @@
     function _applyThemeIcon() {
       var t = document.documentElement.getAttribute('data-theme') || 'light';
       var el = document.getElementById('theme-icon');
-      if (el) el.textContent = t === 'dark' ? '☀️' : '🌙';
+      if (el) el.innerHTML = t === 'dark'
+        ? '<i class="ti ti-sun" aria-hidden="true"></i>'
+        : '<i class="ti ti-moon" aria-hidden="true"></i>';
     }
     function toggleTheme() {
       var cur = document.documentElement.getAttribute('data-theme') || 'light';

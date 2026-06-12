@@ -95,12 +95,12 @@ a:hover { text-decoration: underline; }
 .gp-user-btn {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--panel2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 999px;
-  padding: 4px 10px 4px 4px; cursor: pointer; font-size: 13px;
+  border: 0; border-radius: 999px;
+  padding: 4px 11px 4px 4px; cursor: pointer; font-size: 13px;
   font-family: inherit; font-weight: 500;
-  transition: border-color 0.12s;
+  transition: background 0.15s ease-out;
 }
-.gp-user-btn:hover { border-color: var(--accent); }
+.gp-user-btn:hover { background: var(--panel3); }
 .gp-user-avatar {
   width: 24px; height: 24px; border-radius: 50%;
   background: var(--accent); color: var(--accent-fg);
@@ -156,19 +156,22 @@ a:hover { text-decoration: underline; }
 .gp-main { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
 
 /* ── Common UI components ────────────────────────────────── */
+/* 컨트롤 3문법 (design_system §5.1) — quiet pill / 잉크 CTA / 위험은 텍스트색 */
 button, .btn {
-  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
-  font-family: inherit;
+  background: var(--panel2); color: var(--text-dim, var(--muted)); border: 0;
+  padding: 7px 15px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  font-weight: 500; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
 }
-button:hover, .btn:hover { background: var(--border); }
+button:hover, .btn:hover { background: var(--panel3); color: var(--text); }
 button:disabled, .btn:disabled, button[disabled] {
   opacity: 0.4; cursor: not-allowed; pointer-events: none;
 }
-button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 500; }
-button.primary:hover { opacity: 0.92; background: var(--accent); }
-button.danger { background: transparent; color: var(--err); border-color: var(--err); }
-button.danger:hover { background: var(--err); color: var(--accent-fg); }
+button.primary, .btn.primary { background: var(--accent); color: var(--accent-fg); }
+button.primary:hover, .btn.primary:hover { background: var(--accent); opacity: 0.92; color: var(--accent-fg); }
+button.danger { background: var(--panel2); color: var(--err); }
+button.danger:hover { background: color-mix(in srgb, var(--err) 10%, var(--panel2)); color: var(--err); }
 
 input, select {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
@@ -177,13 +180,19 @@ input, select {
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
 
 .card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow);
+  background: var(--panel); border: 0; border-radius: 14px;
+  padding: 18px; margin-bottom: 16px;
 }
 
-.pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
-.pill.running { background: var(--ok); color: #ffffff; }
-.pill.stopped { background: var(--muted); color: #ffffff; }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.05em; background: var(--panel2); color: var(--muted);
+}
+.pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.pill.running { color: var(--ok); }
+.pill.running::before { background: var(--ok); }
+.pill.stopped { color: var(--muted); }
 
 .err { color: var(--err); font-size: 13px; margin-top: 8px; }
 .muted { color: var(--muted); font-size: 13px; }
@@ -191,4 +200,15 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 code {
   background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 0.9em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── 모션 (design_system §4 — 진입 페이드만, hover transform 금지) ── */
+@keyframes gp-rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.gp-main { animation: gp-rise-in 0.3s ease-out; }
+.gp-user-dropdown.open { animation: gp-rise-in 0.16s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .gp-main, .gp-user-dropdown.open { animation: none; }
 }

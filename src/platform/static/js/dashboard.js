@@ -320,6 +320,28 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
 });
 _themeIcon();
 
+// ==== 레일 슬라이딩 썸 (je-empty pillseg 모션) ====
+const _railEl = document.getElementById('tabs');
+const _railThumb = document.createElement('span');
+_railThumb.className = 'rail-thumb';
+_railEl.appendChild(_railThumb);
+function positionRailThumb(instant) {
+  const btn = _railEl.querySelector('button.active');
+  if (!btn || !btn.offsetHeight) return;
+  if (instant) _railThumb.style.transition = 'none';
+  _railThumb.style.transform = 'translateY(' + btn.offsetTop + 'px)';
+  _railThumb.style.height = btn.offsetHeight + 'px';
+  _railThumb.classList.add('ready');
+  if (instant) { void _railThumb.offsetHeight; _railThumb.style.transition = ''; }
+}
+// 탭 클릭 → active 토글이 끝난 다음 태스크에서 이동 (rAF 는 백그라운드 탭에서 굶을 수 있어 setTimeout)
+_railEl.addEventListener('click', () => setTimeout(() => positionRailThumb(false), 0));
+window.addEventListener('resize', () => positionRailThumb(true));
+// supervisor 토글로 sup-tab 표시가 바뀌면 오프셋 재계산
+document.getElementById('supervisor-toggle')?.addEventListener('click', () =>
+  setTimeout(() => positionRailThumb(true), 0));
+positionRailThumb(true);
+
 // ==== Supervisor view toggle ====
 let SHOW_SUP = localStorage.getItem('glimi-show-supervisors') === 'true';
 function applySupVisibility() {
