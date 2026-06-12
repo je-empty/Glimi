@@ -26,6 +26,10 @@ setlocal EnableDelayedExpansion
 chcp 65001 >nul 2>nul
 cd /d "%~dp0"
 
+REM === --help before any side effect (venv/deps/cleanup) ===
+if /i "%~1"=="--help" goto show_help
+if /i "%~1"=="-h" goto show_help
+
 REM === venv auto setup ===
 if not exist .venv (
     echo [setup] Creating virtualenv...
@@ -53,6 +57,13 @@ if not exist "%MARKER%" (
     )
     pip install -q -e . 2>nul
     echo. > "%MARKER%"
+)
+
+REM === load root .env (propagate ANTHROPIC_API_KEY / DISCORD_BOT_TOKEN to platform + child bots) ===
+if exist .env (
+    for /f "usebackq eol=# tokens=1,* delims==" %%a in (".env") do (
+        if not "%%a"=="" set "%%a=%%b"
+    )
 )
 
 if not exist dev mkdir dev
@@ -249,6 +260,20 @@ exit /b 0
 echo   Glimi Platform
 echo   URL: http://%HOST%:%PORT%
 echo.
+
+REM === LLM credential check (default Claude path) ===
+if not "%LOCAL_MODELS%"=="1" if not defined ANTHROPIC_API_KEY (
+    where claude >nul 2>nul
+    if errorlevel 1 (
+        echo [setup] WARNING: no Claude credential - agents will return empty replies.
+        echo   Pick one:
+        echo     1^) copy .env.example .env  then fill ANTHROPIC_API_KEY  ^(https://console.anthropic.com/settings/keys^)
+        echo     2^) log in with the claude CLI  ^(Claude Code users^)
+        echo     3^) local models: run.bat --local-models  ^(no key, docs/local_models.md^)
+        echo   Dashboard still starts. Restart after configuring to enable chat.
+        echo.
+    )
+)
 
 REM Bootstrap accounts on first run
 python -m src.platform.accounts list >nul 2>nul

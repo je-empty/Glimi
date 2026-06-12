@@ -30,6 +30,13 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# ── --help 는 부작용(venv 생성·deps 설치·프로세스 정리) 전에 즉시 처리 ──
+case "${1:-}" in
+    --help|-h)
+        grep '^#' "$0" | sed -n '2,23p' | sed 's/^# \?//'
+        exit 0 ;;
+esac
+
 # ── 자동 세팅 ──────────────────────────────────────────
 if [ ! -d .venv ]; then
     echo -e "${CYAN}[setup] 가상환경 생성 중...${NC}"
@@ -37,6 +44,16 @@ if [ ! -d .venv ]; then
     echo -e "${GREEN}[setup] 가상환경 생성 완료${NC}"
 fi
 source .venv/bin/activate
+
+# ── 루트 .env 로드 ────────────────────────────────────
+# 여기서 export 하면 플랫폼 + 자식 봇 프로세스가 상속 (ANTHROPIC_API_KEY / DISCORD_BOT_TOKEN 등).
+# 커뮤니티별 .env 는 자식 봇이 override=True 로 다시 로드하므로 충돌 없음.
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env 2>/dev/null || echo -e "${YELLOW}[setup] .env 파싱 경고 — 형식 확인${NC}"
+    set +a
+fi
 
 MARKER=".venv/.deps_installed"
 if [ ! -f "$MARKER" ] || [ requirements.txt -nt "$MARKER" ]; then
@@ -266,6 +283,18 @@ done
 echo -e "${CYAN}◈ Glimi Platform${NC}"
 echo -e "  URL: ${GREEN}http://${HOST}:${PORT}${NC}"
 echo ""
+
+# ── LLM 자격증명 점검 (기본 Claude 경로) ──────────────
+# 로컬 모드가 아닌데 키도 claude CLI 도 없으면 에이전트가 빈 응답만 낸다 → 미리 명확히 안내.
+if [ "$LOCAL_MODELS" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && ! command -v claude >/dev/null 2>&1; then
+    echo -e "${YELLOW}[setup] ⚠ Claude 자격증명이 없다 — 에이전트가 응답을 못 만든다.${NC}"
+    echo -e "  다음 중 하나:"
+    echo -e "    1) ${CYAN}cp .env.example .env${NC} 후 ${CYAN}ANTHROPIC_API_KEY${NC} 채우기 (https://console.anthropic.com/settings/keys)"
+    echo -e "    2) ${CYAN}claude${NC} CLI 로그인 (Claude Code 사용자)"
+    echo -e "    3) 로컬 모델로: ${CYAN}./run.sh --local-models${NC}  (키 불필요, docs/local_models.md)"
+    echo -e "  대시보드는 계속 뜬다. 위 설정 후 재시작하면 대화가 동작.${NC}"
+    echo ""
+fi
 
 python -m src.platform.accounts list > /dev/null 2>&1 || python -m src.platform.accounts bootstrap
 

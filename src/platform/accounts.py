@@ -7,7 +7,7 @@
     python -m src.platform.accounts reset <username> --password PW
     python -m src.platform.accounts grant <username> <community_id>
     python -m src.platform.accounts revoke <username> <community_id>
-    python -m src.platform.accounts bootstrap   # admin/1234 + test/1234 초기 생성
+    python -m src.platform.accounts bootstrap   # admin 계정 생성 (비번은 프롬프트/env/랜덤)
 """
 import argparse
 import hashlib
@@ -128,15 +128,53 @@ def user_can_access(user: dict, community_id: str) -> bool:
 ADMIN_DEFAULT_COMMUNITIES = ["dev", "private", "demo", "qa"]
 
 
+def _resolve_admin_password() -> tuple[str, str]:
+    """첫 admin 비밀번호 결정. (password, 출처설명) 반환.
+    우선순위:
+      1) GLIMI_ADMIN_PASSWORD env (비대화형/도커/CI)
+      2) 대화형 TTY → getpass 로 직접 입력 (확인 1회)
+      3) 그 외(파이프 등) → 랜덤 생성 후 콘솔에 1회 표시
+    하드코딩 비번은 더 이상 없음 (공개 repo 동일 비번 박힘 방지)."""
+    env_pw = os.environ.get("GLIMI_ADMIN_PASSWORD", "").strip()
+    if env_pw:
+        return env_pw, "env GLIMI_ADMIN_PASSWORD"
+
+    if sys.stdin.isatty():
+        import getpass
+        print("[bootstrap] admin 계정을 처음 만든다. 비밀번호를 정해라.")
+        while True:
+            pw = getpass.getpass("  admin 비밀번호: ").strip()
+            if len(pw) < 4:
+                print("  4자 이상으로.")
+                continue
+            pw2 = getpass.getpass("  다시 한번: ").strip()
+            if pw != pw2:
+                print("  일치하지 않음. 다시.")
+                continue
+            return pw, "직접 입력"
+
+    # 비대화형 + env 없음 → 랜덤 (한 번만 보여줌)
+    import secrets
+    pw = secrets.token_urlsafe(12)
+    return pw, "랜덤 생성"
+
+
 def bootstrap() -> None:
-    """admin + user 계정 생성. 이미 있으면 skip.
-    admin 에게 dev/private/demo/qa 커뮤니티 접근권 부여."""
+    """admin 계정 생성. 이미 있으면 skip.
+    admin 에게 dev/private/demo/qa 커뮤니티 접근권 부여.
+    개발용 test/0000 계정은 GLIMI_DEV_ACCOUNTS=1 일 때만 생성."""
     init_db()
 
     admin = get_user("admin")
     if admin is None:
-        admin_id = create_account("admin", "rmfflal", role="admin")
+        pw, src = _resolve_admin_password()
+        admin_id = create_account("admin", pw, role="admin")
         print(f"[bootstrap] 생성: admin (id={admin_id}) role=admin")
+        if src == "랜덤 생성":
+            print(f"[bootstrap] ⚠ admin 비밀번호(랜덤): {pw}")
+            print("[bootstrap]   → 지금 저장해라. 다시 안 보여준다. (또는 GLIMI_ADMIN_PASSWORD 로 지정)")
+        else:
+            print(f"[bootstrap]   비밀번호 출처: {src}")
     else:
         admin_id = admin["id"]
         print(f"[bootstrap] skip: admin (id={admin_id}) 이미 존재")
@@ -145,12 +183,14 @@ def bootstrap() -> None:
     for cid in ADMIN_DEFAULT_COMMUNITIES:
         grant_community(admin_id, cid)
 
-    test = get_user("test")
-    if test is None:
-        test_id = create_account("test", "0000", role="user")
-        print(f"[bootstrap] 생성: test (id={test_id}) role=user")
-    else:
-        print(f"[bootstrap] skip: test (id={test['id']}) 이미 존재")
+    # 개발 편의용 약비번 계정 — OSS 기본 OFF. 명시 opt-in 시에만.
+    if os.environ.get("GLIMI_DEV_ACCOUNTS", "").strip() in ("1", "true"):
+        test = get_user("test")
+        if test is None:
+            test_id = create_account("test", "0000", role="user")
+            print(f"[bootstrap] 생성(dev): test/0000 (id={test_id}) role=user")
+        else:
+            print(f"[bootstrap] skip: test (id={test['id']}) 이미 존재")
 
 
 # ── CLI ─────────────────────────────────────────────────────────
@@ -160,7 +200,7 @@ def _cli() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("list", help="모든 계정 나열")
-    sub.add_parser("bootstrap", help="admin/1234 + test/1234 초기 생성")
+    sub.add_parser("bootstrap", help="admin 계정 초기 생성 (비번은 프롬프트/env/랜덤)")
 
     p_add = sub.add_parser("add", help="계정 생성")
     p_add.add_argument("username")
