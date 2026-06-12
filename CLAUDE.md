@@ -7,6 +7,7 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 
 ## 🚨 세션 시작 시 필독
 **처음 들어오는 contributor 라면 `START_HERE.html` (프로젝트 루트) 먼저 열어봐** — 프로젝트 정체, 셋업, 첫 task, 브랜치 전략, 워크플로우 다 거기 있음.
+협업 규약 (영역 오너십·커밋/PR 양식·웹 업로드 금지)은 **`COLLAB_GUIDE.html`** (프로젝트 루트).
 유지보수 작업 / 스프린트 컨텍스트는 **`docs/dev_guide.md`** — 타깃, 설계 락인, 금지 사항.
 
 ## 🌳 브랜치 전략 — 외부 기여자 포함 모두 적용
@@ -29,6 +30,7 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 - **Discord 는 "출구" 레이어** — `src/bot/` = Discord 어댑터. 나중에 `src/adapters/telegram/`, `src/adapters/web_chat/` 이 붙을 자리
 - **새 기능 설계 질문**: "이 로직을 Telegram·웹채팅에서 재사용 가능한가?" NO 면 잘못된 레이어
 - **금지**: `src/core/*` 에서 `import discord` / `Webhook`·`TextChannel`·`guild` 같은 Discord 타입이 코어 시그니처에 새는 것
+- **금지**: 코어 (`src/core/`·`src/llm/`) 에 특정 커뮤니티 콘텐츠 하드코딩 — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터/설정에서 로드. 코어의 예시 텍스트는 가상·중립으로 ("내 커뮤니티에서 잘 돌게" 하는 수정은 데이터 레이어로)
 - **허용 (과도기)**: `src/core/sync.py` 같은 "Discord↔DB 동기화" 는 discord import OK — 어댑터 책임. 추후 `src/adapters/discord/sync.py` 로 이동
 - **추상화 타깃**: `outbox.send(channel_id, speaker, text, ...)` 추상 인터페이스. 디스코드 webhook / 텔레그램 API / 웹 WebSocket 이 각자 구현
 
@@ -36,6 +38,7 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 
 ## 📑 문서 참조 맵
 - `docs/architecture.md` — 디렉토리 구조, 핵심 모듈, DB 스키마, `<tools>` 프로토콜, 채널 구조, ID 체계
+- `docs/design_system.md` — **디자인 시스템** (토큰 `static/css/tokens.css` · 색/타이포/컴포넌트 규약 · 안티패턴). 새 사용자 화면은 반드시 준수
 - `docs/prompt_development.md` — **프롬프트 작성 규칙** (파일 배치 / i18n / 모델 dialect / decoupling / 메타 비대칭 / 체크리스트)
 - `docs/memory_system.md` — 5 레이어 기억 (L0 raw → L3 facts + pinned + relationship)
 - `docs/scenes_and_supervisors.md` — Scene / Achievement / Supervisor 시스템
