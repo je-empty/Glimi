@@ -4,16 +4,24 @@
 <style>
   .community-list { display: flex; flex-direction: column; gap: 12px; }
   .community-row {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px 20px; box-shadow: var(--shadow);
+    background: var(--panel); border: 0; border-radius: 14px;
+    padding: 16px 20px;
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 16px;
     align-items: center;
-    transition: border-color 0.15s;
+    transition: background 0.15s ease-out;
   }
   .community-row { cursor: pointer; }
-  .community-row:hover { border-color: var(--accent); }
+  .community-row:hover { background: var(--panel2); }
+  /* 진입 케스케이드 (40ms stagger, 상한 캡) */
+  .community-row { animation: gp-rise-in 0.35s ease-out backwards; }
+  .community-row:nth-child(1) { animation-delay: 0.03s; }
+  .community-row:nth-child(2) { animation-delay: 0.07s; }
+  .community-row:nth-child(3) { animation-delay: 0.11s; }
+  .community-row:nth-child(4) { animation-delay: 0.15s; }
+  .community-row:nth-child(n+5) { animation-delay: 0.18s; }
+  @media (prefers-reduced-motion: reduce) { .community-row { animation: none; } }
   .community-row .controls button, .community-row .controls a {
     position: relative; z-index: 2; /* 버튼 클릭은 row 로 버블 안 됨 */
   }
@@ -62,7 +70,7 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
   <h2 style="margin: 0;">내 커뮤니티</h2>
-  <a class="btn primary" href="/community/new" style="text-decoration:none">+ 새 커뮤니티</a>
+  <a class="btn primary" href="/community/new" style="text-decoration:none"><i class="ti ti-plus" aria-hidden="true"></i>새 커뮤니티</a>
 </div>
 
 {% if not communities %}
@@ -105,10 +113,10 @@
     </div>
     <div class="controls" onclick="event.stopPropagation()">
       {% if c.running %}
-      <button onclick="ctrl('{{ c.id }}', 'stop')">■ 정지</button>
-      <button onclick="ctrl('{{ c.id }}', 'restart')">↻ 재가동</button>
+      <button onclick="ctrl('{{ c.id }}', 'stop')" style="color:var(--err)"><i class="ti ti-player-stop" aria-hidden="true"></i>정지</button>
+      <button onclick="ctrl('{{ c.id }}', 'restart')"><i class="ti ti-refresh" aria-hidden="true"></i>재가동</button>
       {% else %}
-      <button class="primary" onclick="ctrl('{{ c.id }}', 'start')">▶ 가동</button>
+      <button class="primary" onclick="ctrl('{{ c.id }}', 'start')"><i class="ti ti-player-play" aria-hidden="true"></i>가동</button>
       {% endif %}
       <button class="danger" onclick="deleteCommunity('{{ c.id }}')">삭제</button>
     </div>
@@ -122,7 +130,7 @@
     <strong id="del-cid" style="color: var(--err); font-family: ui-monospace, monospace;">...</strong> 커뮤니티를 완전히 삭제합니다.<br>
     <span class="muted">DB + 프로필 이미지 + 로그 전부 제거되며 복구 불가능.</span>
   </p>
-  <div style="margin: 14px 0; padding: 12px; background: var(--panel2); border-radius: 8px; border-left: 3px solid var(--warn);">
+  <div style="margin: 14px 0; padding: 12px; background: color-mix(in srgb, var(--warn) 8%, var(--panel2)); border-radius: 10px;">
     <label style="display: flex; align-items: start; gap: 8px; cursor: pointer; font-size: 13px;">
       <input id="del-wipe" type="checkbox" style="margin-top: 2px; cursor: pointer;">
       <span>
