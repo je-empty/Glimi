@@ -1,42 +1,71 @@
+/* Pretendard (한글 최적) + JetBrains Mono — je-empty 타이포 톤. @import 는 최상단 필수. */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
+@import url('https://cdn.jsdelivr.net/npm/jetbrains-mono@1/css/jetbrains-mono.min.css');
+
 /* Glimi 플랫폼 공통 스타일 — 모든 페이지 로드됨 */
+/* 디자인 톤: je-empty 디자인 시스템 차용 (ink-forward 미니멀, 네이비 accent, 레이어드 paper,
+   tight 타이포). Glimi 고유 요소(감정색·아바타·그래프)는 컴포넌트 레벨에서 그대로 유지. */
 
 /* Light (default) */
 :root[data-theme="light"] {
   --bg: #fafafa;
-  --panel: #ffffff;
-  --panel2: #f3f4f6;
-  --text: #111827;
-  --muted: #6b7280;
-  --accent: #2563eb;
+  --panel: #ffffff;        /* paper */
+  --panel2: #f6f7f9;       /* paper-2 — 카드/hover */
+  --panel3: #eceef2;       /* paper-3 — 깊은 hover */
+  --text: #14161a;         /* ink */
+  --muted: #4a4e57;        /* ink-muted */
+  --faint: #8a8e98;        /* ink-faint */
+  --accent: #2a4365;       /* navy */
+  --accent-hover: #1e3a5f;
+  --accent-soft: #eef2f8;
+  --accent-line: #c3d2e6;
   --accent-fg: #ffffff;
-  --ok: #10b981;
-  --warn: #f59e0b;
-  --err: #ef4444;
-  --border: #e5e7eb;
-  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+  --ok: #047857;
+  --warn: #b45309;
+  --err: #b91c1c;
+  --border: #e5e7eb;       /* line */
+  --border-strong: #c8cdd5;
+  --shadow: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-modal: 0 4px 14px -2px rgba(0,0,0,0.18), 0 0 0 1px var(--border-strong);
 }
-/* Dark */
+/* Dark — 따뜻한 중성 (ChatGPT 풍) */
 :root[data-theme="dark"] {
-  --bg: #0e0f12;
-  --panel: #17191f;
-  --panel2: #1d1f27;
-  --text: #e5e7eb;
-  --muted: #9ca3af;
-  --accent: #7aa2f7;
-  --accent-fg: #0e0f12;
-  --ok: #9ece6a;
-  --warn: #e0af68;
-  --err: #f7768e;
-  --border: #2a2d36;
+  --bg: #1a1a1a;
+  --panel: #212121;        /* paper */
+  --panel2: #2f2f2f;       /* paper-2 */
+  --panel3: #424242;       /* paper-3 */
+  --text: #ececec;         /* ink */
+  --muted: #b4b4b4;        /* ink-muted */
+  --faint: #9b9b9b;        /* ink-faint */
+  --accent: #9fb8e0;       /* lightened navy */
+  --accent-hover: #b8caea;
+  --accent-soft: #1a2536;
+  --accent-line: #2e3f5c;
+  --accent-fg: #14161a;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --err: #f87171;
+  --border: rgba(255,255,255,0.10);   /* line */
+  --border-strong: rgba(255,255,255,0.16);
   --shadow: none;
+  --shadow-modal: 0 8px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px var(--border-strong);
+}
+
+:root {
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
-  background: var(--bg); color: var(--text); line-height: 1.5;
+  font-family: var(--font-sans);
+  background: var(--bg); color: var(--text); line-height: 1.55;
+  letter-spacing: -0.008em;       /* je-empty tight 본문 */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+h1, h2, h3, h4 { letter-spacing: -0.022em; }   /* tight 헤딩 */
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
