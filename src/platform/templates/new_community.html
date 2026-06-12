@@ -123,6 +123,27 @@
         </select>
         <div class="hint" style="margin-top:4px;color:var(--muted);font-size:12px">커뮤니티 생성 후 변경 불가 — 에이전트 기억이 해당 언어로 누적되기 때문</div>
       </div>
+      <div class="wiz-field">
+        <label>대화 모델 <span class="hint">(기본값 = 전역 설정 상속, 나중에 변경 가능)</span></label>
+        <select id="f-model-mode" onchange="onModelMode()">
+          <option value="inherit" selected>기본값 사용 (전역 설정 상속)</option>
+          <option value="cloud">클라우드 — 이 커뮤니티 전용 Claude 키</option>
+          <option value="local">로컬 (Ollama)</option>
+        </select>
+        <div id="model-cloud" class="wiz-field" style="display:none;margin-top:8px">
+          <label>Anthropic API 키 <span class="hint">(이 커뮤니티 전용)</span></label>
+          <input id="f-model-key" type="password" placeholder="sk-ant-..." autocomplete="off">
+        </div>
+        <div id="model-local" class="wiz-field" style="display:none;margin-top:8px">
+          <label>로컬 사양 티어</label>
+          <select id="f-model-tier">
+            <option value="lite">Lite · e2b · 16GB RAM</option>
+            <option value="standard" selected>Standard · e4b · 16GB+ (권장)</option>
+            <option value="quality">Quality · 26B · 24GB+</option>
+          </select>
+          <div class="hint" style="margin-top:4px;font-size:12px">생성 후 <code>./run.sh --local-models</code> 로 모델 다운로드</div>
+        </div>
+      </div>
     </div>
     <div class="wiz-nav">
       <span></span>
@@ -215,6 +236,12 @@ let wizState = {
   gender: '',
   verifiedInfo: null,  // {bot_name, guilds, ...}
 };
+
+function onModelMode() {
+  const m = document.getElementById('f-model-mode').value;
+  document.getElementById('model-cloud').style.display = m === 'cloud' ? '' : 'none';
+  document.getElementById('model-local').style.display = m === 'local' ? '' : 'none';
+}
 
 function wizGoto(step) {
   wizState.step = step;
@@ -384,6 +411,9 @@ async function wizCreate() {
   const token = document.getElementById('f-token').value.trim();  // 토큰은 placeholder 사용 X
   const cleanMode = document.querySelector('input[name="clean-mode"]:checked');
   const cleanExisting = cleanMode && cleanMode.value === 'clean';
+  const modelMode = document.getElementById('f-model-mode').value;
+  const modelKey = document.getElementById('f-model-key').value.trim();
+  const modelTier = document.getElementById('f-model-tier').value;
 
   const errBox = document.getElementById('create-err');
   const loading = document.getElementById('create-loading');
@@ -405,6 +435,9 @@ async function wizCreate() {
         token,
         owner: { name: ownerName, nickname, birth, gender },
         clean_existing_channels: cleanExisting,
+        model_mode: modelMode,
+        model_api_key: modelKey,
+        model_tier: modelTier,
       })
     });
     const res = await r.json();
