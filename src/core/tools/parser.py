@@ -59,14 +59,21 @@ _CONTROL_TOKEN = re.compile(
 )
 # 파이프로 감싼 control token 일반형 (<|...|>) — 내용 짧은 것만 (오인 최소화)
 _PIPE_TOKEN = re.compile(r'<\|[^>\n]{0,40}?\|>')
+# HTML 태그 누출 — 로컬 모델이 <br>, <p>, <b> 등 HTML 을 채팅에 뱉는 케이스.
+# 알려진 인라인/블록 태그만 한정 (일반 부등호·코드 보존). 채팅엔 HTML 불필요.
+_HTML_TAG = re.compile(
+    r'</?(?:br|p|div|span|b|i|u|em|strong|ul|ol|li|h[1-6]|hr|a|code|pre)\b[^>]*/?>',
+    re.IGNORECASE,
+)
 
 
 def strip_control_tokens(text: str) -> str:
-    """모델 special/control token 누출 제거. 일반 텍스트는 보존."""
+    """모델 special/control token + HTML 태그 누출 제거. 일반 텍스트는 보존."""
     if not text or "<" not in text:
         return text
     text = _CONTROL_TOKEN.sub("", text)
     text = _PIPE_TOKEN.sub("", text)
+    text = _HTML_TAG.sub("", text)
     return text
 _CALL_BLOCK = re.compile(
     r'<call\s+([^>]*)>\s*(.*?)\s*</call>',

@@ -144,12 +144,14 @@ def build_brief_list(agent_type: str) -> str:
 
 
 def build_compact_list(agent_type: str) -> str:
-    """최소 버전 (작은 num_ctx 용) — 이름 + 필수 시그니처만, 설명 생략.
-    설명이 필요하면 `get_tool_details(name)`. brief 대비 ~절반 토큰."""
+    """최소 버전 (작은 num_ctx 용) — 줄당 한 도구, 시그니처 + 초간단 설명(앞부분).
+    설명 상세는 `get_tool_details(name)`. brief 대비 토큰 절약하되 줄당 하나라 모델이
+    파라미터를 놓치지 않음 (한 줄 몰아넣기는 필드 누락 유발 — QA 관찰)."""
     tools = tools_for_agent(agent_type)
     lines = [
-        "## Tools — `<tools><call id=\"1\" name=\"X\">{json}</call></tools>` (response 끝). "
-        "설명은 `get_tool_details(name)`. body 는 순수 JSON object 만.",
+        "## Available Tools — `<tools><call id=\"1\" name=\"X\">{json}</call></tools>` at END of response.",
+        "**시그니처 `()` 안 파라미터는 모두 필수 — 하나도 빠뜨리지 마라.** `…+N` = optional N개.",
+        "body 는 순수 JSON object 만 (`{\"k\":\"v\"}`). 상세는 `get_tool_details(name)`.",
     ]
     by_cat: dict[str, list[ToolSpec]] = {}
     for t in tools:
@@ -157,9 +159,13 @@ def build_compact_list(agent_type: str) -> str:
     for cat in ("management", "query", "request"):
         if cat not in by_cat:
             continue
-        names = ", ".join(f"`{t.name}{_required_params_sig(t)}`{' ⚠' if t.destructive else ''}"
-                          for t in by_cat[cat])
-        lines.append(f"{cat}: {names}")
+        lines.append(f"### {cat}")
+        for t in by_cat[cat]:
+            flag = " ⚠" if t.destructive else ""
+            # 설명 앞 ~6어절만 (간결)
+            desc = (t.description or "").split("。")[0].split(".")[0]
+            desc = " ".join(desc.split()[:7])
+            lines.append(f"- `{t.name}{_required_params_sig(t)}`{flag} — {desc}")
     return "\n".join(lines)
 
 
