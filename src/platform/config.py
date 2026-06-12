@@ -4,8 +4,9 @@ import secrets
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-DATA_DIR.mkdir(exist_ok=True)
+# 기본 PROJECT_ROOT/data. GLIMI_DATA_DIR 로 override (멀티 인스턴스 / 테스트 격리).
+DATA_DIR = Path(os.environ.get("GLIMI_DATA_DIR") or (PROJECT_ROOT / "data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 PLATFORM_DB_PATH = DATA_DIR / "platform.db"
 SECRET_KEY_PATH = DATA_DIR / ".secret_key"

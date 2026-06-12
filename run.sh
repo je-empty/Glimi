@@ -284,9 +284,15 @@ echo -e "${CYAN}◈ Glimi Platform${NC}"
 echo -e "  URL: ${GREEN}http://${HOST}:${PORT}${NC}"
 echo ""
 
-# ── LLM 자격증명 점검 (기본 Claude 경로) ──────────────
-# 로컬 모드가 아닌데 키도 claude CLI 도 없으면 에이전트가 빈 응답만 낸다 → 미리 명확히 안내.
-if [ "$LOCAL_MODELS" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && ! command -v claude >/dev/null 2>&1; then
+# ── 첫 실행 판정 ──────────────────────────────────────
+# 설정 마커도 platform.db 도 없으면 첫 실행 → 브라우저 setup wizard 로 안내.
+_FIRST_RUN=0
+if [ ! -f data/.setup_complete ] && [ ! -f data/platform.db ] && [ -z "${GLIMI_ADMIN_PASSWORD:-}" ]; then
+    _FIRST_RUN=1
+fi
+
+# ── LLM 자격증명 점검 (이미 설정된 설치인데 키 없을 때만) ──
+if [ "$_FIRST_RUN" != "1" ] && [ "$LOCAL_MODELS" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && ! command -v claude >/dev/null 2>&1; then
     echo -e "${YELLOW}[setup] ⚠ Claude 자격증명이 없다 — 에이전트가 응답을 못 만든다.${NC}"
     echo -e "  다음 중 하나:"
     echo -e "    1) ${CYAN}cp .env.example .env${NC} 후 ${CYAN}ANTHROPIC_API_KEY${NC} 채우기 (https://console.anthropic.com/settings/keys)"
@@ -296,6 +302,22 @@ if [ "$LOCAL_MODELS" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && ! command -v
     echo ""
 fi
 
-python -m src.platform.accounts list > /dev/null 2>&1 || python -m src.platform.accounts bootstrap
+# ── 첫 실행 시 브라우저 자동 오픈 (서버 뜨면 /setup) ──
+# 헤드리스/원격(tmux·SSH)에서는 GLIMI_NO_BROWSER=1 로 끈다.
+if [ "$_FIRST_RUN" = "1" ] && [ -z "${GLIMI_NO_BROWSER:-}" ]; then
+    echo -e "${CYAN}[setup] 첫 실행 — 브라우저에서 초기 설정 화면을 엽니다.${NC}"
+    (
+        for _ in $(seq 1 40); do
+            curl -s -o /dev/null "http://localhost:${PORT}/healthz" 2>/dev/null && break
+            sleep 0.5
+        done
+        _url="http://localhost:${PORT}/setup"
+        if command -v open >/dev/null 2>&1; then open "$_url"
+        elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$_url"
+        fi
+    ) &
+fi
 
+# 계정 부트스트랩은 더 이상 여기서 안 함 — 첫 실행은 웹 wizard(/setup), 헤드리스는
+# 플랫폼 lifespan 이 GLIMI_ADMIN_PASSWORD 로 처리.
 exec python -m src.platform --host "$HOST" --port "$PORT"
