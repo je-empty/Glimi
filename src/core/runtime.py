@@ -963,10 +963,11 @@ class AgentRuntime:
             provider = _provider_for(atype, model)
 
             if provider == "ollama":
+                _bt = {"persona": 200, "mgr": 320, "creator": 360, "dev": 320}.get(atype, 200)
                 responses = self._ollama_blocking(
                     agent_id=agent_id, name=name,
                     system=force_system, user=full_prompt,
-                    model=model, agent_type=atype, timeout=120,
+                    model=model, agent_type=atype, timeout=_bt,
                 )
             else:
                 # Timeout 120s — force 경로는 prompt 크기 큼 (메모리 + cross-channel + recent).
@@ -1127,10 +1128,12 @@ class AgentRuntime:
         if provider == "ollama":
             _atype = profile.get("type", "persona")
             log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, _atype)})")
+            # 큰 로컬 모델(26b)은 콜드 로드(~수십초) + 느린 생성 → 넉넉히. 스트리밍 경로와 동일 수준.
+            _bt = {"persona": 200, "mgr": 320, "creator": 360, "dev": 320}.get(_atype, 200)
             return self._ollama_blocking(
                 agent_id=agent_id, name=name,
                 system=system_prompt, user=full_prompt,
-                model=model, agent_type=_atype, timeout=60,
+                model=model, agent_type=_atype, timeout=_bt,
             )
 
         log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
