@@ -15,6 +15,7 @@
     --text-faint: #8a8e98;    /* ink-faint */
     --accent: #2a4365;        /* navy */
     --accent-2: #51678f;      /* slate (navy 계열 보조) */
+    --accent-fg: #ffffff;     /* accent 채움 위 텍스트 */
     --ok: #047857;
     --warn: #b45309;
     --err: #b91c1c;
@@ -45,6 +46,7 @@
     --text-faint: #8a8a8a;    /* ink-faint */
     --accent: #9fb8e0;        /* lightened navy */
     --accent-2: #b8c5dd;
+    --accent-fg: #1a2536;     /* 밝은 navy 위엔 잉크 텍스트 */
     --ok: #34d399;
     --warn: #fbbf24;
     --err: #f87171;
@@ -118,35 +120,23 @@
   }
   .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
 
-  /* ==== Community switcher ==== */
+  /* ==== Community switcher — quiet pill (상태는 dot 색으로만, §5.1) ==== */
   .community-btn {
     position: relative; display: flex; align-items: center; gap: 8px;
-    background: var(--panel); color: var(--text); border: 1px solid var(--border);
-    border-radius: 10px; padding: 6px 12px 6px 10px; font-size: 12.5px;
-    font-weight: 600; cursor: pointer; transition: all 0.15s;
+    background: var(--panel-2); color: var(--text); border: 0;
+    border-radius: 999px; padding: 7px 13px 7px 12px; font-size: 12.5px;
+    font-weight: 600; cursor: pointer;
+    transition: background 0.15s ease-out;
   }
-  /* 실행 중 → 초록 테마 */
-  .community-btn:not(.stopped) {
-    background: color-mix(in srgb, var(--ok) 10%, var(--panel));
-    border-color: color-mix(in srgb, var(--ok) 35%, var(--border));
-    color: var(--ok);
-  }
-  .community-btn:not(.stopped):hover { background: color-mix(in srgb, var(--ok) 18%, var(--panel)); }
-  /* 중단된 서버 → 회색 */
-  .community-btn.stopped {
-    color: var(--text-dim);
-  }
-  .community-btn.stopped:hover { border-color: var(--accent); }
+  .community-btn:hover { background: var(--panel-3); }
   .community-btn .sv-dot {
     width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
-    box-shadow: 0 0 6px var(--ok); animation: live-pulse 1.8s infinite;
+    animation: dot-breathe 2s ease-in-out infinite;
   }
-  .community-btn.stopped .sv-dot { background: var(--text-faint); box-shadow: none; animation: none; }
-  .community-btn .chev { font-size: 9px; opacity: 0.6; margin-left: 4px; }
-  @keyframes live-pulse {
-    0%, 100% { box-shadow: 0 0 6px var(--ok); }
-    50% { box-shadow: 0 0 12px var(--ok); }
-  }
+  .community-btn.stopped { color: var(--text-dim); }
+  .community-btn.stopped .sv-dot { background: var(--text-faint); animation: none; }
+  .community-btn .chev { font-size: 9px; opacity: 0.6; margin-left: 2px; }
+  @keyframes dot-breathe { 50% { opacity: 0.4; } }
 
   .community-menu {
     display: none; position: absolute; top: calc(100% + 8px); left: 0;
@@ -163,8 +153,8 @@
   .community-menu .ci:hover { background: var(--panel-2); }
   .community-menu .ci.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
   .community-menu .ci.stopped { opacity: 0.55; }
-  .community-menu .ci .ci-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); flex-shrink: 0; }
-  .community-menu .ci.stopped .ci-dot { background: var(--text-faint); box-shadow: none; }
+  .community-menu .ci .ci-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+  .community-menu .ci.stopped .ci-dot { background: var(--text-faint); }
   .community-menu .ci .ci-name { flex: 1; font-weight: 600; font-family: "JetBrains Mono", monospace; font-size: 12.5px; }
   .community-menu .ci .ci-meta { font-size: 10.5px; color: var(--text-dim); font-weight: 400; }
   .community-menu .ci .ci-check { color: var(--accent); font-weight: 700; }
@@ -203,13 +193,61 @@
   .pill.neutral b { color: var(--text); font-weight: 600; }
   .stats-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
-  select, .btn-icon {
+  select {
     background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 9px;
     padding: 5px 10px; font-size: 12px; cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
   }
-  select:hover, .btn-icon:hover { border-color: var(--accent); }
-  .btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  select:hover { border-color: var(--accent); }
+  /* punched 아이콘 버튼 — 보더 없이 면 단차로 (§5.1) */
+  .btn-icon {
+    width: 32px; height: 32px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--panel-2); color: var(--text-dim);
+    border: 0; border-radius: 50%; font-size: 15px; cursor: pointer;
+    transition: background 0.15s ease-out, color 0.15s ease-out;
+  }
+  .btn-icon:hover { background: var(--panel-3); color: var(--text); }
+
+  /* ==== 플랫폼 서버 컨트롤 — 컨트롤 3문법 (design_system §5.1) ==== */
+  .gp-server-ctrl { display: flex; align-items: center; gap: 7px; }
+  .gp-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em;
+    background: var(--panel-2); color: var(--text-dim); white-space: nowrap;
+  }
+  .gp-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+  .gp-status.running { color: var(--ok); }
+  .gp-status.running::before { background: var(--ok); animation: dot-breathe 2s ease-in-out infinite; }
+  .gp-uptime {
+    font-family: "JetBrains Mono", monospace; font-size: 11px;
+    color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .gp-ctrl-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: 999px; border: 0; cursor: pointer;
+    font-size: 12px; font-weight: 500; font-family: inherit;
+    background: var(--panel-2); color: var(--text-dim);
+    transition: background 0.15s ease-out, color 0.15s ease-out;
+  }
+  .gp-ctrl-btn:hover { background: var(--panel-3); color: var(--text); }
+  .gp-ctrl-btn .ti { font-size: 13px; }
+  /* 주행동 1개 = 잉크 CTA */
+  .gp-ctrl-btn.start { background: var(--accent); color: var(--accent-fg); }
+  .gp-ctrl-btn.start:hover { background: var(--accent-2); color: var(--accent-fg); }
+  /* 위험 액션 — 면을 채우지 않고 텍스트 색으로만 */
+  .gp-ctrl-btn.stop { color: var(--err); }
+  .gp-ctrl-btn.stop:hover { background: color-mix(in srgb, var(--err) 10%, var(--panel-2)); color: var(--err); }
+  .gp-devlink {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin: 0 6px; padding: 7px 14px; border-radius: 999px;
+    font-size: 12px; font-weight: 500; color: var(--text-dim); text-decoration: none;
+    background: var(--panel-2);
+    transition: background 0.15s ease-out, color 0.15s ease-out;
+  }
+  .gp-devlink:hover { background: var(--panel-3); color: var(--text); }
+  .gp-devlink .ti { font-size: 13px; }
 
   /* ==== Tabs — 좌측 레일 (je-empty paper rail) ==== */
   nav.tabs {
@@ -359,10 +397,10 @@
 
   /* ==== Supervisor view ==== */
   body:not(.show-supervisors) .sup-tab { display: none; }
+  /* is-live 상태 — 잉크 채움 (§5.1 punched 활성) */
   #supervisor-toggle.active {
-    background: color-mix(in srgb, var(--accent) 15%, var(--panel));
-    border-color: var(--accent);
-    color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-fg);
   }
 
   .sup-card {
