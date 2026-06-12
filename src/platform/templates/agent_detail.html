@@ -344,6 +344,10 @@
     if (r && r.ok) { load(); } else { alert('실패: ' + (r?.error || '알 수 없음')); }
   }
 
+  // 스크립트가 IIFE 라 inline onclick 이 접근하도록 window 노출
+  window.openAgentModelSwitch = openAgentModelSwitch;
+  window.applyAgentModelSwitch = applyAgentModelSwitch;
+
   // ── 메인 로드 ─────────────────────────────────────────────────
   async function load() {
     const d = await j(q(`/api/agent?id=${encodeURIComponent(AID)}`));
