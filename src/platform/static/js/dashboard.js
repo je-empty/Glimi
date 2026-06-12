@@ -399,7 +399,10 @@ function applyStaticI18n() {
     if (!k) return;
     const cnt = btn.querySelector('.count');
     const cntHtml = cnt ? cnt.outerHTML : '';
-    btn.innerHTML = t(k) + ' ' + cntHtml;
+    // 템플릿에서 서버 렌더한 이모지 span 보존 (i18n 재빌드가 innerHTML 갈아끼우며 날리던 것)
+    const em = btn.querySelector('.tab-emoji');
+    const emHtml = em ? em.outerHTML : '';
+    btn.innerHTML = emHtml + t(k) + ' ' + cntHtml;
   });
   // KPI labels
   const kpiMap = [['kpi-server','kpi_server'],['kpi-bot','kpi_bot'],['kpi-user','kpi_owner'],['kpi-scene','kpi_scene'],['kpi-msgs','kpi_msgs']];
