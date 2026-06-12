@@ -1914,7 +1914,14 @@ function renderSupervisorsTab(supervisors) {
 let lastGraphSig = null;
 // 리스트 재렌더 가드 — 의미있는 변화 없으면 innerHTML 안 건드림 (아바타 img 재생성 깜빡임 방지).
 // relative-time(ago/elapsed) 은 시그니처에서 제외 → idle 정지 상태에선 재렌더 0.
-let lastAgentsSig = null, lastMsgSig = null, lastChannelsSig = null;
+let lastAgentsSig = null, lastMsgSig = null, lastChannelsSig = null, lastHeroSig = null;
+function heroSignature(snap) {
+  const m = snap.meta || {};
+  // 아바타 스택(에이전트 구성) + 활동 상태 + 오너/씬/메시지수 + 오프라인. uptime 초 제외.
+  return [m.user_name, m.tutorial_phase, snap.total_messages, snap.bot && snap.bot.bot_alive ? 1 : 0,
+    (snap.community_meta || {}).name,
+    snap.agents.map(a => a.id + (a.thinking ? 't' : a.speaking ? 's' : '')).join(',')].join('|');
+}
 function agentsSignature(agents) {
   return agents.map(a => [a.id, a.name, a.type, a.emotion, a.intensity_band ?? a.intensity,
     a.thinking ? 1 : 0, a.speaking ? 1 : 0, a.status, a.model].join('~')).join('|');
@@ -3198,8 +3205,12 @@ async function tick() {
     }));
   }
 
-  // Hero section
-  document.getElementById('hero').innerHTML = renderHero(snap);
+  // Hero section — 시그니처 변화 시에만 (아바타 스택 재생성 깜빡임 방지)
+  const heroSig = heroSignature(snap);
+  if (heroSig !== lastHeroSig) {
+    document.getElementById('hero').innerHTML = renderHero(snap);
+    lastHeroSig = heroSig;
+  }
 
   // Overview KPIs
   // Server Status = 서버 전체 살아있는지 (bot alive 기반)
