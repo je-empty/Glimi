@@ -9,9 +9,11 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import accounts, templates  # noqa: F401 — 서브모듈 초기화
+import os
+
+from . import accounts, setup as setup_mod, templates  # noqa: F401 — 서브모듈 초기화
 from .db import init_db
-from .routers import admin_dev, auth, communities, dashboard, pages
+from .routers import admin_dev, auth, communities, dashboard, pages, setup as setup_router
 from .supervisor import supervisor
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -21,8 +23,13 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 async def lifespan(app: FastAPI):
     init_db()
     if not accounts.list_accounts():
-        print("[platform] 계정 DB 비어있음 — bootstrap 실행")
-        accounts.bootstrap()
+        # 비대화형(도커/CI)에서 GLIMI_ADMIN_PASSWORD 를 줬으면 자동 부트스트랩.
+        # 아니면 웹 setup wizard(/setup)가 처리하므로 여기선 건너뛴다.
+        if os.environ.get("GLIMI_ADMIN_PASSWORD", "").strip():
+            print("[platform] 계정 DB 비어있음 — GLIMI_ADMIN_PASSWORD 로 bootstrap")
+            accounts.bootstrap()
+        else:
+            print("[platform] 첫 실행 — http://<host>/setup 에서 초기 설정")
 
     # 구 web_dashboard 의 startup community 개념: 없으면 default 리졸브
     from src import community as _comm
@@ -50,6 +57,7 @@ async def _unhandled(request, exc):
     return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
+app.include_router(setup_router.router)
 app.include_router(auth.router)
 app.include_router(pages.router)
 app.include_router(communities.router)
