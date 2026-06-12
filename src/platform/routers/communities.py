@@ -522,11 +522,12 @@ async def serve_avatar(
         "gif": "image/gif", "webp": "image/webp",
     }.get(ext, "application/octet-stream")
     etag = '"' + hashlib.md5(data).hexdigest()[:16] + '"'
-    # no-cache: 브라우저가 매 요청마다 ETag 로 revalidate 하도록 강제. 컨텐츠 변경 시
-    # ETag 가 바뀌어 즉시 새 이미지 로드. (max-age=3600 시 sample 교체 후 1시간 동안
-    # 옛 아바타 그대로 보이는 캐시 stickiness 회귀 발생.)
+    # max-age=60: 대시보드가 5초마다 innerHTML 재렌더로 <img> 를 재생성하는데, no-cache 면
+    # 매번 ETag revalidate 네트워크 왕복 → 빈칸 깜빡임. 60초 메모리 캐시면 재생성된 img 가
+    # 즉시 캐시에서 그려져 깜빡임 없음. 아바타 교체는 드물고 60초 내 반영되면 충분.
+    # (과거 max-age=3600 의 1시간 stickiness 회귀와는 다른 스케일.)
     return Response(
         content=data,
         media_type=ctype,
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
+        headers={"ETag": etag, "Cache-Control": "public, max-age=60"},
     )
