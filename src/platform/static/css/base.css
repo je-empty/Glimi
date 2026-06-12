@@ -139,14 +139,15 @@ a:hover { text-decoration: underline; }
   font-family: inherit;
 }
 .gp-user-logout:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
+/* punched 아이콘 버튼 — 보더 없이 면 단차 (design_system §5.1) */
 .gp-btn-icon {
-  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; padding: 0; width: 32px; height: 32px;
+  background: var(--panel2); color: var(--muted); border: 0;
+  border-radius: 50%; padding: 0; width: 32px; height: 32px;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 14px; cursor: pointer; transition: border-color 0.12s, background 0.12s;
+  font-size: 15px; cursor: pointer; transition: background 0.15s ease-out, color 0.15s ease-out;
   font-family: inherit;
 }
-.gp-btn-icon:hover { border-color: var(--accent); }
+.gp-btn-icon:hover { background: var(--panel3); color: var(--text); }
 
 .gp-topbar-floating {
   position: fixed; top: 14px; right: 20px; z-index: 100;
