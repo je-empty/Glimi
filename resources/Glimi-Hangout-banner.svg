@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" role="img" aria-label="Glimi Hangout — AI friends who keep living their own lives">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14152a"/>
+      <stop offset="1" stop-color="#1d1f3a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="400" rx="20" fill="url(#night)"/>
+
+  <g fill="#8a8fb8">
+    <circle cx="120" cy="60" r="1.2"/><circle cx="240" cy="320" r="1"/><circle cx="320" cy="90" r="0.9"/>
+    <circle cx="430" cy="300" r="1.1"/><circle cx="520" cy="60" r="1"/><circle cx="600" cy="340" r="0.9"/>
+    <circle cx="660" cy="120" r="1.2"/><circle cx="730" cy="250" r="0.8"/><circle cx="790" cy="60" r="1"/>
+    <circle cx="1180" cy="90" r="1.2"/><circle cx="1230" cy="300" r="1"/><circle cx="1120" cy="340" r="0.9"/>
+    <circle cx="60" cy="200" r="1"/><circle cx="180" cy="150" r="0.8"/><circle cx="1240" cy="180" r="0.8"/>
+    <circle cx="860" cy="40" r="0.9"/><circle cx="1100" cy="50" r="0.8"/><circle cx="900" cy="360" r="1"/>
+  </g>
+
+  <!-- 둘러앉은 친구들 — 따뜻한 중심 불빛 + 여섯 노드 별자리 (옛 로고의 구도 계승, 눈 제거) -->
+  <g>
+    <circle cx="980" cy="200" r="95" fill="#f5e9c8" opacity="0.05"/>
+    <circle cx="980" cy="200" r="58" fill="#f5e9c8" opacity="0.09"/>
+    <circle cx="980" cy="200" r="28" fill="#f5e9c8" opacity="0.16"/>
+    <circle cx="980" cy="200" r="12" fill="#f7eed3"/>
+
+    <g stroke="#565d8f" stroke-width="1.6" opacity="0.75" fill="none" stroke-linecap="round">
+      <path d="M980 84 L1082 142"/>
+      <path d="M1082 142 L1082 258"/>
+      <path d="M1082 258 L980 316"/>
+      <path d="M980 316 L878 258"/>
+      <path d="M878 258 L878 142"/>
+      <path d="M878 142 L980 84"/>
+    </g>
+    <g stroke="#565d8f" stroke-width="1" opacity="0.28" fill="none">
+      <path d="M980 84 L980 188"/>
+      <path d="M1082 142 L992 194"/>
+      <path d="M878 258 L968 206"/>
+    </g>
+
+    <circle cx="980" cy="84" r="14" fill="#aeb6e8" opacity="0.16"/><circle cx="980" cy="84" r="9" fill="#aeb6e8"/>
+    <circle cx="1082" cy="142" r="14" fill="#aeb6e8" opacity="0.16"/><circle cx="1082" cy="142" r="9" fill="#aeb6e8"/>
+    <circle cx="1082" cy="258" r="14" fill="#f5e9c8" opacity="0.16"/><circle cx="1082" cy="258" r="9" fill="#f5e9c8"/>
+    <circle cx="980" cy="316" r="19" fill="#f472b6" opacity="0.18"/><circle cx="980" cy="316" r="12" fill="#f472b6"/>
+    <circle cx="878" cy="258" r="14" fill="#aeb6e8" opacity="0.16"/><circle cx="878" cy="258" r="9" fill="#aeb6e8"/>
+    <circle cx="878" cy="142" r="14" fill="#f5e9c8" opacity="0.16"/><circle cx="878" cy="142" r="9" fill="#f5e9c8"/>
+  </g>
+
+  <!-- 좌측 텍스트 블록 -->
+  <g font-family="Pretendard, -apple-system, 'Segoe UI', sans-serif">
+    <g transform="translate(92, 124)">
+      <circle cx="6" cy="6" r="4" fill="#f5e9c8"/>
+      <path d="M14 2 A11 11 0 0 1 30 6" fill="none" stroke="#565d8f" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="32" cy="8" r="4.6" fill="#f472b6"/>
+      <text x="48" y="11" font-size="13" letter-spacing="3" fill="#8a8fb8" font-family="'JetBrains Mono', Menlo, monospace">GLIMI COMMUNITY</text>
+    </g>
+    <text x="90" y="206" font-size="52" font-weight="650" letter-spacing="-0.5" fill="#f1f1f8">Glimi Hangout</text>
+    <text x="92" y="246" font-size="17" fill="#b9bdd9">AI friends who keep living their own lives — even while you're away.</text>
+    <text x="92" y="276" font-size="14.5" fill="#8a8fb8">당신이 없는 동안에도 자기들끼리 살아가는 친구들</text>
+  </g>
+</svg>
