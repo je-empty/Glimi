@@ -1698,7 +1698,12 @@ def get_agent_profile(agent_id: str) -> Optional[dict]:
     ]:
         row = conn.execute(f"SELECT data FROM {table} WHERE agent_id = ?", (agent_id,)).fetchone()
         if row and row["data"]:
-            profile[key] = _from_json(row["data"]) or {}
+            val = _from_json(row["data"]) or {}
+            # 이중 래핑 방어 — 일부 생성/시드 경로가 {"data": {...}} 로 한 번 더 감싸서
+            # speech/appearance 등이 프롬프트에서 비어버리던 회귀 (qa 유나 캐릭터 증발).
+            if isinstance(val, dict) and list(val.keys()) == ["data"] and isinstance(val["data"], dict):
+                val = val["data"]
+            profile[key] = val
 
     # 관계 템플릿 → relationship_to_owner + relationships
     rels = conn.execute(
