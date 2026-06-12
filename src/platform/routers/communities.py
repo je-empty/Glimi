@@ -44,6 +44,10 @@ class CreateCommunityIn(BaseModel):
     owner: OwnerProfileIn
     clean_existing_channels: bool = False
     grant_to_user: str | None = None
+    # 모델 설정 — inherit(전역 기본값 상속) | cloud(전용 Claude 키) | local(Ollama)
+    model_mode: str = "inherit"
+    model_api_key: str = ""
+    model_tier: str = "standard"
 
 
 class VerifyTokenIn(BaseModel):
@@ -239,6 +243,34 @@ async def new_defaults(id: str = "", user: dict = Depends(require_user)):
     return data.get(id, {})
 
 
+_VALID_MODEL_MODES = ("inherit", "cloud", "local")
+_VALID_TIERS = ("lite", "standard", "quality")
+
+
+def _write_community_model(env_path: str, mode: str, api_key: str, tier: str) -> None:
+    """커뮤니티 .env 에 모델 override 기록.
+    inherit → 아무것도 안 씀 (전역 기본값 상속).
+    cloud   → 전용 ANTHROPIC_API_KEY (있으면) + 로컬 백엔드 해제.
+    local   → GLIMI_LLM_BACKEND=ollama + GLIMI_LOCAL_TIER.
+    엔진은 커뮤니티 .env 를 override=True 로 로드하므로 이 키들이 전역값을 덮어쓴다."""
+    from dotenv import set_key
+
+    mode = (mode or "inherit").strip().lower()
+    if mode not in _VALID_MODEL_MODES:
+        mode = "inherit"
+    if mode == "cloud":
+        if api_key.strip():
+            set_key(env_path, "ANTHROPIC_API_KEY", api_key.strip())
+        set_key(env_path, "GLIMI_LLM_BACKEND", "")  # 클라우드 = 로컬 백엔드 강제 해제
+    elif mode == "local":
+        t = (tier or "standard").strip().lower()
+        if t not in _VALID_TIERS:
+            t = "standard"
+        set_key(env_path, "GLIMI_LLM_BACKEND", "ollama")
+        set_key(env_path, "GLIMI_LOCAL_TIER", t)
+    # inherit → no-op
+
+
 @router.post("")
 async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     from dotenv import set_key
@@ -277,6 +309,9 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     # ── 3. .env 에 토큰 기록 ──
     env_path = COMMUNITIES_DIR / data.id / ".env"
     set_key(str(env_path), "DISCORD_BOT_TOKEN", data.token.strip())
+
+    # ── 3b. 모델 override (inherit 면 아무것도 안 씀 → 전역 기본값 상속) ──
+    _write_community_model(str(env_path), data.model_mode, data.model_api_key, data.model_tier)
 
     # ── 4. 오너 프로필 저장 ──
     _save_owner_profile(
