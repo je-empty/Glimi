@@ -196,14 +196,102 @@ def write_community_num_ctx(community_id: str, num_ctx: int) -> int:
     return val
 
 
+# 대시보드 컨텍스트 분해용 — 타입별 시스템 프롬프트 토큰 추정 (실측 기반, level별).
+# 정확한 값은 에이전트 활성화 시 빌드돼야 알 수 있지만, 시각화엔 추정으로 충분.
+_SYS_TOK_EST = {
+    "mgr":     {"compact": 2627, "standard": 3798, "full": 3798},
+    "creator": {"compact": 1900, "standard": 2500, "full": 2500},
+    "persona": {"compact": 2130, "standard": 2668, "full": 2668},
+}
+
+
+def _read_community_env(community_id: str) -> dict:
+    """community .env 의 LLM/OLLAMA 키 파싱."""
+    p = _community_env_path(community_id)
+    out = {}
+    if p.exists():
+        try:
+            for line in p.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                if k.startswith("GLIMI_") or k.startswith("OLLAMA_"):
+                    out[k] = v.strip().strip("'").strip('"')
+        except Exception:
+            pass
+    return out
+
+
+def _model_assignments(cenv: dict) -> list:
+    """타입별 모델 구성 → 모델별로 그룹핑된 목록.
+    우선순위: GLIMI_OLLAMA_MODEL_MAP[type] > GLIMI_OLLAMA_MODEL(전역)."""
+    import json as _json
+    glob = (cenv.get("GLIMI_OLLAMA_MODEL") or "").strip()
+    mmap = {}
+    raw = cenv.get("GLIMI_OLLAMA_MODEL_MAP", "")
+    if raw:
+        try:
+            mmap = _json.loads(raw)
+        except Exception:
+            mmap = {}
+    # 표시할 역할군
+    roles = [
+        ("mgr", "매니저", "Manager"),
+        ("creator", "크리에이터", "Creator"),
+        ("persona", "페르소나", "Persona"),
+        ("_other", "메모리·슈퍼바이저·판정", "Memory·Supervisor·Judge"),
+    ]
+    by_model: dict[str, dict] = {}
+    for key, ko, en in roles:
+        if key == "_other":
+            model = (mmap.get("_default") or glob or "").strip()
+        else:
+            model = (mmap.get(key) or mmap.get("_default") or glob or "").strip()
+        if not model:
+            model = "(claude)" if (cenv.get("GLIMI_LLM_BACKEND", "").lower() != "ollama") else "(미설정)"
+        entry = by_model.setdefault(model, {"model": model, "roles_ko": [], "roles_en": []})
+        entry["roles_ko"].append(ko)
+        entry["roles_en"].append(en)
+    return list(by_model.values())
+
+
 def elastic_memory_status(community_id: str) -> dict:
-    """대시보드용 — 현재 설정 + 티어 목록 + 사양 + 권장값."""
+    """대시보드용 — 현재 설정 + 티어 + 사양 + 권장값 + 모델 구성 + 컨텍스트 분해."""
+    from src.core import context_budget as cb
     cur = read_community_num_ctx(community_id)
     rec = recommend_num_ctx()
+    cenv = _read_community_env(community_id)
+    level = cb.prompt_detail_level(cur)
+    is_local = cenv.get("GLIMI_LLM_BACKEND", "").lower() == "ollama"
+
+    # 컨텍스트 분해 — 설정된 타입별 (모델 다를 수 있음)
+    import json as _json
+    glob = (cenv.get("GLIMI_OLLAMA_MODEL") or "").strip()
+    mmap = {}
+    try:
+        mmap = _json.loads(cenv.get("GLIMI_OLLAMA_MODEL_MAP", "") or "{}")
+    except Exception:
+        mmap = {}
+    breakdown = []
+    for atype in ("mgr", "persona"):
+        model = (mmap.get(atype) or mmap.get("_default") or glob or "").strip() or "(미설정)"
+        sys_tok = _SYS_TOK_EST.get(atype, {}).get(level, 2600)
+        comp = cb.composition(cur, atype, sys_tok)
+        comp["agent_type"] = atype
+        comp["agent_label_ko"] = {"mgr": "매니저(유나)", "persona": "페르소나(친구)"}[atype]
+        comp["model"] = model
+        breakdown.append(comp)
+
     return {
         "community": community_id,
         "current_num_ctx": cur,
         "current_tier": tier_for_num_ctx(cur),
+        "detail_level": level,
+        "backend_local": is_local,
+        "models": _model_assignments(cenv),
+        "breakdown": breakdown,
         "tiers": CONTEXT_TIERS,
         "specs": rec["specs"],
         "recommended_tier": rec["tier"],

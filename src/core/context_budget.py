@@ -145,6 +145,43 @@ def plan(num_ctx: int, agent_type: str, system_prompt: str, user_message: str,
     }
 
 
+def composition(num_ctx: int, agent_type: str, system_tokens: int) -> dict:
+    """대시보드 시각화용 — 컨텍스트 윈도우가 무엇에 얼마나 쓰이는지 세그먼트 분해.
+    합이 num_ctx 가 되도록: system + memory + recent + output_reserve + safety + free.
+    plan() 과 동일한 배분 로직을 system_tokens 직접 입력으로 재현."""
+    reserve = output_reserve(agent_type)
+    prompt_budget = max(512, num_ctx - reserve - SAFETY_MARGIN)
+    mscale = memory_scale(num_ctx)
+    mem = int(MEM_DESIGN_TOKENS * mscale)
+    recent = prompt_budget - system_tokens - mem
+    if recent < 150:
+        deficit = 150 - recent
+        mem = max(0, mem - deficit)
+        recent = prompt_budget - system_tokens - mem
+    recent = max(0, recent)
+    # system 이 예산 초과면 memory/recent 0, system 은 윈도우까지로 클램프(초과분은 잘림 경고 대상)
+    over = max(0, (system_tokens + mem + recent + reserve + SAFETY_MARGIN) - num_ctx)
+    if over > 0:
+        # memory/recent 먼저 줄임
+        take = min(over, recent); recent -= take; over -= take
+        take = min(over, mem); mem -= take; over -= take
+    sys_shown = min(system_tokens, num_ctx)
+    used = sys_shown + mem + recent + reserve + SAFETY_MARGIN
+    free = max(0, num_ctx - used)
+    return {
+        "num_ctx": num_ctx,
+        "segments": [
+            {"key": "system", "label_ko": "시스템 프롬프트", "label_en": "System prompt", "tokens": sys_shown},
+            {"key": "memory", "label_ko": "메모리 주입", "label_en": "Memory", "tokens": mem},
+            {"key": "recent", "label_ko": "최근 대화", "label_en": "Recent chat", "tokens": recent},
+            {"key": "output", "label_ko": "출력 예약", "label_en": "Output reserve", "tokens": reserve},
+            {"key": "safety", "label_ko": "여유", "label_en": "Free", "tokens": SAFETY_MARGIN + free},
+        ],
+        "mem_scale": round(mscale, 3),
+        "system_over_budget": system_tokens > prompt_budget,
+    }
+
+
 def trim_recent_to_budget(recent: list, budget_tokens: int) -> list:
     """최근 대화 리스트를 토큰 예산에 맞춰 오래된 것부터 잘라냄. 최신 메시지 우선 보존."""
     if budget_tokens <= 0:
