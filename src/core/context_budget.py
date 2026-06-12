@@ -33,13 +33,15 @@ MEM_SCALE_MAX = 2.0
 
 # 출력 예약 (프롬프트 예산 계산용 — 실제 num_predict 와 별개의 휴리스틱).
 # 대부분 응답은 짧지만 프롬프트 자리를 비워두기 위함.
+# 프롬프트 예산 계산용 출력 예약 (실제 num_predict 와 별개). 대부분 응답은 짧지만
+# mgr/creator 는 튜토리얼 등 멀티라인 출력이 있어 약간 더.
 _OUTPUT_RESERVE = {
-    "persona": 512,
-    "mgr": 1024,
-    "creator": 1024,
-    "dev": 768,
+    "persona": 448,
+    "mgr": 768,
+    "creator": 768,
+    "dev": 640,
 }
-_DEFAULT_OUTPUT_RESERVE = 640
+_DEFAULT_OUTPUT_RESERVE = 512
 
 # 현 메모리 주입 budget(문자)의 토큰 환산 기준 — memory.py BUDGET_* 합 ≈ 3700자 ≈ 1230tok.
 # scale 1.0 일 때의 메모리 토큰 비용 추정값 (recent 트림 예산 계산에 사용).
