@@ -443,8 +443,35 @@
     position: relative; width: 100%; height: 440px;
     /* overflow: hidden — 그래프가 블록 밖으로 새는 치명적 문제 원천 차단 */
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: 12px;
+    /* 도트 그리드 캔버스 — 그래프 영역이 '캔버스'로 읽히게 */
+    background-image: radial-gradient(color-mix(in srgb, var(--text-faint) 26%, transparent) 1.2px, transparent 1.2px);
+    background-size: 22px 22px;
   }
+  /* 캔버스 위 플로팅 컨트롤 (우하단) */
+  .graph-ctl {
+    position: absolute; right: 10px; bottom: 10px; z-index: 10;
+    display: flex; gap: 6px;
+  }
+  .graph-ctl button {
+    width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--panel); color: var(--text-dim); border: 0; border-radius: 9px;
+    font-size: 15px; cursor: pointer; box-shadow: var(--shadow);
+    transition: color 0.15s, background 0.15s;
+  }
+  .graph-ctl button:hover { color: var(--text); background: var(--panel-3); }
+  /* 칩 레전드 (좌하단) — 노드 타입 + 활성 상태 */
+  .graph-chips {
+    position: absolute; left: 10px; bottom: 10px; z-index: 10;
+    display: flex; gap: 5px; flex-wrap: wrap; max-width: 70%;
+  }
+  .graph-chips .gchip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--panel); border-radius: 999px; padding: 3px 9px;
+    font-size: 10.5px; color: var(--text-dim); box-shadow: var(--shadow);
+  }
+  .graph-chips .gchip .gdot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .graph-chips .gchip .gline { width: 13px; height: 2.5px; border-radius: 2px; flex: none; }
   .graph-stage svg.graph-edges {
     position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
     /* SVG 도 clip — viewBox 밖 요소 있으면 잘림 (안전망) */
