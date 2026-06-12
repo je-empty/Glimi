@@ -1,3 +1,4 @@
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css');
   /* ==== Theme variables ==== */
   /* 톤: je-empty (ink-forward 미니멀, 네이비 accent, 레이어드 paper). 중립 토큰만 교체.
      Glimi 고유 정체성 색(agent 사분면 mgr/creator/persona/dev, thinking/speaking, glow)은 보존. */
@@ -222,6 +223,11 @@
   }
   nav.tabs button:hover { color: var(--text); background: var(--panel-2); }
   nav.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  /* active 표시는 밑줄만 — 클릭 후 남는 둥근 focus 박스 제거 (je-empty nav 톤). 키보드 접근성은 유지 */
+  nav.tabs button { border-radius: 0; }
+  nav.tabs button:focus { outline: none; }
+  nav.tabs button:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+  nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
   nav.tabs button .count {
     font-size: 10px; margin-left: 6px; padding: 1px 7px;
     background: var(--panel-2); border-radius: 6px; color: var(--text-dim); font-weight: 500;
