@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Glimi · 초기 설정{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="/static/css/tokens.css?v={{ asset_v }}">
+  <link rel="stylesheet" href="/static/css/setup.css?v={{ asset_v }}">
+{% endblock %}
+
+{% block content %}
+<div class="setup-wrap">
+  <div class="setup-card">
+    <div class="setup-head">
+      <img src="/logo" alt="Glimi" class="setup-logo">
+      <div>
+        <h1>Glimi 시작하기</h1>
+        <p class="setup-sub">처음이네요. 한 번만 설정하면 됩니다.</p>
+      </div>
+    </div>
+
+    <ol class="setup-steps" id="steps">
+      <li class="active" data-step="1"><span class="dot">1</span>모델</li>
+      <li data-step="2"><span class="dot">2</span>계정</li>
+      <li data-step="3"><span class="dot">3</span>연동</li>
+    </ol>
+
+    <!-- Step 1: model backend -->
+    <section class="step" data-step="1">
+      <h2>기본 대화 모델</h2>
+      <p class="step-sub">새로 만드는 커뮤니티가 이 설정을 <b>기본값으로 상속</b>해요. 커뮤니티별로 나중에 다르게 바꿀 수 있어요.</p>
+      <div class="choice-grid">
+        <button type="button" class="choice" data-backend="cloud" id="ch-cloud">
+          <span class="choice-emoji">☁️</span>
+          <span class="choice-title">클라우드 (Claude)</span>
+          <span class="choice-desc">가장 똑똑하고 간편. API 키만 있으면 됨.</span>
+        </button>
+        <button type="button" class="choice" data-backend="local" id="ch-local">
+          <span class="choice-emoji">🖥️</span>
+          <span class="choice-title">로컬 (Ollama)</span>
+          <span class="choice-desc">내 컴퓨터에서 무료로. 다운로드 필요, 사양 탐.</span>
+        </button>
+      </div>
+
+      <!-- cloud detail -->
+      <div class="detail" id="detail-cloud" hidden>
+        <label class="field">
+          <span class="field-label">Anthropic API 키</span>
+          <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
+          <span class="field-hint">발급: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a></span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="use-cli">
+          <span>키 없이 <code>claude</code> CLI 로그인을 쓸게요 (Claude Code 사용자)</span>
+        </label>
+      </div>
+
+      <!-- local detail -->
+      <div class="detail" id="detail-local" hidden>
+        <p class="field-label">사양 티어</p>
+        <div class="tier-list">
+          <label class="tier"><input type="radio" name="tier" value="lite"><span><b>Lite</b> · e2b · ~16GB RAM · 최속, 품질↓</span></label>
+          <label class="tier"><input type="radio" name="tier" value="standard" checked><span><b>Standard</b> · e4b · 16GB+ RAM · 균형 (권장)</span></label>
+          <label class="tier"><input type="radio" name="tier" value="quality"><span><b>Quality</b> · 26B · 24GB+ RAM · 품질↑, 느림</span></label>
+        </div>
+        <p class="note">완료 후 터미널에서 <code>./run.sh --local-models</code> 로 모델을 내려받게 됩니다 (1회).</p>
+      </div>
+    </section>
+
+    <!-- Step 2: admin account -->
+    <section class="step" data-step="2" hidden>
+      <h2>관리자 계정</h2>
+      <p class="step-sub">대시보드 로그인에 쓸 admin 비밀번호를 정하세요.</p>
+      <label class="field">
+        <span class="field-label">비밀번호</span>
+        <input type="password" id="admin-pw" placeholder="4자 이상" autocomplete="new-password">
+      </label>
+      <label class="field">
+        <span class="field-label">비밀번호 확인</span>
+        <input type="password" id="admin-pw2" placeholder="다시 입력" autocomplete="new-password">
+      </label>
+    </section>
+
+    <!-- Step 3: discord (optional) -->
+    <section class="step" data-step="3" hidden>
+      <h2>Discord 연동 <span class="opt">선택</span></h2>
+      <p class="step-sub">지금은 대화가 Discord 로 나갑니다. 토큰이 있으면 입력하세요. 없으면 건너뛰어도 됩니다.</p>
+      <label class="field">
+        <span class="field-label">봇 토큰</span>
+        <input type="password" id="discord-token" placeholder="MTQ... (선택)" autocomplete="off">
+        <span class="field-hint">발급: <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">discord.com/developers</a> → Bot → Reset Token</span>
+      </label>
+    </section>
+
+    <div class="setup-err" id="setup-err" hidden></div>
+
+    <div class="setup-nav">
+      <button type="button" class="btn-ghost" id="btn-back" hidden>이전</button>
+      <div class="nav-spacer"></div>
+      <button type="button" class="btn-primary" id="btn-next">다음</button>
+      <button type="button" class="btn-primary" id="btn-finish" hidden>설정 완료</button>
+    </div>
+  </div>
+  <p class="setup-foot">나중에 바꿀 수 있어요. 설정은 이 컴퓨터의 <code>.env</code> 에 저장됩니다.</p>
+</div>
+{% endblock %}
+
+{% block bottom_scripts %}
+<script>
+(function () {
+  const state = { step: 1, backend: null };
+  const errEl = document.getElementById('setup-err');
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+  function showErr(msg) { errEl.textContent = msg; errEl.hidden = !msg; }
+
+  function render() {
+    $$('.step').forEach(el => { el.hidden = +el.dataset.step !== state.step; });
+    $$('#steps li').forEach(li => {
+      const n = +li.dataset.step;
+      li.classList.toggle('active', n === state.step);
+      li.classList.toggle('done', n < state.step);
+    });
+    $('#btn-back').hidden = state.step === 1;
+    $('#btn-next').hidden = state.step === 3;
+    $('#btn-finish').hidden = state.step !== 3;
+    showErr('');
+  }
+
+  // backend choice
+  $$('.choice').forEach(btn => btn.addEventListener('click', () => {
+    state.backend = btn.dataset.backend;
+    $$('.choice').forEach(b => b.classList.toggle('selected', b === btn));
+    $('#detail-cloud').hidden = state.backend !== 'cloud';
+    $('#detail-local').hidden = state.backend !== 'local';
+    showErr('');
+  }));
+
+  function validateStep() {
+    if (state.step === 1) {
+      if (!state.backend) return '모델 백엔드를 선택하세요.';
+      if (state.backend === 'cloud') {
+        const key = $('#api-key').value.trim();
+        const cli = $('#use-cli').checked;
+        if (!key && !cli) return 'API 키를 입력하거나 CLI 사용을 체크하세요.';
+      }
+    }
+    if (state.step === 2) {
+      const pw = $('#admin-pw').value.trim();
+      const pw2 = $('#admin-pw2').value.trim();
+      if (pw.length < 4) return '비밀번호는 4자 이상이어야 합니다.';
+      if (pw !== pw2) return '비밀번호가 일치하지 않습니다.';
+    }
+    return null;
+  }
+
+  $('#btn-next').addEventListener('click', () => {
+    const e = validateStep();
+    if (e) return showErr(e);
+    state.step = Math.min(3, state.step + 1);
+    render();
+  });
+  $('#btn-back').addEventListener('click', () => {
+    state.step = Math.max(1, state.step - 1);
+    render();
+  });
+
+  $('#btn-finish').addEventListener('click', async () => {
+    const e = validateStep();
+    if (e) return showErr(e);
+    const body = {
+      backend: state.backend,
+      admin_password: $('#admin-pw').value.trim(),
+      api_key: $('#api-key').value.trim(),
+      use_cli: $('#use-cli').checked,
+      tier: (document.querySelector('input[name="tier"]:checked') || {}).value || 'standard',
+      discord_token: $('#discord-token').value.trim(),
+    };
+    const fin = $('#btn-finish');
+    fin.disabled = true; fin.textContent = '설정 중...';
+    try {
+      const res = await fetch('/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { showErr(data.error || '설정에 실패했습니다.'); fin.disabled = false; fin.textContent = '설정 완료'; return; }
+      window.location.href = data.redirect || '/login';
+    } catch (err) {
+      showErr('네트워크 오류: ' + err);
+      fin.disabled = false; fin.textContent = '설정 완료';
+    }
+  });
+
+  render();
+})();
+</script>
+{% endblock %}

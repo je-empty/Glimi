@@ -261,8 +261,12 @@ echo   Glimi Platform
 echo   URL: http://%HOST%:%PORT%
 echo.
 
-REM === LLM credential check (default Claude path) ===
-if not "%LOCAL_MODELS%"=="1" if not defined ANTHROPIC_API_KEY (
+REM === first-run detection (no setup marker, no platform.db, no admin pw env) ===
+set "_FIRST_RUN=0"
+if not exist data\.setup_complete if not exist data\platform.db if not defined GLIMI_ADMIN_PASSWORD set "_FIRST_RUN=1"
+
+REM === LLM credential check (only for already-configured installs missing a key) ===
+if "%_FIRST_RUN%"=="0" if not "%LOCAL_MODELS%"=="1" if not defined ANTHROPIC_API_KEY (
     where claude >nul 2>nul
     if errorlevel 1 (
         echo [setup] WARNING: no Claude credential - agents will return empty replies.
@@ -275,10 +279,13 @@ if not "%LOCAL_MODELS%"=="1" if not defined ANTHROPIC_API_KEY (
     )
 )
 
-REM Bootstrap accounts on first run
-python -m src.platform.accounts list >nul 2>nul
-if errorlevel 1 (
-    python -m src.platform.accounts bootstrap
+REM === first run: open setup wizard in browser once the server is up ===
+REM Headless/remote: set GLIMI_NO_BROWSER=1 to disable.
+if "%_FIRST_RUN%"=="1" if not defined GLIMI_NO_BROWSER (
+    echo [setup] First run - your browser will open the setup screen.
+    start "" /b powershell -NoProfile -Command "for($i=0;$i -lt 40;$i++){try{Invoke-WebRequest -UseBasicParsing http://localhost:%PORT%/healthz -TimeoutSec 1 ^| Out-Null; break}catch{Start-Sleep -Milliseconds 500}}; Start-Process 'http://localhost:%PORT%/setup'"
 )
 
+REM Account bootstrap no longer here - first run = web wizard (/setup);
+REM headless = platform lifespan via GLIMI_ADMIN_PASSWORD.
 python -m src.platform --host %HOST% --port %PORT%
