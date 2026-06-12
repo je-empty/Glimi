@@ -865,32 +865,79 @@ async function resetAgentModel(agentId) {
 }
 
 // ── Elastic Memory — 커뮤니티별 컨텍스트(num_ctx) 사양 조절 ──
+const _EM_SEG_COLORS = {
+  system: 'var(--accent)', memory: '#1d9e75', recent: '#c98a1a',
+  output: 'var(--text-faint)', safety: 'var(--border)',
+};
+function _emSectionLabel(t) {
+  return `<div style="font-size:10.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-faint);margin:0 0 8px">${t}</div>`;
+}
+function _emBar(b) {
+  const segs = b.segments || [];
+  const total = segs.reduce((s, x) => s + x.tokens, 0) || 1;
+  const fills = segs.filter(s => s.tokens > 0).map(s =>
+    `<div title="${esc(s.label_ko)} · ${s.tokens.toLocaleString()} tok" style="width:${(s.tokens/total*100).toFixed(1)}%;background:${_EM_SEG_COLORS[s.key]||'var(--border)'}"></div>`).join('');
+  const legend = segs.filter(s => s.tokens > 0).map(s =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-dim)">
+       <span style="width:9px;height:9px;border-radius:2px;background:${_EM_SEG_COLORS[s.key]||'var(--border)'}"></span>
+       ${esc(s.label_ko)} <span style="font-variant-numeric:tabular-nums;color:var(--text-faint)">${s.tokens.toLocaleString()}</span></span>`).join('');
+  const modelShort = (b.model||'').split('/').pop();
+  return `<div style="margin-bottom:13px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+      <span style="font-size:12.5px;font-weight:500">${esc(b.agent_label_ko)}</span>
+      <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim)">${esc(modelShort)} · ${b.num_ctx.toLocaleString()} tok</span>
+    </div>
+    <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;border:1px solid var(--border)">${fills}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">${legend}</div>
+  </div>`;
+}
 function _emRender(d) {
   const specs = d.specs || {};
   const accelLabel = {nvidia_vram: 'GPU VRAM', apple_unified: '통합 메모리', cpu_or_unknown: '시스템 RAM'}[specs.accel] || '메모리';
+  const levelLabel = {compact: 'Compact', standard: 'Standard', full: 'Full'}[d.detail_level] || d.detail_level;
+
+  const modelChips = (d.models || []).map(m =>
+    `<div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-soft)">
+      <span style="font-family:var(--font-mono);font-size:11.5px;color:var(--text)">${esc((m.model||'').split('/').pop())}</span>
+      <span style="font-size:11px;color:var(--text-dim)">${esc((m.roles_ko||[]).join(' · '))}</span>
+    </div>`).join('');
+
+  const bars = (d.breakdown || []).map(_emBar).join('');
+
   const cards = (d.tiers || []).map(t => {
     const cur = t.key === d.current_tier;
     const rec = t.key === d.recommended_tier;
-    return `<label class="em-tier" style="display:flex;gap:10px;padding:11px;border:${cur ? '2px solid var(--accent,#2563eb)' : '1px solid var(--border)'};border-radius:10px;margin-bottom:7px;cursor:pointer;align-items:center">
+    return `<label style="display:flex;gap:10px;padding:10px 11px;border:${cur ? '2px solid var(--accent)' : '1px solid var(--border)'};border-radius:9px;margin-bottom:6px;cursor:pointer;align-items:center;background:${cur ? 'var(--accent-soft, transparent)' : 'transparent'}">
       <input type="radio" name="em-pick" value="${t.num_ctx}" ${cur ? 'checked' : ''}>
-      <div style="font-size:20px;font-weight:700;width:24px;text-align:center">${esc(t.label_ko)}</div>
+      <div style="font-size:17px;font-weight:600;width:22px;text-align:center;color:${cur ? 'var(--accent)' : 'var(--text-dim)'}">${esc(t.label_ko)}</div>
       <div style="flex:1">
-        <div style="font-weight:600">${esc(t.label_en)} · <span style="font-family:monospace">${t.num_ctx.toLocaleString()}</span> tok ${rec ? '<span style="font-size:10.5px;color:var(--ok,#10b981);font-weight:600">· 권장</span>' : ''}</div>
+        <div style="font-size:13px;font-weight:500">${esc(t.label_en)} · <span style="font-family:var(--font-mono);font-size:12px">${t.num_ctx.toLocaleString()}</span> tok ${rec ? '<span style="font-size:10px;color:var(--ok);font-weight:500">· 권장</span>' : ''}</div>
         <div style="font-size:11px;color:var(--text-dim)">${esc(t.note_ko)}</div>
       </div>
     </label>`;
   }).join('');
+
   return `
-    <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.6">
-      <b>Elastic Memory</b> — 주입 기억을 컨텍스트 크기에 맞춰 탄력 조절. 클수록 기억을 더 풍부하게,
-      작을수록 절약 (VRAM 모델당 ~+1GB/8192). 로컬 모델에만 적용 · 봇 재기동 시 반영.
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.65">
+      주입 기억과 시스템 프롬프트를 컨텍스트 크기에 맞춰 탄력 조절합니다. 크면 기억을 더 풍부하게,
+      작으면 절약 (로컬 모델 · 봇 재기동 시 반영).
     </div>
-    <div style="background:var(--bg-soft,#f6f7f9);border-radius:8px;padding:9px 11px;margin-bottom:12px;font-size:12px">
+
+    ${_emSectionLabel('모델 구성')}
+    <div style="background:var(--panel-2);border-radius:8px;padding:4px 12px;margin-bottom:16px">${modelChips || '<div style="padding:8px 0;font-size:12px;color:var(--text-dim)">로컬 백엔드 아님</div>'}</div>
+
+    ${_emSectionLabel(`컨텍스트 점유 · ${esc(levelLabel)} 프롬프트`)}
+    ${bars || ''}
+
+    ${_emSectionLabel('감지 사양 · 권장')}
+    <div style="background:var(--panel-2);border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px">
       <div style="display:flex;justify-content:space-between"><span style="color:var(--text-dim)">감지된 사양</span>
-        <span><b>${(specs.usable_gb||0)}GB</b> ${esc(accelLabel)} <span style="color:var(--text-dim)">(${esc(specs.platform||'?')})</span></span></div>
-      <div style="display:flex;justify-content:space-between;margin-top:3px"><span style="color:var(--text-dim)">권장</span>
+        <span><b>${(specs.usable_gb||0)}GB</b> ${esc(accelLabel)} <span style="color:var(--text-faint)">(${esc(specs.platform||'?')})</span></span></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--text-dim)">권장</span>
         <span>${esc(d.recommended_reason_ko||'')}</span></div>
     </div>
+
+    ${_emSectionLabel('컨텍스트 크기')}
     <form id="em-form">${cards}</form>
     <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
       <button class="act-btn" onclick="event.stopPropagation(); emApply(true)">사양 감지 → 권장값</button>
