@@ -348,8 +348,10 @@
     border: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
     color: var(--err); font-size: 12.5px; font-weight: 500;
     align-items: center; gap: 10px;
+    flex-wrap: wrap;
     display: none;
   }
+  .offline-banner b { flex: none; white-space: nowrap; }
   body.offline .offline-banner { display: flex; }
   .offline-banner::before { content: '⏸'; font-size: 16px; }
   .offline-banner b { color: var(--err); }
@@ -427,7 +429,7 @@
   .graph-fs-btn {
     background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
     border-radius: 7px; padding: 4px 10px; font-size: 11px; cursor: pointer;
-    font-family: inherit;
+    font-family: inherit; white-space: nowrap;
   }
   .graph-fs-btn:hover { border-color: var(--accent); background: var(--panel-3); }
   .graph-panel .graph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -589,9 +591,10 @@
   .hero-pill-row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 
   /* ==== Agent Card ==== */
+  /* 카드가 가로 행을 균등하게 채움 — auto-fill + 1fr (300px 아래로 안 줄어들고, 남는 폭은 분배) */
   .agent-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 380px));
-    gap: 12px; align-items: start; justify-content: start;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px; align-items: start;
   }
   .agent-card {
     background: var(--panel-2); border: 1.5px solid transparent; border-radius: 14px;
