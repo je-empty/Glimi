@@ -10,6 +10,14 @@
 4. **구역**: 콘텐츠 (catalog·씬) 는 자유, 코어 포함 나머지는 리뷰 필수, 인프라·시크릿은 메인테이너 전용 — 상세는 `COLLAB_GUIDE.html` §1.
 5. **코어 중립**: `src/core/`·`src/llm/` 에 특정 커뮤니티 콘텐츠 (캐릭터명·실존 IP·특정 언어 문구) 하드코딩 금지 — 커뮤니티 데이터는 데이터 레이어로.
 
+## 테스트
+
+PR 전 절차는 `docs/testing.md` — E2E QA 는 최초 1회 `cp tests/e2e/qa.env.example communities/qa/.env` 후 **QA 페르소나에 자기 자신**을 넣는다 (gitignore 라 커밋 안 됨). CI 는 PR 에서 자동 실행.
+
+## 할 일 (Todo)
+
+전역 백로그 = [GitHub Issues](../../issues) — `part:core` / `part:community` / `part:platform` / `part:adapter` / `part:infra` 라벨로 파트 구분. 작업 시작 전 이슈를 집고, PR 본문에 `closes #N`.
+
 ## 바이브코딩 (Claude Code)
 
 이 repo 는 Claude Code 친화적 — 로컬 클론에서 열면 `CLAUDE.md` 가 자동 로드되어 위 규칙을 Claude 가 알고 시작한다. 개발 판단 기준 (타깃·설계 락인) 은 `docs/dev_guide.md`.
