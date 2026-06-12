@@ -267,6 +267,7 @@ def _looks_like_owner_echo(line: str) -> bool:
     """라인이 '오너이름: ...' / '별칭: ...' 형태 = 유저 발화 에코 (로컬 모델이 대화 포맷을
     그대로 복사). 오너 이름/별칭으로 시작하면 drop. 짧은 이름만(오인 방지)."""
     try:
+        from .profile import get_owner_call_name
         names = set()
         n = get_user_display_name()
         if n:
