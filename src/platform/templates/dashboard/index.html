@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/static/css/dashboard.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   /* 대시보드는 전체 뷰포트 사용 (base main 패딩 무시) */
@@ -195,7 +196,7 @@
 
 <!-- Sync progress modal -->
 <div id="sync-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;align-items:center;justify-content:center;padding:20px">
-  <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;width:min(720px,100%);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:16px;width:min(720px,100%);max-height:85vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)">
     <div style="padding:16px 22px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:12px">
       <div id="sync-modal-spinner" style="width:18px;height:18px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>
       <div style="flex:1">

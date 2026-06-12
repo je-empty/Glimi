@@ -1,61 +1,63 @@
   /* ==== Theme variables ==== */
+  /* 톤: je-empty (ink-forward 미니멀, 네이비 accent, 레이어드 paper). 중립 토큰만 교체.
+     Glimi 고유 정체성 색(agent 사분면 mgr/creator/persona/dev, thinking/speaking, glow)은 보존. */
   :root[data-theme="light"] {
-    --bg: #f6f7fb;
+    --bg: #fafafa;
     --bg-elev: #ffffff;
     --panel: #ffffff;
-    --panel-2: #f2f3f9;
-    --panel-3: #e9eaf3;
-    --border: #dfe1ec;
-    --border-soft: #eceef5;
-    --text: #1a1b25;
-    --text-dim: #62647a;
-    --text-faint: #9a9db1;
-    --accent: #4f46e5;
-    --accent-2: #8b5cf6;
-    --ok: #16a34a;
-    --warn: #ca8a04;
-    --err: #dc2626;
+    --panel-2: #f6f7f9;       /* paper-2 */
+    --panel-3: #eceef2;       /* paper-3 */
+    --border: #e5e7eb;        /* line */
+    --border-soft: #eef0f3;
+    --text: #14161a;          /* ink */
+    --text-dim: #4a4e57;      /* ink-muted */
+    --text-faint: #8a8e98;    /* ink-faint */
+    --accent: #2a4365;        /* navy */
+    --accent-2: #51678f;      /* slate (navy 계열 보조) */
+    --ok: #047857;
+    --warn: #b45309;
+    --err: #b91c1c;
     --cmd: #9333ea;
     --thinking: #ca8a04;
     --speaking: #0891b2;
-    /* Agent type colors — 4 사분면으로 명확히 분리. mgr=빨강, creator=주황, persona=파랑, dev=초록 */
+    /* Agent type colors — Glimi 정체성 (그래프·노드). 보존. */
     --mgr: #dc2626;
     --creator: #ea580c;
     --persona: #2563eb;
     --dev: #16a34a;
     --user: #db2777;
-    --shadow: 0 1px 3px rgba(20,22,40,0.06), 0 1px 2px rgba(20,22,40,0.04);
-    --shadow-lg: 0 10px 30px rgba(20,22,40,0.08), 0 2px 8px rgba(20,22,40,0.04);
+    --shadow: 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-lg: 0 4px 14px -2px rgba(0,0,0,0.16), 0 0 0 1px var(--border);
     --glow-thinking: 0 0 0 1px rgba(202,138,4,0.6), 0 0 28px rgba(202,138,4,0.15);
     --glow-speaking: 0 0 0 1px rgba(8,145,178,0.6), 0 0 28px rgba(8,145,178,0.15);
   }
   :root[data-theme="dark"] {
-    --bg: #0a0a10;
-    --bg-elev: #111119;
-    --panel: #151521;
-    --panel-2: #1b1b2a;
-    --panel-3: #232336;
-    --border: #2d2d42;
-    --border-soft: #1f1f30;
-    --text: #e8e8f0;
-    --text-dim: #9a9ab0;
-    --text-faint: #5a5a6d;
-    --accent: #818cf8;
-    --accent-2: #c084fc;
-    --ok: #4ade80;
+    --bg: #1a1a1a;
+    --bg-elev: #1f1f1f;
+    --panel: #212121;         /* paper */
+    --panel-2: #2f2f2f;       /* paper-2 */
+    --panel-3: #424242;       /* paper-3 */
+    --border: rgba(255,255,255,0.10);
+    --border-soft: rgba(255,255,255,0.06);
+    --text: #ececec;          /* ink */
+    --text-dim: #b4b4b4;      /* ink-muted */
+    --text-faint: #8a8a8a;    /* ink-faint */
+    --accent: #9fb8e0;        /* lightened navy */
+    --accent-2: #b8c5dd;
+    --ok: #34d399;
     --warn: #fbbf24;
     --err: #f87171;
     --cmd: #d8b4fe;
     --thinking: #fde047;
     --speaking: #67e8f9;
-    /* Dark — 같은 4 hue, 약한 채도 */
+    /* Dark — Glimi 정체성 색 보존 */
     --mgr: #f87171;
     --creator: #fb923c;
     --persona: #93c5fd;
     --dev: #86efac;
     --user: #f9a8d4;
-    --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
-    --shadow-lg: 0 10px 30px rgba(0,0,0,0.4);
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-lg: 0 8px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px var(--border);
     --glow-thinking: 0 0 0 1px var(--thinking), 0 0 28px rgba(253,224,71,0.15);
     --glow-speaking: 0 0 0 1px var(--speaking), 0 0 28px rgba(103,232,249,0.15);
   }
@@ -78,8 +80,9 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font: 13px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    /* je-empty 타이포 톤 — Pretendard(한글 최적) + tight letter-spacing */
+    font: 13px/1.55 "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Inter", "Noto Sans KR", sans-serif;
+    letter-spacing: -0.008em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
