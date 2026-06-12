@@ -312,12 +312,14 @@ def api_action_trash_empty(body: dict, community_id: str) -> dict:
 
 
 def api_action_set_agent_model(body: dict, community_id: str) -> dict:
-    """에이전트 model override 설정/해제. 페르소나만 허용.
+    """에이전트 model override 설정/해제 — 실시간 (재시작 불필요, 다음 턴 반영).
 
     POST body: {"agent_id": "agent-persona-001", "model": "claude-haiku-4-5"}
-               {"agent_id": "...", "model": ""}  → override 해제
+               {"agent_id": "...", "model": ""}  → override 해제 (type 기본값)
+    persona / mgr / creator / dev 모두 허용. _resolve_agent_model 이 DB override 우선 사용.
     """
     from src import db as _db
+    _SWITCHABLE = {"persona", "mgr", "creator", "dev"}
     aid = (body.get("agent_id") or "").strip()
     model = (body.get("model") or "").strip()
     if not aid:
@@ -326,8 +328,8 @@ def api_action_set_agent_model(body: dict, community_id: str) -> dict:
         agent = _db.get_agent(aid)
         if not agent:
             return {"ok": False, "error": "agent not found"}
-        if agent.get("type") != "persona":
-            return {"ok": False, "error": f"model override not allowed for type={agent.get('type')} (persona only)"}
+        if agent.get("type") not in _SWITCHABLE:
+            return {"ok": False, "error": f"model override not allowed for type={agent.get('type')}"}
     except Exception as e:
         return {"ok": False, "error": f"agent lookup failed: {e}"}
     try:
