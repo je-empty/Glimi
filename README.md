@@ -359,7 +359,8 @@ Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `dis
 git clone https://github.com/jaebinsim/Glimi.git
 cd Glimi
 ./run.sh                    # platform + dashboard → http://localhost:8000
-                            # login: admin / rmfflal  or  test / 0000
+                            # first run prompts for an admin password
+                            # (or set GLIMI_ADMIN_PASSWORD for non-interactive)
 ```
 
 **Windows** (native):

@@ -10,7 +10,7 @@
 ./scripts/stop.sh                     # 전체 종료
 
 # 계정 관리 (CLI)
-python -m src.platform.accounts bootstrap       # admin/1234 + test/1234 초기 생성
+python -m src.platform.accounts bootstrap       # admin 계정 생성 (비번은 프롬프트/GLIMI_ADMIN_PASSWORD/랜덤)
 python -m src.platform.accounts list
 python -m src.platform.accounts add <user>
 python -m src.platform.accounts grant <user> <community_id>

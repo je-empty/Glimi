@@ -324,7 +324,8 @@ flowchart LR
 git clone https://github.com/jaebinsim/Glimi.git
 cd Glimi
 ./run.sh                    # 플랫폼 + 대시보드 → http://localhost:8000
-                            # 로그인: admin / rmfflal  또는  test / 0000
+                            # 첫 실행 시 admin 비밀번호를 직접 묻는다
+                            # (비대화형이면 GLIMI_ADMIN_PASSWORD 로 지정)
 ```
 
 **Windows** (현재 WSL2 권장. 네이티브 `run.ps1` 은 후속 contributor task):
