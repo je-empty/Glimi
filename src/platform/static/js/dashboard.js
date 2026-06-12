@@ -1966,20 +1966,21 @@ function startLiveEdgeAnimation() {
     });
     return;
   }
+  // 점선 플로우 — dash-offset 을 한 방향으로 이동 ("대화가 흐르는" 느낌)
+  // + width 미세 호흡. 과한 글로우(overlay) 는 제거 — paper 톤 유지.
   let pulse = 0;
+  let dash = 0;
   cyLiveAnimTimer = setInterval(() => {
     pulse = (pulse + 0.1) % (Math.PI * 2);
-    const sin = Math.sin(pulse);
-    const width = 3 + sin * 0.8;          // 2.2 ~ 3.8
-    const overlayOp = 0.18 + sin * 0.12;   // 0.06 ~ 0.30
-    const overlayPad = 5 + sin * 3;        // 2 ~ 8
+    dash -= 1.3;
+    if (dash < -10000) dash = 0;
+    const width = 2.4 + Math.sin(pulse) * 0.4;
     cyInstance.batch(() => {
       liveEdges.forEach(e => {
         e.style({
           'width': width,
-          'overlay-color': cyInstance.scratch('_thinkingColor'),
-          'overlay-opacity': overlayOp,
-          'overlay-padding': overlayPad,
+          'line-dash-offset': dash,
+          'overlay-opacity': 0,
         });
       });
     });
@@ -2198,11 +2199,24 @@ function buildGraphElements(snap) {
       label: truncLabel(e.channel),
       channel: e.channel,
       kind: e.kind,
+      msgCount: e.msg_count || 0,
       cpd: 0,
       cpw: 0.5,
     },
     classes: 'ch-' + e.kind + (e.live ? ' live' : ''),
   }));
+
+  // 가장 강한 관계 (msg 수 최대) 엣지에 상시 배지 — 두께+숫자 이중 인코딩
+  let topTie = null;
+  for (const e of edges) {
+    if (!topTie || e.data.msgCount > topTie.data.msgCount) topTie = e;
+  }
+  if (topTie && topTie.data.msgCount > 0) {
+    topTie.classes += ' top-tie';
+    topTie.data.badge = topTie.data.msgCount >= 1000
+      ? (topTie.data.msgCount / 1000).toFixed(1) + 'k'
+      : String(topTie.data.msgCount);
+  }
 
   // 같은 source-target 페어가 여러 개면 perpendicular 방향으로 spread
   //   → unbundled-bezier 의 control-point-distances 에 페어별 인덱스 기반 offset 부여
@@ -2282,26 +2296,35 @@ function renderConnectionGraph(snap) {
   const headHtml = `<div class="graph-head">
       <h3>Connection Graph</h3>
       <span class="note" id="graph-note"></span>
-      <button class="graph-fs-btn" onclick="toggleGraphFullscreen()">${fullscreen ? '✕ 닫기' : '⛶ 전체보기'}</button>
     </div>`;
 
   if (!hasContent) {
     return headHtml + `<div class="graph-empty">활성 채널 없음 — 에이전트들이 조용히 대기 중</div>`;
   }
 
-  const legend = `<div class="graph-legend">
-    <div class="item"><span class="swatch" style="background:var(--accent)"></span>DM</div>
-    <div class="item"><span class="swatch" style="background:var(--ok)"></span>Group</div>
-    <div class="item"><span class="swatch" style="background:var(--cmd)"></span>Internal DM</div>
-    <div class="item"><span class="swatch" style="background:var(--creator)"></span>Internal Group</div>
-    <div class="item"><span class="swatch" style="background:var(--mgr)"></span>Manager</div>
-    ${SHOW_SUP ? `<div class="item"><span class="swatch" style="background:var(--warn)"></span>Supervisor</div>` : ''}
-    <div class="item" style="margin-left:auto"><span style="color:var(--text)">━━</span> 활성  <span style="color:var(--text-dim);margin-left:4px">┄┄</span> 대기</div>
+  // 캔버스 오버레이 — 칩 레전드(좌하단, 노드 타입 기준) + 플로팅 컨트롤(우하단)
+  const chips = `<div class="graph-chips">
+    <span class="gchip"><span class="gdot" style="background:var(--user)"></span>오너</span>
+    <span class="gchip"><span class="gdot" style="background:var(--mgr)"></span>매니저</span>
+    <span class="gchip"><span class="gdot" style="background:var(--creator)"></span>크리에이터</span>
+    <span class="gchip"><span class="gdot" style="background:var(--persona)"></span>페르소나</span>
+    ${SHOW_SUP ? `<span class="gchip"><span class="gdot" style="background:var(--warn)"></span>감시자</span>` : ''}
+    <span class="gchip"><span class="gline" style="background:var(--speaking)"></span>대화 중</span>
+  </div>`;
+  const ctl = `<div class="graph-ctl">
+    <button title="화면 맞춤" onclick="cyFitGraph()"><i class="ti ti-focus-2" aria-hidden="true"></i></button>
+    <button title="${fullscreen ? '닫기' : '전체보기'}" onclick="toggleGraphFullscreen()"><i class="ti ${fullscreen ? 'ti-x' : 'ti-maximize'}" aria-hidden="true"></i></button>
   </div>`;
 
   return headHtml +
-    `<div class="graph-stage"><div id="cy-graph" style="width:100%;height:100%"></div></div>` +
-    legend;
+    `<div class="graph-stage"><div id="cy-graph" style="width:100%;height:100%"></div>${chips}${ctl}</div>`;
+}
+
+// 그래프 화면 맞춤 (플로팅 컨트롤)
+function cyFitGraph() {
+  if (!cyInstance) return;
+  const isMobile = window.matchMedia('(max-width: 720px)').matches;
+  cyInstance.fit(undefined, isMobile ? 6 : 25);
 }
 
 // renderConnectionGraph 후 호출 — innerHTML 으로 들어간 #cy-graph 에 cytoscape 인스턴스 마운트
@@ -2520,14 +2543,35 @@ function mountCytoscapeGraph(snap) {
       // 채널 종류별 색상은 hover label 정도로만 활용. 기본 라인은 중성톤으로 통일해
       // 노드 컬러와 충돌하지 않게 (사용자 피드백: "엣지가 너무 튀어서 미감 망침")
       {
+        // live — 대화 중인 관계. speaking 시안색 점선이 흐름 (dash-offset 애니메이션)
         selector: 'edge.live',
         style: {
-          'line-style': 'solid',
-          'opacity': 0.85,
-          'width': 2.0,
-          'line-color': C.accent,
+          'line-style': 'dashed',
+          'line-dash-pattern': [7, 6],
+          'opacity': 0.9,
+          'width': 2.4,
+          'line-color': C.speaking,
         },
       },
+      {
+        // 최강 관계 배지 — accent 필 안에 메시지 수 상시 표시
+        selector: 'edge.top-tie',
+        style: {
+          'label': 'data(badge)',
+          'text-opacity': 1,
+          'font-size': 10,
+          'font-weight': 600,
+          'color': '#ffffff',
+          'text-background-color': C.accent,
+          'text-background-opacity': 1,
+          'text-background-padding': 4,
+          'text-background-shape': 'roundrectangle',
+          'text-border-width': 0,
+        },
+      },
+      // Focus mode — hover 한 노드의 이웃 밖 요소 페이드
+      { selector: 'node.gdim', style: { 'opacity': 0.22 } },
+      { selector: 'edge.gdim', style: { 'opacity': 0.07, 'text-opacity': 0 } },
       // supervisor → target 감시 엣지. dim (idle), active, intervening 3 단계.
       {
         selector: 'edge.sup-edge',
@@ -2604,10 +2648,13 @@ function mountCytoscapeGraph(snap) {
     container.style.cursor = (isOwner && COMMUNITY !== 'qa') ? 'default' : 'pointer';
     n.addClass('hl');
     n.connectedEdges().addClass('hl');
+    // focus mode — 이웃 밖 요소 페이드 (ego-network 강조)
+    cyInstance.elements().not(n.closedNeighborhood()).addClass('gdim');
   });
   cyInstance.on('mouseout', 'node', (evt) => {
     container.style.cursor = 'default';
     cyInstance.elements('.hl').removeClass('hl');
+    cyInstance.elements('.gdim').removeClass('gdim');
   });
   cyInstance.on('mouseover', 'edge', (evt) => {
     container.style.cursor = 'pointer';
