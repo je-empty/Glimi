@@ -143,6 +143,26 @@ def build_brief_list(agent_type: str) -> str:
     return "\n".join(lines)
 
 
+def build_compact_list(agent_type: str) -> str:
+    """최소 버전 (작은 num_ctx 용) — 이름 + 필수 시그니처만, 설명 생략.
+    설명이 필요하면 `get_tool_details(name)`. brief 대비 ~절반 토큰."""
+    tools = tools_for_agent(agent_type)
+    lines = [
+        "## Tools — `<tools><call id=\"1\" name=\"X\">{json}</call></tools>` (response 끝). "
+        "설명은 `get_tool_details(name)`. body 는 순수 JSON object 만.",
+    ]
+    by_cat: dict[str, list[ToolSpec]] = {}
+    for t in tools:
+        by_cat.setdefault(t.category, []).append(t)
+    for cat in ("management", "query", "request"):
+        if cat not in by_cat:
+            continue
+        names = ", ".join(f"`{t.name}{_required_params_sig(t)}`{' ⚠' if t.destructive else ''}"
+                          for t in by_cat[cat])
+        lines.append(f"{cat}: {names}")
+    return "\n".join(lines)
+
+
 def build_tool_details(tool_name: str) -> str:
     """특정 도구의 전체 스키마·예제·안전 플래그. get_tool_details 핸들러가 호출."""
     from .registry import TOOLS
