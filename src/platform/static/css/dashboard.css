@@ -91,17 +91,22 @@
 
   button, select, input { font-family: inherit; color: inherit; }
 
-  /* ==== Shell ==== */
-  .app { display: grid; grid-template-rows: auto auto 1fr; height: 100vh; }
+  /* ==== Shell — 헤더(전폭) + 좌측 레일 + 메인 ==== */
+  .app {
+    display: grid;
+    grid-template-columns: 172px 1fr;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
 
   header.status {
-    padding: 12px 24px;
+    grid-column: 1 / -1;
+    padding: 10px 20px;
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 14px;
-    box-shadow: var(--shadow);
     z-index: 100;
-    min-height: 58px;
+    min-height: 54px;
     position: relative;
   }
   .brand {
@@ -206,61 +211,97 @@
   select:hover, .btn-icon:hover { border-color: var(--accent); }
   .btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 
-  /* ==== Tabs ==== */
+  /* ==== Tabs — 좌측 레일 (je-empty paper rail) ==== */
   nav.tabs {
-    padding: 0 20px;
-    background: var(--bg-elev);
-    border-bottom: 1px solid var(--border);
-    display: flex; gap: 2px;
-    overflow-x: auto;
+    grid-row: 2; grid-column: 1;
+    padding: 10px 8px 12px;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 1px;
+    overflow-y: auto;
     z-index: 4;
   }
+  nav.tabs::-webkit-scrollbar { width: 0; }
   nav.tabs button {
     background: transparent; color: var(--text-dim); border: none;
-    padding: 15px 17px; font-size: 13.5px; font-weight: 500; cursor: pointer;
-    border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s, background 0.15s;
-    white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 11px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    border-radius: 9px; transition: color 0.15s, background 0.15s;
+    white-space: nowrap; display: flex; align-items: center; gap: 10px;
+    text-align: left; width: 100%;
   }
-  nav.tabs button .tab-emoji { font-size: 14px; line-height: 1; }
+  nav.tabs button .tab-emoji { font-size: 15px; line-height: 1; color: var(--text-faint); flex: none; transition: color 0.15s; }
   nav.tabs button:hover { color: var(--text); background: var(--panel-2); }
-  nav.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
-  /* active 표시는 밑줄만 — 클릭 후 남는 둥근 focus 박스 제거 (je-empty nav 톤). 키보드 접근성은 유지 */
-  nav.tabs button { border-radius: 0; }
+  nav.tabs button:hover .tab-emoji { color: var(--text-dim); }
+  nav.tabs button.active { color: var(--text); background: var(--panel-3); font-weight: 600; }
+  nav.tabs button.active .tab-emoji { color: var(--accent); }
   nav.tabs button:focus { outline: none; }
   nav.tabs button:focus:not(:focus-visible) { outline: none; box-shadow: none; }
-  nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   nav.tabs button .count {
-    font-size: 10px; margin-left: 6px; padding: 1px 7px;
-    background: var(--panel-2); border-radius: 6px; color: var(--text-dim); font-weight: 500;
+    font-size: 10px; margin-left: auto; padding: 1px 7px;
+    background: var(--panel-2); border-radius: 999px; color: var(--text-faint); font-weight: 500;
+    font-family: "JetBrains Mono", monospace;
   }
-  nav.tabs button.active .count { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+  nav.tabs button.active .count { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+
+  /* 좁은 화면 — 레일 아이콘만 (라벨 텍스트 숨김) */
+  @media (max-width: 920px) {
+    .app { grid-template-columns: 56px 1fr; }
+    nav.tabs { padding: 10px 6px 12px; }
+    nav.tabs button { font-size: 0; gap: 0; justify-content: center; padding: 10px 0; }
+    nav.tabs button .tab-emoji { font-size: 17px; }
+    nav.tabs button .count { display: none; }
+  }
 
   /* ==== Main + views ==== */
-  main { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-  .view { display: none; flex: 1; overflow-y: auto; padding: 20px 24px; scroll-behavior: smooth; }
+  main { grid-row: 2; grid-column: 2; min-height: 0; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .view { display: none; flex: 1; overflow-y: auto; padding: 18px 24px 24px; scroll-behavior: smooth; }
   .view.active { display: block; }
   .view::-webkit-scrollbar { width: 8px; }
   .view::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-  /* ==== Overview KPI ==== */
+  /* ==== Overview KPI — paper-2 무보더 surface ==== */
   .overview-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; margin-bottom: 18px;
   }
   .kpi {
-    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 12px;
-    padding: 14px 18px; box-shadow: var(--shadow);
+    background: var(--panel-2); border: 0; border-radius: 12px;
+    padding: 11px 14px;
+    transition: background 0.2s ease-out;
   }
-  .kpi .label { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.1px; margin-bottom: 5px; font-weight: 600; }
-  .kpi .value { font-size: 20px; font-weight: 700; color: var(--text); display: flex; align-items: baseline; gap: 6px; }
+  .kpi:hover { background: var(--panel-3); }
+  .kpi .label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 4px; font-weight: 400;
+  }
+  .kpi .value { font-size: 16px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
   .kpi .value small { font-size: 11px; color: var(--text-dim); font-weight: 400; }
 
+  /* section-title — mono eyebrow (je-empty) */
   .section-title {
-    font-size: 11.5px; font-weight: 700; color: var(--text-dim);
-    text-transform: uppercase; letter-spacing: 1.5px;
-    margin: 22px 2px 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; font-weight: 400; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin: 20px 2px 10px;
     display: flex; align-items: center; gap: 10px;
   }
-  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border-soft); }
+  .section-title::after { content: none; }
+
+  /* ==== Overview 2단 — 그래프(좌) + Agents(우) ==== */
+  .ov-cols {
+    display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+    gap: 14px; align-items: start;
+  }
+  .ov-cols .graph-panel { margin-bottom: 0; }
+  .ov-cols .ov-right .section-title { margin-top: 0; }
+  .ov-cols .ov-right .section-title:first-child { margin-top: 0; }
+  .ov-cols .agent-grid { grid-template-columns: 1fr; justify-content: stretch; }
+  .ov-cols .agent-card.thinking, .ov-cols .agent-card.speaking { grid-column: auto; max-width: none; }
+  @media (max-width: 1180px) {
+    .ov-cols { grid-template-columns: 1fr; }
+    .ov-cols .graph-panel { margin-bottom: 4px; }
+  }
 
   /* ==== Avatar ==== */
   .avatar {
@@ -375,8 +416,8 @@
 
   /* ==== Connection Graph (HTML + SVG hybrid) ==== */
   .graph-panel {
-    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 14px;
-    padding: 16px 20px; margin-bottom: 20px; box-shadow: var(--shadow);
+    background: var(--panel-2); border: 0; border-radius: 14px;
+    padding: 14px 18px; margin-bottom: 20px;
     position: relative; overflow: visible;
     transition: background 0.2s;
   }
@@ -392,6 +433,8 @@
   body.graph-fullscreen nav.tabs,
   body.graph-fullscreen main > .view > :not(.graph-panel),
   body.graph-fullscreen .view:not(.active) { visibility: hidden; }
+  /* graph-panel 이 .ov-cols 안에 중첩됨 — 조상 hidden 을 뚫고 다시 보이게 (visibility 는 하위 재지정 가능) */
+  body.graph-fullscreen .graph-panel { visibility: visible !important; background: var(--bg-elev); }
   body.graph-fullscreen main { overflow: visible; }
   .graph-fs-btn {
     background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
@@ -401,8 +444,9 @@
   .graph-fs-btn:hover { border-color: var(--accent); background: var(--panel-3); }
   .graph-panel .graph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .graph-panel .graph-head h3 {
-    font-size: 11.5px; font-weight: 700; color: var(--text-dim);
-    text-transform: uppercase; letter-spacing: 1.3px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; font-weight: 400; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em;
   }
   .graph-panel .graph-head .note { color: var(--text-faint); font-size: 11px; margin-left: auto; }
   .graph-stage {
@@ -524,37 +568,31 @@
   .graph-edges .sup-edge.active { opacity: 1; stroke-width: 2; }
   .graph-edges .sup-edge.intervening { opacity: 1; stroke-width: 2.5; stroke-dasharray: 4 3; animation: edge-flow 0.8s linear infinite; }
 
-  /* ==== Hero Overview ==== */
+  /* ==== Hero Overview — flat (카드 박스 제거, 페이지에 직접) ==== */
   .hero {
-    background: var(--panel);
-    border: 1px solid var(--border-soft);
-    border-radius: 18px;
-    padding: 24px 28px;
-    margin-bottom: 20px;
-    box-shadow: var(--shadow);
-    position: relative; overflow: hidden;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 4px 2px 0;
+    margin-bottom: 18px;
+    box-shadow: none;
+    position: relative; overflow: visible;
   }
   body.offline .hero { opacity: 0.85; }
-  body.offline .hero::before { display: none; }
-  .hero::before {
-    content: ''; position: absolute; top: 0; right: 0; width: 60%; height: 100%;
-    background: radial-gradient(ellipse at top right, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%);
-    pointer-events: none;
-  }
-  /* Hero — 아바타 가로 줄 (위) + 이름·정보 (아래) 세로 배치. 좁으면 아바타 자동 줄바꿈. */
-  .hero-row { display: flex; flex-direction: column; align-items: stretch; gap: 14px; position: relative; }
+  /* Hero — 아바타(좌) + 이름·정보(우) 한 줄. 아바타가 길어지면 텍스트가 아래로 자연 줄바꿈. */
+  .hero-row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px 18px; position: relative; }
   .hero-avatars {
     display: flex; flex-wrap: wrap; row-gap: 8px;
-    max-width: 100%;
+    max-width: 100%; flex: none;
   }
   .hero-avatars .avatar { margin-left: -12px; transition: transform 0.2s, z-index 0s 0.2s; }
   .hero-avatars .avatar:first-child { margin-left: 0; }
   /* 새 줄 첫 아바타도 overlap 없게 */
   .hero-avatars .avatar:hover { transform: translateY(-3px) scale(1.05); z-index: 2; transition: transform 0.2s, z-index 0s; }
-  .hero-text { min-width: 0; }
+  .hero-text { min-width: 0; flex: 1 1 320px; }
   .hero-text h1 {
-    font-size: 20px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 2px;
-    display: flex; align-items: center; gap: 8px;
+    font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 2px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   }
   .hero-text h1 .sv-name { color: var(--accent); }
   .hero-text p {
@@ -568,13 +606,12 @@
     gap: 12px; align-items: start; justify-content: start;
   }
   .agent-card {
-    background: var(--panel); border: 1.5px solid var(--border-soft); border-radius: 14px;
-    padding: 13px 15px; transition: border-color 0.2s, transform 0.2s, box-shadow 0.3s;
+    background: var(--panel-2); border: 1.5px solid transparent; border-radius: 14px;
+    padding: 13px 15px; transition: border-color 0.2s, background 0.2s ease-out, box-shadow 0.3s;
     position: relative; overflow: hidden; cursor: pointer;
-    box-shadow: var(--shadow);
     min-width: 0;
   }
-  .agent-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+  .agent-card:hover { background: var(--panel-3); }
   /* 타입 구분은 카드 안 type-tag 배지(색)로 충분 — 왼쪽 색 바는 제거(과한 ai 룩).
      hover 시에만 타입 색을 테두리에 살짝 비춰 정체성 암시. */
   .agent-card.mgr:hover { border-color: var(--mgr); }
@@ -586,7 +623,8 @@
   .agent-card.inactive {
     opacity: 0.75;
     border-style: dashed;
-    background: color-mix(in srgb, var(--panel) 80%, var(--bg));
+    border-color: var(--border);
+    background: transparent;
   }
   .agent-card.inactive:hover { opacity: 1; }
   .agent-card.thinking {
@@ -607,7 +645,7 @@
   .agent-head .name-row { display: flex; align-items: center; gap: 6px; }
   .agent-head .name { font-size: 14px; font-weight: 600; letter-spacing: -0.1px; }
   .agent-head .type-tag {
-    font-size: 9.5px; padding: 2px 6px; border-radius: 5px;
+    font-size: 9.5px; padding: 2px 8px; border-radius: 999px;
     text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
   }
   .agent-head .type-tag.mgr { background: color-mix(in srgb, var(--mgr) 15%, transparent); color: var(--mgr); }
@@ -616,13 +654,13 @@
   .agent-head .type-tag.dev { background: color-mix(in srgb, var(--dev) 15%, transparent); color: var(--dev); }
   .agent-head .type-tag.supervisor { background: color-mix(in srgb, var(--accent-2) 15%, transparent); color: var(--accent-2); }
 
-  /* Model 태그 — 단순한 테두리+점 스타일. 가독성 우선, 배경 tint 없음. */
+  /* Model 태그 — family 색 틴트 pill. paper-2 카드 위에서 또렷하게 구분. */
   .model-tag {
-    font-size: 9.5px; padding: 1.5px 6px; border-radius: 5px;
+    font-size: 9.5px; padding: 2px 8px; border-radius: 999px;
     font-family: "JetBrains Mono", monospace; font-weight: 500;
-    background: var(--panel-2); color: var(--text-dim);
-    border: 1px solid var(--border-soft) !important;
-    display: inline-flex; align-items: center; gap: 3px;
+    background: var(--panel); color: var(--text-dim);
+    border: 1px solid transparent !important;
+    display: inline-flex; align-items: center; gap: 4px;
   }
   .model-tag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
   /* Provider tint (fallback) */
@@ -630,13 +668,18 @@
   .model-tag.openai { color: #10a37f; }
   .model-tag.local { color: #3b82f6; }
   .model-tag.other { color: var(--text-dim); }
-  /* Model family — 진한 text color + 미묘한 tinted border (원래 스타일 유지). 보라는 안 씀. */
-  .model-tag.m-haiku { color: #0891b2; border-color: color-mix(in srgb, #0891b2 35%, var(--border-soft)) !important; }
-  .model-tag.m-sonnet { color: #be123c; border-color: color-mix(in srgb, #be123c 35%, var(--border-soft)) !important; }
-  .model-tag.m-opus { color: #c2410c; border-color: color-mix(in srgb, #c2410c 35%, var(--border-soft)) !important; }
-  .model-tag.m-gpt { color: #15803d; border-color: color-mix(in srgb, #15803d 35%, var(--border-soft)) !important; }
-  .model-tag.m-gemini { color: #3b82f6; border-color: color-mix(in srgb, #3b82f6 35%, var(--border-soft)) !important; }
-  .model-tag.override { border-color: var(--accent) !important; color: var(--accent); }
+  /* Model family — 진한 텍스트 + 같은 계열 옅은 틴트 배경 (모델별 한눈 구분) */
+  .model-tag.m-haiku  { color: #0e7490; background: color-mix(in srgb, #0891b2 12%, var(--panel)); }
+  .model-tag.m-sonnet { color: #be123c; background: color-mix(in srgb, #be123c 10%, var(--panel)); }
+  .model-tag.m-opus   { color: #c2410c; background: color-mix(in srgb, #c2410c 11%, var(--panel)); }
+  .model-tag.m-gpt    { color: #15803d; background: color-mix(in srgb, #15803d 11%, var(--panel)); }
+  .model-tag.m-gemini { color: #2563eb; background: color-mix(in srgb, #3b82f6 11%, var(--panel)); }
+  :root[data-theme="dark"] .model-tag.m-haiku  { color: #67e8f9; }
+  :root[data-theme="dark"] .model-tag.m-sonnet { color: #fda4af; }
+  :root[data-theme="dark"] .model-tag.m-opus   { color: #fdba74; }
+  :root[data-theme="dark"] .model-tag.m-gpt    { color: #86efac; }
+  :root[data-theme="dark"] .model-tag.m-gemini { color: #93c5fd; }
+  .model-tag.override { border-color: var(--accent) !important; }
   .model-chip-row {
     display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; vertical-align: middle;
   }
@@ -681,7 +724,7 @@
   .agent-meta .emotion-label { font-weight: 500; color: var(--text); }
   .agent-footer {
     display: flex; justify-content: space-between; align-items: center;
-    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft);
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
     font-size: 10.5px; color: var(--text-faint); gap: 8px;
   }
   .agent-footer .model-tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -752,15 +795,18 @@
   .channel-card .meta .sep { color: var(--text-faint); }
   .channel-group-title { font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; margin: 18px 0 8px; }
 
-  /* ==== Messages ==== */
-  .msg-list { display: flex; flex-direction: column; gap: 6px; }
+  /* ==== Messages — 헤어라인 레저 행 (je-empty ledger) ==== */
+  .msg-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }
   .msg {
-    padding: 9px 13px; border-radius: 9px;
-    background: var(--panel); border: 1px solid var(--border-soft);
-    border-left: 3px solid var(--persona);
-    font-size: 12.5px; box-shadow: var(--shadow);
+    padding: 10px 4px; border-radius: 0;
+    background: transparent; border: 0;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 12.5px;
     display: flex; gap: 10px; align-items: flex-start;
+    transition: background 0.15s ease-out;
+    position: relative;
   }
+  .msg:hover { background: var(--panel-2); }
   .msg .msg-avatar {
     width: 28px; height: 28px; border-radius: 50%; background: var(--panel-2);
     overflow: hidden; flex-shrink: 0; border: 1.5px solid var(--border-soft); cursor: pointer;
@@ -774,10 +820,11 @@
     color: var(--user); font-weight: 700; font-size: 11px;
   }
   .msg .msg-body { flex: 1; min-width: 0; }
-  .msg.user { border-left-color: var(--user); }
-  .msg.mgr { border-left-color: var(--mgr); }
-  .msg.creator { border-left-color: var(--creator); }
-  .msg.persona { border-left-color: var(--persona); }
+  /* 타입 구분 — 좌측 색 바 대신 화자 이름 색 (절제) */
+  .msg.user .who { color: var(--user); }
+  .msg.mgr .who { color: var(--mgr); }
+  .msg.creator .who { color: var(--creator); }
+  .msg.persona .who { color: var(--persona); }
   .msg .head { display: flex; gap: 8px; align-items: baseline; font-size: 11px; margin-bottom: 3px; }
   .msg .who { font-weight: 600; color: var(--text); }
   .msg .ch { color: var(--text-faint); font-family: "JetBrains Mono", monospace; font-size: 10.5px; cursor: pointer; }
