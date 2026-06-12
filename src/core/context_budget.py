@@ -71,6 +71,34 @@ def resolve_num_ctx() -> int:
     return max(HARD_FLOOR, v)
 
 
+# ── 동적 시스템 프롬프트 detail level (Elastic Prompt) ───────────────
+# 시스템 프롬프트 자체를 num_ctx 에 맞춰 단계 조절. 제거가 아니라 "맞는 퀄리티" 선택:
+#   compact  (num_ctx < 6144, 예: 4096) — 핵심 규칙·이름만 도구목록. 메모리 자리 확보
+#   standard (6144 ≤ num_ctx < 12288, 예: 8192) — brief 도구목록 + 행동 규칙 포함 (기본)
+#   full     (num_ctx ≥ 12288, 예: 16384) — 전체 규칙 + 예시 + verbose 도구
+_LEVEL_ORDER = {"compact": 0, "standard": 1, "full": 2}
+
+
+def prompt_detail_level(num_ctx: int | None = None) -> str:
+    """num_ctx 기준 시스템 프롬프트 상세도. GLIMI_PROMPT_LEVEL 로 강제 가능(디버그)."""
+    forced = os.environ.get("GLIMI_PROMPT_LEVEL", "").strip().lower()
+    if forced in _LEVEL_ORDER:
+        return forced
+    nc = num_ctx if num_ctx is not None else resolve_num_ctx()
+    if nc < 6144:
+        return "compact"
+    if nc < 12288:
+        return "standard"
+    return "full"
+
+
+def level_at_least(target: str, level: str | None = None) -> bool:
+    """현재(또는 주어진) detail level 이 target 이상인지. 프롬프트 섹션 게이팅용.
+    예: `if level_at_least("standard"): prompt += 행동규칙`."""
+    cur = level if level is not None else prompt_detail_level()
+    return _LEVEL_ORDER.get(cur, 1) >= _LEVEL_ORDER.get(target, 1)
+
+
 def output_reserve(agent_type: str) -> int:
     return _OUTPUT_RESERVE.get(agent_type, _DEFAULT_OUTPUT_RESERVE)
 
