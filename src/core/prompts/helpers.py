@@ -21,13 +21,24 @@ def get_community_language() -> str:
 
 def tools_reference(agent_type: str) -> str:
     """에이전트 타입별 <tools> 도구 레퍼런스 — system prompt 주입용.
-    **경량화**: 이름 + 한 줄 설명만. 파라미터 상세·예제는 `get_tool_details(name)` 로 on-demand 조회.
-    프롬프트 토큰 절반 이상 절감 + 응답 속도 향상."""
+
+    Elastic Prompt: num_ctx 에 맞춰 상세도 동적 조절.
+      compact(4096)  = 이름+시그니처만 (build_compact_list)
+      standard(8192) = brief (이름+필수파라미터+한줄설명)
+      full(16384)    = brief (동일 — 도구 verbose 는 토큰 과다라 on-demand 유지)
+    상세는 항상 `get_tool_details(name)` 로 on-demand."""
     try:
-        from src.core.tools.reference import build_brief_list
+        from src.core.tools.reference import build_brief_list, build_compact_list
+        from src.core.context_budget import prompt_detail_level
+        if prompt_detail_level() == "compact":
+            return build_compact_list(agent_type)
         return build_brief_list(agent_type)
     except Exception:
-        return ""
+        try:
+            from src.core.tools.reference import build_brief_list
+            return build_brief_list(agent_type)
+        except Exception:
+            return ""
 
 
 def formatting_guide(agent_type: str = "persona") -> str:
