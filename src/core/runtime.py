@@ -263,6 +263,25 @@ def _auto_report_leak(agent_id: str, channel_name: str, leaked_text: str, source
         log_writer.system(f"[leak auto-report] enqueue 실패 (무시): {type(e).__name__}: {e}")
 
 
+def _looks_like_owner_echo(line: str) -> bool:
+    """라인이 '오너이름: ...' / '별칭: ...' 형태 = 유저 발화 에코 (로컬 모델이 대화 포맷을
+    그대로 복사). 오너 이름/별칭으로 시작하면 drop. 짧은 이름만(오인 방지)."""
+    try:
+        names = set()
+        n = get_user_display_name()
+        if n:
+            names.add(n)
+        oc = get_owner_call_name()
+        if oc:
+            names.add(oc)
+    except Exception:
+        return False
+    for nm in names:
+        if nm and 1 <= len(nm) <= 12 and (line.startswith(f"{nm}:") or line.startswith(f"{nm} :")):
+            return True
+    return False
+
+
 def _is_reasoning_leak(text: str) -> bool:
     """채팅에 새어나간 LLM 의 침묵·결정·내레이션을 감지. True 면 메시지 drop."""
     if not text:
@@ -1319,6 +1338,9 @@ class AgentRuntime:
                 cleaned = cleaned[len(name)+2:].strip()
             if not cleaned:
                 continue
+            # 오너 이름/별칭 prefix = 유저 발화 에코 drop ("빈이: 좋아 ㅋㅋ")
+            if _looks_like_owner_echo(cleaned):
+                continue
 
             # Safety net — <tools>/<call> 이 in_tools 감지 뚫고 도달하면 drop.
             if "<tools>" in cleaned.lower() or "<call" in cleaned.lower() or "</tools>" in cleaned.lower():
@@ -1613,6 +1635,9 @@ class AgentRuntime:
             elif agent_name and cleaned.startswith(f"{agent_name} :"):
                 cleaned = cleaned[len(agent_name)+2:].strip()
             if not cleaned:
+                continue
+            # 오너 이름/별칭 prefix 줄 = 유저 메시지 에코 (예: "빈이: 좋아 ㅋㅋ") → drop.
+            if _looks_like_owner_echo(cleaned):
                 continue
             # 구분선/코드펜스/reasoning 단독 라인 + snake_case 식별자 토큰 누출 drop.
             # (예: "---", "```", "think", "get_out_of_here" 같은 모델 control/tool 토큰)
