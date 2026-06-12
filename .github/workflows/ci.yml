@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Syntax check
+        run: python -m compileall -q src tests
+      - name: Formatting tests
+        run: python -m tests.unit.test_formatting
+      # 격리 테스트(test_community_isolation)는 #4 그린 복구 후 추가 (#5)
