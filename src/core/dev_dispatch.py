@@ -38,7 +38,7 @@ from src import log_writer
 from src.core import dev_agent
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-OPUS_MODEL = "claude-opus-4-7"
+OPUS_MODEL = "claude-opus-4-8"
 DISPATCH_TIMEOUT_SEC = 1800  # 30 min — N개 task 처리에 충분
 TARGET_BRANCH = "develop"     # PR target
 
