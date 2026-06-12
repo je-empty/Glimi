@@ -361,7 +361,8 @@ supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</cod
 <!-- ============ 7. 품질 체크 ============ -->
 <section id="quality">
   <h2><span class="num">7</span>머지 전 품질 체크</h2>
-  <p class="lead">PR 올리기 전에 돌리는 것. Claude Code 한테 "머지 전 체크 돌려줘" 라고 하면 됨.</p>
+  <p class="lead">PR 올리기 전에 돌리는 것. Claude Code 한테 "머지 전 체크 돌려줘" 라고 하면 됨.
+    전체 테스트 절차 (E2E QA 셋업 + <strong>QA 페르소나에 자기 자신 넣기</strong>) 는 <code>docs/testing.md</code>.</p>
   <pre><code># 커뮤니티 격리 (global state 만졌으면 필수)
 python -m tests.unit.test_community_isolation
 
