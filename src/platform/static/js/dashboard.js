@@ -458,12 +458,24 @@ document.addEventListener('click', (ev) => {
 });
 
 // ==== Tabs ====
+let _justEnteredTimer = null;
+function markJustEntered(view) {
+  // 카드 레벨 스태거 발동 창 — 폴링 재렌더가 이 창 밖이면 재발동 안 함.
+  document.querySelectorAll('.view.just-entered').forEach(v => v.classList.remove('just-entered'));
+  if (_justEnteredTimer) clearTimeout(_justEnteredTimer);
+  // 강제 reflow 로 직전 제거가 반영되게 → 같은 탭 재진입에도 재생
+  void view.offsetWidth;
+  view.classList.add('just-entered');
+  _justEnteredTimer = setTimeout(() => view.classList.remove('just-entered'), 1500);
+}
 document.querySelectorAll('nav.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('view-' + btn.dataset.tab).classList.add('active');
+    const view = document.getElementById('view-' + btn.dataset.tab);
+    view.classList.add('active');
+    markJustEntered(view);
     if (btn.dataset.tab === 'achievements') {
       loadAchievements();
     }
@@ -2844,28 +2856,24 @@ function renderSceneCard(s) {
     completed: '완료',
     not_started: '시작 전',
   }[s.status] || s.status;
+  // 상태 배지 — 좌측 바 없이 틴트 필로만 (design_system §1.1: 왼쪽 색 바 금지)
   const badgeStyle = {
-    active: 'background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)',
-    completed: 'background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)',
-    not_started: 'background:var(--panel-2);color:var(--text-faint);border:1px solid var(--border)',
+    active: 'background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)',
+    completed: 'background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)',
+    not_started: 'background:var(--panel);color:var(--text-faint)',
   }[s.status] || '';
-  const leftBorder = {
-    active: 'var(--accent)',
-    completed: 'var(--ok)',
-    not_started: 'var(--text-faint)',
-  }[s.status] || 'var(--text-faint)';
   // not_started 는 흐릿하게, completed 는 거의 흑백 (차분한 회색) 처리로 "끝난 일" 시각화.
   const dim = s.status === 'not_started' ? 'opacity:0.6;'
             : s.status === 'completed' ? 'opacity:0.55;filter:grayscale(0.7);'
             : '';
-  return `<div style="padding:16px 20px;margin-bottom:10px;background:var(--panel);border:1px solid var(--border-soft);border-left:3px solid ${leftBorder};border-radius:10px;box-shadow:var(--shadow);${dim}">
+  return `<div class="scene-card" style="padding:16px 20px;margin-bottom:10px;background:var(--panel-2);border-radius:12px;${dim}">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
       <span style="font-size:22px">${s.icon || '🎭'}</span>
-      <span style="font-size:15px;font-weight:700;color:var(--text);flex:1">${esc(s.name)}</span>
-      <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;padding:3px 10px;border-radius:999px;${badgeStyle}">${statusLabel}</span>
+      <span style="font-size:15px;font-weight:600;color:var(--text);flex:1">${esc(s.name)}</span>
+      <span style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;padding:3px 10px;border-radius:999px;${badgeStyle}">${statusLabel}</span>
     </div>
     <div style="color:var(--text-dim);font-size:12px;line-height:1.55;margin-bottom:8px">${esc(s.description)}</div>
-    ${s.phase_desc ? `<div style="display:inline-block;padding:3px 8px;background:var(--panel-2);border-radius:5px;font-size:11px;color:var(--text);font-family:'JetBrains Mono',monospace">${esc(s.phase_desc)}</div>` : ''}
+    ${s.phase_desc ? `<div style="display:inline-block;padding:3px 8px;background:var(--panel);border-radius:6px;font-size:11px;color:var(--text);font-family:'JetBrains Mono',monospace">${esc(s.phase_desc)}</div>` : ''}
     <div style="display:flex;gap:14px;margin-top:8px;font-size:10.5px;color:var(--text-faint)">
       ${s.started_at ? `<span>시작: <b style="color:var(--text-dim);font-weight:500">${esc(fmtDateTime(s.started_at))}</b></span>` : ''}
       ${s.completed_at ? `<span>완료: <b style="color:var(--ok);font-weight:500">${esc(fmtDateTime(s.completed_at))}</b></span>` : ''}
