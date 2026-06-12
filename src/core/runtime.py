@@ -1288,8 +1288,14 @@ class AgentRuntime:
             line = _re.sub(r'\{[a-z_][a-z0-9_]*\}', '', line)
             # 모델 control/special token 누출 제거 (<channel|>, <end_of_turn> 등 — gemma 계열)
             line = _strip_control_tokens(line)
+            # 선행 구분선 prefix 제거 (모델이 "---메시지" 식으로 뱉는 케이스)
+            line = _re.sub(r'^\s*[-=_~*]{2,}\s*', '', line)
             cleaned = " ".join(line.split())
             if not cleaned:
+                continue
+
+            # snake_case 식별자 토큰 누출 drop (예: get_out_of_here — 채팅 아님)
+            if _re.fullmatch(r'[a-z][a-z0-9]*(?:_[a-z0-9]+)+', cleaned):
                 continue
 
             # 마크다운 코드펜스 / 구분선 / reasoning 잔여물 단독 라인 drop.
@@ -1594,6 +1600,10 @@ class AgentRuntime:
 
         messages = []
         for line in lines:
+            # control/special token + HTML 누출 제거 (gemma 계열) — 스트리밍 경로와 동일.
+            line = _strip_control_tokens(line)
+            # 선행 구분선 prefix 제거 (모델이 "---메시지" / "===텍스트" 식으로 뱉는 케이스)
+            line = re.sub(r'^\s*[-=_~*]{2,}\s*', '', line)
             cleaned = " ".join(line.split())
             if not cleaned:
                 continue
@@ -1603,6 +1613,14 @@ class AgentRuntime:
             elif agent_name and cleaned.startswith(f"{agent_name} :"):
                 cleaned = cleaned[len(agent_name)+2:].strip()
             if not cleaned:
+                continue
+            # 구분선/코드펜스/reasoning 단독 라인 + snake_case 식별자 토큰 누출 drop.
+            # (예: "---", "```", "think", "get_out_of_here" 같은 모델 control/tool 토큰)
+            if re.fullmatch(r'`{3,}[a-zA-Z]*|[-=_*~]{2,}|#{1,6}', cleaned):
+                continue
+            if re.fullmatch(r'(?:think|thinking|reasoning|analysis|response|answer|output)', cleaned, re.IGNORECASE):
+                continue
+            if re.fullmatch(r'[a-z][a-z0-9]*(?:_[a-z0-9]+)+', cleaned):  # snake_case 토큰 = 채팅 아님
                 continue
             # Claude CLI 에러 메시지 누출 차단
             if _looks_like_claude_error(cleaned):
