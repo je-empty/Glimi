@@ -1,5 +1,6 @@
 /* Pretendard (한글 최적) + JetBrains Mono — je-empty 타이포 톤. @import 는 최상단 필수. */
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css');
 @import url('https://cdn.jsdelivr.net/npm/jetbrains-mono@1/css/jetbrains-mono.min.css');
 
 /* Glimi 플랫폼 공통 스타일 — 모든 페이지 로드됨 */
