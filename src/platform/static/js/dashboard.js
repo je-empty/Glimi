@@ -496,7 +496,7 @@ function avatarHtml(a, size='', opts={}) {
   const clickOpen = opts.clickOpen !== false;
   const onclick = clickOpen ? `onclick="event.stopPropagation(); openFullAvatar('${esc(a.id)}', '${esc(a.name)}')"` : '';
   return `<div class="${cls.filter(Boolean).join(' ')}" title="${esc(a.name)}" ${onclick}>
-    <img src="${src}" alt="${esc(a.name)}" loading="lazy" onerror="this.style.display='none'">
+    <img src="${src}" alt="${esc(a.name)}" decoding="async" onerror="this.style.display='none'">
     <span class="emoji-badge ${hideBadge ? 'hidden' : ''}">${a.emoji}</span>
   </div>`;
 }
@@ -508,7 +508,7 @@ function miniAvatarHtml(speakerId, isUser, speakerName) {
   }
   const src = `/api/avatar?id=${encodeURIComponent(speakerId)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
   return `<div class="msg-avatar" title="${esc(speakerName)}" onclick="openFullAvatar('${esc(speakerId)}', '${esc(speakerName)}')">
-    <img src="${src}" alt="${esc(speakerName)}" loading="lazy" onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:11px;color:var(--text-faint)&quot;>?</div>'">
+    <img src="${src}" alt="${esc(speakerName)}" decoding="async" onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:11px;color:var(--text-faint)&quot;>?</div>'">
   </div>`;
 }
 
@@ -1912,6 +1912,21 @@ function renderSupervisorsTab(supervisors) {
 
 // 그래프 구조 서명 — 다르면 재렌더, 같으면 live 상태만 업데이트
 let lastGraphSig = null;
+// 리스트 재렌더 가드 — 의미있는 변화 없으면 innerHTML 안 건드림 (아바타 img 재생성 깜빡임 방지).
+// relative-time(ago/elapsed) 은 시그니처에서 제외 → idle 정지 상태에선 재렌더 0.
+let lastAgentsSig = null, lastMsgSig = null, lastChannelsSig = null;
+function agentsSignature(agents) {
+  return agents.map(a => [a.id, a.name, a.type, a.emotion, a.intensity_band ?? a.intensity,
+    a.thinking ? 1 : 0, a.speaking ? 1 : 0, a.status, a.model].join('~')).join('|');
+}
+function messagesSignature(msgs) {
+  if (!msgs || !msgs.length) return '0';
+  const last = msgs[msgs.length - 1];
+  return msgs.length + '~' + (last.id ?? (last.speaker + '|' + last.ts + '|' + (last.message || '').length));
+}
+function channelsSignature(chs) {
+  return (chs || []).map(c => c.name + '~' + c.msg_count + '~' + c.status + '~' + (c.participant_count ?? '')).join('|');
+}
 function graphSignature(snap) {
   const agents = snap.agents.map(a => a.id).sort().join(',');
   const chans = (snap.channels || [])
@@ -3221,21 +3236,37 @@ async function tick() {
   // dev agent (한세나) — supervisor view 토글 ON 일 때만 카드 표시 (모든 커뮤니티 통일).
   const visibleAgents = SHOW_SUP ? snap.agents : snap.agents.filter(a => a.type !== 'dev');
 
-  document.getElementById('overview-agents').innerHTML =
-    visibleAgents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
-  const ovMsgs = document.getElementById('overview-msgs');
-  const keepOv = atBottom(ovMsgs);
-  ovMsgs.innerHTML = snap.recent_messages.slice(-10).map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
-  if (keepOv) ovMsgs.scrollTop = ovMsgs.scrollHeight;
+  // 에이전트 리스트 — 시그니처 변화 또는 활동 중(라이브 카운터/로그)일 때만 재렌더.
+  //   overview·full 은 같은 데이터 → HTML 1회 생성해 둘 다 주입.
+  // offline 이면 thinking/speaking 은 stale (봇 죽었는데 DB 플래그 잔존) → 활동 아님으로 취급
+  const anyActive = b.bot_alive && snap.agents.some(a => a.thinking || a.speaking);
+  const aSig = (SHOW_SUP ? 'S|' : '') + agentsSignature(visibleAgents);
+  if (anyActive || aSig !== lastAgentsSig) {
+    const agHtml = visibleAgents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
+    document.getElementById('overview-agents').innerHTML = agHtml;
+    document.getElementById('agents-full').innerHTML = agHtml;
+    lastAgentsSig = aSig;
+  }
 
-  // Full tabs (visibleAgents 가 dev 토글 반영)
-  document.getElementById('agents-full').innerHTML =
-    visibleAgents.map(a => renderAgent(a)).join('') || '<div class="empty">no members</div>';
-  document.getElementById('channels-full').innerHTML = renderChannelsGrouped(snap.channels);
+  // 메시지 — 새 메시지 있을 때만 재렌더 (스크롤 위치 보존)
+  const ovMsgs = document.getElementById('overview-msgs');
   const fm = document.getElementById('messages-full');
-  const keepFm = atBottom(fm);
-  fm.innerHTML = snap.recent_messages.map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
-  if (keepFm) fm.scrollTop = fm.scrollHeight;
+  const mSig = messagesSignature(snap.recent_messages);
+  if (mSig !== lastMsgSig) {
+    const keepOv = atBottom(ovMsgs), keepFm = atBottom(fm);
+    ovMsgs.innerHTML = snap.recent_messages.slice(-10).map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
+    fm.innerHTML = snap.recent_messages.map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
+    if (keepOv) ovMsgs.scrollTop = ovMsgs.scrollHeight;
+    if (keepFm) fm.scrollTop = fm.scrollHeight;
+    lastMsgSig = mSig;
+  }
+
+  // 채널 — 구조/카운트 변화 시만
+  const chSig = channelsSignature(snap.channels);
+  if (chSig !== lastChannelsSig) {
+    document.getElementById('channels-full').innerHTML = renderChannelsGrouped(snap.channels);
+    lastChannelsSig = chSig;
+  }
   // Scenes 탭: 각 씬 카드 (active/completed/not_started 상태별 스타일)
   const scenesEl = document.getElementById('scenes-full');
   if (scenesEl) {
