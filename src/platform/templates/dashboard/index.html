@@ -22,24 +22,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  /* 플랫폼 서버 컨트롤 */
-  .gp-server-ctrl { display: flex; align-items: center; gap: 6px; }
-  .gp-server-ctrl .gp-status {
-    padding: 2px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 600;
-    background: var(--panel-2, #f3f4f6); color: var(--text-dim, #6b7280);
-    white-space: nowrap;
-  }
-  .gp-server-ctrl .gp-status.running { background: var(--ok, #10b981); color: #fff; }
-  .gp-server-ctrl .gp-status.stopped { background: var(--text-faint, #9ca3af); color: #fff; }
-  .gp-server-ctrl .gp-uptime { color: var(--text-dim, #6b7280); font-size: 11px; min-width: 28px; }
-  .gp-server-ctrl .gp-ctrl-btn {
-    padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
-    border: 1px solid var(--border, #e5e7eb); background: transparent; color: inherit;
-    font-family: inherit;
-  }
-  .gp-server-ctrl .gp-ctrl-btn:hover { border-color: var(--accent, #2563eb); }
-  .gp-server-ctrl .gp-ctrl-btn.start { background: var(--ok, #10b981); color: #fff; border-color: var(--ok, #10b981); }
-  .gp-server-ctrl .gp-ctrl-btn.stop { color: var(--err, #ef4444); border-color: var(--err, #ef4444); }
+  /* 서버 컨트롤 스타일은 dashboard.css 의 "플랫폼 서버 컨트롤" 섹션 (컨트롤 3문법) */
   @keyframes spin { to { transform: rotate(360deg) } }
 </style>
 {% endblock %}
@@ -52,7 +35,7 @@
 <div class="app">
   <header class="status">
     <span class="brand">
-      <img src="/logo" alt="Glimi" class="brand-logo" onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기">
+      <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo" onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기">
       <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="홈으로">Glimi</a>
     </span>
 
@@ -69,21 +52,18 @@
     <div class="gp-server-ctrl" id="gp-server-ctrl">
       <span id="gp-bot-status" class="gp-status">…</span>
       <span id="gp-bot-uptime" class="gp-uptime"></span>
-      <button id="gp-start" class="gp-ctrl-btn start" onclick="glimiServerCtrl('start')" title="커뮤니티 봇 가동 — 에이전트들 대화 시작">▶ 가동</button>
-      <button id="gp-restart" class="gp-ctrl-btn" onclick="glimiServerCtrl('restart')" style="display:none" title="재가동">↻ 재가동</button>
-      <button id="gp-stop" class="gp-ctrl-btn stop" onclick="glimiServerCtrl('stop')" style="display:none" title="커뮤니티 정지 — 에이전트 대화 중단">■ 정지</button>
+      <button id="gp-start" class="gp-ctrl-btn start" onclick="glimiServerCtrl('start')" title="커뮤니티 봇 가동 — 에이전트들 대화 시작"><i class="ti ti-player-play" aria-hidden="true"></i>가동</button>
+      <button id="gp-restart" class="gp-ctrl-btn" onclick="glimiServerCtrl('restart')" style="display:none" title="재가동"><i class="ti ti-refresh" aria-hidden="true"></i>재가동</button>
+      <button id="gp-stop" class="gp-ctrl-btn stop" onclick="glimiServerCtrl('stop')" style="display:none" title="커뮤니티 정지 — 에이전트 대화 중단"><i class="ti ti-player-stop" aria-hidden="true"></i>정지</button>
     </div>
 
     <div style="flex:1"></div>
 
     {% if user and user.role == 'admin' %}
     <!-- Admin global dev-requests 페이지 진입점 (admin 만 노출) -->
-    <a id="admin-dev-link" href="/admin/dev-requests" target="_self"
-       title="모든 커뮤니티 dev requests 통합 관리 (admin)"
-       style="margin:0 6px;padding:5px 11px;border:1px solid var(--border);
-              border-radius:6px;font-size:12px;color:var(--text-dim);text-decoration:none;
-              font-weight:500;display:inline-flex;align-items:center;gap:4px;">
-      🔧 Dev Requests
+    <a id="admin-dev-link" class="gp-devlink" href="/admin/dev-requests" target="_self"
+       title="모든 커뮤니티 dev requests 통합 관리 (admin)">
+      <i class="ti ti-tool" aria-hidden="true"></i>Dev Requests
     </a>
     {% endif %}
 
@@ -274,10 +254,20 @@
       const restartBtn = document.getElementById('gp-restart');
       const stopBtn = document.getElementById('gp-stop');
       if (!badge) return;
+      // raw 초 노출 금지 — design_system §5.5 수치 표기 문법
+      const fmtUp = (sec) => {
+        sec = Math.round(sec);
+        if (sec < 60) return sec + 's';
+        const m = Math.floor(sec / 60);
+        if (m < 60) return m + 'm';
+        const h = Math.floor(m / 60);
+        if (h < 24) return h + 'h ' + (m % 60) + 'm';
+        return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+      };
       if (s.running) {
         badge.textContent = 'RUNNING';
         badge.className = 'gp-status running';
-        if (s.uptime_sec) up.textContent = Math.round(s.uptime_sec) + 's';
+        if (s.uptime_sec) up.textContent = fmtUp(s.uptime_sec);
         startBtn.style.display = 'none';
         restartBtn.style.display = '';
         stopBtn.style.display = '';
