@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glimi — 협업 가이드 (바이브코딩 워크플로우)</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --bg-card-2: #1c2128;
+    --border: #30363d;
+    --border-strong: #484f58;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent-blue: #4a9eff;
+    --accent-green: #4aff9e;
+    --accent-orange: #ffaa4a;
+    --accent-purple: #a78bfa;
+    --accent-yellow: #f5c542;
+    --accent-red: #ff6b6b;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    margin: 0;
+    padding: 40px 24px;
+  }
+  .container { max-width: 1000px; margin: 0 auto; }
+
+  header { margin-bottom: 32px; }
+  header .eyebrow { color: var(--muted); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  header h1 {
+    font-size: 40px; margin: 0 0 8px;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    line-height: 1.15;
+  }
+  header .tagline { margin-top: 12px; font-size: 17px; color: var(--text); opacity: 0.85; }
+  header .meta { margin-top: 10px; color: var(--muted); font-size: 13px; }
+
+  .toc { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; margin-bottom: 40px; }
+  .toc strong { display: block; margin-bottom: 10px; color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; }
+  .toc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px 14px; }
+  .toc-grid a { color: var(--accent-blue); text-decoration: none; padding: 3px 0; font-size: 14px; display: block; }
+  .toc-grid a:hover { color: var(--accent-green); }
+  .toc-grid a .num { color: var(--muted); margin-right: 8px; display: inline-block; min-width: 20px; }
+
+  section { margin-bottom: 56px; }
+  section h2 { font-size: 24px; margin: 0 0 8px; display: flex; align-items: center; gap: 12px; }
+  section h2 .num {
+    background: var(--bg-card-2); border: 1px solid var(--border-strong); border-radius: 50%;
+    width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 15px; color: var(--accent-blue); flex-shrink: 0;
+  }
+  section .lead { color: var(--muted); margin: 0 0 20px; font-size: 15px; max-width: 720px; }
+  section h3 { font-size: 17px; margin: 24px 0 10px; }
+  section p { margin: 10px 0; }
+  section ul, section ol { padding-left: 22px; margin: 10px 0; }
+  section li { margin: 6px 0; }
+  section a { color: var(--accent-blue); }
+  section a:hover { color: var(--accent-green); }
+
+  code {
+    background: var(--bg-card-2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-size: 0.88em;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  }
+  pre {
+    background: var(--bg-card-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; overflow-x: auto; font-size: 13px; line-height: 1.55;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  }
+  pre code { background: none; border: none; padding: 0; }
+
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 22px; margin: 14px 0; box-shadow: var(--shadow); }
+  .card h3 { margin-top: 0; }
+
+  .callout { border-left: 4px solid var(--accent-blue); background: var(--bg-card); border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0; }
+  .callout.warn { border-left-color: var(--accent-red); }
+  .callout.warn strong:first-child { color: var(--accent-red); }
+  .callout.tip { border-left-color: var(--accent-green); }
+  .callout.tip strong:first-child { color: var(--accent-green); }
+  .callout.note { border-left-color: var(--accent-yellow); }
+  .callout.note strong:first-child { color: var(--accent-yellow); }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 9px 13px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-card-2); color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td code { white-space: nowrap; }
+
+  .zone { display: inline-block; border-radius: 12px; padding: 1px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .zone.free { background: rgba(74,255,158,0.12); color: var(--accent-green); border: 1px solid rgba(74,255,158,0.4); }
+  .zone.review { background: rgba(245,197,66,0.12); color: var(--accent-yellow); border: 1px solid rgba(245,197,66,0.4); }
+  .zone.locked { background: rgba(255,107,107,0.12); color: var(--accent-red); border: 1px solid rgba(255,107,107,0.4); }
+
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 18px 0; }
+  .flow .step { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; position: relative; }
+  .flow .step .n { color: var(--accent-purple); font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+  .flow .step .t { font-weight: 600; margin: 4px 0 4px; font-size: 14.5px; }
+  .flow .step .d { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+  .good-bad { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+  @media (max-width: 700px) { .good-bad { grid-template-columns: 1fr; } }
+  .good-bad .col { border-radius: 10px; padding: 14px 18px; border: 1px solid var(--border); background: var(--bg-card); }
+  .good-bad .col.good { border-color: rgba(74,255,158,0.4); }
+  .good-bad .col.bad { border-color: rgba(255,107,107,0.4); }
+  .good-bad .col h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+  .good-bad .col.good h4 { color: var(--accent-green); }
+  .good-bad .col.bad h4 { color: var(--accent-red); }
+  .good-bad ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div class="eyebrow">Glimi · Collaboration Guide</div>
+  <h1>협업 가이드 — 바이브코딩 워크플로우</h1>
+  <div class="tagline">Glimi 에 기여하는 모든 사람 + 그 사람의 Claude Code 세션이 따르는 협업 규약.</div>
+  <div class="meta">최종 갱신 2026-06-12 · 프로젝트 소개·셋업은 <code>START_HERE.html</code> · 개발 판단 기준은 <code>docs/dev_guide.md</code></div>
+</header>
+
+<div class="toc">
+  <strong>목차</strong>
+  <div class="toc-grid">
+    <a href="#zones"><span class="num">1</span>파트별 역할 분담</a>
+    <a href="#workflow"><span class="num">2</span>작업 워크플로우 5단계</a>
+    <a href="#branch"><span class="num">3</span>브랜치 규칙</a>
+    <a href="#commit"><span class="num">4</span>커밋 양식</a>
+    <a href="#pr"><span class="num">5</span>PR 양식 + 크기 규칙</a>
+    <a href="#guardrails"><span class="num">6</span>콘텐츠 가드레일</a>
+    <a href="#quality"><span class="num">7</span>머지 전 품질 체크</a>
+    <a href="#vibe"><span class="num">8</span>바이브코딩 팁</a>
+  </div>
+</div>
+
+<!-- ============ 1. 파트별 역할 분담 ============ -->
+<section id="zones">
+  <h2><span class="num">1</span>파트별 역할 분담</h2>
+  <p class="lead">
+    사람 이름이 아니라 <strong>파트(역할) 단위</strong>로 나눈다. 각 파트에 주도 역할이 있고,
+    파일 단위 규칙은 <span class="zone free">자유</span> /
+    <span class="zone review">리뷰 필수</span> /
+    <span class="zone locked">메인테이너 전용</span> 3구역.
+  </p>
+
+  <h3>파트 맵</h3>
+  <table>
+    <tr><th>파트</th><th>범위</th><th>주도·상태</th></tr>
+    <tr>
+      <td>🧠 코어</td>
+      <td><code>src/core/</code> (runtime·memory·prompts·tools) · <code>src/llm/</code> · <code>src/db.py</code></td>
+      <td>메인테이너 주도. <strong>미완성 — 개발 계속 진행 중.</strong> 필요시 누구나 수정 가능, 단 전부 리뷰 필수</td>
+    </tr>
+    <tr>
+      <td>🎭 커뮤니티·콘텐츠</td>
+      <td>도전과제 catalog · 씬 · 유나 FAQ</td>
+      <td>콘텐츠 오너 주도 — 수요(서브컬처·오시카츠 등) 감각 기반 기획·설계</td>
+    </tr>
+    <tr>
+      <td>🖥️ 플랫폼</td>
+      <td><code>src/platform/</code> (FastAPI·대시보드·setup)</td>
+      <td>메인테이너 주도</td>
+    </tr>
+    <tr>
+      <td>🔌 어댑터</td>
+      <td><code>src/bot/</code> (Discord 출구 레이어)</td>
+      <td>과도기 — 추후 <code>src/adapters/</code> 분리 예정. 수정 시 decoupling 원칙 준수</td>
+    </tr>
+    <tr>
+      <td>⚙️ 인프라·릴리스</td>
+      <td><code>run.sh</code>/<code>run.bat</code> · CI/배포 · 시크릿 · 브랜치 관리 · main 릴리스</td>
+      <td>메인테이너 전용</td>
+    </tr>
+  </table>
+  <p style="color: var(--muted); font-size: 13.5px;">파트별 진행 중 작업·투두의 단일 소스 = <code>docs/dev_guide.md</code> (현재 스프린트 + 로드맵 섹션). 콘텐츠 파트 백로그는 GitHub 이슈로 관리.</p>
+
+  <h3>구역 규칙 — 파일 기준</h3>
+  <table>
+    <tr><th>구역</th><th>경로</th><th>규칙</th></tr>
+    <tr>
+      <td><span class="zone free">자유</span></td>
+      <td><code>src/achievements/catalog/</code> · <code>src/scenes/&lt;새 씬&gt;/</code> · <code>docs/yuna_knowledge.md</code></td>
+      <td>콘텐츠 오너는 본인 판단으로 작업 → PR. <a href="#guardrails">가드레일</a> 통과 + 씬/도전과제 추가 시 <code>yuna_knowledge.md</code> 같이 갱신. 씬은 4종 세트 (scene + supervisor + handlers + prompts, 레퍼런스 <code>src/scenes/tutorial/</code>)</td>
+    </tr>
+    <tr>
+      <td><span class="zone review">리뷰 필수</span></td>
+      <td>코어 전체 (<code>src/core/</code> · <code>src/llm/</code> · <code>src/db.py</code>) · <code>src/achievements/engine.py</code>·<code>definitions.py</code> · <code>src/supervisors/</code> · <code>src/bot/</code> · <code>src/platform/</code></td>
+      <td><strong>코어는 잠겨있지 않다</strong> — 개발이 계속 들어가는 영역이라 필요하면 수정 OK. 단 ① 작업 전 의도 1-2줄 공유, ② PR 에 "⚠ core 접점: 파일 — 이유" 명시, ③ 메인테이너 승인 후 머지. 새 도구·프롬프트는 각각 도구 절제 심사 / <code>docs/prompt_development.md</code> 규칙 통과</td>
+    </tr>
+    <tr>
+      <td><span class="zone locked">메인테이너 전용</span></td>
+      <td><code>run.sh</code>/<code>run.bat</code> · CI/배포 설정 · 시크릿·키 · 브랜치 보호 · main 릴리스</td>
+      <td>변경 필요하면 이슈/메시지로 제안</td>
+    </tr>
+  </table>
+
+  <div class="callout note">
+    <strong>경계가 애매하면?</strong> "이 파일이 콘텐츠인가 시스템인가" 헷갈리면 일단
+    <span class="zone review">리뷰 필수</span>로 취급하고 작업 전에 물어보기. 잘못된 구역에서 한참 작업하고
+    PR 거절당하는 것보다 30초 질문이 싸다.
+  </div>
+</section>
+
+<!-- ============ 2. 워크플로우 ============ -->
+<section id="workflow">
+  <h2><span class="num">2</span>작업 워크플로우 5단계</h2>
+  <p class="lead">모든 작업은 이 5단계. 로컬 클론 + Claude Code 기준 (바이브코딩 전제).</p>
+
+  <div class="flow">
+    <div class="step"><div class="n">STEP 1</div><div class="t">최신화 + 분기</div><div class="d"><code>develop</code> pull 후 새 브랜치 생성</div></div>
+    <div class="step"><div class="n">STEP 2</div><div class="t">작업</div><div class="d">Claude Code 와 작업. CLAUDE.md 가 규칙을 자동 주입</div></div>
+    <div class="step"><div class="n">STEP 3</div><div class="t">검증</div><div class="d">테스트 실행 + 실제 동작 확인 (<a href="#quality">§7</a>)</div></div>
+    <div class="step"><div class="n">STEP 4</div><div class="t">커밋 + push</div><div class="d">커밋 양식 (<a href="#commit">§4</a>) 준수, 본인 브랜치에만</div></div>
+    <div class="step"><div class="n">STEP 5</div><div class="t">PR</div><div class="d">base = <code>develop</code>, PR 양식 (<a href="#pr">§5</a>)</div></div>
+  </div>
+
+  <pre><code># STEP 1 — 매 작업 시작 시
+git checkout develop
+git pull origin develop
+git checkout -b feat/oshikatsu-scene     # 명명 규칙은 §3
+
+# STEP 4 — 작업 끝나면
+git add -A && git commit -m "feat: 오시카츠 씬 추가 — 굿즈 자랑 + 같이 본방사수 페이즈"
+git push -u origin feat/oshikatsu-scene
+
+# STEP 5 — PR 생성 (gh CLI 또는 GitHub 웹)
+gh pr create --base develop --title "feat: 오시카츠 씬 추가" --body "..."</code></pre>
+
+  <div class="callout warn">
+    <strong>🚫 GitHub 웹 "Upload files" 절대 금지.</strong>
+    웹 업로드는 (1) 커밋 메시지가 전부 "Add files via upload" 가 되어 히스토리가 죽고,
+    (2) 파일 전체를 통째로 덮어써서 그 사이 다른 사람 변경을 날릴 수 있고 (충돌 감지 없음),
+    (3) 줄바꿈(CRLF)이 뭉개져 diff 가 오염되고, (4) 리뷰 없이 브랜치에 직행한다.
+    <strong>반드시 로컬 클론 → 브랜치 → push → PR.</strong> git 이 어렵다면 Claude Code 한테
+    "이 작업 브랜치 만들어서 커밋하고 PR 올려줘" 라고 하면 전부 해준다 — 그게 이 프로젝트의 표준 방식.
+  </div>
+</section>
+
+<!-- ============ 3. 브랜치 ============ -->
+<section id="branch">
+  <h2><span class="num">3</span>브랜치 규칙</h2>
+  <table>
+    <tr><th>브랜치</th><th>역할</th><th>직접 push</th></tr>
+    <tr><td><code>main</code></td><td>안정판 — 외부 사용자가 보는 기본 브랜치</td><td>❌ 절대 금지 (메인테이너만, 안정화 사이클에서)</td></tr>
+    <tr><td><code>develop</code></td><td>통합 지점 — 모든 PR 의 base</td><td>❌ 기여자는 PR 로만 (메인테이너 일상 커밋은 브랜치 보호 적용 전까지 과도기 허용)</td></tr>
+    <tr><td><code>feat/*</code> <code>fix/*</code> <code>docs/*</code> <code>refactor/*</code></td><td>작업 브랜치 — develop 에서 분기</td><td>✅ 본인 브랜치는 자유</td></tr>
+    <tr><td><code>dev-requests/run-*</code></td><td>자동 dev 시스템 전용</td><td>❌ 사람이 만들지 말 것</td></tr>
+  </table>
+  <ul>
+    <li>이름은 영문 소문자 + 하이픈: <code>feat/idol-fan-achievements</code>, <code>fix/scene-phase-skip</code></li>
+    <li>브랜치 1개 = 주제 1개. 머지되면 삭제.</li>
+    <li>오래 끄는 브랜치 금지 — 3일 넘게 develop 과 벌어지면 중간에 develop 을 머지해서 따라잡기.</li>
+  </ul>
+</section>
+
+<!-- ============ 4. 커밋 ============ -->
+<section id="commit">
+  <h2><span class="num">4</span>커밋 양식</h2>
+  <p class="lead">1줄 제목 = <code>타입: 요약</code>. 필요할 때만 본문 1-2줄. 한국어 OK.</p>
+
+  <table>
+    <tr><th>타입</th><th>용도</th></tr>
+    <tr><td><code>feat</code></td><td>새 기능·새 콘텐츠 (씬, 도전과제 등)</td></tr>
+    <tr><td><code>fix</code></td><td>버그 수정</td></tr>
+    <tr><td><code>style</code></td><td>UI·문구·디자인 (동작 변화 없음)</td></tr>
+    <tr><td><code>docs</code></td><td>문서만 변경</td></tr>
+    <tr><td><code>refactor</code></td><td>동작 동일, 구조 개선</td></tr>
+  </table>
+
+  <div class="good-bad">
+    <div class="col good">
+      <h4>✅ 좋은 예 (실제 히스토리에서)</h4>
+      <ul>
+        <li><code>feat: 오시카츠 도전과제 3종 추가 (최애 자랑·굿즈·본방사수)</code></li>
+        <li><code>fix: 씬 phase 전환 시 supervisor 미해제로 중복 발화</code></li>
+        <li><code>docs: yuna_knowledge 에 신규 씬 FAQ 추가</code></li>
+      </ul>
+    </div>
+    <div class="col bad">
+      <h4>❌ 나쁜 예</h4>
+      <ul>
+        <li><code>Add files via upload</code> ← 무슨 작업인지 0 정보</li>
+        <li><code>update</code> / <code>수정</code> / <code>wip</code></li>
+        <li>장황한 본문 + 변경 파일 나열 (diff 가 이미 보여줌)</li>
+        <li><code>Co-Authored-By: Claude ...</code> ← AI co-author trailer 절대 금지</li>
+      </ul>
+    </div>
+  </div>
+
+  <ul>
+    <li>커밋 1개 = 논리적 변경 1개. "씬 추가 + 무관한 버그픽스" 를 한 커밋에 섞지 않기.</li>
+    <li><code>--no-verify</code> 금지 — pre-commit 훅이 실패하면 원인을 고친다.</li>
+    <li>AI 생성 표식 (🤖, "Generated with Claude Code") 금지 — author 는 본인 git config.</li>
+  </ul>
+</section>
+
+<!-- ============ 5. PR ============ -->
+<section id="pr">
+  <h2><span class="num">5</span>PR 양식 + 크기 규칙</h2>
+  <p class="lead">base 는 항상 <code>develop</code>. 제목은 커밋 양식과 동일 (<code>타입: 요약</code>).</p>
+
+  <h3>PR 본문 템플릿</h3>
+  <pre><code>## 무엇
+오시카츠 씬 추가 — 최애 자랑 → 같이 본방사수 → 후기 수다 3 페이즈.
+
+## 왜 (수요 근거)
+타깃 B 에서 오시카츠는 일상 대화 빈도 최상위 주제.
+기존 씬엔 '덕질 공유' 류 감정 접점이 없음.
+
+## 확인한 것
+- [ ] tutorial 씬 패턴 (4파일 세트) 그대로 따름
+- [ ] ./scripts/qa.sh 통과 / 실제 대화로 phase 전환 확인
+- [ ] docs/yuna_knowledge.md 갱신
+- [ ] 가드레일 (§6) 통과 — 메타 용어 없음, 해결형 드라마
+
+## 리뷰 포인트 (선택)
+supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</code></pre>
+
+  <h3>크기 규칙</h3>
+  <ul>
+    <li><strong>PR 1개 = 주제 1개.</strong> "씬 1개 추가" / "도전과제 묶음 1세트" 단위. 여러 주제면 PR 분리.</li>
+    <li><strong>변경 ~500줄 이하 권장.</strong> 넘으면 리뷰 품질이 급락 — 콘텐츠 대량 추가는 세트 단위로 쪼개기.</li>
+    <li><span class="zone review">리뷰 필수</span> 구역을 건드린 PR 은 본문에 <strong>"⚠ core 접점: 파일명 — 이유"</strong> 명시.</li>
+    <li>머지는 메인테이너가. 셀프 머지 금지.</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>리뷰 SLA.</strong> 메인테이너는 PR 에 48시간 내 첫 반응 (승인/코멘트/일정 공유). 급한 건 디스코드/메신저로 핑.
+  </div>
+</section>
+
+<!-- ============ 6. 가드레일 ============ -->
+<section id="guardrails">
+  <h2><span class="num">6</span>콘텐츠 가드레일 — 커뮤니티 작업 시 필수 통과</h2>
+  <p class="lead">
+    수요 감각으로 콘텐츠를 미는 건 환영. 단, 아래는 프로젝트 설계 락인이라 <strong>수요가 있어도 안 됨</strong>.
+    전체 맥락은 <code>docs/dev_guide.md</code> 의 "설계 락인 6가지".
+  </p>
+  <table>
+    <tr><th>체크</th><th>기준</th></tr>
+    <tr><td>🎯 타깃</td><td>20대 초반 여성 감성 유저 (장기관계·힐링·케어). <strong>10대 서브컬처 (이세계·학원 배틀·하드 판타지) 금지.</strong> 오시카츠·일상 덕질은 타깃과 잘 맞음 — OK</td></tr>
+    <tr><td>💚 감정 접점</td><td>"이 콘텐츠가 친구의 감정 delta 를 남기는가?" NO 면 우선순위 낮춤</td></tr>
+    <tr><td>🕊️ 드라마</td><td>갈등은 발생 → 중재 → 화해. 파괴적 엔딩·배신·폭력 금지</td></tr>
+    <tr><td>🔇 메타 용어</td><td>사용자 노출 텍스트에 "AI / 봇 / 에이전트 / 멤버" 금지 — 친구·사람·이름으로</td></tr>
+    <tr><td>🧰 도구 절제</td><td>새 <code>&lt;tools&gt;</code> 도구는 "기존 도구로 대체 불가 + 감정 접점" 둘 다 통과해야 추가 (리뷰 필수 구역)</td></tr>
+    <tr><td>🔌 플랫폼 중립</td><td>코어 로직에 Discord 타입 누출 금지 — "이거 텔레그램·웹챗에서도 재사용 가능한가?" NO 면 잘못된 레이어</td></tr>
+    <tr><td>🧬 코어 중립</td><td>코어(<code>src/core/</code>·<code>src/llm/</code>)에 <strong>특정 커뮤니티 콘텐츠 하드코딩 금지</strong> — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터 파일/설정에서 로드. "내 커뮤니티에서 잘 돌게" 만드는 수정은 환영하되, 그 데이터는 <code>communities/</code> 쪽 레이어로</td></tr>
+    <tr><td>📖 문서 동기화</td><td>씬·도전과제 추가 시 <code>docs/yuna_knowledge.md</code> 같이 갱신 (유나가 사용자에게 설명하는 소스)</td></tr>
+  </table>
+</section>
+
+<!-- ============ 7. 품질 체크 ============ -->
+<section id="quality">
+  <h2><span class="num">7</span>머지 전 품질 체크</h2>
+  <p class="lead">PR 올리기 전에 돌리는 것. Claude Code 한테 "머지 전 체크 돌려줘" 라고 하면 됨.</p>
+  <pre><code># 커뮤니티 격리 (global state 만졌으면 필수)
+python -m tests.unit.test_community_isolation
+
+# E2E QA (씬·튜토리얼·봇 플로우 변경 시)
+./scripts/qa.sh
+
+# 콘텐츠 변경은 실제 대화로 확인 — 테스트 통과 ≠ 체감 품질
+# (씬이면 phase 전환 전 구간을 실제로 플레이해보고 스크린샷을 PR 에 첨부)</code></pre>
+  <ul>
+    <li>프롬프트·콘텐츠 변경은 <strong>실제 대화 1회 이상</strong> 돌려보고 어색한 발화 없는지 확인.</li>
+    <li>프로필 수정 코드를 건드렸다면 <code>invalidate_cache</code> + <code>runtime.refresh_agent</code> 호출 확인.</li>
+  </ul>
+</section>
+
+<!-- ============ 8. 바이브코딩 팁 ============ -->
+<section id="vibe">
+  <h2><span class="num">8</span>바이브코딩 팁 — Claude Code 와 일하는 법</h2>
+  <p class="lead">이 repo 는 Claude Code 친화적으로 세팅돼 있다. 로컬 클론에서 열기만 하면 규칙이 자동 적용됨.</p>
+  <ul>
+    <li><strong><code>CLAUDE.md</code> 가 자동 로드된다</strong> — 브랜치 전략·커밋 규칙·금지사항을 Claude 가 이미 알고 시작. 웹 업로드로는 이 보호막이 전부 무효가 된다 (금지 이유 중 하나).</li>
+    <li><strong>작업 시작 멘트 예시</strong>: <code>"develop 에서 feat/xxx 브랜치 따고, 오시카츠 도전과제 3종 추가해줘. tutorial 씬 패턴 참고."</code> — 브랜치 생성부터 시키면 develop 직커밋 사고가 없다.</li>
+    <li><strong>마무리 멘트 예시</strong>: <code>"머지 전 체크 돌리고, 커밋 + push + develop 베이스로 PR 올려줘."</code></li>
+    <li><strong>씬·도전과제 만들 때</strong>: 레퍼런스(<code>src/scenes/tutorial/</code>, <code>src/achievements/catalog/oshikatsu.py</code>)를 프롬프트에 명시하면 패턴이 일관돼서 리뷰가 빨라진다.</li>
+    <li><strong>모르는 건 Claude 한테 먼저</strong>: "이 변경이 리뷰 필수 구역 건드려?" / "가드레일 위반 없어?" 같은 셀프 심사도 시킬 수 있다.</li>
+    <li><strong>Claude 가 커밋 메시지에 Co-Authored-By 를 넣으려 하면 거부</strong> — CLAUDE.md 에 금지로 박혀 있어 보통 안 넣지만, 한 번 더 확인.</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>첫 PR 추천 코스.</strong> 작은 것부터: 도전과제 1개 추가 (catalog 파일 1개 + yuna_knowledge 1줄) →
+    PR 플로우 한 바퀴 경험 → 그 다음 씬 같은 큰 단위로. 첫 PR 은 플로우 연습이 목적이라 작을수록 좋다.
+  </div>
+</section>
+
+<footer>
+  Glimi 협업 가이드 · 규칙 변경은 메인테이너(jbsim) 승인 후 이 문서 갱신 ·
+  관련 문서: <code>START_HERE.html</code> (프로젝트 소개·셋업) · <code>docs/dev_guide.md</code> (개발 판단 기준) · <code>CLAUDE.md</code> (세션 규칙)
+</footer>
+
+</div>
+</body>
+</html>
