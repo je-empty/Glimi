@@ -1531,9 +1531,11 @@
     from { opacity: 0; transform: translateY(12px) scale(0.975); }
     to { opacity: 1; transform: none; }
   }
+  /* card-rise — transform(슬라이드)만. opacity 는 안 건드림 → 잠금(0.42)·달성(1.0)
+     카드가 각자 제 투명도 그대로 올라옴 ("밝게 떴다가 흐려지는" pop-then-dim 방지). */
   @keyframes card-rise {
-    from { opacity: 0; transform: translateY(9px); }
-    to { opacity: 1; transform: none; }
+    from { transform: translateY(10px); }
+    to { transform: none; }
   }
 
   /* 탭 전환 — 뷰 직계 래퍼 케스케이드. easeOutQuint 로 또렷하게 안착.
