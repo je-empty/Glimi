@@ -69,7 +69,9 @@ def _setup_qa_server(bot_token: str):
         "GLIMI_LLM_AGENT_MAP",
         "GLIMI_OLLAMA_MODEL",
         "GLIMI_OLLAMA_MODEL_MAP",
+        "GLIMI_OLLAMA_NUM_CTX",   # Elastic Memory 컨텍스트 — 매 run 보존
         "GLIMI_OLLAMA_THINK",
+        "GLIMI_PROMPT_LEVEL",
         "OLLAMA_KEEP_ALIVE",
         "OLLAMA_HOST",
     )
