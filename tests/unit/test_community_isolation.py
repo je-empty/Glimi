@@ -14,10 +14,16 @@
 """
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+# 플랫폼 DB 격리 — 운영 data/platform.db (실계정) 에 의존하면 비번 불일치로
+# 로그인이 조용히 실패(303 error redirect)하고 이후 API 가 전부 401 난다.
+# config 가 import 시점에 DATA_DIR 을 읽으므로 반드시 app import 전에 설정.
+os.environ["GLIMI_DATA_DIR"] = tempfile.mkdtemp(prefix="glimi-qa-platform-")
 
 from fastapi.testclient import TestClient
 
@@ -26,16 +32,18 @@ from src.platform import accounts
 
 
 def _login_admin(client: TestClient) -> TestClient:
-    """admin 계정으로 로그인해서 인증 쿠키 세팅."""
+    """격리 DB 에 admin 생성 후 로그인 — 인증 쿠키 세팅."""
     accounts.init_db()
     if accounts.get_user("admin") is None:
-        accounts.create_account("admin", "rmfflal", role="admin")
+        accounts.create_account("admin", "test-password", role="admin")
     r = client.post(
         "/login",
-        data={"username": "admin", "password": "rmfflal", "next": "/"},
+        data={"username": "admin", "password": "test-password", "next": "/"},
         follow_redirects=False,
     )
-    assert r.status_code == 303, f"login failed: {r.status_code}"
+    # 로그인 실패도 303 (/login?error=invalid) 이므로 Location 으로 성공 판별
+    loc = r.headers.get("location", "")
+    assert r.status_code == 303 and "error" not in loc, f"login failed: {r.status_code} → {loc}"
     return client
 
 
