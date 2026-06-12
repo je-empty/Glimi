@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from .. import accounts, templates
+from .. import accounts, setup as setup_mod, templates
 from ..config import SESSION_COOKIE_NAME, SESSION_MAX_AGE_SEC
 from ..sessions import sign_session
 
@@ -11,6 +11,9 @@ router = APIRouter()
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, next: str = "/", error: str | None = None):
+    # 첫 실행이면 로그인 대신 setup wizard 로.
+    if not setup_mod.is_configured():
+        return RedirectResponse(url="/setup", status_code=303)
     return templates.env.TemplateResponse(
         request,
         "login.html",

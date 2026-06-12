@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.community import list_communities
 
-from .. import accounts, templates
+from .. import accounts, setup as setup_mod, templates
 from ..auth import get_current_user, require_admin, require_user
 from ..supervisor import supervisor
 
@@ -15,6 +15,9 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
+    # 첫 실행이면 setup wizard 로.
+    if not setup_mod.is_configured():
+        return RedirectResponse(url="/setup", status_code=303)
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
