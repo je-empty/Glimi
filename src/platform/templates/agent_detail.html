@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ asset_v }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   /* dashboard.css 에 `html, body { height:100%; overflow:hidden }` 가 있어서
@@ -27,7 +28,8 @@
   main.page-body section[id] { scroll-margin-top: 72px; }
   html { scroll-padding-top: 72px; }
   body {
-    font: 13px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
+    font: 13px/1.55 "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Inter", "Noto Sans KR", sans-serif;
+    letter-spacing: -0.008em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background: var(--bg);
@@ -48,9 +50,8 @@
     gap: 16px;
     padding: 16px 20px;
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
+    border: 0;
+    border-radius: 14px;
   }
   /* Avatar wrap — 모달과 동일 스타일 (둥근 프레임 + 우측 하단 emoji badge).
      overflow visible 필수 (badge 가 프레임 밖으로 살짝 튀어나오는 디자인). */
@@ -75,7 +76,7 @@
   .agent-page header.page-head .avatar-wrap .emoji-badge.hidden { display: none; }
   .agent-page header.page-head .hd-text { flex: 1; min-width: 0; }
   .agent-page header.page-head .hd-name {
-    font-size: 22px; font-weight: 700; letter-spacing: -0.3px;
+    font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
   }
   .agent-page header.page-head .hd-sub {
     color: var(--text-dim); font-size: 12.5px; margin-top: 4px;
@@ -89,30 +90,34 @@
   aside.side-nav {
     position: sticky; top: 76px; /* gp-topbar (56px) + gap */
     align-self: start;
-    display: flex; flex-direction: column; gap: 4px;
-    padding: 10px;
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 10px 8px;
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: var(--shadow);
+    border: 0;
+    border-radius: 12px;
     max-height: calc(100vh - 96px);
     overflow-y: auto;
   }
   aside.side-nav a {
+    display: flex; align-items: center; gap: 9px;
     padding: 8px 12px;
     color: var(--text-dim);
     text-decoration: none;
     font-size: 12.5px;
     font-weight: 500;
-    border-radius: 6px;
-    transition: all 0.12s;
+    border-radius: 8px;
+    transition: background 0.15s, color 0.15s;
   }
+  aside.side-nav a .ti { font-size: 15px; color: var(--text-faint); transition: color 0.15s; }
   aside.side-nav a:hover { background: var(--panel-2); color: var(--text); }
-  aside.side-nav a.active { background: var(--accent); color: var(--accent-fg, #fff); }
+  aside.side-nav a:hover .ti { color: var(--text-dim); }
+  aside.side-nav a.active { background: var(--panel-3); color: var(--text); font-weight: 600; }
+  aside.side-nav a.active .ti { color: var(--accent); }
   aside.side-nav .nav-title {
-    font-size: 10.5px; font-weight: 700;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; font-weight: 400;
     color: var(--text-faint); text-transform: uppercase;
-    letter-spacing: 1.2px; padding: 6px 12px 4px;
+    letter-spacing: 0.08em; padding: 6px 12px 4px;
   }
 
   main.page-body {
@@ -121,10 +126,9 @@
   }
   main.page-body .detail-section {
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 0;
+    border-radius: 14px;
     padding: 18px 22px;
-    box-shadow: var(--shadow);
   }
   main.page-body .detail-section + .detail-section { margin-top: 0; }
 
@@ -157,12 +161,12 @@
 
   <aside class="side-nav">
     <div class="nav-title">SECTIONS</div>
-    <a href="#status" class="nav-link" data-target="status">📊 상태</a>
-    <a href="#profile" class="nav-link" data-target="profile">👤 프로필</a>
-    <a href="#relationships" class="nav-link" data-target="relationships">🤝 관계</a>
-    <a href="#memory" class="nav-link" data-target="memory">🧠 메모리</a>
-    <a href="#thinking" class="nav-link" data-target="thinking">💭 추론 로그</a>
-    <a href="#chat" class="nav-link" data-target="chat">💬 최근 대화</a>
+    <a href="#status" class="nav-link" data-target="status"><i class="ti ti-activity" aria-hidden="true"></i>상태</a>
+    <a href="#profile" class="nav-link" data-target="profile"><i class="ti ti-user" aria-hidden="true"></i>프로필</a>
+    <a href="#relationships" class="nav-link" data-target="relationships"><i class="ti ti-heart-handshake" aria-hidden="true"></i>관계</a>
+    <a href="#memory" class="nav-link" data-target="memory"><i class="ti ti-database" aria-hidden="true"></i>메모리</a>
+    <a href="#thinking" class="nav-link" data-target="thinking"><i class="ti ti-brain" aria-hidden="true"></i>추론 로그</a>
+    <a href="#chat" class="nav-link" data-target="chat"><i class="ti ti-message-circle" aria-hidden="true"></i>최근 대화</a>
   </aside>
 
   <main class="page-body" id="page-body">

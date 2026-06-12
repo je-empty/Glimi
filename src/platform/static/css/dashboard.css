@@ -94,7 +94,7 @@
   /* ==== Shell — 헤더(전폭) + 좌측 레일 + 메인 ==== */
   .app {
     display: grid;
-    grid-template-columns: 172px 1fr;
+    grid-template-columns: 204px 1fr;
     grid-template-rows: auto 1fr;
     height: 100vh;
   }
@@ -224,12 +224,13 @@
   nav.tabs::-webkit-scrollbar { width: 0; }
   nav.tabs button {
     background: transparent; color: var(--text-dim); border: none;
-    padding: 8px 11px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    padding: 8px 10px; font-size: 12.5px; font-weight: 500; cursor: pointer;
     border-radius: 9px; transition: color 0.15s, background 0.15s;
-    white-space: nowrap; display: flex; align-items: center; gap: 10px;
+    white-space: nowrap; display: flex; align-items: center; gap: 9px;
     text-align: left; width: 100%;
   }
   nav.tabs button .tab-emoji { font-size: 15px; line-height: 1; color: var(--text-faint); flex: none; transition: color 0.15s; }
+  nav.tabs button .tab-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   nav.tabs button:hover { color: var(--text); background: var(--panel-2); }
   nav.tabs button:hover .tab-emoji { color: var(--text-dim); }
   nav.tabs button.active { color: var(--text); background: var(--panel-3); font-weight: 600; }
@@ -248,8 +249,9 @@
   @media (max-width: 920px) {
     .app { grid-template-columns: 56px 1fr; }
     nav.tabs { padding: 10px 6px 12px; }
-    nav.tabs button { font-size: 0; gap: 0; justify-content: center; padding: 10px 0; }
+    nav.tabs button { gap: 0; justify-content: center; padding: 10px 0; }
     nav.tabs button .tab-emoji { font-size: 17px; }
+    nav.tabs button .tab-label { display: none; }
     nav.tabs button .count { display: none; }
   }
 
@@ -288,20 +290,6 @@
   }
   .section-title::after { content: none; }
 
-  /* ==== Overview 2단 — 그래프(좌) + Agents(우) ==== */
-  .ov-cols {
-    display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
-    gap: 14px; align-items: start;
-  }
-  .ov-cols .graph-panel { margin-bottom: 0; }
-  .ov-cols .ov-right .section-title { margin-top: 0; }
-  .ov-cols .ov-right .section-title:first-child { margin-top: 0; }
-  .ov-cols .agent-grid { grid-template-columns: 1fr; justify-content: stretch; }
-  .ov-cols .agent-card.thinking, .ov-cols .agent-card.speaking { grid-column: auto; max-width: none; }
-  @media (max-width: 1180px) {
-    .ov-cols { grid-template-columns: 1fr; }
-    .ov-cols .graph-panel { margin-bottom: 4px; }
-  }
 
   /* ==== Avatar ==== */
   .avatar {
@@ -778,22 +766,26 @@
   /* ==== Channels ==== */
   .channel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
   .channel-card {
-    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 10px;
+    background: var(--panel-2); border: 0; border-radius: 12px;
     padding: 11px 15px; display: flex; flex-direction: column; gap: 4px; cursor: pointer;
-    border-left: 3px solid var(--text-faint); transition: border-color 0.15s, transform 0.2s;
-    box-shadow: var(--shadow);
+    transition: background 0.2s ease-out;
   }
-  .channel-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
-  .channel-card.kind-mgr { border-left-color: var(--mgr); }
-  .channel-card.kind-dm { border-left-color: var(--accent); }
-  .channel-card.kind-group { border-left-color: var(--ok); }
-  .channel-card.kind-internal-dm { border-left-color: var(--cmd); }
-  .channel-card.kind-internal-group { border-left-color: var(--creator); }
+  .channel-card:hover { background: var(--panel-3); }
   .channel-card .name { font-family: "JetBrains Mono", monospace; font-size: 12.5px; font-weight: 500; color: var(--text); }
-  .channel-card .name::before { content: '#'; color: var(--text-faint); font-weight: 400; }
+  /* 채널 종류 — 좌측 색 바 대신 # 글리프에 종류 색 (절제된 신호) */
+  .channel-card .name::before { content: '# '; color: var(--text-faint); font-weight: 600; }
+  .channel-card.kind-mgr .name::before { color: var(--mgr); }
+  .channel-card.kind-dm .name::before { color: var(--accent); }
+  .channel-card.kind-group .name::before { color: var(--ok); }
+  .channel-card.kind-internal-dm .name::before { color: var(--cmd); }
+  .channel-card.kind-internal-group .name::before { color: var(--creator); }
   .channel-card .meta { font-size: 10.5px; color: var(--text-dim); display: flex; gap: 8px; }
   .channel-card .meta .sep { color: var(--text-faint); }
-  .channel-group-title { font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; margin: 18px 0 8px; }
+  .channel-group-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; font-weight: 400; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em; margin: 18px 0 8px;
+  }
 
   /* ==== Messages — 헤어라인 레저 행 (je-empty ledger) ==== */
   .msg-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }
@@ -991,7 +983,7 @@
   .detail-head .d-emoji { font-size: 28px; line-height: 1; flex-shrink: 0; display: flex; }
   .detail-head .d-emoji .avatar { margin: 0; cursor: pointer; }
   .detail-head .d-emoji .avatar:hover { transform: scale(1.05); transition: transform 0.15s; }
-  .detail-head .d-title { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; flex: 1; min-width: 0; }
+  .detail-head .d-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; flex: 1; min-width: 0; }
   .detail-head .d-title small { color: var(--text-dim); font-size: 12px; font-weight: 500; margin-left: 8px; }
   .detail-head .d-close {
     flex-shrink: 0; background: var(--panel-2); color: var(--text);
@@ -1002,9 +994,13 @@
   .detail-body { padding: 18px 22px; overflow-y: auto; flex: 1; }
   .detail-section {
     margin-bottom: 20px; padding: 14px 16px;
-    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 10px;
+    background: var(--panel-2); border: 0; border-radius: 12px;
   }
-  .detail-section h4 { font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; }
+  .detail-section h4 {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px; font-weight: 400; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;
+  }
   .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; font-size: 12.5px; }
   .kv dt { color: var(--text-dim); font-weight: 500; }
   .kv dd { color: var(--text); }
@@ -1017,7 +1013,7 @@
     align-items: center; gap: 10px;
     padding: 5px 2px;
     font-size: 12px;
-    border-bottom: 1px dashed var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
     min-height: 30px;
   }
   .rel-row:last-child { border-bottom: none; }
@@ -1308,10 +1304,10 @@
 
   /* ==== Achievements ==== */
   .ach-header {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    background: var(--panel-2); border: 0; border-radius: 14px;
     padding: 18px 22px; margin-bottom: 16px;
   }
-  .ach-title { font-size: 18px; font-weight: 700; color: var(--text); }
+  .ach-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
   .ach-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
   .ach-progress-wrap { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
   .ach-progress-bar {
@@ -1327,11 +1323,11 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
   }
   .ach-card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 11px;
+    background: var(--panel-2); border: 0; border-radius: 12px;
     padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start;
-    transition: all 0.15s;
+    transition: background 0.2s ease-out;
   }
-  .ach-card:hover { border-color: var(--accent); }
+  .ach-card:hover { background: var(--panel-3); }
   /* 미달성 (locked / unlocked = in-progress) — 둘 다 dim. done 만 강조. */
   .ach-card.locked, .ach-card.unlocked { opacity: 0.42; filter: grayscale(0.5); }
   .ach-card.done { opacity: 1; filter: none;

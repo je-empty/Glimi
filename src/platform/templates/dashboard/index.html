@@ -112,18 +112,18 @@
   </header>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="overview" class="active"><i class="ti ti-home tab-emoji" aria-hidden="true"></i>Overview</button>
-    <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i>Agents <span class="count" id="tc-agents">0</span></button>
-    <button data-tab="channels"><i class="ti ti-message-circle tab-emoji" aria-hidden="true"></i>Channels <span class="count" id="tc-channels">0</span></button>
-    <button data-tab="messages"><i class="ti ti-mail tab-emoji" aria-hidden="true"></i>Messages <span class="count" id="tc-messages">0</span></button>
-    <button data-tab="scenes"><i class="ti ti-movie tab-emoji" aria-hidden="true"></i>Scenes <span class="count" id="tc-scenes">0</span></button>
-    <button data-tab="achievements"><i class="ti ti-trophy tab-emoji" aria-hidden="true"></i>Achievements <span class="count" id="tc-achievements">—</span></button>
-    <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i>Events <span class="count" id="tc-events">0</span></button>
-    <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i>Supervisors <span class="count" id="tc-supervisors">0</span></button>
-    <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i>Health</button>
-    <button data-tab="sync"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i>Sync</button>
-    <button data-tab="usage"><i class="ti ti-chart-bar tab-emoji" aria-hidden="true"></i>Usage</button>
-    <button data-tab="logs"><i class="ti ti-file-text tab-emoji" aria-hidden="true"></i>Logs</button>
+    <button data-tab="overview" class="active"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
+    <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">Agents</span> <span class="count" id="tc-agents">0</span></button>
+    <button data-tab="channels"><i class="ti ti-message-circle tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>
+    <button data-tab="messages"><i class="ti ti-mail tab-emoji" aria-hidden="true"></i><span class="tab-label">Messages</span> <span class="count" id="tc-messages">0</span></button>
+    <button data-tab="scenes"><i class="ti ti-movie tab-emoji" aria-hidden="true"></i><span class="tab-label">Scenes</span> <span class="count" id="tc-scenes">0</span></button>
+    <button data-tab="achievements"><i class="ti ti-trophy tab-emoji" aria-hidden="true"></i><span class="tab-label">Achievements</span> <span class="count" id="tc-achievements">—</span></button>
+    <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">Events</span> <span class="count" id="tc-events">0</span></button>
+    <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i><span class="tab-label">Supervisors</span> <span class="count" id="tc-supervisors">0</span></button>
+    <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i><span class="tab-label">Health</span></button>
+    <button data-tab="sync"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">Sync</span></button>
+    <button data-tab="usage"><i class="ti ti-chart-bar tab-emoji" aria-hidden="true"></i><span class="tab-label">Usage</span></button>
+    <button data-tab="logs"><i class="ti ti-file-text tab-emoji" aria-hidden="true"></i><span class="tab-label">Logs</span></button>
   </nav>
 
   <main>
@@ -144,15 +144,9 @@
         <div class="kpi"><div class="label">Active Scene</div><div class="value" id="kpi-scene">—</div></div>
         <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
       </div>
-      <div class="ov-cols">
-        <div class="ov-left">
-          <div class="graph-panel" id="graph-panel"></div>
-        </div>
-        <div class="ov-right">
-          <div class="section-title">Agents</div>
-          <div class="agent-grid" id="overview-agents"></div>
-        </div>
-      </div>
+      <div class="graph-panel" id="graph-panel"></div>
+      <div class="section-title">Agents</div>
+      <div class="agent-grid" id="overview-agents"></div>
       <div class="section-title">Recent Conversations</div>
       <div class="msg-list" id="overview-msgs"></div>
     </div>
