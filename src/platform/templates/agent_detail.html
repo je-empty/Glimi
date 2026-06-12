@@ -277,12 +277,71 @@
     const provider = d.provider || '';
     const override = d.model_override ? ' override' : '';
     const title = d.model_override ? 'per-agent override' : 'default';
-    return parts.map(p => {
+    const chips = parts.map(p => {
       const fam = _modelFamilyClass(p);
       const classes = ['model-tag', provider, fam, override.trim()].filter(Boolean).join(' ');
       const icon = _modelKindIcon(p);
       return `<span class="${classes}" title="${esc(title)}">${icon ? icon + ' ' : ''}${esc(p)}</span>`;
     }).join('');
+    // synthetic(유나 합성 카드·test-user)은 전환 불가 — 클릭 비활성
+    if (d.synthetic) return chips;
+    return `<span onclick="openAgentModelSwitch(${JSON.stringify(d.model).replace(/"/g,'&quot;')})"
+      style="cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="클릭해서 모델 변경">
+      ${chips}<i class="ti ti-pencil" style="font-size:12px;color:var(--text-faint)"></i></span>`;
+  }
+
+  async function postJson(url, body) {
+    try {
+      const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      return await r.json();
+    } catch (e) { return {error: String(e)}; }
+  }
+
+  // 모델 전환 — 상세페이지 인라인 오버레이 picker
+  async function openAgentModelSwitch(currentModel) {
+    const cat = await j('/api/models');
+    const models = (cat && cat.items) || [];
+    if (!models.length) { alert('모델 목록을 불러올 수 없습니다'); return; }
+    const groupLabel = {cloud: '클라우드', local: '로컬'};
+    let html = '';
+    ['cloud','local'].forEach(g => {
+      const ms = models.filter(m => (m.kind||'cloud') === g);
+      if (!ms.length) return;
+      html += `<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-faint);margin:10px 0 6px">${groupLabel[g]||g}</div>`;
+      html += ms.map(m => {
+        const checked = m.id === currentModel ? 'checked' : '';
+        return `<label style="display:flex;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;align-items:center">
+          <input type="radio" name="am-pick" value="${esc(m.id)}" ${checked}>
+          <div style="flex:1"><div style="font-size:13px;font-weight:500">${esc(m.label||m.id)}</div>
+          <div style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-dim)">${esc(m.id)} · ${esc(m.tier||'')}</div></div></label>`;
+      }).join('');
+    });
+    const ov = document.createElement('div');
+    ov.id = 'am-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+    ov.innerHTML = `<div style="background:var(--panel);border:1px solid var(--border);border-radius:16px;width:min(440px,100%);max-height:85vh;overflow:auto;padding:18px 20px;box-shadow:var(--shadow-lg)" onclick="event.stopPropagation()">
+      <div style="font-size:15px;font-weight:500;margin-bottom:4px">모델 변경</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px">대화 이력·메모리는 DB 기반이라 보존됩니다. 다음 턴부터 반영 (재시작 불필요).</div>
+      <form id="am-form">${html}</form>
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+        <button class="act-btn" onclick="document.getElementById('am-overlay').remove()">취소</button>
+        <button class="act-btn" onclick="applyAgentModelSwitch('')">기본값으로</button>
+        <button class="act-btn primary" onclick="applyAgentModelSwitch(null)">적용</button>
+      </div></div>`;
+    ov.onclick = () => ov.remove();
+    document.body.appendChild(ov);
+  }
+
+  async function applyAgentModelSwitch(forceModel) {
+    let model = forceModel;
+    if (model === null) {
+      const picked = document.querySelector('#am-form input[name="am-pick"]:checked');
+      if (!picked) { alert('모델 선택 필요'); return; }
+      model = picked.value;
+    }
+    const r = await postJson(q('/api/action/set_agent_model'), {agent_id: AID, model});
+    document.getElementById('am-overlay')?.remove();
+    if (r && r.ok) { load(); } else { alert('실패: ' + (r?.error || '알 수 없음')); }
   }
 
   // ── 메인 로드 ─────────────────────────────────────────────────
