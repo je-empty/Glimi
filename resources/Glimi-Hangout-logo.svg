@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Glimi Hangout mark: 플랫폼 마크(관계 그래프)의 밤 반전.
+       친구 노드 = 따뜻한 별빛 크림, 오너 노드 = 핑크(#f472b6, #db2777 의 야간 변형) -->
+  <rect width="64" height="64" rx="14.3" fill="#191a2e"/>
+  <circle cx="12" cy="14" r="0.9" fill="#8a8fb8"/>
+  <circle cx="51" cy="10" r="0.7" fill="#8a8fb8"/>
+  <circle cx="56" cy="38" r="0.9" fill="#8a8fb8"/>
+  <circle cx="10" cy="46" r="0.7" fill="#8a8fb8"/>
+  <circle cx="22" cy="55" r="0.8" fill="#8a8fb8"/>
+  <circle cx="47" cy="53" r="0.7" fill="#8a8fb8"/>
+  <g fill="none" stroke="#565d8f" stroke-width="2.6" stroke-linecap="round">
+    <path d="M21 23 A13.5 13.5 0 0 1 43 23"/>
+    <path d="M43 23 A13.5 13.5 0 0 1 30.2 44"/>
+  </g>
+  <circle cx="21" cy="23" r="7.5" fill="#f5e9c8" opacity="0.14"/>
+  <circle cx="21" cy="23" r="4.8" fill="#f5e9c8"/>
+  <circle cx="30.2" cy="44" r="7.5" fill="#f5e9c8" opacity="0.14"/>
+  <circle cx="30.2" cy="44" r="4.8" fill="#f5e9c8"/>
+  <circle cx="43" cy="23" r="8.6" fill="#f472b6" opacity="0.18"/>
+  <circle cx="43" cy="23" r="5.4" fill="#f472b6"/>
+</svg>
