@@ -766,7 +766,7 @@ def _call_claude(prompt: str, model: str = EXTRACTION_MODEL, timeout: int = 30,
     """
     import os as _os
     try:
-        from src.llm import generate
+        from src.glimi.llm import generate
         # 호출자가 명시한 system 이 있으면 우선, 없으면 기본 추출기 system 부여.
         effective_system = system or _EXTRACTION_SYSTEM
         resp = generate(
