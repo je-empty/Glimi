@@ -14,7 +14,7 @@ from src.core.prompts.helpers import (
 )
 from src.core.prompts.locale import simple_ack_examples, gender_options
 from src.core.prompts.model import tools_block_end_rule
-from src.core.tools.registry import _env_truthy
+from src.glimi.tools.registry import _env_truthy
 
 
 def _drawing_section(oc: str) -> str:
