@@ -14,7 +14,7 @@ from src import db, community
 from src import log_writer
 from src.core.profile import load_profile, get_user_name, get_user_id
 from src.core.runtime import runtime
-from src.core.conversation import (
+from src.bot.conversation_bridge import (
     start_conversation, stop_conversation, list_active_conversations,
 )
 from src.bot import (

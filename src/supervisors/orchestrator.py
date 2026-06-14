@@ -304,7 +304,7 @@ class OrchestratorSupervisor(Supervisor):
             # 최대 3명까지 (그룹 규모 제한)
             if len(personas) > 3:
                 personas = random.sample(personas, 3)
-            from src.core.conversation import start_conversation
+            from src.bot.conversation_bridge import start_conversation
             from src.bot.core import send_as_agent
 
             ch = discord.utils.get(guild.text_channels, name=ch_name)
@@ -363,7 +363,7 @@ class OrchestratorSupervisor(Supervisor):
         b_name = (db.get_agent(b_id) or {}).get("name", "?")
         # yuna_create_room 은 기본적으로 Yuna가 mgr-dashboard에서 호출하는 루틴 —
         # 여기서는 직접 internal-dm 생성 + start_conversation 흐름 사용.
-        from src.core.conversation import start_conversation
+        from src.bot.conversation_bridge import start_conversation
         from src.bot import internal_dm_channel_name
         ch_name = internal_dm_channel_name(a_name, b_name)
         try:
