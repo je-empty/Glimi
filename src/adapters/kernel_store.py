@@ -49,6 +49,60 @@ class SqliteKernelStore(KernelStore):
     def log_message(self, channel: str, speaker: str, message: str, emotion: Optional[str] = None) -> None:
         db.log_message(channel, speaker, message, emotion)
 
+    # ── runtime — higher-level (raw SQL lives here, not in the kernel) ──
+    def get_recent_events(self, agent_id: str, event_types: list[str],
+                          window_sec: int, limit: int = 8) -> list[dict]:
+        if not event_types:
+            return []
+        conn = db.get_conn()
+        try:
+            placeholders = ",".join("?" for _ in event_types)
+            rows = conn.execute(
+                f"SELECT event_type, participants, description, timestamp FROM events "
+                f"WHERE timestamp >= datetime('now', ?) "
+                f"AND event_type IN ({placeholders}) "
+                f"AND participants LIKE ? "
+                f"ORDER BY id DESC LIMIT ?",
+                (f"-{window_sec} seconds", *event_types, f"{agent_id},%", limit),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
+    def get_agent_channels(self, agent_id: str, exclude_channel: str,
+                           include_mgr: bool) -> list[dict]:
+        conn = db.get_conn()
+        try:
+            if include_mgr:
+                rows = conn.execute(
+                    """SELECT channel, MAX(id) as last_id FROM conversations
+                       WHERE speaker = ? AND channel != ?
+                       GROUP BY channel ORDER BY last_id DESC""",
+                    (agent_id, exclude_channel),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT channel, MAX(id) as last_id FROM conversations
+                       WHERE speaker = ? AND channel != ? AND channel NOT LIKE 'mgr%'
+                       GROUP BY channel ORDER BY last_id DESC""",
+                    (agent_id, exclude_channel),
+                ).fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
+    def get_memory_coverage(self, agent_id: str, exclude_channel: str) -> dict[str, int]:
+        conn = db.get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT channel, MAX(msg_id_to) as last_covered FROM memories "
+                "WHERE agent_id = ? AND channel != ? GROUP BY channel",
+                (agent_id, exclude_channel),
+            ).fetchall()
+        finally:
+            conn.close()
+        return {r["channel"]: (r["last_covered"] or 0) for r in rows}
+
     # ── memory ────────────────────────────────────────────────────────
     def get_agent_by_name(self, name: str) -> Optional[dict]:
         return db.get_agent_by_name(name)

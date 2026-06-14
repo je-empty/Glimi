@@ -54,6 +54,25 @@ class KernelStore(ABC):
     @abstractmethod
     def log_message(self, channel: str, speaker: str, message: str, emotion: Optional[str] = None) -> None: ...
 
+    # ── runtime — higher-level (replace raw SQL previously inlined in runtime) ──
+    @abstractmethod
+    def get_recent_events(self, agent_id: str, event_types: list[str],
+                          window_sec: int, limit: int = 8) -> list[dict]:
+        """이 에이전트가 최근 window_sec 초 내 트리거한 이벤트 (도구 호출 이력 등)."""
+        ...
+
+    @abstractmethod
+    def get_agent_channels(self, agent_id: str, exclude_channel: str,
+                           include_mgr: bool) -> list[dict]:
+        """에이전트가 발화한 채널 + 각 채널 최신 msg id. ``[{channel, last_id}]``.
+        include_mgr=False 면 mgr* 채널 제외 (persona 격리)."""
+        ...
+
+    @abstractmethod
+    def get_memory_coverage(self, agent_id: str, exclude_channel: str) -> dict[str, int]:
+        """채널별로 메모리 요약이 커버한 마지막 msg id. ``{channel: last_covered}``."""
+        ...
+
     # ── memory ────────────────────────────────────────────────────────
     @abstractmethod
     def get_agent_by_name(self, name: str) -> Optional[dict]: ...
