@@ -160,10 +160,26 @@ def install():
 
 
 def dashboard_summary(user_id: str | None = None) -> dict:
-    """대시보드 렌더용 — 전 과제 + 진척도 + 요약."""
+    """대시보드 렌더용 — 전 과제 + 진척도 + 요약.
+
+    title/description 은 현재 커뮤니티 언어를 따른다. en 커뮤니티면
+    catalog_i18n_en.ACHIEVEMENTS_EN 맵으로 치환 (키 없으면 한국어 fallback).
+    이 함수는 with_community 컨텍스트 안에서 호출되므로 get_language() 가
+    올바른 커뮤니티를 반영한다.
+    """
     user_id = user_id or _active_user_id()
     if not user_id:
         return {"user_id": None, "items": [], "done": 0, "total": len(ACHIEVEMENTS)}
+
+    # 커뮤니티 언어에 따른 title/description override 맵 선택
+    en_map: dict = {}
+    try:
+        from src.community import get_language
+        if get_language() == "en":
+            from src.achievements.catalog_i18n_en import ACHIEVEMENTS_EN
+            en_map = ACHIEVEMENTS_EN
+    except Exception as e:
+        print(f"[achievements] i18n 맵 로드 실패: {e}")
 
     # DB 에 없는 정의도 locked 상태로 포함시키기 위해 merge
     saved = {a["key"]: a for a in db.list_achievements(user_id)}
@@ -175,10 +191,11 @@ def dashboard_summary(user_id: str | None = None) -> dict:
                 row["progress_data"] = json.loads(row["progress_data"])
             except Exception:
                 row["progress_data"] = None
+        tr = en_map.get(ach.key) or {}
         items.append({
             "key": ach.key,
-            "title": ach.title,
-            "description": ach.description,
+            "title": tr.get("title") or ach.title,
+            "description": tr.get("description") or ach.description,
             "icon": ach.icon,
             "state": row["state"] if row else "locked",
             "progress": row.get("progress_data") if row else None,

@@ -52,9 +52,9 @@
     <div class="gp-server-ctrl" id="gp-server-ctrl">
       <span id="gp-bot-status" class="gp-status">…</span>
       <span id="gp-bot-uptime" class="gp-uptime"></span>
-      <button id="gp-start" class="gp-ctrl-btn start" onclick="glimiServerCtrl('start')" title="커뮤니티 봇 가동 — 에이전트들 대화 시작"><i class="ti ti-player-play" aria-hidden="true"></i>가동</button>
-      <button id="gp-restart" class="gp-ctrl-btn" onclick="glimiServerCtrl('restart')" style="display:none" title="재가동"><i class="ti ti-refresh" aria-hidden="true"></i>재가동</button>
-      <button id="gp-stop" class="gp-ctrl-btn stop" onclick="glimiServerCtrl('stop')" style="display:none" title="커뮤니티 정지 — 에이전트 대화 중단"><i class="ti ti-player-stop" aria-hidden="true"></i>정지</button>
+      <button id="gp-start" class="gp-ctrl-btn start" onclick="glimiServerCtrl('start')" title="커뮤니티 봇 가동 — 에이전트들 대화 시작"><i class="ti ti-player-play" aria-hidden="true"></i>{% if language == 'en' %}Start{% else %}가동{% endif %}</button>
+      <button id="gp-restart" class="gp-ctrl-btn" onclick="glimiServerCtrl('restart')" style="display:none" title="재가동"><i class="ti ti-refresh" aria-hidden="true"></i>{% if language == 'en' %}Restart{% else %}재가동{% endif %}</button>
+      <button id="gp-stop" class="gp-ctrl-btn stop" onclick="glimiServerCtrl('stop')" style="display:none" title="커뮤니티 정지 — 에이전트 대화 중단"><i class="ti ti-player-stop" aria-hidden="true"></i>{% if language == 'en' %}Stop{% else %}정지{% endif %}</button>
     </div>
 
     <div style="flex:1"></div>
@@ -137,8 +137,8 @@
     <div class="view" id="view-scenes"><div id="scenes-full"></div></div>
     <div class="view" id="view-achievements">
       <div class="ach-header">
-        <div class="ach-title">도전과제</div>
-        <div class="ach-sub">커뮤니티를 살면서 만나는 순간들 ✨</div>
+        <div class="ach-title">{% if language == 'en' %}Achievements{% else %}도전과제{% endif %}</div>
+        <div class="ach-sub">{% if language == 'en' %}Moments you meet while living in the community ✨{% else %}커뮤니티를 살면서 만나는 순간들 ✨{% endif %}</div>
         <div class="ach-progress-wrap">
           <div class="ach-progress-bar"><div class="ach-progress-fill" id="ach-fill" style="width:0%"></div></div>
           <div class="ach-progress-text" id="ach-pct">0 / 0</div>
