@@ -16,14 +16,16 @@ def api_snapshot(path: str) -> dict:
         snap = monitor.snapshot()
         # demo 커뮤니티는 실제 봇이 안 돌아도 "운영 중" 처럼 보여야 함 (시연용).
         # 자체 UI 코드는 건드리지 않고 snapshot dict 의 플래그만 덮어씀 → 코드 바뀌어도 자동 반영.
-        if snap.get("community_id") == "demo":
+        # demo-en = 영문 데모 (README 영문판 스크린샷용) — 동일 처리.
+        if snap.get("community_id") in ("demo", "demo-en"):
             try:
                 from src.platform.demo_mock import inject as _demo_inject
                 snap = _demo_inject(snap)
             except Exception:
                 pass  # mock 실패해도 실제 스냅샷은 반환
+        _lang = (snap.get("community_meta") or {}).get("language", "ko")
         for c in snap["channels"]:
-            c["last_ago"] = monitor.human_ago(c["last_ts"])
+            c["last_ago"] = monitor.human_ago(c["last_ts"], _lang)
         return snap
     return with_community(path, _run)
 

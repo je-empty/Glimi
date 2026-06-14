@@ -64,6 +64,15 @@ async def community_dashboard(
     if target is None:
         raise HTTPException(404, "community not found")
 
+    # 커뮤니티 언어 — registry 에서 직접 읽음 (set_community 호출 X: 전역 캐시 오염 방지).
+    import tomllib
+    from src.community import REGISTRY_PATH
+    _lang = "en"
+    if REGISTRY_PATH.exists():
+        with open(REGISTRY_PATH, "rb") as f:
+            _reg = tomllib.load(f)
+        _lang = _reg.get("community", {}).get(community_id, {}).get("language", "en")
+
     return templates.env.TemplateResponse(
         request,
         "dashboard/index.html",
@@ -72,6 +81,7 @@ async def community_dashboard(
             "community_id": community_id,
             "community_name": target.get("name") or community_id,
             "community_description": target.get("description") or "",
+            "language": _lang,
         },
     )
 
@@ -93,6 +103,15 @@ async def agent_detail_page(
     if target is None:
         raise HTTPException(404, "community not found")
 
+    # 커뮤니티 언어 — registry 에서 직접 읽음 (set_community 호출 X: 전역 캐시 오염 방지).
+    import tomllib
+    from src.community import REGISTRY_PATH
+    _lang = "en"
+    if REGISTRY_PATH.exists():
+        with open(REGISTRY_PATH, "rb") as f:
+            _reg = tomllib.load(f)
+        _lang = _reg.get("community", {}).get(community, {}).get("language", "en")
+
     return templates.env.TemplateResponse(
         request,
         "agent_detail.html",
@@ -101,6 +120,7 @@ async def agent_detail_page(
             "agent_id": agent_id,
             "community_id": community,
             "community_name": target.get("name") or community,
+            "language": _lang,
         },
     )
 
