@@ -693,7 +693,7 @@ function renderChannelCard(c) {
     <div class="meta">
       <span>${c.msg_count} msgs</span>
       <span class="sep">·</span>
-      <span>${c.participant_count}명</span>
+      <span>${c.participant_count}${currentLang() === 'en' ? (c.participant_count === 1 ? ' member' : ' members') : '명'}</span>
       <span class="sep">·</span>
       <span>${esc(c.last_ago || '—')}</span>
     </div>
@@ -2359,13 +2359,17 @@ function renderConnectionGraph(snap) {
   }
 
   // 캔버스 오버레이 — 칩 레전드(좌하단, 노드 타입 기준) + 플로팅 컨트롤(우하단)
+  // 커뮤니티 언어(currentLang)에 따라 라벨 전환 — ko 데모/en 데모 둘 다 자연스럽게.
+  const _gl = currentLang() === 'en'
+    ? { owner: 'Owner', mgr: 'Manager', creator: 'Creator', persona: 'Persona', sup: 'Supervisor', talking: 'Talking' }
+    : { owner: '오너', mgr: '매니저', creator: '크리에이터', persona: '페르소나', sup: '감시자', talking: '대화 중' };
   const chips = `<div class="graph-chips">
-    <span class="gchip"><span class="gdot" style="background:var(--user)"></span>오너</span>
-    <span class="gchip"><span class="gdot" style="background:var(--mgr)"></span>매니저</span>
-    <span class="gchip"><span class="gdot" style="background:var(--creator)"></span>크리에이터</span>
-    <span class="gchip"><span class="gdot" style="background:var(--persona)"></span>페르소나</span>
-    ${SHOW_SUP ? `<span class="gchip"><span class="gdot" style="background:var(--warn)"></span>감시자</span>` : ''}
-    <span class="gchip"><span class="gline" style="background:var(--speaking)"></span>대화 중</span>
+    <span class="gchip"><span class="gdot" style="background:var(--user)"></span>${_gl.owner}</span>
+    <span class="gchip"><span class="gdot" style="background:var(--mgr)"></span>${_gl.mgr}</span>
+    <span class="gchip"><span class="gdot" style="background:var(--creator)"></span>${_gl.creator}</span>
+    <span class="gchip"><span class="gdot" style="background:var(--persona)"></span>${_gl.persona}</span>
+    ${SHOW_SUP ? `<span class="gchip"><span class="gdot" style="background:var(--warn)"></span>${_gl.sup}</span>` : ''}
+    <span class="gchip"><span class="gline" style="background:var(--speaking)"></span>${_gl.talking}</span>
   </div>`;
   const ctl = `<div class="graph-ctl">
     <button title="화면 맞춤" onclick="cyFitGraph()"><i class="ti ti-focus-2" aria-hidden="true"></i></button>
@@ -2951,7 +2955,7 @@ function renderScenes(scenes) {
 function renderAchievements(data) {
   const items = (data && data.items) || [];
   if (!items.length) {
-    document.getElementById('ach-grid').innerHTML = '<div class="empty">도전과제 정보 없음</div>';
+    document.getElementById('ach-grid').innerHTML = '<div class="empty">' + (currentLang() === 'en' ? 'No achievement data' : '도전과제 정보 없음') + '</div>';
     document.getElementById('ach-fill').style.width = '0%';
     document.getElementById('ach-pct').textContent = '0 / 0';
     const tc = document.getElementById('tc-achievements');

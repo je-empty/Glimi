@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -19,6 +20,68 @@ from typing import Any
 # 상태 rotation 주기 — N 초마다 활성 대상이 한 칸씩 밀림
 # (60초로 느슨하게 — 너무 자주 바뀌면 산만)
 _ROTATION_PERIOD = 60
+
+
+def _capture_mode() -> bool:
+    """README 그래프 움짤 캡처용 — 다수 노드를 동시에 활성화해 '동시다발' 그림을 만든다.
+    평상시(라이브 데모)엔 OFF. `GLIMI_DEMO_CAPTURE=1` 일 때만 ON."""
+    return os.environ.get("GLIMI_DEMO_CAPTURE", "").strip() in ("1", "true")
+
+
+def _inject_capture(snap: dict[str, Any]) -> None:
+    """캡처 모드 전용 — 여러 persona thinking/speaking 동시 + 여러 채널 running.
+    결정론적(시간 rotation 없음)이라 프레임이 안정적. graph 에 live edge 가 풍성하게 깔림."""
+    agents = snap.get("agents") or []
+    personas = [a for a in agents if a.get("type") == "persona"]
+    for a in agents:
+        a["thinking"] = a["speaking"] = False
+        a["thinking_seconds"] = a["speaking_seconds"] = 0
+    # persona 를 thinking/speaking 으로 번갈아 — 색 다양성(amber ring / blue ring) 확보.
+    for i, a in enumerate(personas):
+        if i % 5 == 1 or i % 5 == 3:
+            a["speaking"] = True
+            a["speaking_seconds"] = 2 + (i % 4)
+        else:
+            a["thinking"] = True
+            a["thinking_seconds"] = 3 + (i * 2) % 11
+
+    # 여러 internal-/group- 채널 동시 running → 다수 edge pulse.
+    channels = snap.get("channels") or []
+    running_names: list[str] = []
+    running_parts: list[list[str]] = []
+    for c in channels:
+        nm = c.get("name") or ""
+        if nm.startswith(("internal-", "group-")):
+            c["status"] = "running"
+            from datetime import datetime, timezone
+            now = time.time()
+            c["last_ts"] = datetime.fromtimestamp(
+                now - (int(now) % 20), tz=timezone.utc
+            ).isoformat()
+            running_names.append(nm)
+            running_parts.append(list(c.get("participants") or []))
+        elif c.get("status") == "running":
+            c["status"] = "idle"
+
+    # Supervisor — orchestrator + 각 running 채널 ChatSupervisor 다수 주입.
+    sups = list(snap.get("supervisors") or [])
+    persona_ids = [a["id"] for a in personas]
+    for s in sups:
+        if s.get("name") == "orchestrator":
+            s["active"] = True
+            s["intervening"] = False
+            s["target_agents"] = persona_ids[:5]
+    for nm, parts in list(zip(running_names, running_parts))[:4]:
+        targets = [p for p in parts if p.startswith(("agent-persona-", "agent-mgr-"))]
+        sups.append({
+            "name": f"chat.{nm}",
+            "display_name": f"Chat · {nm}",
+            "icon": "💬",
+            "active": True,
+            "intervening": False,
+            "target_agents": targets,
+        })
+    snap["supervisors"] = sups
 
 # 참고: 활성중인 에이전트의 **모든** 참여 채널이 그래프에서 live 로 잡힘.
 # persona 1명만 thinking 돌려도 그 persona 의 dm-/group-/internal- 여러 개가 pulse 됨.
@@ -48,6 +111,11 @@ def inject(snap: dict[str, Any]) -> dict[str, Any]:
     bot = dict(snap.get("bot") or {})
     bot["bot_alive"] = True
     snap["bot"] = bot
+
+    # ── 캡처 모드 — 다수 노드 동시 활성 (README 그래프 움짤용) ──
+    if _capture_mode():
+        _inject_capture(snap)
+        return snap
 
     # ── 에이전트 thinking rotation — persona 1명만 ──
     # 활성 에이전트의 모든 참여 채널이 graph 에서 live 로 잡히므로 1명만 해도 이미

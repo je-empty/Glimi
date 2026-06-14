@@ -593,7 +593,7 @@ def get_recent_system_logs(tail_lines: int = 100) -> list[str]:
 
 # ── 유틸 ───────────────────────────────────────────────
 
-def human_ago(iso_ts: str) -> str:
+def human_ago(iso_ts: str, lang: str = "ko") -> str:
     if not iso_ts:
         return ""
     try:
@@ -611,15 +611,16 @@ def human_ago(iso_ts: str) -> str:
     dt_utc = dt.astimezone(timezone.utc)
     now_utc = datetime.now(timezone.utc)
     secs = (now_utc - dt_utc).total_seconds()
+    en = lang == "en"
     if secs < 0:
-        return "방금"
+        return "just now" if en else "방금"
     if secs < 60:
-        return f"{int(secs)}초 전"
+        return f"{int(secs)}s ago" if en else f"{int(secs)}초 전"
     if secs < 3600:
-        return f"{int(secs/60)}분 전"
+        return f"{int(secs/60)}m ago" if en else f"{int(secs/60)}분 전"
     if secs < 86400:
-        return f"{int(secs/3600)}시간 전"
-    return f"{int(secs/86400)}일 전"
+        return f"{int(secs/3600)}h ago" if en else f"{int(secs/3600)}시간 전"
+    return (f"{int(secs/86400)}d ago" if en else f"{int(secs/86400)}일 전")
 
 
 # ── 상세 뷰 ────────────────────────────────────────────
