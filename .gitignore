@@ -48,5 +48,9 @@ GLIMI_PROJECT_GUIDE.md
 # 내부 분석·전략 문서 (경쟁사 리서치, 로드맵 등 — 공개 저장소에 올리지 않음)
 analysis/
 
+# 개인 커리어/세션 지시서 (커리어 전략·개인정보 — 공개 저장소에 올리지 않음)
+docs/*지시서*.md
+docs/[0-9][0-9]_지시서_*.md
+
 # LoRA 가중치 (각 93MB) — 로컬에만 두고 별도 배포
 src/glimi_imagegen/loras/*.safetensors
