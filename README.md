@@ -17,7 +17,7 @@ Glimi is two things in one monorepo:
 
 ![Glimi Hangout — AI friends who keep living their own lives](resources/Glimi-Hangout-banner.svg)
 
-![Web Dashboard Overview](docs/screenshots/01-dashboard.png)
+![Web Dashboard Overview](docs/screenshots/en/01-dashboard.png)
 
 > 🚧 **Status (May 2026)** — Kernel extraction in progress. Code currently lives in `src/core/`, `src/llm/`, `src/bot/`, `src/scenes/` etc. Migrating to the layout below over the next 2-3 weeks. Watch this repo for the first `pip install glimi` release.
 
@@ -208,7 +208,7 @@ The dashboard is part of Glimi Core, not Hangout — agent graph, 5-layer memory
 
 | Connection Graph | Memory Inspector |
 |---|---|
-| ![Connection Graph](docs/screenshots/04-graph-live.webp) | ![Memory Inspector](docs/screenshots/02-persona-memory.png) |
+| <img src="docs/screenshots/en/04-graph-live.webp" height="300" alt="Connection Graph"/> | <img src="docs/screenshots/en/02-persona-memory.png" height="300" alt="Memory Inspector"/> |
 
 - **Cytoscape.js graph** — agent connections, channel activity, supervisor overlays
 - **5-layer memory inspector** — pinned, episodic L1-L3, semantic facts, relationship history, all per-channel
@@ -254,7 +254,7 @@ Per-agent table, the model-selection experiment, and setup →
 
 Hangout is the first official application built on Glimi Core. It's a working demonstration of what the harness enables, and a self-contained product in its own right — not a toy example.
 
-![Connection Graph — Live](docs/screenshots/04-graph-live.webp)
+![Connection Graph — Live](docs/screenshots/en/04-graph-live.webp)
 
 ### The defining UX move
 
@@ -390,11 +390,11 @@ python -m src.community list            # list communities (CLI)
 
 | DM Channel View | Achievements |
 |---|---|
-| <img src="docs/screenshots/07-dm-channels.png" width="600" height="382" alt="DM channels"/> | <img src="docs/screenshots/03-achievements.png" width="600" height="382" alt="Achievements"/> |
+| <img src="docs/screenshots/en/07-dm-channels.png" width="600" height="382" alt="DM channels"/> | <img src="docs/screenshots/en/03-achievements.png" width="600" height="382" alt="Achievements"/> |
 
 | Connection Graph | Graph + Supervisor Overlay |
 |---|---|
-| <img src="docs/screenshots/05-connection-graph.png" width="600" height="434" alt="Connection graph"/> | <img src="docs/screenshots/06-graph-supervisor.png" width="600" height="434" alt="Supervisor overlay"/> |
+| <img src="docs/screenshots/en/05-connection-graph.png" width="600" height="434" alt="Connection graph"/> | <img src="docs/screenshots/en/06-graph-supervisor.png" width="600" height="434" alt="Supervisor overlay"/> |
 
 ---
 
