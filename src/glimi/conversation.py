@@ -1,16 +1,24 @@
 """
-대화 엔진: 에이전트 간 자동 대화 관리
+대화 엔진: 에이전트 간 자동 대화 관리 (Glimi Core)
 
 - 에이전트끼리 자발적으로 대화
 - 턴 제한으로 무한 대화 방지
-- 유나가 위에서 모니터링
+- supervisor 가 위에서 모니터링
+
+플랫폼/스토리지 중립: DB 는 ``KernelStore``, 오너 정체는 ``OwnerContext``,
+도구 실행(디스코드 등)은 ``execute_tools_fn`` 콜백으로 주입받는다. 앱 배선은
+``src/bot/conversation_bridge.py`` 참조.
 """
 import asyncio
 import random
 import re
 from typing import Optional, Callable, Awaitable
-from src import db
-from .runtime import runtime
+
+from src.glimi.store import KernelStore
+from src.glimi.profiles import OwnerContext
+
+# transitional: runtime 은 Phase 2 다음 단계에서 src/glimi/ 로 이동 → 그때 `from .runtime import runtime`
+from src.core.runtime import runtime
 
 # ── 설정 ─────────────────────────────────────────────
 
@@ -39,13 +47,15 @@ _strong_closure_re = [re.compile(p) for p in STRONG_CLOSURE_PATTERNS]
 # ── 활성 대화 상태 추적 ──────────────────────────────
 
 class ConversationState:
-    def __init__(self, channel_name: str, participants: list[str], max_turns: int = DEFAULT_MAX_TURNS):
+    def __init__(self, channel_name: str, participants: list[str],
+                 max_turns: int = DEFAULT_MAX_TURNS, store: Optional[KernelStore] = None):
         self.channel_name = channel_name
         self.participants = participants        # [agent_id, agent_id, ...]
         self.max_turns = max_turns
         self.turn_count = 0
         self.active = True
         self.messages: list[dict] = []          # {"speaker": id, "message": text}
+        self.store = store
 
     def next_speaker(self) -> Optional[str]:
         """다음 발화자 결정"""
@@ -56,7 +66,8 @@ class ConversationState:
 
     def record_turn(self, speaker_id: str, messages: list[str]):
         self.turn_count += 1
-        db.increment_channel_turn(self.channel_name)
+        if self.store:
+            self.store.increment_channel_turn(self.channel_name)
         for msg in messages:
             self.messages.append({"speaker": speaker_id, "message": msg})
 
@@ -105,7 +116,7 @@ def get_active_conversation(channel_name: str) -> Optional[ConversationState]:
 
 
 def list_active_conversations() -> list[dict]:
-    """유나 보고용: 활성 대화 목록"""
+    """supervisor 보고용: 활성 대화 목록"""
     result = []
     for name, state in _active_conversations.items():
         if state.active:
@@ -125,22 +136,23 @@ async def start_conversation(
     channel_name: str,
     participants: list[str],
     send_fn: Callable[[str, str], Awaitable[None]],
+    *,
+    store: KernelStore,
+    owner: OwnerContext,
+    execute_tools_fn: Optional[Callable[[str, str], Awaitable[None]]] = None,
     context: str = "",
     max_turns: int = DEFAULT_MAX_TURNS,
 ) -> ConversationState:
-    from src.community import is_maintenance_mode
-    if is_maintenance_mode():
-        from src import log_writer
-        log_writer.system(f"[maintenance] start_conversation skip #{channel_name}")
-        # 최소 state 리턴 (호출자 기대 타입 유지)
-        return ConversationState(channel_name, participants, max_turns=max_turns)
     """
     에이전트 간 자동 대화 시작
 
     Args:
-        channel_name: 디스코드 채널명
+        channel_name: 대화 채널명
         participants: 참여 에이전트 ID 리스트
-        send_fn: async 함수(agent_id, message) — 디스코드에 메시지 전송
+        send_fn: async (agent_id, message) — 메시지 송출 (플랫폼 어댑터)
+        store: 데이터 접근 (KernelStore)
+        owner: 오너 정체 (OwnerContext)
+        execute_tools_fn: async (channel_name, speaker_id) — 발화 후 <tools> 실행 (옵션)
         context: 대화 시작 상황 설명
         max_turns: 최대 턴 수
     """
@@ -148,11 +160,11 @@ async def start_conversation(
     for aid in participants:
         runtime.activate_agent(aid)
 
-    state = ConversationState(channel_name, participants, max_turns)
+    state = ConversationState(channel_name, participants, max_turns, store=store)
     _active_conversations[channel_name] = state
 
-    # DB 채널 상태 running으로
-    db.set_channel_status(channel_name, "running", max_turns)
+    # 채널 상태 running으로
+    store.set_channel_status(channel_name, "running", max_turns)
 
     names = [runtime.get_agent_name(aid) for aid in participants]
     print(f"[대화엔진] 시작: {' ↔ '.join(names)} (채널: {channel_name}, 최대 {max_turns}턴)")
@@ -168,8 +180,11 @@ async def start_conversation(
     for aid in participants:
         agent_name = runtime.get_agent_name(aid)
         dm_ch = f"dm-{agent_name}"
-        latest = db.get_recent_messages(dm_ch, limit=1)
+        latest = store.get_recent_messages(dm_ch, limit=1)
         _dm_snapshots[aid] = latest[0]["id"] if latest else 0
+
+    owner_id = owner.id()
+    owner_name = owner.name()
 
     # 대화 루프
     while state.active:
@@ -196,15 +211,14 @@ async def start_conversation(
         speaker_name = runtime.get_agent_name(speaker_id)
         dm_ch = f"dm-{speaker_name}"
         last_known = _dm_snapshots.get(speaker_id, 0)
-        new_dms = db.get_messages_by_range(dm_ch, last_known, limit=5)
+        new_dms = store.get_messages_by_range(dm_ch, last_known, limit=5)
 
         if new_dms:
             dm_preview = []
             for m in new_dms:
-                from src.core.profile import get_user_name, get_user_id
-                s = get_user_name() if m["speaker"] == get_user_id() else runtime.get_agent_name(m["speaker"])
+                s = owner_name if m["speaker"] == owner_id else runtime.get_agent_name(m["speaker"])
                 dm_preview.append(f"{s}: {m['message'][:50]}")
-            situation += f"\n\n[방금 {get_user_name()}한테 DM 왔어]\n" + "\n".join(dm_preview)
+            situation += f"\n\n[방금 {owner_name}한테 DM 왔어]\n" + "\n".join(dm_preview)
             # 스냅샷 업데이트
             _dm_snapshots[speaker_id] = new_dms[-1]["id"]
 
@@ -222,8 +236,7 @@ async def start_conversation(
                     runtime.generate_agent_to_agent(sid, lid, ch, context=ctx)
             )
 
-            # 디스코드에 전송 (<tools> 블록 strip)
-            import re
+            # 메시지 송출 (<tools> 블록 strip)
             TOOLS_RE = re.compile(r'<tools>.*?</tools>', re.IGNORECASE | re.DOTALL)
             for i, msg in enumerate(responses):
                 if i > 0:
@@ -237,22 +250,13 @@ async def start_conversation(
                 if clean:
                     await send_fn(speaker_id, clean)
 
-            # <tools> 블록에서 파싱된 tool_calls 실행 — runtime에 stash돼 있음
-            # (이전에는 internal-dm 경로에서 이 실행이 빠져서 finish_tutorial 호출
-            #  시도해도 텍스트만 흘러나가고 실제론 아무 일도 안 일어남)
-            from src.bot.mgr_system import parse_and_execute_actions
-            from src.bot.core import get_target_guild as _gt
-            import discord as _disc
-            guild = _gt()
-            if guild:
-                ch_obj = _disc.utils.get(guild.text_channels, name=channel_name)
-                if ch_obj:
-                    try:
-                        await parse_and_execute_actions(
-                            ch_obj, [], guild, caller_agent_id=speaker_id
-                        )
-                    except Exception as e:
-                        print(f"[대화엔진] tool 실행 오류: {e}")
+            # <tools> 블록에서 파싱된 tool_calls 실행 — runtime에 stash돼 있음.
+            # 실제 실행(디스코드 등)은 앱이 주입한 콜백 책임 (커널은 플랫폼 모름).
+            if execute_tools_fn:
+                try:
+                    await execute_tools_fn(channel_name, speaker_id)
+                except Exception as e:
+                    print(f"[대화엔진] tool 실행 오류: {e}")
 
             # 턴 기록
             state.record_turn(speaker_id, responses)
@@ -269,13 +273,13 @@ async def start_conversation(
 
     # 대화 완료
     state.active = False
-    db.set_channel_status(channel_name, "idle")
+    store.set_channel_status(channel_name, "idle")
     print(f"[대화엔진] 완료: {channel_name} (총 {state.turn_count}턴)")
     return state
 
 
 def stop_conversation(channel_name: str) -> bool:
-    """유나가 대화 강제 중단"""
+    """supervisor 가 대화 강제 중단"""
     state = _active_conversations.get(channel_name)
     if state and state.active:
         state.active = False

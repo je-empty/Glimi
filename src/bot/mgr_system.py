@@ -21,7 +21,7 @@ from src.core.profile import (
     load_profile, list_all_profiles, get_user_name, get_user_id,
 )
 from src.core.runtime import runtime
-from src.core.conversation import (
+from src.bot.conversation_bridge import (
     start_conversation, stop_conversation, list_active_conversations,
     detect_room_request,
 )
