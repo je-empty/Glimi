@@ -74,7 +74,7 @@ async def _h_start_conversation(args: dict, ctx: ToolContext):
 
 
 async def _h_stop_conversation(args: dict, ctx: ToolContext):
-    from src.core.conversation import stop_conversation, list_active_conversations
+    from src.bot.conversation_bridge import stop_conversation, list_active_conversations
     from src.bot.core import send_as_agent
     from src.bot import MGR_ID
     target = args["target"].strip()
