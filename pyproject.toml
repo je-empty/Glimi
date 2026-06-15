@@ -32,9 +32,9 @@ dependencies = []
 # Anthropic Python SDK 로 직접 호출하고 싶을 때 (CLI 대신).
 sdk = ["anthropic>=0.40"]
 
-# Glimi Hangout (쇼케이스 앱) 전체 실행에 필요한 것 — Discord 어댑터 + 웹 대시보드.
-# 설치: pip install -e ".[hangout]"
-hangout = [
+# Glimi Community (쇼케이스 앱) 전체 실행에 필요한 것 — Discord 어댑터 + 웹 대시보드.
+# 설치: pip install -e ".[community]"
+community = [
     "discord.py>=2.3.0",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
