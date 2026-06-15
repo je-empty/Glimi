@@ -13,7 +13,7 @@ import platform
 import shutil
 import subprocess
 
-from src.core.context_budget import HARD_FLOOR, RECOMMENDED_MIN, DEFAULT_NUM_CTX
+from src.glimi.context_budget import HARD_FLOOR, RECOMMENDED_MIN, DEFAULT_NUM_CTX
 
 # 컨텍스트 티어 — 하/중/상 (실제 num_ctx 값 표시)
 CONTEXT_TIERS = [
@@ -259,7 +259,7 @@ def _model_assignments(cenv: dict) -> list:
 
 def elastic_memory_status(community_id: str) -> dict:
     """대시보드용 — 현재 설정 + 티어 + 사양 + 권장값 + 모델 구성 + 컨텍스트 분해."""
-    from src.core import context_budget as cb
+    from src.glimi import context_budget as cb
     cur = read_community_num_ctx(community_id)
     rec = recommend_num_ctx()
     cenv = _read_community_env(community_id)
