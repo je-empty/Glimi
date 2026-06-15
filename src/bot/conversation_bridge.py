@@ -1,6 +1,6 @@
 """App bridge for the kernel conversation engine.
 
-Wires the pure kernel engine (``glimi.conversation``) to the Hangout app:
+Wires the pure kernel engine (``glimi.conversation``) to the Community app:
 - injects the SQLite ``KernelStore`` + ``OwnerContext`` adapters,
 - supplies the Discord ``<tools>`` execution callback,
 - applies the app's maintenance guard.

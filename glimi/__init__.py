@@ -1,8 +1,8 @@
 """Glimi Core — domain-neutral multi-agent kernel.
 
-This package holds the reusable kernel that any application (Glimi Hangout, and
-future apps) builds on. It must stay platform/domain-neutral: no Discord, no
-hangout-specific content, no hardcoded community data.
+This package holds the reusable kernel that any application (Glimi Community,
+future apps, or your own) builds on. It must stay platform/domain-neutral: no
+Discord, no app-specific content, no hardcoded community data.
 
 Extraction is staged (see ``analysis/kernel_extraction_plan.md``):
 - Phase 1 (done): ``llm`` (LLM backends) and ``tools`` (``<tools>`` protocol:

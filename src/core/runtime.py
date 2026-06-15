@@ -1,7 +1,7 @@
 """App shim for the Glimi-kernel runtime module.
 
 The agent runtime now lives in ``glimi.runtime`` (kernel, storage/profile/
-observer-neutral). This shim wires the Hangout app's adapters into the kernel,
+observer-neutral). This shim wires the Community app's adapters into the kernel,
 ensures the memory module is wired too, and re-exports the public API so
 existing ``from src.core.runtime import runtime`` call sites keep working.
 """
@@ -24,7 +24,7 @@ _kr.set_observer(_observer_impl)
 import src.core.memory  # noqa: F401,E402
 
 
-# ── Hangout-특화 앱 훅 (커널에서 콜백으로 외부화한 것) ──────────────────────
+# ── 앱-특화 훅 (커널에서 콜백으로 외부화한 것) ──────────────────────
 
 def _app_leak_reporter(agent_id: str, channel_name: str, leaked_text: str, source: str):
     """leak 감지 → dev_requests 큐 자동 적재 (self-healing 안전망). dedup 60min."""

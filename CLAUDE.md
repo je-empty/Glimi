@@ -3,7 +3,7 @@
 > 이 파일은 Claude Code 가 이 repo 에서 자동 로드한다. **외부 기여자 / 다른 사람의 Claude Code 세션도 이 파일을 자동 읽는다** — 즉 여기 적힌 모든 규칙이 모든 contributor 의 작업에 자동 적용됨.
 
 ## 한 줄 피칭
-Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리) + AI 친구 커뮤니티 sim (Glimi Hangout, flagship 앱). 모노레포.
+Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리) + AI 친구 커뮤니티 sim (Glimi Community, flagship 앱). 모노레포.
 
 ## 🚨 세션 시작 시 필독
 **처음 들어오는 contributor 라면 `START_HERE.html` (프로젝트 루트) 먼저 열어봐** — 프로젝트 정체, 셋업, 첫 task, 브랜치 전략, 워크플로우 다 거기 있음.
