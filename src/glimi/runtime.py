@@ -17,14 +17,14 @@ import shutil
 import os
 from typing import Optional, Callable
 from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
-from src.glimi.tools import parse_response as parse_tools_in_output, ToolCall
-from src.glimi.tools import strip_control_tokens as _strip_control_tokens
+from .tools import parse_response as parse_tools_in_output, ToolCall
+from .tools import strip_control_tokens as _strip_control_tokens
 
 # ── 커널 의존성 주입 (Phase 2) — 런타임은 DB/프로필/관측을 직접 안 보고 추상 인터페이스로만 접근.
 # KernelStore(데이터) · ProfileProvider(페르소나) · OwnerContext(오너) · KernelObserver(관측/로그).
 # 커널은 앱 어댑터를 import 하지 않는다 (standalone 설치 가능). 앱이 set_store()/
 # set_profiles()/set_owner()/set_observer() 로 주입 (src/core/runtime.py shim 참조).
-from src.glimi.observability import NullObserver
+from .observability import NullObserver
 
 _store = None
 _profiles = None
@@ -224,7 +224,7 @@ def _backend_available(provider: str) -> bool:
     if _OLLAMA_OK["v"]:
         return True
     try:
-        from src.glimi.llm.ollama import OllamaBackend
+        from .llm.ollama import OllamaBackend
         ok = OllamaBackend().available()
     except Exception:
         ok = False
@@ -665,7 +665,7 @@ class AgentRuntime:
         provider = _provider_for("persona", "claude-haiku-4-5")
         try:
             if provider == "ollama":
-                from src.glimi import llm
+                from . import llm
                 _r = llm.generate(
                     system="", user=summary_prompt,
                     model=_ollama_model_arg("ollama:local", "persona"), agent_type="persona",
@@ -1201,7 +1201,7 @@ class AgentRuntime:
         빈 리스트 — 호출자가 empty 면 송출 skip 또는 placeholder 처리.
         """
         try:
-            from src.glimi import llm
+            from . import llm
             resp = llm.generate(
                 system=system, user=user,
                 model=_ollama_model_arg(model, agent_type), agent_type=agent_type,
@@ -1434,7 +1434,7 @@ class AgentRuntime:
         if provider == "ollama":
             _ollama_to = {"persona": 180, "mgr": 300, "creator": 360, "dev": 300}.get(agent_type, 180)
             try:
-                from src.glimi import llm
+                from . import llm
                 line_iter = llm.stream_lines(
                     system=system_prompt, user=full_prompt,
                     model=_ollama_model_arg(model, agent_type), agent_type=agent_type,
@@ -1756,7 +1756,7 @@ class AgentRuntime:
                 if provider == "ollama":
                     # ollama 출력을 기존 claude 다운스트림(역할 leak/독백 필터)에 그대로
                     # 흘리기 위해 result 를 CompletedProcess 흉내 shim 으로 채움.
-                    from src.glimi import llm
+                    from . import llm
                     from types import SimpleNamespace
                     try:
                         _r = llm.generate(
