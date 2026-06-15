@@ -54,6 +54,12 @@ class KernelStore(ABC):
     @abstractmethod
     def log_message(self, channel: str, speaker: str, message: str, emotion: Optional[str] = None) -> None: ...
 
+    @abstractmethod
+    def add_message_hook(self, fn) -> None:
+        """log_message 직후 호출될 콜백 등록. 시그니처: ``fn(channel, speaker, message)``.
+        커널(memory)이 오너 메시지 트리거를 받는 옵저버 경로."""
+        ...
+
     # ── runtime — higher-level (replace raw SQL previously inlined in runtime) ──
     @abstractmethod
     def get_recent_events(self, agent_id: str, event_types: list[str],
