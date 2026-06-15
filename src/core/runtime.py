@@ -23,5 +23,38 @@ _kr.set_observer(_observer_impl)
 # memory 도 같이 주입 보장 (runtime → memory 호출 경로)
 import src.core.memory  # noqa: F401,E402
 
+
+# ── Hangout-특화 앱 훅 (커널에서 콜백으로 외부화한 것) ──────────────────────
+
+def _app_leak_reporter(agent_id: str, channel_name: str, leaked_text: str, source: str):
+    """leak 감지 → dev_requests 큐 자동 적재 (self-healing 안전망). dedup 60min."""
+    from src.core.dev_agent import enqueue_dev_request, find_similar_recent_request
+    from src import community as _community
+    community_id = _community.get_community_id() or "unknown"
+    payload = {
+        "channel": channel_name or "(unknown)",
+        "severity": "low",
+        "repro": (
+            f"agent={agent_id} 가 채팅에 reasoning/status 텍스트를 그대로 출력. "
+            f"감지된 leak (앞 200자): {leaked_text[:200]!r}. 소스: {source}."
+        ),
+        "expected": "정상 채팅 발화. 메타·정리·계획 텍스트는 절대 채널에 안 보여야 함.",
+        "actual": "채팅 라인에 메타 출력. (drop 됨, 사용자엔 미노출)",
+        "notes": "auto-filed by runtime leak hook. 패턴 추가나 prompt 수정 필요할 수 있음.",
+    }
+    if find_similar_recent_request(community_id, payload, window_minutes=60):
+        return
+    enqueue_dev_request(community_id, agent_id or "system", payload)
+
+
+def _app_profile_reminder(owner_profile: dict):
+    """오너 프로필 이상치 → 정정 요청 힌트 텍스트 (없으면 None)."""
+    from src.core.profile_anomalies import check_user_profile_anomalies, format_anomaly_hint
+    return format_anomaly_hint(check_user_profile_anomalies(owner_profile or {}))
+
+
+_kr.set_leak_reporter(_app_leak_reporter)
+_kr.set_profile_reminder_fn(_app_profile_reminder)
+
 # 재export 가 빠뜨리는 인스턴스/상수 명시 보강
 runtime = _kr.runtime  # noqa: F811
