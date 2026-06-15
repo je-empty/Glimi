@@ -19,7 +19,7 @@ Glimi is two things in one monorepo:
 
 ![Web Dashboard Overview](docs/screenshots/en/01-dashboard.png)
 
-> 🚧 **Status (May 2026)** — Kernel extraction in progress. Code currently lives in `src/core/`, `src/llm/`, `src/bot/`, `src/scenes/` etc. Migrating to the layout below over the next 2-3 weeks. Watch this repo for the first `pip install glimi` release.
+> ✅ **Status (Jun 2026)** — Glimi Core kernel is **extracted** to `src/glimi/` (runtime · memory · LLM backends · `<tools>` protocol · conversation · context budget), storage/platform-neutral behind a `KernelStore` ABC + `AgentProfile`/`OwnerContext`/`KernelObserver` protocols — the kernel imports with **zero Discord/DB dependency**. The Hangout app plugs in via adapters (`src/adapters/`). **Not yet on PyPI** — `pip install glimi` packaging (0.1.0) is in progress; until then, run from source (Quick Start below).
 
 ```
 Glimi/                          (single git repo, multi-package monorepo)
@@ -167,7 +167,7 @@ Hardening:
 Local models have small context windows (Ollama defaults to 4096). A full Glimi turn — character
 system prompt + 5-layer memory injection + recent conversation — runs several thousand tokens, so
 on a small window the model silently truncates the front, and **character + memory evaporate**.
-Elastic Memory (a context-budgeting layer, `src/core/context_budget.py`) solves this:
+Elastic Memory (a context-budgeting layer, `src/glimi/context_budget.py`) solves this:
 
 - **Memory richness scales with the window** — `num_ctx` 8192 = baseline, 4096 shrinks the
   injection, 16384 injects ~2× more memory. Bigger machine → better recall, automatically.
@@ -183,7 +183,8 @@ Elastic Memory (a context-budgeting layer, `src/core/context_budget.py`) solves 
 ### Quick Start (library)
 
 ```python
-# (target API — see Roadmap for current status during extraction)
+# (kernel is extracted to src/glimi/. `from glimi import ...` works after the
+#  pyproject packaging; running from source today it's `from src.glimi import ...`)
 from glimi import Runtime, ToolRegistry, MemoryStore
 
 runtime = Runtime(
@@ -414,7 +415,7 @@ Lightweight starters that demonstrate Glimi Core directly, without Hangout's soc
 | Component | Technology |
 |---|---|
 | **Glimi Core runtime** | Python 3.12+, Claude Code CLI subprocess (will support Ollama / vLLM / llama.cpp via pluggable backend) |
-| **Memory store (default)** | SQLite — pluggable via `KernelStore` ABC (extraction in progress) |
+| **Memory store (default)** | SQLite — pluggable via the `KernelStore` ABC (the kernel never touches the DB directly) |
 | **Tool protocol** | `<tools>` inline XML — alias resolution, JSON-typed args, deferred execution |
 | **Web dashboard** | FastAPI + Jinja2 + Cytoscape.js + htmx |
 | **Hangout adapter** | `discord.py` with per-agent Webhook avatars |
@@ -424,11 +425,13 @@ Lightweight starters that demonstrate Glimi Core directly, without Hangout's soc
 
 ## Roadmap
 
-**Now — Kernel extraction (2-3 weeks)**
-- Move `src/core/{runtime, tools, memory, llm, conversation}` → `src/glimi/`
-- Move `src/bot/`, `src/scenes/`, `src/achievements/` → `apps/hangout/`
-- Define `KernelStore` ABC and `AgentProfile` protocol for Hangout-side DI
-- First `pip install glimi` alpha (0.1.0)
+**Done — Kernel extraction**
+- ✅ `src/core/{runtime, tools, memory, llm, conversation}` → `src/glimi/` — storage/platform-neutral, imports standalone (no Discord/DB)
+- ✅ `KernelStore` ABC + `AgentProfile` / `OwnerContext` / `KernelObserver` protocols; Hangout wires concrete adapters in `src/adapters/`
+
+**Now — Packaging**
+- `pyproject` split: `pip install glimi` (core) / `glimi[hangout]` (app)
+- First `pip install glimi` alpha (0.1.0) on PyPI
 
 **Next — Examples + docs**
 - `examples/research_buddies/` and `examples/dev_pair/`
@@ -464,7 +467,7 @@ backends, reranker-based memory retrieval, smaller-model tool-call accuracy tuni
 
 - **easy**: new `examples/` demos, doc fixes, new Hangout `src/scenes/`
 - **medium**: vLLM / llama.cpp backends, dashboard visualizations, new ToolSpecs
-- **hard**: native Windows support (`run.ps1`), Telegram adapter (`src/adapters/telegram/`), kernel extraction (`src/core/*` → `src/glimi/*`), embedding-based memory retrieval
+- **hard**: native Windows support (`run.ps1`), Telegram adapter (`src/adapters/telegram/`), `pyproject` packaging split (`pip install glimi`), embedding-based memory retrieval
 
 ### Branch strategy
 
