@@ -208,7 +208,37 @@ class ProfileProviderAdapter:
         return profile.get_agent_display_name(agent_id)
 
 
+class LogWriterObserver:
+    """:class:`~src.glimi.observability.KernelObserver` over ``src.log_writer``
+    (the app's live dashboard / log sink)."""
+
+    def system(self, message: str) -> None:
+        from src import log_writer
+        log_writer.system(message)
+
+    def agent_thinking(self, agent_id: str, line: str) -> None:
+        from src import log_writer
+        log_writer.agent_thinking(agent_id, line)
+
+    def chat(self, channel: str, speaker: str, message: str) -> None:
+        from src import log_writer
+        log_writer.chat(channel, speaker, message)
+
+    def mark_thinking(self, agent_id: str, channel: str = "") -> None:
+        from src import log_writer
+        log_writer.mark_thinking(agent_id, channel)
+
+    def mark_done(self, agent_id: str) -> None:
+        from src import log_writer
+        log_writer.mark_done(agent_id)
+
+    def is_thinking(self, agent_id: str) -> bool:
+        from src import log_writer
+        return log_writer.is_thinking(agent_id)
+
+
 # Convenience singletons for the app to inject at the edge.
 kernel_store = SqliteKernelStore()
 owner_context = ProfileOwnerContext()
 profile_provider = ProfileProviderAdapter()
+observer = LogWriterObserver()
