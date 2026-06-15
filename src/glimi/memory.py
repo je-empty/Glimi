@@ -35,7 +35,7 @@ from typing import Optional
 # ── 커널 의존성 주입 (Phase 2) — memory 도 DB/프로필/관측을 추상 인터페이스로만 접근.
 # 커널은 앱 어댑터를 import 하지 않는다 (standalone 설치 가능). 앱이 set_store()/
 # set_profiles()/set_owner()/set_observer() 로 주입 (src/core/memory.py shim 참조).
-from src.glimi.observability import NullObserver
+from .observability import NullObserver
 
 _store = None
 _profiles = None
@@ -789,7 +789,7 @@ def _call_claude(prompt: str, model: str = EXTRACTION_MODEL, timeout: int = 30,
     """
     import os as _os
     try:
-        from src.glimi.llm import generate
+        from .llm import generate
         # 호출자가 명시한 system 이 있으면 우선, 없으면 기본 추출기 system 부여.
         effective_system = system or _EXTRACTION_SYSTEM
         resp = generate(
