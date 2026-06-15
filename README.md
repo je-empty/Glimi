@@ -146,7 +146,7 @@ Bad:  "Switch to a new topic now."             ← LLM parses as command, awkwar
 Good: "(oh, I should bring up something else)" ← LLM reads as self-talk, natural flow
 ```
 
-This one detail is what makes the supervisor system actually work.
+That phrasing is the difference between an agent that breaks character and one that doesn't: a command leaks into the reply as meta-text, while self-talk blends into the next line.
 
 ### Memory architecture
 
@@ -421,7 +421,7 @@ python -m src.community list            # list communities (CLI)
 
 ## Examples
 
-Lightweight starters that demonstrate Glimi Core directly, without Community's social-sim scaffolding. (Planned — landing alongside the kernel extraction.)
+Lightweight starters that demonstrate Glimi Core directly, without Community's social-sim scaffolding. (Planned.)
 
 | Example | What it shows |
 |---|---|
@@ -434,7 +434,7 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 
 | Component | Technology |
 |---|---|
-| **Glimi Core runtime** | Python 3.12+, Claude Code CLI subprocess (will support Ollama / vLLM / llama.cpp via pluggable backend) |
+| **Glimi Core runtime** | Python 3.12+. Claude via Claude CLI subprocess + a fully-local Ollama backend; vLLM / llama.cpp via the pluggable backend seam |
 | **Memory store (default)** | SQLite — pluggable via the `KernelStore` ABC (the kernel never touches the DB directly) |
 | **Tool protocol** | `<tools>` inline XML — alias resolution, JSON-typed args, deferred execution |
 | **Web dashboard** | FastAPI + Jinja2 + Cytoscape.js + htmx |
