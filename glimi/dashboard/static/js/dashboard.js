@@ -311,6 +311,14 @@
       },
     });
 
+    // The graph container often hasn't reached full width at first paint, so the
+    // initial fit can clip nodes to a corner; re-fit once it's sized and on resize
+    // so the graph stays centered.
+    const refit = () => { try { cyInstance.resize(); cyInstance.fit(undefined, 30); } catch (e) {} };
+    requestAnimationFrame(refit);
+    setTimeout(refit, 120);
+    window.addEventListener("resize", refit);
+
     cyInstance.on("tap", "node.agent", (evt) => openAgent(evt.target.id()));
     cyInstance.on("mouseover", "node", (evt) => {
       const n = evt.target;
