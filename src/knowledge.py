@@ -108,7 +108,7 @@ def _resolve_scenes(agent_id: str) -> str:
 
 def _resolve_my_tools(agent_id: str) -> str:
     """caller 가 쓸 수 있는 도구 + 간단 설명."""
-    from src.glimi.tools.registry import tools_for_agent
+    from glimi.tools.registry import tools_for_agent
     from src.core.profile import load_profile
 
     profile = load_profile(agent_id) or {}

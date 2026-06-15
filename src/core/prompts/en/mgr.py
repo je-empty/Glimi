@@ -86,7 +86,7 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
 
     # Elastic Prompt — num_ctx 에 맞춰 규칙 상세도 조절.
     # 핵심 규칙(1-8)은 항상. 확장 규칙(루프 방지·채널 규율)은 standard+ 에서만.
-    from src.glimi.context_budget import level_at_least
+    from glimi.context_budget import level_at_least
     _core_rules = f"""--- Rules ---
 1. Other agents don't know you're the manager — don't reveal it.
 2. Real names (not nicknames) in tool args.
