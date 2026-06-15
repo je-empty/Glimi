@@ -445,6 +445,7 @@
     background: var(--bg);
     border: 3px solid var(--border-strong);
   }
+  .timeline .phase.done::before { border-color: var(--accent-green); background: var(--accent-green); }
   .timeline .phase.now::before { border-color: var(--accent-green); background: var(--accent-green); }
   .timeline .phase.next::before { border-color: var(--accent-yellow); }
   .timeline .phase.later::before { border-color: var(--accent-purple); }
@@ -456,6 +457,7 @@
     color: var(--muted);
     margin-bottom: 4px;
   }
+  .timeline .phase.done .phase-label { color: var(--accent-green); }
   .timeline .phase.now .phase-label { color: var(--accent-green); }
   .timeline .phase.next .phase-label { color: var(--accent-yellow); }
   .timeline .phase.later .phase-label { color: var(--accent-purple); }
@@ -504,7 +506,7 @@
     <div class="meta">
       <span>📅 Last updated: 2026-05-17</span>
       <span>📜 License: Apache-2.0</span>
-      <span>🏗 Status: Kernel extraction in progress</span>
+      <span>🏗 Status: Glimi Core kernel extracted (top-level glimi/) · not yet on PyPI</span>
     </div>
   </header>
 
@@ -589,7 +591,7 @@
         <li><span class="badge tag">완료</span> <strong>방향 전환</strong>: 사업화 → OSS career capital. 분석 문서: <code>analysis/pivot_subagent_review.md</code> (gitignored)</li>
         <li><span class="badge tag">완료</span> <strong>네이밍 재정의</strong>: Glimi = umbrella 브랜드. <code>Glimi Core</code> (라이브러리) + <code>Glimi Community</code> (flagship 앱)</li>
         <li><span class="badge tag">완료</span> <strong>라이선스</strong>: Apache-2.0 확정. <code>LICENSE</code> 파일 존재</li>
-        <li><span class="badge priority">진행 중</span> <strong>커널 추출</strong>: 도메인 무관 코어를 <code>src/core/*</code> 에서 <code>src/glimi/*</code> 로 분리. 2-3주 예상</li>
+        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어를 최상위 <code>glimi/</code> 패키지로 추출 (runtime · memory · LLM 백엔드 · <code>&lt;tools&gt;</code> 프로토콜 · conversation · context budget). Discord/DB 의존 0, standalone wheel 로 빌드. 아직 PyPI 미공개</li>
         <li><span class="badge priority">진행 중</span> <strong>첫 contributor task</strong>: 로컬 모델 (Gemma 4, Qwen 3.5) 지원 — 아래 섹션 5 참조</li>
         <li><span class="badge do">활성</span> <strong>Community 풀-스택</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 동작 (<code>./run.sh</code>)</li>
       </ul>
@@ -768,11 +770,11 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
       <ul>
         <li>vLLM, llama.cpp 백엔드 — 별도 후속 PR</li>
         <li>웹 대시보드 모델 선택 UI — 이미 존재 (<code>AVAILABLE_MODELS</code> 만 갱신하면 자동 노출됨)</li>
-        <li>Glimi Core 자체 디렉토리 추출 (<code>src/core/*</code> → <code>src/glimi/*</code>) — 메인테이너 작업</li>
+        <li>Glimi Core 커널 추출 — <strong>이미 완료</strong> (최상위 <code>glimi/</code> 패키지). 로컬 백엔드는 커널 위에 얹히면 됨</li>
       </ul>
 
       <div class="quote" style="margin-top:20px;">
-        막히면 GitHub Issue 로 "intent + 막힌 지점" 공유. 메인테이너가 (a) 진행 중인 리팩터와 충돌하는지 확인, (b) 방향 제안.
+        막히면 GitHub Issue 로 "intent + 막힌 지점" 공유. 메인테이너가 (a) 진행 중인 다른 작업과 충돌하는지 확인, (b) 방향 제안.
       </div>
     </div>
 
@@ -1038,14 +1040,14 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE Apache-2.0</code>
     <p class="lead">우선순위 순. 메인테이너 작업 + contributor 가 잡을 수 있는 작업 표시.</p>
 
     <div class="timeline">
-      <div class="phase now">
-        <div class="phase-label">★ 진행 중 · 우선</div>
+      <div class="phase done">
+        <div class="phase-label">✅ 완료</div>
         <h3>Phase 1 — 커널 추출 (메인테이너)</h3>
         <ul>
-          <li><code>src/core/{runtime, tools, memory, llm, conversation}</code> → <code>src/glimi/*</code></li>
-          <li>도메인 종속 코드 → <code>apps/community/</code></li>
-          <li><code>KernelStore</code> ABC + <code>AgentProfile</code> protocol 정의</li>
-          <li>2-3주 예상</li>
+          <li><code>src/core/{runtime, tools, memory, llm, conversation}</code> → 최상위 <code>glimi/</code> 패키지</li>
+          <li>도메인 종속 코드는 <code>src/</code> 에 잔류 (Glimi Community 앱)</li>
+          <li><code>KernelStore</code> ABC + <code>AgentProfile</code> / <code>OwnerContext</code> / <code>KernelObserver</code> protocol 정의, DI 적용</li>
+          <li>Discord/DB 의존 0 — standalone wheel 로 빌드</li>
         </ul>
       </div>
 
@@ -1128,12 +1130,11 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE Apache-2.0</code>
         <tr><td><span class="badge warn">medium</span></td><td>새 ToolSpec (도구)</td><td><code>src/core/tools/registry.py</code></td></tr>
         <tr><td><span class="badge tag">hard</span></td><td>네이티브 Windows 지원</td><td><code>run.ps1</code>, scripts</td></tr>
         <tr><td><span class="badge tag">hard</span></td><td>Telegram 어댑터</td><td><code>src/adapters/telegram/</code> (신설)</td></tr>
-        <tr><td><span class="badge tag">hard</span></td><td>커널 추출 (Phase 1) 보조</td><td><code>src/core/*</code> → <code>src/glimi/*</code></td></tr>
         <tr><td><span class="badge tag">hard</span></td><td>임베딩 기반 memory retrieval</td><td><code>src/core/memory.py</code></td></tr>
       </tbody>
     </table>
 
-    <p style="margin-top:18px;"><strong>큰 task 는 시작 전 GitHub Issue 로 의도 공유</strong>. 메인테이너가 (a) 진행 중인 리팩터와 충돌 여부 확인 (b) 방향 sync.</p>
+    <p style="margin-top:18px;"><strong>큰 task 는 시작 전 GitHub Issue 로 의도 공유</strong>. 메인테이너가 (a) 진행 중인 다른 작업과 충돌 여부 확인 (b) 방향 sync.</p>
   </section>
 
   <!-- ============================================ -->
