@@ -49,6 +49,9 @@ class SqliteKernelStore(KernelStore):
     def log_message(self, channel: str, speaker: str, message: str, emotion: Optional[str] = None) -> None:
         db.log_message(channel, speaker, message, emotion)
 
+    def add_message_hook(self, fn) -> None:
+        db.add_message_hook(fn)
+
     # ── runtime — higher-level (raw SQL lives here, not in the kernel) ──
     def get_recent_events(self, agent_id: str, event_types: list[str],
                           window_sec: int, limit: int = 8) -> list[dict]:

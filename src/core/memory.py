@@ -31,7 +31,6 @@ import threading
 from datetime import datetime
 from typing import Optional
 
-from src import db
 
 # ── 커널 의존성 주입 (Phase 2) — memory 도 DB/프로필/관측을 추상 인터페이스로만 접근.
 # 기본은 앱 어댑터. 앱이 set_store()/set_profiles()/set_owner()/set_observer() 로 주입 가능.
@@ -721,7 +720,7 @@ def install_owner_extraction_hook():
         except Exception as e:
             print(f"[Memory] owner extraction hook 오류 (무시): {e}")
 
-    db.add_message_hook(_on_owner_message)
+    _store.add_message_hook(_on_owner_message)
     _hooks_installed = True
 
 
