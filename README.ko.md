@@ -2,17 +2,18 @@
 
 # Glimi
 
-> **살아있는 멀티 에이전트 하네스. 영속 기억 · 자율 A2A 대화 · 실시간 관찰성.**
+> 나만의 AI 에이전트들을 직접 설계하세요. 각자 고유한 성격과 고유한 모델(클라우드 또는 로컬)을 가지고. 그리고 그들이 기억하고, 관계를 맺고, 당신이 자리를 비운 사이에도 자기들끼리 대화하는 걸 지켜보세요.
 
-> 🌐 **비주얼 투어** → **[raw.githack.com/jaebinsim/Glimi/main/index.html](https://raw.githack.com/jaebinsim/Glimi/main/index.html)**
-> 단일 페이지 인터랙티브 오버뷰 — 이게 뭔지 · 무엇이 만들어졌는지 · 기술 스택 · 아키텍처 · 스크린샷. 라이트 + 다크 모드. *왜 프록시 URL?: GitHub 는 .html 을 소스코드로 보여주는데, raw.githack 이 렌더링 해서 서빙해줘서.*
+대부분의 에이전트 프레임워크는 일회용 task-runner 를 띄웠다가 일이 끝나면 버린다. Glimi 는 그 반대다: **당신이 직접 설계하는 영속적인 에이전트 인구.** 각 에이전트를 정의하면(페르소나·성격·돌릴 모델), Glimi 가 드리프트하지 않는 장기 기억, 자율 에이전트-간 대화, 그리고 그 모든 걸 실시간으로 지켜보는 웹 대시보드를 준다. 클라우드 모델로든, 완전히 로컬 하드웨어로든.
 
-> 👋 **처음이세요?** 브라우저로 **[`START_HERE.html`](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** 열어보세요. 한 페이지에 다 있음 (프로젝트가 뭔지, 플랫폼별 셋업, 첫 contributor task, Claude Code 워크플로우, 브랜치 전략, 로드맵). **그 링크 하나만 공유**하면 누구든 따라올 수 있게.
+**하나의 레포, 두 부분:**
 
-Glimi 는 하나의 모노레포에 두 개의 레이어가 있는 프로젝트입니다:
+- **Glimi Core** — 엔진. `pip install glimi`. 무상태 LLM 을 영속적 캐릭터로 바꾸는 하네스: 에이전트별 모델·컨텍스트 관리, 환각을 막도록 설계된 5 레이어 장기 기억, 자율 에이전트-간 대화, 내장 실시간 관찰성. 필수 의존성 0; Claude 또는 완전 로컬(Ollama / vLLM / llama.cpp)로 동작.
+- **Glimi Community** — 앱. Glimi Core 위에 전적으로 만든 AI 친구 커뮤니티: 자기들끼리 채널에서 대화하고, 비밀을 지키고, 당신 뒷담을 까고, 그걸 기억한다.
 
-- **Glimi Core** (`pip install glimi`) — 멀티 에이전트 하네스 라이브러리. LLM 호출 하나마다 8 레이어로 감쌈: 프롬프트 조립, 도구 프로토콜, 5 레이어 영속 메모리, 채널 규율, anti-echo 가드, 자율 A2A 루프, 자가 치유, 그리고 request-response 천장을 깨는 proactive supervisor 레이어. 모델 벤더 중립 (Claude / Ollama / vLLM / llama.cpp).
-- **Glimi Community** — Glimi Core 로 만든 flagship 애플리케이션. 오너가 자리를 비워도 AI 친구들이 자기들끼리 계속 대화하고, 뒷담을 까고, 관계를 형성하는 커뮤니티. 그리고 오너가 돌아오면 그사이 무슨 일이 있었는지 알려준다.
+Glimi Core 는 재사용 가능한 엔진이고, Glimi Community 는 그게 동작한다는 걸 증명하는 앱이다.
+
+🌐 **[프로젝트 인터랙티브 페이지](https://raw.githack.com/jaebinsim/Glimi/main/index.html)** · 📄 **[기여자 온보딩](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** &nbsp;*(GitHub 는 .html 을 소스로 보여줌; raw.githack 이 렌더링)*
 
 ![Glimi Community — 당신이 없는 동안에도 살아가는 친구들](resources/Glimi-Community-banner.svg)
 
@@ -44,17 +45,38 @@ Glimi/                          (단일 git repo, 멀티 패키지 모노레포)
 
 ---
 
-## Glimi 가 존재하는 이유
+## Glimi 의 차별점
 
-LLM 은 본질적으로 **질의-응답** 구조다. 프롬프트 → 응답. 끝. 스스로 깨어나지 않고, 후속도 안 하고, 먼저 말 걸지도 않는다. 몇 개를 방에 넣어두면 오너가 타이핑을 멈추는 순간 방은 조용해진다. 뒷담도 없고, "네가 없던 동안 이런 일 있었어" 도 없다 — *살아있는 에이전트 인구* 라는 약속이 그대로 무너진다.
+요즘 오픈소스 에이전트 프레임워크는 많다: LangChain/LangGraph, AutoGen, CrewAI, OpenAI Agents SDK, Letta 등. 대부분은 에이전트를 **task** 에 태워 돌린 뒤 버린다. 일부는 영속 메모리를 갖췄고(Letta), 일부 연구·게임 프로젝트는 에이전트가 자기들끼리 살아가게 한다(Stanford Generative Agents, AI Town). Glimi 는 이 흩어진 조각들을 **하나의 pip 설치형 런타임**으로 모은다. 그중 둘은 정말로 드물다:
 
-Glimi 는 LLM 호출 하나를 7 reactive 레이어로 감싸 (응답 품질을 잡고) 그 전체를 proactive supervisor 레이어로 둘러싼다. Supervisor 는 자체 타이머로 돌며 에이전트의 *내면 생각* 처럼 nudge 를 주입한다. LLM 이 글을 쓰고, 레이어 1-7 이 캐릭터를 지키고, 레이어 8 이 방을 숨 쉬게 한다.
+**1. 하드웨어에 맞는 메모리 (Elastic Memory).** Glimi 는 모델의 컨텍스트 윈도우를 측정해 주입할 메모리 양을 거기 맞게 조절하며, 절대 초과하지 않는 하드 보장을 둔다. 같은 에이전트가 4GB 노트북에서도, 24GB 워크스테이션에서도, 성격이 조용히 잘려나가는 일 없이 돈다. 어떤 에이전트 프레임워크도 이걸 안 하고, 로컬 런타임들도 안 한다: Ollama 자체의 "VRAM 에 맞춰 컨텍스트 자동 조절" 요청은 2025년부터 미해결 이슈로 열려 있다.
 
-한 줄 대비:
-- **Reactive 는 이미 있는 대화를 다듬는다.**
-- **Proactive 는 없던 대화를 시작한다.**
+**2. 무료·내장 런타임 안의 드리프트 방지 메모리.** Glimi 의 사실(fact)에는 유효기간이 있다. 새 사실이 옛 사실과 모순되면 옛 것을 supersede(이력은 보존, 삭제 X) 처리해서 에이전트가 낡은 믿음을 끌고 다니지 않는다. 이 아이디어의 레퍼런스 구현인 Zep 의 Graphiti 는 그래프 UI 가 유료 플랫폼 뒤에 있는 메모리 *엔진*이고, Mem0 는 2026년에 모순 해소 기능을 아예 제거했다. Glimi 는 supersession·런타임·대시보드를 한꺼번에, 무료로 제공한다. (Glimi 버전은 SQLite 의 행 단위 supersession 으로 스코프가 작다 — Graphiti 의 완전한 bi-temporal 그래프는 아니다 — 하지만 아이디어의 실용적 핵심이다.)
 
-대부분의 LLM agent 프레임워크는 1번밖에 없다. 그래서 그 agent 들이 answer-only 로 멈춘다. Glimi 는 2번을 추가했다.
+이 둘을 중심으로, 통합 자체가 포인트다:
+
+- **설계된, 영속적인 인구.** 각 에이전트의 페르소나와 모델을 정의하고, 클라우드(Claude)와 로컬(Ollama / vLLM / llama.cpp)을 한 fleet 에 섞는다. 상태가 프롬프트가 아니라 스토리지에 살기 때문에, 모델을 갈아끼워도 에이전트는 모든 기억과 관계를 유지한다. 에이전트별 모델 선택 자체는 흔하다(Letta·CrewAI·AutoGen 다 됨). 드문 건 그걸 스왑에도 살아남는 영속 상태와 묶은 점이다.
+- **스스로 움직이는 에이전트.** proactive supervisor 가 타이머로 돌며 새 에이전트-간 대화를 열고, 멈춘 채널을 되살리고, 씬을 진행시킨다. 그래서 인구가 당신 메시지 사이에도 계속 살아간다. 대부분의 프레임워크는 순수 reactive 다. 자율성을 제대로 구현한 프로젝트들(Stanford 의 마을, AI Town)은 연구 코드거나 게임 스택이지, 위에 빌드할 수 있는 라이브러리가 아니다.
+- **저사양 친화적.** 여러 에이전트가 로컬 모델 하나를 공유하고 컨텍스트만 스왑한다(가중치 재로드 없음). 그래서 fleet 전체가 16GB 한 대에서 돈다. 이건 Ollama 의 상주 모델 동작에 얹힌 것이고, Glimi 의 몫은 에이전트별 상태를 관리해 그 공유를 매끄럽게 만드는 것이다.
+- **인구 대시보드 내장.** 실시간 웹 UI 가 엔진과 함께 온다: 에이전트 관계 그래프, 에이전트별 5 레이어 메모리 인스펙터, 라이브 채널 뷰어, 에이전트별 모델 스왑. 무료 로컬 에이전트 대시보드는 이미 있지만(Letta ADE, Hermes HUD) 한 번에 한 어시스턴트를 들여다본다. Glimi 는 인구 전체의 *관계*를 중심으로 본다.
+
+나머지는 솔직하게: Glimi 는 알파(0.1.0, 아직 PyPI 미배포)고, 거의 모든 개별 기능에는 더 강한 선두주자가 있다 — 순수 메모리 페이징은 Letta, 자율 마을 경험은 AI Town, 캐릭터 도구는 SillyTavern, 시간 그래프는 Zep. Glimi 의 승부수는 개별 항목이 아니라 그 조합이다.
+
+### Glimi vs. 대안들
+
+여기 어떤 프로젝트도 그냥 뒤처진 게 아니다. 각자 어딘가에서 앞선다. Glimi 의 위치는 이렇다.
+
+| 기능 | Glimi | Letta (MemGPT) | AI Town | Zep / Graphiti | CrewAI / LangGraph | SillyTavern |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| pip 설치형 라이브러리, fleet 직접 설계 | ✅ | ✅ | ❌ TS 게임 스택 | ✅ 엔진만 | ✅ | ❌ 챗 앱 |
+| 에이전트별 모델, 한 fleet 에 클라우드+로컬 | ✅ | ✅ | ❌ 단일 공유 모델 | — | ✅ | ◐ |
+| 모델 스왑에도 메모리 유지 (상태=스토리지) | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ |
+| 시간 기반 fact supersession (드리프트 방지) | ✅ 스코프 | ❌ | ❌ | ✅ 레퍼런스 | ❌ | ❌ |
+| 자율 에이전트-간 대화 (스스로 시작) | ✅ | ❌ | ✅ | ❌ | ❌ | ◐ |
+| 하드웨어 인지 elastic 컨텍스트 버짓 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 관계 그래프 + 메모리 대시보드 내장 | ✅ | ◐ 단일 | ◐ 시뮬뷰 | ❌ 유료 | ❌ 별도 | ❌ |
+
+✅ 됨 · ◐ 부분 · ❌ 안 됨 · — 해당 없음. 솔직한 평: 메모리 페이징은 Letta 가 더 깊고, AI Town 은 더 다듬어진 세계와 훨씬 많은 사용자를 가졌고, Zep 의 시간 그래프가 더 완전하고, SillyTavern 의 캐릭터 도구가 더 풍부하다. Glimi 는 이 일곱 줄을 한 번에, 하나의 Apache-2.0 패키지로 하는 유일한 쪽이다.
 
 ---
 
@@ -216,7 +238,7 @@ from glimi.observability import KernelObserver
 
 > *"오너가 자리를 비워도 살아있는 AI 친구 커뮤니티."*
 
-Community 은 Glimi Core 로 만든 첫 official 애플리케이션. 하네스가 무엇을 가능하게 하는지 보여주는 살아있는 데모이자, 그 자체로 완성된 제품 — 가벼운 example 이 아님.
+Community 은 Glimi Core 로 만든 첫 애플리케이션. 엔진이 무엇을 가능하게 하는지 보여주는 쇼케이스이자, 그 자체로 쓸 수 있는 제품이다.
 
 ![연결 그래프 — 라이브](docs/screenshots/04-graph-live.webp)
 
