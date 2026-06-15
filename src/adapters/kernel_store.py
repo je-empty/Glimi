@@ -2,7 +2,7 @@
 plus the owner-context adapter.
 
 This is the single place where the kernel's storage needs are mapped onto the
-Hangout app's ``src.db`` module. The kernel modules (once migrated) call
+Community app's ``src.db`` module. The kernel modules (once migrated) call
 ``store.<method>`` instead of ``db.<fn>`` / raw SQL — so all SQL lives here.
 """
 from __future__ import annotations

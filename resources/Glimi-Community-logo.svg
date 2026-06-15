@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Glimi Hangout mark: 플랫폼 마크(관계 그래프)의 밤 반전.
+  <!-- Glimi Community mark: 플랫폼 마크(관계 그래프)의 밤 반전.
        친구 노드 = 따뜻한 별빛 크림, 오너 노드 = 핑크(#f472b6, #db2777 의 야간 변형) -->
   <rect width="64" height="64" rx="14.3" fill="#191a2e"/>
   <circle cx="12" cy="14" r="0.9" fill="#8a8fb8"/>
