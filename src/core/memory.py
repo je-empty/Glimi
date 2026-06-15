@@ -33,6 +33,36 @@ from typing import Optional
 
 from src import db
 
+# ── 커널 의존성 주입 (Phase 2) — memory 도 DB/프로필/관측을 추상 인터페이스로만 접근.
+# 기본은 앱 어댑터. 앱이 set_store()/set_profiles()/set_owner()/set_observer() 로 주입 가능.
+from src.adapters.kernel_store import (
+    kernel_store as _store,
+    profile_provider as _profiles,
+    owner_context as _owner,
+    observer as _observer,
+)
+
+
+def set_store(store):
+    global _store
+    _store = store
+
+
+def set_profiles(provider):
+    global _profiles
+    _profiles = provider
+
+
+def set_owner(owner):
+    global _owner
+    _owner = owner
+
+
+def set_observer(obs):
+    global _observer
+    _observer = obs
+
+
 # ── 설정 ─────────────────────────────────────────────
 
 RAW_WINDOW = 15          # runtime이 직접 주입하는 원본 대화 개수
@@ -139,13 +169,12 @@ def _owner_aliases() -> list[str]:
     이유: 유저가 nickname 바꾸거나 LLM이 '오너' 라는 역할어로 엔티티 저장 시 헷갈림 방지.
     """
     try:
-        from .profile import get_user_name, get_user_profile
         aliases: list[str] = []
-        name = (get_user_name() or "").strip()
+        name = (_owner.name() or "").strip()
         if name:
             aliases.append(name)
         try:
-            prof = get_user_profile() or {}
+            prof = _owner.profile() or {}
             pers = prof.get("personality")
             if isinstance(pers, str):
                 import json as _json
@@ -306,21 +335,20 @@ def _known_real_subjects() -> set[str]:
     """
     names: set[str] = set()
     try:
-        for a in db.list_agents():
+        for a in _store.list_agents():
             n = (a.get("name") or "").strip()
             if n:
                 names.add(n)
     except Exception:
         pass
     try:
-        from .profile import get_user_name
-        un = (get_user_name() or "").strip()
+        un = (_owner.name() or "").strip()
         if un:
             names.add(un)
     except Exception:
         pass
     try:
-        for u in db.list_users():
+        for u in _store.list_users():
             n = (u.get("name") or "").strip()
             if n:
                 names.add(n)
@@ -344,8 +372,7 @@ def _profile_has_value(agent_id: str, canonical_pred: str, obj: str) -> bool:
     에 대해 profile 의 해당 필드와 값 비교 (substring / fuzzy contains).
     """
     try:
-        from .profile import load_profile
-        prof = load_profile(agent_id)
+        prof = _profiles.get(agent_id)
         if not prof:
             return False
     except Exception:
@@ -437,8 +464,7 @@ def _validate_fact(agent_id: str, subject: str, predicate: str, obj: str,
     canon = _canonical_predicate(p)
     # 자기 자신 fact ↔ profile 중복
     try:
-        from .profile import load_profile
-        my_prof = load_profile(agent_id)
+        my_prof = _profiles.get(agent_id)
         my_name = my_prof.get("name") if my_prof else None
         if my_name and s == my_name and _profile_has_value(agent_id, canon, o):
             return None
@@ -531,13 +557,12 @@ def _channel_knows(channel: str, agent_name: str) -> list[str]:
 
 def _resolve_partner_name(agent_id: str, channel: str) -> Optional[str]:
     """현재 채널의 대화 상대 (에이전트/오너 이름)."""
-    from .profile import load_profile, get_user_name
-    my_profile = load_profile(agent_id)
+    my_profile = _profiles.get(agent_id)
     my_name = my_profile["name"] if my_profile else ""
 
     # mgr-* 채널 — 매니저 ↔ 오너 1:1. partner = 오너 이름.
     if channel.startswith("mgr-") and channel != "mgr-system-log":
-        return get_user_name() or None
+        return _owner.name() or None
 
     names: list[str] = []
     if channel.startswith("dm-"):
@@ -558,14 +583,13 @@ def _resolve_partner_name(agent_id: str, channel: str) -> Optional[str]:
 def _resolve_partner_agent_id(agent_id: str, channel: str) -> Optional[str]:
     """partner 의 ID. 페르소나면 agent_id, 오너면 user_id 반환 — relationships 테이블이
     오너↔매니저 row 도 동일 스키마로 보유 (agent_a='nan' 같이)."""
-    from .profile import get_user_id, get_user_name
     name = _resolve_partner_name(agent_id, channel)
     if not name:
         return None
     # 오너 이름이면 user_id 반환 (relationships 테이블에 agent_a='nan' 형태로 저장)
-    if name == (get_user_name() or ""):
-        return get_user_id() or None
-    a = db.get_agent_by_name(name)
+    if name == (_owner.name() or ""):
+        return _owner.id() or None
+    a = _store.get_agent_by_name(name)
     return a["id"] if a else None
 
 
@@ -637,9 +661,9 @@ def _worker_loop():
 
 def _run_extraction_once(agent_id: str, channel: str) -> bool:
     """한 배치만 추출. 실제 진척 있었으면 True (배치 크기 만큼 메시지 처리됨)."""
-    latest_l1 = db.get_latest_memory(agent_id, channel, level=1)
+    latest_l1 = _store.get_latest_memory(agent_id, channel, level=1)
     last_id = latest_l1["msg_id_to"] if latest_l1 else 0
-    unsummarized = db.count_messages_after(channel, last_id)
+    unsummarized = _store.count_messages_after(channel, last_id)
     if unsummarized < L1_BATCH_SIZE:
         # L2/L3 rollup 만 시도 (L1 충분 누적된 경우)
         try:
@@ -658,7 +682,7 @@ def _run_extraction_once(agent_id: str, channel: str) -> bool:
     except Exception as e:
         print(f"[Memory] L1 추출 실패: {e}")
         return False
-    after_latest = db.get_latest_memory(agent_id, channel, level=1)
+    after_latest = _store.get_latest_memory(agent_id, channel, level=1)
     after_id = after_latest["msg_id_to"] if after_latest else 0
     return after_id > before_id
 
@@ -692,8 +716,7 @@ def install_owner_extraction_hook():
 
     def _on_owner_message(channel: str, speaker: str, message: str):
         try:
-            from src.core.profile import get_user_id
-            if speaker and speaker == get_user_id():
+            if speaker and speaker == _owner.id():
                 enqueue_extraction(speaker, channel)
         except Exception as e:
             print(f"[Memory] owner extraction hook 오류 (무시): {e}")
@@ -822,15 +845,14 @@ def _extract_json_object(raw: str) -> Optional[dict]:
 
 def _single_pass_extract(agent_id: str, channel: str, msgs: list[dict]) -> Optional[dict]:
     """Haiku 1회 호출로 summary + type + entities + importance + facts + relationships 추출."""
-    from .profile import load_profile, get_user_name, get_user_id
 
-    profile = load_profile(agent_id)
+    profile = _profiles.get(agent_id)
     agent_name = profile["name"] if profile else agent_id
-    user_name = get_user_name() or "오너"
-    user_id = get_user_id()
+    user_name = _owner.name() or "오너"
+    user_id = _owner.id()
 
     conv_text = "\n".join(
-        f"{user_name if m['speaker'] == user_id else (db.get_agent(m['speaker'])['name'] if m['speaker'].startswith('agent-') and db.get_agent(m['speaker']) else m['speaker'])}: {m['message']}"
+        f"{user_name if m['speaker'] == user_id else (_store.get_agent(m['speaker'])['name'] if m['speaker'].startswith('agent-') and _store.get_agent(m['speaker']) else m['speaker'])}: {m['message']}"
         for m in msgs
     )
 
@@ -942,15 +964,15 @@ def _try_l1_extract(agent_id: str, channel: str):
     큰 배치로 스위치 — 호출당 더 많은 메시지 처리해서 백필 빠르게 따라잡음.
     평소엔 작은 배치로 라이브 freshness 유지.
     """
-    latest_l1 = db.get_latest_memory(agent_id, channel, level=1)
+    latest_l1 = _store.get_latest_memory(agent_id, channel, level=1)
     last_id = latest_l1["msg_id_to"] if latest_l1 else 0
-    unsummarized = db.count_messages_after(channel, last_id)
+    unsummarized = _store.count_messages_after(channel, last_id)
     if unsummarized < L1_BATCH_SIZE:
         return
 
     # 백로그 모드 — 큰 배치로 빠르게 흡수
     batch = L1_BACKFILL_BATCH if unsummarized > L1_BACKFILL_THRESHOLD else L1_BATCH_SIZE
-    msgs = db.get_messages_by_range(channel, last_id, batch)
+    msgs = _store.get_messages_by_range(channel, last_id, batch)
     if len(msgs) < L1_BATCH_SIZE:
         return
 
@@ -959,8 +981,7 @@ def _try_l1_extract(agent_id: str, channel: str):
         return
     extracted = _scrub_extracted(extracted)
 
-    from .profile import load_profile
-    profile = load_profile(agent_id)
+    profile = _profiles.get(agent_id)
     agent_name = profile["name"] if profile else agent_id
     knows = _channel_knows(channel, agent_name)
 
@@ -973,18 +994,18 @@ def _try_l1_extract(agent_id: str, channel: str):
     # importance 높은 배치 (감정/중요 결정 등) 는 +2 까지.
     if partner_id and partner_id != agent_id:
         try:
-            rel = db.get_relationship(agent_id, partner_id) or db.get_relationship(partner_id, agent_id)
+            rel = _store.get_relationship(agent_id, partner_id) or _store.get_relationship(partner_id, agent_id)
             if rel:
                 if rel["agent_a"] == agent_id:
                     key_a, key_b = agent_id, partner_id
                 else:
                     key_a, key_b = partner_id, agent_id
                 natural_delta = 2 if extracted.get("importance", 5) >= 7 else 1
-                db.update_intimacy(key_a, key_b, natural_delta)
+                _store.update_intimacy(key_a, key_b, natural_delta)
         except Exception as e:
             print(f"[Memory] 자연 intimacy 증분 실패: {e}")
 
-    mem_id = db.add_memory(
+    mem_id = _store.add_memory(
         agent_id=agent_id,
         channel=channel,
         level=1,
@@ -1002,9 +1023,8 @@ def _try_l1_extract(agent_id: str, channel: str):
 
     # 가시성 — system.log 에 추출 진행 한 줄. 사용자가 "라이브로 따라가고 있나?" 확인 가능.
     try:
-        from src import log_writer as _lw
         backfill_marker = " 📦백필" if batch > L1_BATCH_SIZE else ""
-        _lw.system(f"[Memory] L1 +1 {agent_id}@{channel} (msgs {msgs[0]['id']}~{msgs[-1]['id']}, "
+        _observer.system(f"[Memory] L1 +1 {agent_id}@{channel} (msgs {msgs[0]['id']}~{msgs[-1]['id']}, "
                    f"unsummarized 잔량 {unsummarized - len(msgs)}){backfill_marker}")
     except Exception:
         pass
@@ -1031,7 +1051,7 @@ def _try_l1_extract(agent_id: str, channel: str):
         except Exception:
             f_imp = 5
         try:
-            db.add_fact(
+            _store.add_fact(
                 agent_id=agent_id,
                 subject=subject, predicate=canon_pred, object_value=obj,
                 source_channel=channel, source_memory_id=mem_id,
@@ -1052,13 +1072,13 @@ def _try_l1_extract(agent_id: str, channel: str):
         other = str(r.get("other") or "").strip()
         if not other:
             continue
-        other_ag = db.get_agent_by_name(other)
+        other_ag = _store.get_agent_by_name(other)
         other_id = other_ag["id"] if other_ag else other
         dtype = str(r.get("type") or "dynamics").strip()
         if dtype not in ("intimacy", "dynamics", "speech_style"):
             dtype = "dynamics"
         try:
-            db.add_relationship_delta(
+            _store.add_relationship_delta(
                 agent_a=agent_id, agent_b=other_id,
                 delta_type=dtype,
                 from_state=str(r.get("from") or "") or None,
@@ -1071,7 +1091,7 @@ def _try_l1_extract(agent_id: str, channel: str):
 
         # 실제 state 반영 — 관계 레코드가 없으면 건너뜀 (mgr 가 명시적으로 생성해야 하는 관계 존중).
         try:
-            rel = db.get_relationship(agent_id, other_id) or db.get_relationship(other_id, agent_id)
+            rel = _store.get_relationship(agent_id, other_id) or _store.get_relationship(other_id, agent_id)
             if not rel:
                 continue
             # agent_a/agent_b 방향 맞추기
@@ -1108,7 +1128,7 @@ def _try_l1_extract(agent_id: str, channel: str):
                 scale = max(0.5, imp / 5.0)
                 final_delta = max(-15, min(15, int(round(delta * scale))))
                 if final_delta != 0:
-                    db.update_intimacy(key_a, key_b, final_delta)
+                    _store.update_intimacy(key_a, key_b, final_delta)
             elif dtype == "dynamics":
                 new_dyn = str(r.get("to") or "").strip()
                 if new_dyn and len(new_dyn) < 200:
@@ -1230,7 +1250,7 @@ def _try_l2_rollup(agent_id: str, channel: str):
     dominant_type = max(type_counts, key=type_counts.get) if type_counts else None
     partner_id = _resolve_partner_agent_id(agent_id, channel)
 
-    db.add_memory(
+    _store.add_memory(
         agent_id=agent_id, channel=channel, level=2,
         content=summary,
         mem_type=dominant_type,
@@ -1288,7 +1308,7 @@ def _try_l3_rollup(agent_id: str, channel: str):
     dominant_type = max(type_counts, key=type_counts.get) if type_counts else None
     partner_id = _resolve_partner_agent_id(agent_id, channel)
 
-    db.add_memory(
+    _store.add_memory(
         agent_id=agent_id, channel=channel, level=3,
         content=summary,
         mem_type=dominant_type,
@@ -1327,13 +1347,12 @@ def _mentioned_entities(text: str) -> set[str]:
     out: set[str] = set()
     if not text:
         return out
-    for a in db.list_agents():
+    for a in _store.list_agents():
         name = a.get("name") or ""
         if name and name in text:
             out.add(name)
     try:
-        from .profile import get_user_name
-        un = get_user_name()
+        un = _owner.name()
         if un and un in text:
             out.add(un)
     except Exception:
@@ -1415,7 +1434,7 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "",
         _touch_ids: list[int] = []
 
         # ─ Pinned memories (항상) ─
-        pinned = db.get_pinned_memories(agent_id, limit=10)
+        pinned = _store.get_pinned_memories(agent_id, limit=10)
         if pinned:
             block = [_format_memory_line(m, STALE_L2_DAYS * 24) for m in pinned]
             block = _truncate_block(block, _scaled(BUDGET_PINNED))
@@ -1428,7 +1447,7 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "",
         partner_name = _resolve_partner_name(agent_id, channel)
         partner_id = _resolve_partner_agent_id(agent_id, channel)
         if partner_id:
-            rel = db.get_relationship(agent_id, partner_id) or db.get_relationship(partner_id, agent_id)
+            rel = _store.get_relationship(agent_id, partner_id) or _store.get_relationship(partner_id, agent_id)
             if rel:
                 lines = [f"## 💞 {partner_name}과의 관계"]
                 itm = rel.get("intimacy_score")
@@ -1449,7 +1468,7 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "",
                     if behavior_hint:
                         lines.append(behavior_hint)
                 # 최근 관계 변곡점 1-2개
-                hist = db.get_relationship_history(agent_id, partner_id, limit=2)
+                hist = _store.get_relationship_history(agent_id, partner_id, limit=2)
                 for h in hist:
                     reason = h.get("reason") or ""
                     if reason:
@@ -1472,8 +1491,7 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "",
             query_entities.add(partner_name)
         # 자기 이름도 query_entities 에 추가 — 자기 자신을 entity 로 태깅한
         # 다른 채널 메모리/facts 도 surface (L1 이미 만들어진 케이스 cover).
-        from .profile import load_profile as _load_profile
-        my_profile = _load_profile(agent_id)
+        my_profile = _profiles.get(agent_id)
         my_name = my_profile.get("name") if my_profile else None
         if my_name:
             query_entities.add(my_name)
@@ -1492,7 +1510,7 @@ def get_memory_context(agent_id: str, channel: str, user_message: str = "",
         # ─ last_accessed_at 갱신 ─
         if _touch_ids:
             try:
-                db.touch_memory_access(_touch_ids)
+                _store.touch_memory_access(_touch_ids)
             except Exception:
                 pass
 
@@ -1518,13 +1536,13 @@ def _format_current_channel_memories(agent_id: str, channel: str) -> str:
     sections: list[tuple[str, list[str]]] = []  # (header, lines)
 
     # L3 (월 단위, 있으면 최대 2개)
-    l3 = db.get_memories(agent_id, channel, level=3, limit=2)
+    l3 = _store.get_memories(agent_id, channel, level=3, limit=2)
     if l3:
         sections.append(("## 🗂 장기 (월단위)",
                          [_format_memory_line(m, VERY_STALE_DAYS * 24) for m in l3]))
 
     # L2 (최근 N개) — get_memories 가 oldest-first 로 반환하므로 뒤집어 newest-first 로 prompt 노출
-    l2 = db.get_memories(agent_id, channel, level=2, limit=L2_MAX_KEEP)
+    l2 = _store.get_memories(agent_id, channel, level=2, limit=L2_MAX_KEEP)
     l2_newest_first = list(reversed(l2)) if l2 else []
     if l2_newest_first:
         l2_lines = []
@@ -1535,7 +1553,7 @@ def _format_current_channel_memories(agent_id: str, channel: str) -> str:
         sections.append(("## 장기 기억", l2_lines))
 
     # L1 — L2 커버 밖의 것만, newest-first
-    l1 = db.get_memories(agent_id, channel, level=1, limit=L1_MAX_KEEP)
+    l1 = _store.get_memories(agent_id, channel, level=1, limit=L1_MAX_KEEP)
     if l2:
         last_l2_covered = max((m["msg_id_to"] or 0) for m in l2)
         l1 = [m for m in l1 if (m.get("msg_id_from") or 0) > last_l2_covered]
@@ -1641,14 +1659,13 @@ def _format_retrieved_memories(agent_id: str, exclude_channel: str,
         return "", []
 
     # Group by label (related_agent_id 이름 or channel 파싱)
-    from .profile import load_profile
     groups: dict[str, list[dict]] = {}
     for m in top:
         ch = m.get("channel") or ""
         label = None
         rid = m.get("related_agent_id")
         if rid:
-            p = load_profile(rid)
+            p = _profiles.get(rid)
             if p:
                 label = p["name"]
         if not label:
@@ -1758,7 +1775,7 @@ def _format_facts_block(agent_id: str, query_entities: set[str]) -> str:
     lines: list[str] = []
     shown = 0
     for ent in query_entities:
-        facts = db.get_facts(agent_id, subject=ent, limit=5)
+        facts = _store.get_facts(agent_id, subject=ent, limit=5)
         if not facts:
             continue
         lines.append(f"[{ent} 관련 사실]")
@@ -1849,7 +1866,7 @@ def recall_memory(agent_id: str, query: str = "", entity: str = "",
         })
 
     if results:
-        db.touch_memory_access([r["id"] for r in results])
+        _store.touch_memory_access([r["id"] for r in results])
 
     return results
 
@@ -1862,7 +1879,7 @@ def pin_memory(memory_id: int, pinned: bool = True, reason: str = "") -> dict:
     conn.close()
     if not row:
         return {"ok": False, "error": "memory not found"}
-    db.set_pin(memory_id, pinned)
+    _store.set_pin(memory_id, pinned)
     action = "pin" if pinned else "unpin"
     msg = f"[Memory] {action} id={memory_id} agent={row['agent_id']}"
     if reason:
