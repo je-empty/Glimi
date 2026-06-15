@@ -32,6 +32,16 @@ dependencies = []
 # Anthropic Python SDK 로 직접 호출하고 싶을 때 (CLI 대신).
 sdk = ["anthropic>=0.40"]
 
+# Glimi Core 대시보드 (store-driven · read-only 웹).
+#   `import glimi.dashboard` (= DashboardReader) 는 zero-dep 유지 — 아래 deps 는
+#   serve() / app.py (FastAPI 앱) 를 실제 띄울 때만 필요.
+#   설치: pip install "glimi[dashboard]"
+dashboard = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "jinja2>=3.1",
+]
+
 # Glimi Community (쇼케이스 앱) 전체 실행에 필요한 것 — Discord 어댑터 + 웹 대시보드.
 # 설치: pip install -e ".[community]"
 community = [
@@ -63,4 +73,8 @@ imagegen = [
 
 # 배포 대상은 커널(glimi) 패키지만. 쇼케이스 앱(src/*)은 모노레포 소스에서 실행한다.
 [tool.setuptools]
-packages = ["glimi", "glimi.llm", "glimi.tools"]
+packages = ["glimi", "glimi.llm", "glimi.tools", "glimi.dashboard", "glimi.stores"]
+
+# 대시보드 웹 자산 (templates/static) 을 휠에 포함 — glimi[dashboard] 로 설치 시 필요.
+[tool.setuptools.package-data]
+"glimi.dashboard" = ["templates/*.html", "static/css/*.css", "static/js/*.js"]
