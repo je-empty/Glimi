@@ -1,12 +1,12 @@
 """App shim for the Glimi-kernel runtime module.
 
-The agent runtime now lives in ``src.glimi.runtime`` (kernel, storage/profile/
+The agent runtime now lives in ``glimi.runtime`` (kernel, storage/profile/
 observer-neutral). This shim wires the Hangout app's adapters into the kernel,
 ensures the memory module is wired too, and re-exports the public API so
 existing ``from src.core.runtime import runtime`` call sites keep working.
 """
-from src.glimi.runtime import *  # noqa: F401,F403  (re-export kernel runtime API)
-from src.glimi import runtime as _kr
+from glimi.runtime import *  # noqa: F401,F403  (re-export kernel runtime API)
+from glimi import runtime as _kr
 from src.adapters.kernel_store import (
     kernel_store as _kernel_store,
     profile_provider as _profile_provider,
