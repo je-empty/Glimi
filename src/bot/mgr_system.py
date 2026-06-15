@@ -69,7 +69,7 @@ async def parse_and_execute_actions(
 
     caller_agent_id: 호출한 에이전트. None이면 MGR_ID (유나) 가정.
     """
-    from src.glimi.tools import run_tools, ToolContext, format_results_block, get_tool
+    from glimi.tools import run_tools, ToolContext, format_results_block, get_tool
     from src.core.runtime import runtime
 
     cleaned = [r.strip() for r in responses if r and r.strip()]

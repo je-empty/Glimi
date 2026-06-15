@@ -41,7 +41,7 @@ def _judge_channel_conv(channel: str, question: str) -> str:
         speaker = "유저" if r["speaker"] == get_user_id() else r["speaker"]
         lines.append(f"{speaker}: {r['message']}")
     conversation = "\n".join(lines[-8:])
-    from src.glimi.llm import generate
+    from glimi.llm import generate
     resp = generate(
         system="너는 대화 분석가. 질문에 한 단어로만 답해.",
         user=f"대화 기록:\n{conversation}\n\n질문: {question}",

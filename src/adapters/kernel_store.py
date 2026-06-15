@@ -11,7 +11,7 @@ from typing import Optional
 
 from src import db
 from src.core import profile
-from src.glimi.store import KernelStore
+from glimi.store import KernelStore
 
 
 class SqliteKernelStore(KernelStore):
@@ -360,7 +360,7 @@ class SqliteKernelStore(KernelStore):
 
 
 class ProfileOwnerContext:
-    """:class:`~src.glimi.profiles.OwnerContext` over ``src.core.profile``."""
+    """:class:`~glimi.profiles.OwnerContext` over ``src.core.profile``."""
 
     def name(self) -> str:
         return profile.get_user_name()
@@ -379,7 +379,7 @@ class ProfileOwnerContext:
 
 
 class ProfileProviderAdapter:
-    """:class:`~src.glimi.profiles.ProfileProvider` over ``src.core.profile`` +
+    """:class:`~glimi.profiles.ProfileProvider` over ``src.core.profile`` +
     the app's prompt builder (``build_system_prompt``)."""
 
     def get(self, agent_id: str):
@@ -404,7 +404,7 @@ class ProfileProviderAdapter:
 
 
 class LogWriterObserver:
-    """:class:`~src.glimi.observability.KernelObserver` over ``src.log_writer``
+    """:class:`~glimi.observability.KernelObserver` over ``src.log_writer``
     (the app's live dashboard / log sink)."""
 
     def system(self, message: str) -> None:
