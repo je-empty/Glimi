@@ -15,8 +15,8 @@ import json
 from typing import Any
 
 from src import db, log_writer
-from src.core.tools.registry import set_handler
-from src.core.tools.dispatcher import ToolContext
+from src.glimi.tools.registry import set_handler
+from src.glimi.tools.dispatcher import ToolContext
 
 
 # ── 관리 도구 (mgr) ─────────────────────────────────────
@@ -74,7 +74,7 @@ async def _h_start_conversation(args: dict, ctx: ToolContext):
 
 
 async def _h_stop_conversation(args: dict, ctx: ToolContext):
-    from src.core.conversation import stop_conversation, list_active_conversations
+    from src.bot.conversation_bridge import stop_conversation, list_active_conversations
     from src.bot.core import send_as_agent
     from src.bot import MGR_ID
     target = args["target"].strip()
@@ -568,7 +568,7 @@ async def _h_create_agent_profile(args: dict, ctx: ToolContext):
         FEMALE_OK = {"여자", "female", "f", "여성"}
         MALE_FORBIDDEN = {"남자", "male", "m", "남성"}
         if gender_raw in MALE_FORBIDDEN:
-            from src.core.tools.registry import _env_truthy as _et
+            from src.glimi.tools.registry import _env_truthy as _et
             imagegen_on = _et("GLIMI_IMAGEGEN")
             log_writer.system(
                 f"[create_agent_profile] gender='{gender_raw}' rejected — sample path is female-only "
@@ -960,7 +960,7 @@ async def _h_get_logs(args, ctx):
 
 
 async def _h_get_tool_details(args, ctx):
-    from src.core.tools.reference import build_tool_details
+    from src.glimi.tools.reference import build_tool_details
     return {"result": build_tool_details(args["name"])}
 
 

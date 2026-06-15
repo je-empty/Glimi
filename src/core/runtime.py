@@ -16,12 +16,21 @@ import subprocess
 import shutil
 import os
 from typing import Optional, Callable
-from src import db
 from .profile import load_profile, build_system_prompt, get_user_name, get_user_id, get_user_display_name
 from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
-from .tools import parse_response as parse_tools_in_output, ToolCall
-from .tools import strip_control_tokens as _strip_control_tokens
+from src.glimi.tools import parse_response as parse_tools_in_output, ToolCall
+from src.glimi.tools import strip_control_tokens as _strip_control_tokens
 from src import log_writer
+
+# ── KernelStore 주입 (Phase 2) — 커널 런타임은 DB 를 직접 안 보고 KernelStore 로만 접근.
+# 기본은 앱 SQLite 어댑터. 앱이 set_store() 로 다른 구현 주입 가능.
+from src.adapters.kernel_store import kernel_store as _store
+
+
+def set_store(store):
+    """KernelStore 구현 주입 (미호출 시 기본 SQLite 어댑터)."""
+    global _store
+    _store = store
 
 
 def _check_claude_cli() -> bool:
@@ -77,7 +86,7 @@ def _resolve_agent_model(agent_id: str, agent_type: str) -> str:
     매 호출마다 조회 → 대시보드에서 변경 시 즉시 반영 (재시작 불필요).
     컨텍스트 연속성: 대화 이력·메모리는 DB 기반이라 모델 바뀌어도 그대로 이어감."""
     try:
-        override = db.get_agent_model_override(agent_id)
+        override = _store.get_agent_model_override(agent_id)
         if override:
             return override
     except Exception:
@@ -176,7 +185,7 @@ def _backend_available(provider: str) -> bool:
     if _OLLAMA_OK["v"]:
         return True
     try:
-        from src.llm.ollama import OllamaBackend
+        from src.glimi.llm.ollama import OllamaBackend
         ok = OllamaBackend().available()
     except Exception:
         ok = False
@@ -453,7 +462,7 @@ class AgentRuntime:
         _checkpoint("describe_channel")
 
         # 현재 감정 (dynamic)
-        agent_state = db.get_agent(agent_id)
+        agent_state = _store.get_agent(agent_id)
         if agent_state:
             reminder_parts.append(
                 f"[현재감정: {agent_state['current_emotion']}"
@@ -617,17 +626,8 @@ class AgentRuntime:
         """최근 window_sec 초 내 이 에이전트가 호출한 주요 도구 이력.
         events 테이블에서 dm_request 등 조회 → prompt 주입용 텍스트."""
         try:
-            conn = db.get_conn()
-            # participants 의 첫 토큰이 caller — agent_id 매칭
-            rows = conn.execute(
-                "SELECT event_type, participants, description, timestamp FROM events "
-                "WHERE timestamp >= datetime('now', ?) "
-                "AND event_type IN ('dm_request') "
-                "AND participants LIKE ? "
-                "ORDER BY id DESC LIMIT 8",
-                (f"-{window_sec} seconds", f"{agent_id},%"),
-            ).fetchall()
-            conn.close()
+            # participants 의 첫 토큰이 caller — agent_id 매칭 (store 가 LIKE 구성)
+            rows = _store.get_recent_events(agent_id, ["dm_request"], window_sec, limit=8)
         except Exception:
             return ""
         if not rows:
@@ -651,7 +651,7 @@ class AgentRuntime:
 
     def _build_handoff_summary(self, agent_id: str, channel: str) -> str:
         """모델 전환 시 이전 대화 맥락 요약 생성 (haiku로 빠르게)"""
-        recent = db.get_recent_messages(channel, limit=15)
+        recent = _store.get_recent_messages(channel, limit=15)
         if not recent:
             return ""
 
@@ -667,7 +667,7 @@ class AgentRuntime:
         provider = _provider_for("persona", "claude-haiku-4-5")
         try:
             if provider == "ollama":
-                from src import llm
+                from src.glimi import llm
                 _r = llm.generate(
                     system="", user=summary_prompt,
                     model=_ollama_model_arg("ollama:local", "persona"), agent_type="persona",
@@ -709,40 +709,16 @@ class AgentRuntime:
         # peek 으로 새어들어가 "오너가 방금 답장했다" 식 환각을 유발 (QA: internal-dm 에서 옛 오너 DM
         # 한 줄을 방금 온 답장처럼 narration). → 오너 발화 라인 제거 (과거 오너 메시지 주입 차단).
         strip_owner_lines = (not is_bridge) and current_channel.startswith("internal-")
-        conn = db.get_conn()
 
         # 이 에이전트가 참여한 채널 (현재 채널 제외)
         # mgr/creator 는 mgr-* 채널도 봄 (브릿지 역할). persona 는 mgr 제외 (격리).
-        if is_bridge:
-            channels = conn.execute(
-                """SELECT channel, MAX(id) as last_id FROM conversations
-                   WHERE speaker = ? AND channel != ?
-                   GROUP BY channel
-                   ORDER BY last_id DESC""",
-                (agent_id, current_channel)
-            ).fetchall()
-        else:
-            channels = conn.execute(
-                """SELECT channel, MAX(id) as last_id FROM conversations
-                   WHERE speaker = ? AND channel != ? AND channel NOT LIKE 'mgr%'
-                   GROUP BY channel
-                   ORDER BY last_id DESC""",
-                (agent_id, current_channel)
-            ).fetchall()
+        channels = _store.get_agent_channels(agent_id, current_channel, include_mgr=is_bridge)
 
         if not channels:
-            conn.close()
             return ""
 
         # 요약이 커버하는 마지막 메시지 ID 확인
-        mem_coverage = {}  # channel → last covered msg_id
-        mem_rows = conn.execute(
-            "SELECT channel, MAX(msg_id_to) as last_covered FROM memories WHERE agent_id = ? AND channel != ? GROUP BY channel",
-            (agent_id, current_channel)
-        ).fetchall()
-        for r in mem_rows:
-            mem_coverage[r["channel"]] = r["last_covered"] or 0
-        conn.close()
+        mem_coverage = _store.get_memory_coverage(agent_id, current_channel)  # channel → last covered msg_id
 
         lines = []
         for ch_row in channels:
@@ -753,7 +729,7 @@ class AgentRuntime:
             if ch_row["last_id"] <= last_covered:
                 continue
 
-            recent = db.get_recent_messages(ch_name, limit=peek_limit)
+            recent = _store.get_recent_messages(ch_name, limit=peek_limit)
             if not recent:
                 continue
 
@@ -809,7 +785,7 @@ class AgentRuntime:
           - persona: 오너 read-only 사실 숨김 (환상 유지)
           - mgr/creator: 오너 read-only 사실 명시 + '오너 대사 이 채널에 쓰지 말 것'
         """
-        participants = db.get_channel_participants(channel)
+        participants = _store.get_channel_participants(channel)
 
         # 참가자 이름 변환 + 이 에이전트 타입 파악
         names = []
@@ -894,7 +870,7 @@ class AgentRuntime:
         lines = []
 
         # 최근 활성 채널 + 마지막 메시지 요약
-        overview = db.get_channel_overview()
+        overview = _store.get_channel_overview()
         active = []
         for ch in overview:
             from datetime import datetime
@@ -911,7 +887,7 @@ class AgentRuntime:
             lines.append("[최근 활동]")
             for ch_name, cnt, mins_ago in active[:8]:
                 # 채널의 최근 메시지 1줄만
-                recent = db.get_recent_messages(ch_name, limit=1)
+                recent = _store.get_recent_messages(ch_name, limit=1)
                 if recent:
                     r = recent[0]
                     speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
@@ -931,7 +907,7 @@ class AgentRuntime:
 
         # 감정 변화가 큰 멤버 (강도 7 이상)
         high_emotion = []
-        for a in db.list_agents("persona"):
+        for a in _store.list_agents("persona"):
             if a["emotion_intensity"] >= 7:
                 high_emotion.append(f"{a['name']}:{a['current_emotion']}({a['emotion_intensity']})")
         if high_emotion:
@@ -958,7 +934,7 @@ class AgentRuntime:
         profile = agent_info["profile"]
         name = profile.get("name", agent_id)
         _limit = RAW_WINDOW
-        recent = db.get_recent_messages(channel, limit=_limit)
+        recent = _store.get_recent_messages(channel, limit=_limit)
 
         log_writer.mark_thinking(agent_id, channel)
         log_writer.agent_thinking(agent_id, f"강제 지시 [{channel}]: {user_message[:40]}")
@@ -1037,10 +1013,10 @@ class AgentRuntime:
         finally:
             log_writer.mark_done(agent_id)
 
-        agent_db = db.get_agent(agent_id)
+        agent_db = _store.get_agent(agent_id)
         current_emotion = agent_db.get("current_emotion", "평온") if agent_db else None
         for msg in responses:
-            db.log_message(channel, agent_id, msg, emotion=current_emotion)
+            _store.log_message(channel, agent_id, msg, emotion=current_emotion)
 
         return responses
 
@@ -1064,7 +1040,7 @@ class AgentRuntime:
         # raw window는 모든 에이전트 RAW_WINDOW(15)로 통일 — 컨텍스트 폭증 대신
         # memory.py L1/L2 요약이 그 이전 메시지의 사실을 보존 (구체적 명사/옵션/결정)
         _limit = RAW_WINDOW
-        recent = db.get_recent_messages(channel, limit=_limit)
+        recent = _store.get_recent_messages(channel, limit=_limit)
 
         log_writer.mark_thinking(agent_id, channel)
         log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
@@ -1105,13 +1081,13 @@ class AgentRuntime:
 
         # 로깅
         if log_user_message:
-            db.log_message(channel, get_user_id(), user_message)
+            _store.log_message(channel, get_user_id(), user_message)
             log_writer.chat(channel, get_user_name(), user_message)
 
-        agent_db = db.get_agent(agent_id)
+        agent_db = _store.get_agent(agent_id)
         current_emotion = agent_db.get("current_emotion", "평온") if agent_db else None
         for msg in responses:
-            db.log_message(channel, agent_id, msg, emotion=current_emotion)
+            _store.log_message(channel, agent_id, msg, emotion=current_emotion)
 
         try:
             check_and_summarize(agent_id, channel)
@@ -1228,7 +1204,7 @@ class AgentRuntime:
         빈 리스트 — 호출자가 empty 면 송출 skip 또는 placeholder 처리.
         """
         try:
-            from src import llm
+            from src.glimi import llm
             resp = llm.generate(
                 system=system, user=user,
                 model=_ollama_model_arg(model, agent_type), agent_type=agent_type,
@@ -1398,11 +1374,11 @@ class AgentRuntime:
         # raw window는 모든 에이전트 RAW_WINDOW(15)로 통일 — 컨텍스트 폭증 대신
         # memory.py L1/L2 요약이 그 이전 메시지의 사실을 보존 (구체적 명사/옵션/결정)
         _limit = RAW_WINDOW
-        recent = db.get_recent_messages(channel, limit=_limit)
+        recent = _store.get_recent_messages(channel, limit=_limit)
 
         # 오너 메시지 먼저 로깅
         if log_user_message:
-            db.log_message(channel, get_user_id(), user_message)
+            _store.log_message(channel, get_user_id(), user_message)
             log_writer.chat(channel, get_user_name(), user_message)
 
         log_writer.mark_thinking(agent_id, channel)
@@ -1461,7 +1437,7 @@ class AgentRuntime:
         if provider == "ollama":
             _ollama_to = {"persona": 180, "mgr": 300, "creator": 360, "dev": 300}.get(agent_type, 180)
             try:
-                from src import llm
+                from src.glimi import llm
                 line_iter = llm.stream_lines(
                     system=system_prompt, user=full_prompt,
                     model=_ollama_model_arg(model, agent_type), agent_type=agent_type,
@@ -1749,7 +1725,7 @@ class AgentRuntime:
         speaker_name = speaker_info["profile"]["name"]
         listener_name = listener_info["profile"]["name"]
 
-        recent = db.get_recent_messages(channel, limit=RAW_WINDOW)
+        recent = _store.get_recent_messages(channel, limit=RAW_WINDOW)
 
         # _build_context 재활용 (speaker 기준 메모리)
         base_context = self._build_context(speaker_info, channel, recent, user_message=context)
@@ -1783,7 +1759,7 @@ class AgentRuntime:
                 if provider == "ollama":
                     # ollama 출력을 기존 claude 다운스트림(역할 leak/독백 필터)에 그대로
                     # 흘리기 위해 result 를 CompletedProcess 흉내 shim 으로 채움.
-                    from src import llm
+                    from src.glimi import llm
                     from types import SimpleNamespace
                     try:
                         _r = llm.generate(
@@ -1907,7 +1883,7 @@ class AgentRuntime:
                             )
                         responses = filtered
                         for msg in responses:
-                            db.log_message(channel, speaker_id, msg)
+                            _store.log_message(channel, speaker_id, msg)
 
                         # 에이전트간 대화 — 양쪽 모두 메모리 요약 트리거
                         try:
