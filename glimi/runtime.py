@@ -632,10 +632,14 @@ class AgentRuntime:
             return ""
         lines = ["[최근 네가 호출한 도구 이력 — 같은 요청 반복 금지]"]
         import datetime as _dt
-        now = _dt.datetime.utcnow()
+        now = _dt.datetime.now(_dt.timezone.utc)  # tz-aware
         for r in rows:
             try:
                 ts = _dt.datetime.fromisoformat(r["timestamp"].replace(" ", "T"))
+                # 마이그레이션 이후 행은 +00:00 이 붙어 aware, SQLite CURRENT_TIMESTAMP 는
+                # naive — UTC 로 간주해 aware 로 정규화 (혼합 빼기 TypeError 방지).
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=_dt.timezone.utc)
                 mins = int((now - ts).total_seconds() // 60)
                 elapsed = f"{mins}분 전" if mins >= 1 else "방금 전"
             except Exception:
@@ -871,10 +875,12 @@ class AgentRuntime:
         overview = _store.get_channel_overview()
         active = []
         for ch in overview:
-            from datetime import datetime
+            from datetime import datetime, timezone
             try:
                 last = datetime.fromisoformat(ch["last_active"])
-                mins = (datetime.now() - last).total_seconds() / 60
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                mins = (datetime.now(timezone.utc) - last).total_seconds() / 60
             except Exception:
                 mins = 9999
 
