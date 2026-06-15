@@ -174,6 +174,187 @@ class SqliteKernelStore(KernelStore):
     def list_users(self) -> list[dict]:
         return db.list_users()
 
+    # ── memory — higher-level (raw SQL lives here, not in the kernel) ──
+    def set_relationship_dynamics(self, agent_a: str, agent_b: str, dynamics: str) -> None:
+        from src.core.timeutil import now_utc_iso
+        conn = db.get_conn()
+        try:
+            conn.execute(
+                "UPDATE relationships SET dynamics=?, updated_at=? WHERE agent_a=? AND agent_b=?",
+                (dynamics, now_utc_iso(), agent_a, agent_b),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_agent_emotion(self, agent_id: str) -> Optional[tuple[str, int]]:
+        conn = db.get_conn()
+        try:
+            row = conn.execute(
+                "SELECT current_emotion, emotion_intensity FROM agents WHERE id=?",
+                (agent_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        return (row["current_emotion"], row["emotion_intensity"] or 5)
+
+    def set_agent_emotion(self, agent_id: str, emotion: str, intensity: int) -> None:
+        conn = db.get_conn()
+        try:
+            conn.execute(
+                "UPDATE agents SET current_emotion=?, emotion_intensity=? WHERE id=?",
+                (emotion, intensity, agent_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_uncovered_memories(self, agent_id: str, channel: str, source_level: int) -> list[dict]:
+        target_level = source_level + 1
+        conn = db.get_conn()
+        try:
+            if source_level == 1:
+                # L2 롤업 — 커버 커서는 level=2 의 MAX(msg_id_to), 필터/정렬은 msg_id_to
+                latest = conn.execute(
+                    "SELECT MAX(msg_id_to) as last_id FROM memories "
+                    "WHERE agent_id=? AND channel=? AND level=?",
+                    (agent_id, channel, target_level),
+                ).fetchone()
+                last_covered = latest["last_id"] if latest and latest["last_id"] else 0
+                rows = conn.execute(
+                    """SELECT * FROM memories
+                       WHERE agent_id=? AND channel=? AND level=? AND msg_id_to > ?
+                       ORDER BY msg_id_to ASC""",
+                    (agent_id, channel, source_level, last_covered),
+                ).fetchall()
+            else:
+                # L3 롤업 — 커버 커서는 level=3 의 MAX(id), 필터/정렬은 id
+                latest = conn.execute(
+                    "SELECT MAX(id) as last_id FROM memories "
+                    "WHERE agent_id=? AND channel=? AND level=?",
+                    (agent_id, channel, target_level),
+                ).fetchone()
+                last_covered = latest["last_id"] if latest and latest["last_id"] else 0
+                rows = conn.execute(
+                    """SELECT * FROM memories
+                       WHERE agent_id=? AND channel=? AND level=? AND id > ?
+                       ORDER BY id ASC""",
+                    (agent_id, channel, source_level, last_covered),
+                ).fetchall()
+        finally:
+            conn.close()
+        return [db._hydrate_memory(r) for r in rows]
+
+    def get_memories_across_channels(self, agent_id: str, exclude_channel: str,
+                                     levels: list[int], limit: int) -> list[dict]:
+        if not levels:
+            return []
+        conn = db.get_conn()
+        try:
+            placeholders = ",".join("?" for _ in levels)
+            rows = conn.execute(
+                f"""SELECT * FROM memories
+                    WHERE agent_id=? AND channel != ? AND level IN ({placeholders})
+                    ORDER BY created_at DESC LIMIT ?""",
+                (agent_id, exclude_channel, *levels, limit),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [db._hydrate_memory(r) for r in rows]
+
+    def get_recent_messages_across_channels(self, agent_id: str, exclude_channel: str,
+                                            within_minutes: int, limit: int) -> list[dict]:
+        conn = db.get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT channel, message, timestamp FROM conversations "
+                "WHERE speaker=? AND channel != ? "
+                "  AND timestamp >= datetime('now', ?) "
+                "ORDER BY timestamp DESC LIMIT ?",
+                (agent_id, exclude_channel, f"-{int(within_minutes)} minutes", limit),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
+    def search_memories(self, agent_id: str, entity: Optional[str] = None,
+                        query: Optional[str] = None, time_range_days: Optional[int] = None,
+                        limit: int = 20) -> list[dict]:
+        sql = "SELECT * FROM memories WHERE agent_id=?"
+        args: list = [agent_id]
+        if entity:
+            sql += " AND related_entities LIKE ?"
+            args.append(f'%"{entity}"%')
+        if query:
+            sql += " AND (content LIKE ? OR mem_type LIKE ?)"
+            args.append(f"%{query}%")
+            args.append(f"%{query}%")
+        if time_range_days:
+            sql += " AND created_at >= datetime('now', ?)"
+            args.append(f"-{int(time_range_days)} days")
+        sql += " ORDER BY importance DESC, created_at DESC LIMIT ?"
+        args.append(max(1, min(50, int(limit))))
+        conn = db.get_conn()
+        try:
+            rows = conn.execute(sql, args).fetchall()
+        finally:
+            conn.close()
+        return [db._hydrate_memory(r) for r in rows]
+
+    def get_memory(self, memory_id: int) -> Optional[dict]:
+        conn = db.get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM memories WHERE id=?", (memory_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        return db._hydrate_memory(row) if row else None
+
+    def get_memory_stats(self, agent_id: str, channel: str) -> dict:
+        conn = db.get_conn()
+        try:
+            total = conn.execute(
+                "SELECT COUNT(*) as c FROM conversations WHERE channel=?",
+                (channel,),
+            ).fetchone()["c"]
+
+            def _cnt(level):
+                return conn.execute(
+                    "SELECT COUNT(*) as c FROM memories WHERE agent_id=? AND channel=? AND level=?",
+                    (agent_id, channel, level),
+                ).fetchone()["c"]
+
+            l1 = _cnt(1)
+            l2 = _cnt(2)
+            l3 = _cnt(3)
+            pinned = conn.execute(
+                "SELECT COUNT(*) as c FROM memories WHERE agent_id=? AND is_pinned=1",
+                (agent_id,),
+            ).fetchone()["c"]
+            facts = conn.execute(
+                "SELECT COUNT(*) as c FROM agent_facts WHERE agent_id=? AND valid_to IS NULL",
+                (agent_id,),
+            ).fetchone()["c"]
+            covered = conn.execute(
+                "SELECT COALESCE(SUM(msg_count),0) as t FROM memories "
+                "WHERE agent_id=? AND channel=? AND level=1",
+                (agent_id, channel),
+            ).fetchone()["t"]
+        finally:
+            conn.close()
+        return {
+            "total_messages": total,
+            "l1": l1,
+            "l2": l2,
+            "l3": l3,
+            "pinned": pinned,
+            "facts_active": facts,
+            "messages_summarized": covered,
+        }
+
 
 class ProfileOwnerContext:
     """:class:`~src.glimi.profiles.OwnerContext` over ``src.core.profile``."""
