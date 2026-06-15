@@ -385,8 +385,19 @@ class ProfileProviderAdapter:
     def get(self, agent_id: str):
         return profile.load_profile(agent_id)
 
-    def system_prompt(self, agent_id: str, include_profile_image_template: bool = False) -> str:
-        return profile.build_system_prompt(agent_id, include_profile_image_template=include_profile_image_template)
+    def system_prompt(self, agent_id: str, include_profile_image_template: bool = False,
+                      model: Optional[str] = None) -> str:
+        # 모델 인지 prompt dialect (tool_call_syntax_hint 등) 를 위해 active model 스코프.
+        if model is None:
+            return profile.build_system_prompt(
+                agent_id, include_profile_image_template=include_profile_image_template)
+        from src.core.prompts.model import set_active_model, reset_active_model
+        tok = set_active_model(model)
+        try:
+            return profile.build_system_prompt(
+                agent_id, include_profile_image_template=include_profile_image_template)
+        finally:
+            reset_active_model(tok)
 
     def display_name(self, agent_id: str) -> str:
         return profile.get_agent_display_name(agent_id)
