@@ -43,6 +43,40 @@ python run.py --backend ollama                 # needs a local Ollama
 
 Set the backend via the `GLIMI_LLM_BACKEND` env var or the `--backend` flag.
 
+## Sample output (real backend: claude_cli)
+
+Generated with the `claude_cli` backend (the local Claude CLI subprocess); the
+`echo` backend is the offline default. The runtime startup banner is trimmed;
+the agent turns are verbatim.
+
+```text
+=== dev_pair (backend: claude_cli) ===
+Using a real backend — expect genuine planning and execution.
+
+--- Lead asks the planner to break down the task ---
+[Runtime] Planner (planner) 활성화
+Planner: Here's a quick 2-step breakdown:
+1. **Locate the service entry point** — Find the main server file and identify the routing framework (Express, FastAPI, etc.) to understand where and how to add the endpoint.
+2. **Add the /health endpoint** — Implement the endpoint to return a 200 status with a simple response (e.g., `{"status": "ok"}`), then verify it responds when hit.
+Ready to dive in? I can help explore the codebase or build it out once you point me to the project.
+
+--- Executor carries out 2 step(s) from the shared plan ---
+[Runtime] Executor (executor) 활성화
+[Memory] L1 추출: planner ch=dev-pair imp=2 ents=0 facts=0 rels=0
+Executor: I'm in the home directory. I need you to point me to the web service project. Is there a specific project directory I should look into, or should I check a git repo that's already open?
+
+--- Shared dev log (one store: planner wrote, executor read) ---
+  Lead: Break this task into 2 short steps: add a /health endpoint to a small web service.
+  Planner: Here's a quick 2-step breakdown:
+  Planner: 1. **Locate the service entry point** — Find the main server file and identify the routing framework (Express, FastAPI, etc.) to understand where and how to add the endpoint.
+  Planner: 2. **Add the /health endpoint** — Implement the endpoint to return a 200 status with a simple response (e.g., `{"status": "ok"}`), then verify it responds when hit.
+  Planner: Ready to dive in? I can help explore the codebase or build it out once you point me to the project.
+  Lead: Carry out the plan and report what was done — (1) define the route and its handler; (2) return a 200 with a small JSON body.
+  Executor: I'm in the home directory. I need you to point me to the web service project. Is there a specific project directory I should look into, or should I check a git repo that's already open?
+
+Done. The planner's plan and the executor's work share one channel.
+```
+
 ## Note: keep demos short
 
 The demo runs one planning turn + one execution turn (4 messages on the shared
