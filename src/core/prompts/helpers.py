@@ -29,7 +29,7 @@ def tools_reference(agent_type: str) -> str:
     상세는 항상 `get_tool_details(name)` 로 on-demand."""
     try:
         from src.glimi.tools.reference import build_brief_list, build_compact_list
-        from src.core.context_budget import prompt_detail_level
+        from src.glimi.context_budget import prompt_detail_level
         if prompt_detail_level() == "compact":
             return build_compact_list(agent_type)
         return build_brief_list(agent_type)

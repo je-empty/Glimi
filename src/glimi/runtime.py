@@ -31,6 +31,10 @@ _profiles = None
 _owner = None
 _observer = NullObserver()
 
+# 선택적 앱 훅 (미등록 = no-op, standalone 동작) — Hangout-특화 기능을 커널 밖으로.
+_leak_reporter = None        # fn(agent_id, channel, leaked_text, source) — self-healing dev-request 등
+_profile_reminder_fn = None  # fn(owner_profile: dict) -> Optional[str] — 오너 프로필 이상치 힌트
+
 
 def set_store(store):
     """KernelStore 구현 주입 (미호출 시 기본 SQLite 어댑터)."""
@@ -54,6 +58,18 @@ def set_observer(obs):
     """KernelObserver 구현 주입 (미호출 시 기본 log_writer 어댑터)."""
     global _observer
     _observer = obs
+
+
+def set_leak_reporter(fn):
+    """leak 자동 보고 훅 등록. fn(agent_id, channel, leaked_text, source). 미등록=no-op."""
+    global _leak_reporter
+    _leak_reporter = fn
+
+
+def set_profile_reminder_fn(fn):
+    """오너 프로필 이상치 힌트 훅 등록. fn(owner_profile: dict) -> Optional[str]. 미등록=no-op."""
+    global _profile_reminder_fn
+    _profile_reminder_fn = fn
 
 
 def _check_claude_cli() -> bool:
@@ -262,37 +278,14 @@ _BOLD_BULLET_RE = re.compile(r"^\s*[-*]\s*\*\*[^*]+\*\*\s*:")
 
 
 def _auto_report_leak(agent_id: str, channel_name: str, leaked_text: str, source: str):
-    """leak 감지 시 dev_requests 큐에 자동 적재. dedup 윈도우는 dev 모듈이 처리.
-
-    매니저/오너가 직접 보지 못하는 internal-dm 같은 채널에서도 leak 이 dev 큐로
-    올라오게 하는 안전망. 너무 시끄러우면 severity=low + dedup 60min 으로 자제.
-    """
+    """leak 감지 시 앱이 등록한 reporter 로 통지 (self-healing dev-request 적재 등).
+    앱 미등록(standalone)이면 no-op — 커널은 dev 큐/커뮤니티를 모름."""
+    if _leak_reporter is None:
+        return
     try:
-        from src.core.dev_agent import enqueue_dev_request, find_similar_recent_request
-        from src import community as _community
-        community_id = _community.get_community_id() or "unknown"
-        payload = {
-            "channel": channel_name or "(unknown)",
-            "severity": "low",
-            "repro": (
-                f"agent={agent_id} 가 채팅에 reasoning/status 텍스트를 그대로 출력. "
-                f"감지된 leak (앞 200자): {leaked_text[:200]!r}. 소스: {source}."
-            ),
-            "expected": "정상 채팅 발화. 메타·정리·계획 텍스트는 절대 채널에 안 보여야 함.",
-            "actual": f"채팅 라인에 메타 출력. (drop 됨, 사용자엔 미노출)",
-            "notes": (
-                "auto-filed by runtime._auto_report_leak. "
-                "패턴 추가나 prompt 수정 필요할 수 있음. "
-                "src/core/runtime.py 의 _is_reasoning_leak / _STATUS_REPORT_PHRASE_RE / "
-                "_BOLD_BULLET_RE 참조."
-            ),
-        }
-        # 같은 agent+channel+severity 60분 내 중복이면 silently skip
-        if find_similar_recent_request(community_id, payload, window_minutes=60):
-            return
-        enqueue_dev_request(community_id, agent_id or "system", payload)
+        _leak_reporter(agent_id, channel_name, leaked_text, source)
     except Exception as e:
-        _observer.system(f"[leak auto-report] enqueue 실패 (무시): {type(e).__name__}: {e}")
+        _observer.system(f"[leak auto-report] 실패 (무시): {type(e).__name__}: {e}")
 
 
 def _looks_like_owner_echo(line: str) -> bool:
@@ -390,16 +383,11 @@ def _looks_like_claude_error(text: str) -> bool:
 
 
 def _report_claude_error(agent_name: str, text: str, source: str):
-    """에러 텍스트 필터링 시 system.log + Discord mgr-system-log 양쪽에 남김."""
+    """LLM 에러 텍스트 필터링 시 observer 로 system 로그 남김.
+    (플랫폼별 추가 송출 — Discord mgr-system-log 등 — 은 앱의 KernelObserver 구현 책임.)"""
     snippet = text.strip().replace("\n", " ")[:200]
-    msg = f"⚠ Claude CLI 에러 필터 [{agent_name}/{source}]: {snippet}"
+    msg = f"⚠ LLM 에러 필터 [{agent_name}/{source}]: {snippet}"
     _observer.system(msg)
-    # Discord mgr-system-log 채널에도 송출 (bot 모듈 임포트는 lazy — 순환 방지)
-    try:
-        from src.bot.core import queue_system_log
-        queue_system_log(msg, force=True)
-    except Exception:
-        pass
 
 
 class AgentRuntime:
@@ -428,16 +416,10 @@ class AgentRuntime:
         if not profile:
             return False
 
-        # Resolve current model for this agent and set it active BEFORE prompt build so
-        # model-aware snippets (tool_call_syntax_hint etc.) inject the right provider's
-        # grammar. ContextVar scoped — released in finally.
-        from src.core.prompts.model import set_active_model, reset_active_model
+        # 모델 인지 prompt dialect (tool_call_syntax_hint 등) 를 위해 model 을 provider 에 넘김.
+        # active-model 스코핑은 ProfileProvider 구현(앱) 책임 — 커널은 prompts 레이어를 모름.
         model_id = _resolve_agent_model(agent_id, profile.get("type", "persona"))
-        tok = set_active_model(model_id)
-        try:
-            system_prompt = _profiles.system_prompt(agent_id)
-        finally:
-            reset_active_model(tok)
+        system_prompt = _profiles.system_prompt(agent_id, model=model_id)
 
         self._active_agents[agent_id] = {
             "profile": profile,
@@ -497,18 +479,14 @@ class AgentRuntime:
                 reminder_parts.append(digest)
             _checkpoint("activity_digest")
 
-            # 오너 프로필 이상치 검사 — placeholder/비현실 값 있으면 자연스레 정정 요청 단서.
-            try:
-                from src.core.profile_anomalies import (
-                    check_user_profile_anomalies, format_anomaly_hint,
-                )
-                up = _owner.profile() or {}
-                anomalies = check_user_profile_anomalies(up)
-                hint = format_anomaly_hint(anomalies)
-                if hint:
-                    reminder_parts.append(hint)
-            except Exception as e:
-                print(f"[runtime] 프로필 이상치 검사 실패 (무시): {e}")
+            # 오너 프로필 이상치 힌트 — 앱이 등록한 훅 사용 (미등록=skip). 커널은 검사 로직 모름.
+            if _profile_reminder_fn is not None:
+                try:
+                    hint = _profile_reminder_fn(_owner.profile() or {})
+                    if hint:
+                        reminder_parts.append(hint)
+                except Exception as e:
+                    print(f"[runtime] 프로필 이상치 훅 실패 (무시): {e}")
             _checkpoint("profile_anomalies")
 
         # ── 기억 섹션 (5 레이어 통합) ──
@@ -606,7 +584,7 @@ class AgentRuntime:
         mem_scale = 1.0
         if _provider_for(atype, model) == "ollama":
             try:
-                from src.core import context_budget as _cb
+                from . import context_budget as _cb
                 _num_ctx = _cb.resolve_num_ctx()
                 _fixed_extra = (tool_history or "") + (tool_results or "")
                 _plan = _cb.plan(_num_ctx, atype, system_prompt, user_message, _fixed_extra)
