@@ -379,7 +379,7 @@
       <h3>현재 상태 (May 2026)</h3>
       <ul>
         <li><span class="badge tag">전환 중</span> <strong>피벗 진행 중</strong>: 사업화 → OSS career capital 방향. <code>analysis/pivot_subagent_review.md</code> 참조 (gitignored, 메인테이너만 접근)</li>
-        <li><span class="badge tag">리팩터 중</span> <strong>커널 추출 중</strong>: 도메인 무관 코어 (<code>src/core/*</code>, <code>src/llm/*</code>) 를 <code>src/glimi/</code> 로 분리해 <code>pip install glimi</code> 라이브러리 화 작업. 2-3주 예상</li>
+        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어 (<code>src/core/*</code>, <code>src/llm/*</code>) 를 최상위 <code>glimi/</code> 패키지로 추출 — Discord/DB 의존 0, standalone wheel 로 빌드. <code>pip install glimi</code> 는 PyPI 공개(0.1.0) 대기 중, 그 전엔 소스에서 설치</li>
         <li><span class="badge do">활성</span> <strong>Community 풀-스택 작동</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 가동 가능 (<code>./run.sh</code>)</li>
       </ul>
     </div>
@@ -527,24 +527,27 @@ Retrieval scoring:
 
   <!-- ============================================ -->
   <section id="repo">
-    <h2><span class="num">5</span>레포 구조 — 현재 / 목표</h2>
-    <p class="lead">커널 추출 작업 진행 중이라 *현재* 와 *목표* 구조가 다름. PR 작성 시 둘 다 알아두면 안전.</p>
+    <h2><span class="num">5</span>레포 구조</h2>
+    <p class="lead">커널 추출 완료 — 최상위 <code>glimi/</code> = Glimi Core 커널, <code>src/</code> = Glimi Community 앱 코드.</p>
 
-    <h3>현재 구조 (May 2026)</h3>
+    <h3>현재 구조 (June 2026)</h3>
     <pre><code>Glimi/
-├── src/
-│   ├── core/                   <span style="color:var(--muted)"># 도메인 무관 (이전 예정 → src/glimi/)</span>
+├── glimi/                      <span style="color:var(--accent-green)"># ⭐ Glimi Core 커널 (pip install glimi · Discord/DB 의존 0)</span>
+│   ├── runtime/                <span style="color:var(--muted)"># per-agent model swap</span>
+│   ├── tools/                  <span style="color:var(--muted)"># &lt;tools&gt; protocol</span>
+│   ├── memory/                 <span style="color:var(--muted)"># 5-layer + facts + relationship</span>
+│   ├── llm/                    <span style="color:var(--muted)"># Claude / Ollama / vLLM / llama.cpp 백엔드</span>
+│   ├── conversation/           <span style="color:var(--muted)"># A2A loop</span>
+│   ├── context_budget.py       <span style="color:var(--muted)"># Elastic Memory (컨텍스트 예산)</span>
+│   └── store.py                <span style="color:var(--muted)"># KernelStore ABC (storage 중립)</span>
+├── src/                        <span style="color:var(--accent-orange)"># Glimi Community — 커널 위에 올린 앱</span>
+│   ├── core/                   <span style="color:var(--muted)"># 앱측 runtime/memory wiring (커널 re-export + DI)</span>
 │   │   ├── prompts/            <span style="color:var(--muted)"># en/ + ko/ overlay, locale.py, model.py</span>
-│   │   ├── tools/              <span style="color:var(--muted)"># &lt;tools&gt; protocol</span>
-│   │   ├── memory.py           <span style="color:var(--muted)"># 5-layer + facts + relationship</span>
-│   │   ├── runtime.py          <span style="color:var(--muted)"># AgentRuntime + AVAILABLE_MODELS</span>
-│   │   ├── conversation.py     <span style="color:var(--muted)"># A2A loop</span>
-│   │   ├── profile.py          <span style="color:var(--muted)"># agent profiles</span>
-│   │   ├── dev_agent.py        <span style="color:var(--muted)"># Sena (dev manager)</span>
-│   │   ├── dev_dispatch.py     <span style="color:var(--muted)"># Opus subprocess 분기</span>
+│   │   ├── runtime.py          <span style="color:var(--muted)"># 커널에 KernelStore 등 주입 + API re-export</span>
+│   │   ├── sync.py             <span style="color:var(--muted)"># Discord ↔ DB 동기화 (어댑터 책임)</span>
 │   │   └── ...
-│   ├── llm/                    <span style="color:var(--muted)"># claude_cli, anthropic_sdk (이전 예정 → src/glimi/llm/)</span>
-│   ├── bot/                    <span style="color:var(--muted)"># Discord 어댑터 (이전 예정 → apps/community/src/bot/)</span>
+│   ├── adapters/               <span style="color:var(--muted)"># SqliteKernelStore + profile/observer 어댑터</span>
+│   ├── bot/                    <span style="color:var(--muted)"># Discord 어댑터</span>
 │   ├── platform/               <span style="color:var(--muted)"># FastAPI + 대시보드</span>
 │   ├── scenes/                 <span style="color:var(--muted)"># tutorial 등 (Community 도메인)</span>
 │   ├── supervisors/            <span style="color:var(--muted)"># cross-scene 감시자</span>
@@ -557,22 +560,12 @@ Retrieval scoring:
 ├── communities/                <span style="color:var(--muted)"># per-community SQLite (.gitignored)</span>
 ├── analysis/                   <span style="color:var(--muted)"># 전략 문서 (.gitignored)</span>
 ├── run.sh · scripts/
+├── pyproject.toml              <span style="color:var(--muted)"># glimi (core, deps 0) / glimi[community] (앱)</span>
 ├── README.md · README.ko.md
 ├── LICENSE                     <span style="color:var(--muted)"># Apache-2.0</span>
 └── CLAUDE.md</code></pre>
 
-    <h3>목표 구조 (커널 추출 후)</h3>
-    <pre><code>Glimi/
-├── src/glimi/                  <span style="color:var(--accent-green)"># Glimi Core (pip install glimi)</span>
-│   ├── runtime/  tools/  memory/  llm/  conversation/  supervisor/  observability/
-├── apps/
-│   └── community/                <span style="color:var(--accent-orange)"># Glimi Community (flagship)</span>
-├── examples/                   <span style="color:var(--muted)"># research_buddies, dev_pair</span>
-├── docs/ · tests/
-├── pyproject.toml              <span style="color:var(--muted)"># Glimi Core 패키지</span>
-└── README.md · LICENSE · CLAUDE.md</code></pre>
-
-    <p>마이그레이션 상세는 <code>analysis/kernel_extraction_plan.md</code> (gitignored, 메인테이너에게 요청).</p>
+    <p>커널은 <code>KernelStore</code> ABC + <code>AgentProfile</code> / <code>OwnerContext</code> / <code>KernelObserver</code> protocol 뒤에서 storage·platform 중립이고, 앱은 <code>src/adapters/</code> 에서 구체 구현을 주입한다. 남은 작업은 PyPI 0.1.0 공개.</p>
   </section>
 
   <!-- ============================================ -->
@@ -752,8 +745,8 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE Apache-2.0</code>
       </div>
       <div class="entry hard">
         <div class="label">고급 · hard</div>
-        <h4>커널 추출 (Phase 1-2)</h4>
-        <p><code>src/core/*</code> + <code>src/llm/*</code> → <code>src/glimi/*</code> 리팩터. <code>KernelStore</code> ABC 정의, DI 적용. 메인테이너와 사전 동기화 필수.</p>
+        <h4>커널 unit 테스트</h4>
+        <p>커널 추출은 완료 (최상위 <code>glimi/</code>, Discord/DB 의존 0). 다음은 standalone 커널 단위 커버리지 + PyPI 0.1.0 공개 준비. 메인테이너와 사전 동기화 권장.</p>
       </div>
       <div class="entry hard">
         <div class="label">고급 · hard</div>
@@ -769,7 +762,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE Apache-2.0</code>
 
     <div class="card accent-yellow">
       <h4>PR 전에 메인테이너와 sync 권장</h4>
-      <p>특히 hard 난이도 항목은 GitHub Issue 로 먼저 의도 공유. 진행 중인 리팩터와 충돌하는지 확인하는 게 효율적.</p>
+      <p>특히 hard 난이도 항목은 GitHub Issue 로 먼저 의도 공유. 진행 중인 다른 작업과 충돌하는지 확인하는 게 효율적.</p>
     </div>
   </section>
 
@@ -825,7 +818,7 @@ pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
     <h3>메인테이너 전용 (gitignored)</h3>
     <ul>
       <li><code>analysis/pivot_subagent_review.md</code> — 피벗 결정 분석</li>
-      <li><code>analysis/kernel_extraction_plan.md</code> — Core 분리 실행 플랜</li>
+      <li><code>analysis/kernel_extraction_plan.md</code> — Glimi Core 분리 실행 플랜 (완료, 히스토리)</li>
       <li><code>analysis/pivot_summary.html</code> — 피벗 결정 시각화 (이 문서와 동일 스타일)</li>
       <li><code>analysis/zeta_vs_glimi_analysis.md</code> — 경쟁 분석</li>
       <li><code>analysis/business_strategy.md</code> — 사업 전략 (피벗으로 우선순위 down)</li>
