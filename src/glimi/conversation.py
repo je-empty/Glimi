@@ -18,7 +18,7 @@ from src.glimi.store import KernelStore
 from src.glimi.profiles import OwnerContext
 
 # transitional: runtime 은 Phase 2 다음 단계에서 src/glimi/ 로 이동 → 그때 `from .runtime import runtime`
-from src.core.runtime import runtime
+from .runtime import runtime
 
 # ── 설정 ─────────────────────────────────────────────
 
