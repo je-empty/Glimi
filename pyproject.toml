@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "glimi"
 version = "0.1.0"
 description = "Glimi Core — a domain-neutral, platform-neutral multi-agent kernel (agent runtime, layered memory, <tools> protocol, conversation engine)."
-readme = "README.md"
+readme = "PYPI_README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Jaebin Sim" }]

@@ -19,11 +19,11 @@ Glimi is two things in one monorepo:
 
 ![Web Dashboard Overview](docs/screenshots/en/01-dashboard.png)
 
-> ✅ **Status (Jun 2026)** — Glimi Core kernel is **extracted** to `src/glimi/` (runtime · memory · LLM backends · `<tools>` protocol · conversation · context budget), storage/platform-neutral behind a `KernelStore` ABC + `AgentProfile`/`OwnerContext`/`KernelObserver` protocols — the kernel imports with **zero Discord/DB dependency**. The Community app plugs in via adapters (`src/adapters/`). **Not yet on PyPI** — `pip install glimi` packaging (0.1.0) is in progress; until then, run from source (Quick Start below).
+> ✅ **Status (Jun 2026)** — Glimi Core kernel is **extracted** to a top-level `glimi/` package (runtime · memory · LLM backends · `<tools>` protocol · conversation · context budget), storage/platform-neutral behind a `KernelStore` ABC + `AgentProfile`/`OwnerContext`/`KernelObserver` protocols — the kernel imports with **zero Discord/DB dependency** and builds as a standalone, dependency-free wheel (`pip install -e .`). The Community app plugs in via adapters (`src/adapters/`). **Not yet on PyPI** — 0.1.0 publish is pending; until then, install from source (Quick Start below).
 
 ```
 Glimi/                          (single git repo, multi-package monorepo)
-├── src/glimi/                  ← Glimi Core           (pip install glimi)
+├── glimi/                      ← Glimi Core           (pip install glimi)
 │   ├── runtime/                · per-agent model swap
 │   ├── tools/                  · <tools><call/></tools> protocol
 │   ├── memory/                 · 5-layer persistent memory
@@ -167,7 +167,7 @@ Hardening:
 Local models have small context windows (Ollama defaults to 4096). A full Glimi turn — character
 system prompt + 5-layer memory injection + recent conversation — runs several thousand tokens, so
 on a small window the model silently truncates the front, and **character + memory evaporate**.
-Elastic Memory (a context-budgeting layer, `src/glimi/context_budget.py`) solves this:
+Elastic Memory (a context-budgeting layer, `glimi/context_budget.py`) solves this:
 
 - **Memory richness scales with the window** — `num_ctx` 8192 = baseline, 4096 shrinks the
   injection, 16384 injects ~2× more memory. Bigger machine → better recall, automatically.
@@ -182,26 +182,25 @@ Elastic Memory (a context-budgeting layer, `src/glimi/context_budget.py`) solves
 
 ### Quick Start (library)
 
+Glimi Core is **alpha** — a single-line convenience API is still being finalized.
+The kernel itself is real and dependency-free; these imports work today (whether
+installed via `pip install glimi` or run from a source checkout):
+
 ```python
-# (kernel is extracted to src/glimi/. `from glimi import ...` works after the
-#  pyproject packaging; running from source today it's `from src.glimi import ...`)
-from glimi import Runtime, ToolRegistry, MemoryStore
-
-runtime = Runtime(
-    store=MemoryStore("./glimi.db"),
-    tools=ToolRegistry.builtin(),
-)
-runtime.register_agent("alice", profile=...)
-runtime.register_agent("bob",   profile=...)
-
-async for event in runtime.start_conversation(
-    channel="alice-bob",
-    participants=["alice", "bob"],
-    seed="catch up on what they've been up to",
-    max_turns=8,
-):
-    print(event)
+from glimi.runtime import runtime, AgentRuntime
+from glimi.conversation import start_conversation
+from glimi.store import KernelStore            # storage contract — implement for your DB
+from glimi.profiles import ProfileProvider, OwnerContext
+from glimi.observability import KernelObserver
 ```
+
+To run agents you supply concrete `KernelStore` / `ProfileProvider` /
+`KernelObserver` implementations, inject them into the kernel
+(`runtime.set_store(...)`, …), then drive the conversation engine. A complete,
+working wiring (SQLite + Discord) lives in the repo:
+
+- `src/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
+- `src/core/runtime.py` — injects them into the kernel and re-exports the API
 
 ### Web dashboard (Glimi Core's observability)
 
@@ -425,12 +424,12 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 
 ## Roadmap
 
-**Done — Kernel extraction**
-- ✅ `src/core/{runtime, tools, memory, llm, conversation}` → `src/glimi/` — storage/platform-neutral, imports standalone (no Discord/DB)
+**Done — Kernel extraction + packaging**
+- ✅ `src/core/{runtime, tools, memory, llm, conversation}` → top-level `glimi/` — storage/platform-neutral, imports standalone (no Discord/DB)
 - ✅ `KernelStore` ABC + `AgentProfile` / `OwnerContext` / `KernelObserver` protocols; Community wires concrete adapters in `src/adapters/`
+- ✅ `pyproject` split: `pip install glimi` (core, zero runtime deps) / `glimi[community]` (app) — kernel builds as a standalone wheel
 
-**Now — Packaging**
-- `pyproject` split: `pip install glimi` (core) / `glimi[community]` (app)
+**Now — First PyPI release**
 - First `pip install glimi` alpha (0.1.0) on PyPI
 
 **Next — Examples + docs**
