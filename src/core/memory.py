@@ -1132,17 +1132,7 @@ def _try_l1_extract(agent_id: str, channel: str):
             elif dtype == "dynamics":
                 new_dyn = str(r.get("to") or "").strip()
                 if new_dyn and len(new_dyn) < 200:
-                    try:
-                        db.set_relationship_dynamics(key_a, key_b, new_dyn)
-                    except AttributeError:
-                        # set_relationship_dynamics 없으면 직접 UPDATE
-                        conn2 = db.get_conn()
-                        conn2.execute(
-                            "UPDATE relationships SET dynamics=?, updated_at=? WHERE agent_a=? AND agent_b=?",
-                            (new_dyn, db.now_utc_iso(), key_a, key_b),
-                        )
-                        conn2.commit()
-                        conn2.close()
+                    _store.set_relationship_dynamics(key_a, key_b, new_dyn)
         except Exception as e:
             print(f"[Memory] relationship state 업데이트 실패: {e}")
 
@@ -1152,10 +1142,9 @@ def _try_l1_extract(agent_id: str, channel: str):
         emo = extracted.get("emotion")
         emo_int = extracted.get("emotion_intensity")
         if emo and isinstance(emo, str) and len(emo) < 30:
-            conn3 = db.get_conn()
-            cur = conn3.execute("SELECT current_emotion, emotion_intensity FROM agents WHERE id=?", (agent_id,)).fetchone()
+            cur = _store.get_agent_emotion(agent_id)
             if cur:
-                new_int = cur["emotion_intensity"] or 5
+                new_int = cur[1] or 5
                 try:
                     if emo_int is not None:
                         target = max(1, min(10, int(emo_int)))
@@ -1163,12 +1152,7 @@ def _try_l1_extract(agent_id: str, channel: str):
                         new_int = max(1, min(10, new_int + max(-2, min(2, target - new_int))))
                 except Exception:
                     pass
-                conn3.execute(
-                    "UPDATE agents SET current_emotion=?, emotion_intensity=? WHERE id=?",
-                    (emo, new_int, agent_id),
-                )
-                conn3.commit()
-            conn3.close()
+                _store.set_agent_emotion(agent_id, emo, new_int)
     except Exception as e:
         print(f"[Memory] emotion 업데이트 실패: {e}")
 
@@ -1203,28 +1187,12 @@ def _rollup_summarize(batch_text: str, level: int) -> str:
 
 def _try_l2_rollup(agent_id: str, channel: str):
     """L1 5개 → L2 1개."""
-    conn = db.get_conn()
-    latest_l2 = conn.execute(
-        "SELECT MAX(msg_id_to) as last_id FROM memories "
-        "WHERE agent_id=? AND channel=? AND level=2",
-        (agent_id, channel)
-    ).fetchone()
-    last_l2_msg = latest_l2["last_id"] if latest_l2 and latest_l2["last_id"] else 0
-
-    rows = conn.execute(
-        """SELECT * FROM memories
-           WHERE agent_id=? AND channel=? AND level=1 AND msg_id_to > ?
-           ORDER BY msg_id_to ASC""",
-        (agent_id, channel, last_l2_msg)
-    ).fetchall()
-    conn.close()
+    # 미커버 L1 메모리 (이미 hydrated — related_entities/knows JSON 파싱됨).
+    rows = _store.get_uncovered_memories(agent_id, channel, source_level=1)
 
     if len(rows) < L2_BATCH_SIZE:
         return
-    # raw SQL 로 읽으면 related_entities/knows 가 JSON 문자열인 채 옴 — `for e in str` 이
-    # 글자 단위 iterate 되어 entity 가 ["[", "]", "한", "지", ...] 로 깨지는 버그 방지.
-    # db._hydrate_memory 로 JSON 파싱해서 list 로 정규화.
-    batch = [db._hydrate_memory(r) for r in rows[:L2_BATCH_SIZE]]
+    batch = rows[:L2_BATCH_SIZE]
     batch_text = "\n".join(f"- {m['content']}" for m in batch)
 
     summary = _rollup_summarize(batch_text, level=2)
@@ -1268,25 +1236,12 @@ def _try_l2_rollup(agent_id: str, channel: str):
 
 def _try_l3_rollup(agent_id: str, channel: str):
     """L2 5개 → L3 1개 (월 단위)."""
-    conn = db.get_conn()
-    latest_l3 = conn.execute(
-        "SELECT MAX(id) as last_id FROM memories "
-        "WHERE agent_id=? AND channel=? AND level=3",
-        (agent_id, channel)
-    ).fetchone()
-    last_l3_mem_id = latest_l3["last_id"] if latest_l3 and latest_l3["last_id"] else 0
-
-    rows = conn.execute(
-        """SELECT * FROM memories
-           WHERE agent_id=? AND channel=? AND level=2 AND id > ?
-           ORDER BY id ASC""",
-        (agent_id, channel, last_l3_mem_id)
-    ).fetchall()
-    conn.close()
+    # 미커버 L2 메모리 (이미 hydrated — entity 글자깨짐 방지).
+    rows = _store.get_uncovered_memories(agent_id, channel, source_level=2)
 
     if len(rows) < L3_BATCH_SIZE:
         return
-    batch = [db._hydrate_memory(r) for r in rows[:L3_BATCH_SIZE]]  # JSON 파싱 (entity 글자깨짐 방지)
+    batch = rows[:L3_BATCH_SIZE]
     batch_text = "\n\n".join(f"[L2 {i+1}]\n{m['content']}" for i, m in enumerate(batch))
 
     summary = _rollup_summarize(batch_text, level=3)
@@ -1620,29 +1575,13 @@ def _format_retrieved_memories(agent_id: str, exclude_channel: str,
         or exclude_channel.startswith("mgr-")
     )
 
-    conn = db.get_conn()
-    rows = conn.execute(
-        """SELECT * FROM memories
-           WHERE agent_id=? AND channel != ? AND level IN (1,2,3)
-           ORDER BY created_at DESC LIMIT 200""",
-        (agent_id, exclude_channel)
-    ).fetchall()
-    conn.close()
+    rows = _store.get_memories_across_channels(
+        agent_id, exclude_channel, levels=[1, 2, 3], limit=200
+    )
 
-    # Hydrate (parse JSON cols)
+    # entity 매칭 필터 (적어도 1개 겹쳐야 후보). rows 는 이미 hydrated.
     candidates: list[dict] = []
-    for r in rows:
-        m = dict(r)
-        for col in ("related_entities", "knows"):
-            v = m.get(col)
-            if isinstance(v, str) and v:
-                try:
-                    m[col] = _json.loads(v)
-                except Exception:
-                    m[col] = []
-            elif not v:
-                m[col] = []
-        # entity 매칭 필터 (적어도 1개 겹쳐야 후보)
+    for m in rows:
         ents = set(m.get("related_entities") or [])
         if ents & query_entities:
             candidates.append(m)
@@ -1712,15 +1651,9 @@ def _format_self_recent_cross_channel(
     """
     # SQLite datetime('now', '-N minutes') 사용 — naive UTC 기준 비교 (DB 의 기본
     # CURRENT_TIMESTAMP 포맷과 매치). get_messages_in_range 와 동일 패턴.
-    conn = db.get_conn()
-    rows = conn.execute(
-        "SELECT channel, message, timestamp FROM conversations "
-        "WHERE speaker=? AND channel != ? "
-        "  AND timestamp >= datetime('now', ?) "
-        "ORDER BY timestamp DESC LIMIT ?",
-        (agent_id, current_channel, f"-{int(within_minutes)} minutes", limit)
-    ).fetchall()
-    conn.close()
+    rows = _store.get_recent_messages_across_channels(
+        agent_id, current_channel, within_minutes, limit
+    )
 
     if not rows:
         return ""
@@ -1828,35 +1761,13 @@ def recall_memory(agent_id: str, query: str = "", entity: str = "",
 
     Returns: [{id, level, channel, content, mem_type, importance, created_at}, ...]
     """
-    conn = db.get_conn()
-    sql = "SELECT * FROM memories WHERE agent_id=?"
-    args: list = [agent_id]
-    if entity:
-        sql += " AND related_entities LIKE ?"
-        args.append(f'%"{entity}"%')
-    if query:
-        sql += " AND (content LIKE ? OR mem_type LIKE ?)"
-        args.append(f"%{query}%")
-        args.append(f"%{query}%")
-    if time_range_days:
-        sql += f" AND created_at >= datetime('now', ?)"
-        args.append(f"-{int(time_range_days)} days")
-    sql += " ORDER BY importance DESC, created_at DESC LIMIT ?"
-    args.append(max(1, min(50, int(limit))))
-
-    rows = conn.execute(sql, args).fetchall()
-    conn.close()
+    rows = _store.search_memories(
+        agent_id, entity=(entity or None), query=(query or None),
+        time_range_days=time_range_days, limit=limit,
+    )
 
     results = []
-    for r in rows:
-        m = dict(r)
-        for col in ("related_entities", "knows"):
-            v = m.get(col)
-            if isinstance(v, str) and v:
-                try:
-                    m[col] = _json.loads(v)
-                except Exception:
-                    m[col] = []
+    for m in rows:
         results.append({
             "id": m["id"], "level": m["level"], "channel": m["channel"],
             "content": m["content"], "mem_type": m.get("mem_type"),
@@ -1873,10 +1784,7 @@ def recall_memory(agent_id: str, query: str = "", entity: str = "",
 
 def pin_memory(memory_id: int, pinned: bool = True, reason: str = "") -> dict:
     """메모리 고정/해제. reason은 로그에 남김."""
-    conn = db.get_conn()
-    row = conn.execute("SELECT id, agent_id, content, is_pinned FROM memories WHERE id=?",
-                       (memory_id,)).fetchone()
-    conn.close()
+    row = _store.get_memory(memory_id)
     if not row:
         return {"ok": False, "error": "memory not found"}
     _store.set_pin(memory_id, pinned)
@@ -1897,42 +1805,17 @@ def pin_memory(memory_id: int, pinned: bool = True, reason: str = "") -> dict:
 # ────────────────────────────────────────────────────
 
 def get_memory_stats(agent_id: str, channel: str) -> dict:
-    conn = db.get_conn()
-    total = conn.execute("SELECT COUNT(*) as c FROM conversations WHERE channel=?",
-                         (channel,)).fetchone()["c"]
-
-    def _cnt(level):
-        return conn.execute(
-            "SELECT COUNT(*) as c FROM memories WHERE agent_id=? AND channel=? AND level=?",
-            (agent_id, channel, level)
-        ).fetchone()["c"]
-
-    l1 = _cnt(1)
-    l2 = _cnt(2)
-    l3 = _cnt(3)
-    pinned = conn.execute(
-        "SELECT COUNT(*) as c FROM memories WHERE agent_id=? AND is_pinned=1",
-        (agent_id,)
-    ).fetchone()["c"]
-    facts = conn.execute(
-        "SELECT COUNT(*) as c FROM agent_facts WHERE agent_id=? AND valid_to IS NULL",
-        (agent_id,)
-    ).fetchone()["c"]
-    covered = conn.execute(
-        "SELECT COALESCE(SUM(msg_count),0) as t FROM memories "
-        "WHERE agent_id=? AND channel=? AND level=1",
-        (agent_id, channel)
-    ).fetchone()["t"]
-    conn.close()
-
+    s = _store.get_memory_stats(agent_id, channel)
+    total = s["total_messages"]
+    covered = s["messages_summarized"]
     return {
         "total_messages": total,
         "raw_window": RAW_WINDOW,
-        "l1_summaries": l1,
-        "l2_summaries": l2,
-        "l3_summaries": l3,
-        "pinned_memories": pinned,
-        "facts_active": facts,
+        "l1_summaries": s["l1"],
+        "l2_summaries": s["l2"],
+        "l3_summaries": s["l3"],
+        "pinned_memories": s["pinned"],
+        "facts_active": s["facts_active"],
         "messages_summarized": covered,
         "memory_coverage": f"{covered + RAW_WINDOW}/{total}",
     }
