@@ -130,3 +130,62 @@ class KernelStore(ABC):
 
     @abstractmethod
     def list_users(self) -> list[dict]: ...
+
+    # ── memory — higher-level (replace raw SQL previously inlined in memory) ──
+    @abstractmethod
+    def set_relationship_dynamics(self, agent_a: str, agent_b: str, dynamics: str) -> None:
+        """relationships 행의 dynamics(관계 성격) 텍스트 갱신 + updated_at 터치."""
+        ...
+
+    @abstractmethod
+    def get_agent_emotion(self, agent_id: str) -> Optional[tuple[str, int]]:
+        """에이전트의 현재 감정 ``(emotion, intensity)``. 행 없으면 None.
+        intensity 가 NULL 이면 5 로 보정."""
+        ...
+
+    @abstractmethod
+    def set_agent_emotion(self, agent_id: str, emotion: str, intensity: int) -> None:
+        """에이전트의 current_emotion / emotion_intensity 갱신."""
+        ...
+
+    @abstractmethod
+    def get_uncovered_memories(self, agent_id: str, channel: str, source_level: int) -> list[dict]:
+        """롤업 대상 — source_level 메모리 중 상위 레벨(source_level+1)이 아직 커버 못한 것.
+
+        source_level=1 (L2 롤업): level=1 중 msg_id_to > MAX(level=2 의 msg_id_to),
+        msg_id_to ASC 정렬. source_level=2 (L3 롤업): level=2 중 id > MAX(level=3 의 id),
+        id ASC 정렬. 전부 hydrated dict 로 반환 (BATCH_SIZE 절단/길이 판정은 호출자 몫)."""
+        ...
+
+    @abstractmethod
+    def get_memories_across_channels(self, agent_id: str, exclude_channel: str,
+                                     levels: list[int], limit: int) -> list[dict]:
+        """현재 채널 제외, 주어진 level 들의 메모리를 created_at DESC 로 최대 limit 개.
+        cross-channel 회상 후보. hydrated dict 반환."""
+        ...
+
+    @abstractmethod
+    def get_recent_messages_across_channels(self, agent_id: str, exclude_channel: str,
+                                            within_minutes: int, limit: int) -> list[dict]:
+        """이 에이전트가 최근 within_minutes 분 내 다른 채널에서 한 raw 발화.
+        ``[{channel, message, timestamp}]`` (timestamp DESC, 최대 limit)."""
+        ...
+
+    @abstractmethod
+    def search_memories(self, agent_id: str, entity: Optional[str] = None,
+                        query: Optional[str] = None, time_range_days: Optional[int] = None,
+                        limit: int = 20) -> list[dict]:
+        """deep search — entity(related_entities LIKE) / query(content·mem_type LIKE) /
+        time_range_days(최근 N일) 조합. importance DESC, created_at DESC. hydrated dict 반환."""
+        ...
+
+    @abstractmethod
+    def get_memory(self, memory_id: int) -> Optional[dict]:
+        """memories 단건 조회 (hydrated). 없으면 None."""
+        ...
+
+    @abstractmethod
+    def get_memory_stats(self, agent_id: str, channel: str) -> dict:
+        """채널/에이전트 메모리 통계 — ``{total_messages, l1, l2, l3, pinned,
+        facts_active, messages_summarized}`` (집계 카운트 묶음)."""
+        ...
