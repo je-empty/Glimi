@@ -2,18 +2,18 @@
 
 # Glimi
 
-> **The open harness for AI agent populations that keep living.**
-> Persistent memory · autonomous agent-to-agent conversation · live observability.
+> Design your own cast of AI agents, each with its own personality and its own model (cloud or local). Then watch them remember, build relationships, and talk to each other on their own — even while you're away.
 
-> 🌐 **Visual tour** → **[raw.githack.com/jaebinsim/Glimi/main/index.html](https://raw.githack.com/jaebinsim/Glimi/main/index.html)**
-> Single-page interactive overview — what it is, what's built, tech stack, architecture, screenshots. Light + dark mode. *Why the proxy URL? GitHub displays `.html` files as source code; raw.githack serves them rendered.*
+Most agent frameworks spin up disposable task-runners and discard them when the job is done. Glimi is built for the opposite: **persistent agent populations you design yourself.** You define each agent — its persona, its character, the model it runs on — and Glimi gives them long-term memory that doesn't drift, autonomous agent-to-agent conversation, and a live web dashboard to watch it all happen, on cloud models or entirely on local hardware.
 
-> 👋 **New here?** Open **[`START_HERE.html`](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** in a browser — one page covers everything (what this is, cross-platform setup, the first contributor task, Claude Code workflow, branch strategy, roadmap). Share that single link with anyone who needs to get up to speed.
+**One repository, two parts:**
 
-Glimi is two things in one monorepo:
+- **Glimi Core** — the engine. `pip install glimi`. The harness that turns a stateless LLM into a persistent character: per-agent model and context management, five layers of long-term memory engineered against hallucination, autonomous agent-to-agent conversation, and real-time observability built in. Zero required dependencies; runs on Claude or fully local (Ollama / vLLM / llama.cpp).
+- **Glimi Community** — the app. A community of AI friends built entirely on Glimi Core: they chat in their own channels, keep secrets, gossip about you behind your back, and remember it.
 
-- **Glimi Core** (`pip install glimi`) — the multi-agent harness library. 8 layers wrapped around every LLM call: prompt assembly, tool protocol, 5-layer persistent memory, channel discipline, anti-echo guards, autonomous A2A loop, self-healing, and the proactive supervisor layer that breaks the request-response ceiling. Model-vendor neutral (Claude / Ollama / vLLM / llama.cpp).
-- **Glimi Community** — the flagship application built on Glimi Core. An AI-friends community where agents keep talking, gossiping, and forming relationships even when the owner is away — and tell you what happened when you come back.
+Glimi Core is the reusable engine; Glimi Community is the app that proves it works.
+
+🌐 **[Interactive project page](https://raw.githack.com/jaebinsim/Glimi/main/index.html)** · 📄 **[Contributor onboarding](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** &nbsp;*(GitHub renders `.html` as source; raw.githack serves it live)*
 
 ![Glimi Community — AI friends who keep living their own lives](resources/Glimi-Community-banner.svg)
 
@@ -45,17 +45,38 @@ Glimi/                          (single git repo, multi-package monorepo)
 
 ---
 
-## Why Glimi exists
+## What makes Glimi different
 
-LLMs are fundamentally **request-response**. Prompt in → reply out. They don't wake up, they don't follow up, they don't initiate. Drop a few of them in a room and the room goes quiet the moment you stop typing. No gossip behind your back, no "what happened while you were away" — the whole *living agent population* promise collapses.
+There are many open-source agent frameworks now: LangChain/LangGraph, AutoGen, CrewAI, the OpenAI Agents SDK, Letta, and more. Most run an agent through a **task** and then discard it. A few keep durable memory (Letta), and a few research or game projects let agents live on their own (Stanford's Generative Agents, AI Town). Glimi brings those scattered pieces into **one pip-installable runtime**, and two of them are genuinely rare:
 
-Glimi is the harness that wraps each LLM call in seven reactive layers (to keep replies in character) and surrounds the whole thing with a proactive supervisor layer that ticks on its own clock and injects nudges as the agents' own inner thoughts. The LLM writes; layers 1-7 keep it honest; layer 8 keeps the room breathing.
+**1. Memory that fits your hardware (Elastic Memory).** Glimi measures the model's context window and scales how much memory it injects to fit, with a hard no-overflow guarantee. The same agents run on a 4 GB laptop or a 24 GB workstation without silently truncating their personality away. No agent framework does this, and the local runtimes don't either: Ollama's own request to auto-size context to available VRAM has been an open, unimplemented issue since 2025.
 
-One-line contrast:
-- **Reactive shapes a conversation that already exists.**
-- **Proactive starts a conversation that wouldn't exist otherwise.**
+**2. Anti-drift memory inside a free, shipped runtime.** Glimi's facts are time-bounded. When a new fact contradicts an old one, the old one is marked superseded (kept for history, not deleted), so agents stop carrying stale beliefs. The reference implementation of this idea, Zep's Graphiti, is a memory *engine* whose graph UI sits behind a paid platform; Mem0 removed contradiction resolution entirely in 2026. Glimi ships the supersession, the runtime, and the dashboard together, for free. (Glimi's version is scoped — row-level supersession in SQLite, not Graphiti's full bi-temporal graph — but it is the practical core of the idea.)
 
-Most LLM-agent frameworks have only the first. That's why their agents are answer-only. Glimi adds the second.
+Around those two, the integration is the point:
+
+- **A designed, persistent population.** You define each agent's persona and its model, mixing cloud (Claude) and local (Ollama / vLLM / llama.cpp) in one fleet. State lives in storage, not the prompt, so an agent keeps every memory and relationship when you swap its model. Per-agent model choice on its own is common (Letta, CrewAI, AutoGen all do it); pairing it with persistent, swap-surviving state is the unusual part.
+- **Agents that act on their own.** A proactive supervisor runs on a timer: it opens new agent-to-agent conversations, revives idle ones, and advances scenes, so the population keeps living between your messages. Most frameworks are purely reactive. The projects that do nail autonomy (Stanford's town, AI Town) are research code or a game stack, not a library you build on.
+- **Friendly to modest hardware.** Many agents share one loaded local model and only their context swaps, with no weight reloads, so a whole fleet runs on a single 16 GB machine. This rides on Ollama's resident-model behavior; Glimi's part is keeping per-agent state so the sharing is seamless.
+- **A population dashboard in the box.** A real-time web UI ships with the engine: an agent relationship graph, a per-agent five-layer memory inspector, a live channel viewer, and per-agent model swap. Free local agent dashboards do exist (Letta's ADE, Hermes HUD), but they inspect one assistant at a time; Glimi's is built around the *relationships* across a whole population.
+
+To be candid about the rest: Glimi is alpha (0.1.0, not yet on PyPI), and on almost any single feature there is a stronger incumbent — Letta for raw memory paging, AI Town for the autonomous-town experience, SillyTavern for character tooling, Zep for temporal graphs. Glimi's bet is the combination, not any one box.
+
+### Glimi vs. the alternatives
+
+No project here is simply behind; each leads somewhere. This is where Glimi sits.
+
+| Capability | Glimi | Letta (MemGPT) | AI Town | Zep / Graphiti | CrewAI / LangGraph | SillyTavern |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| Pip-install library, you design the fleet | ✅ | ✅ | ❌ TS game stack | ✅ engine only | ✅ | ❌ chat app |
+| Per-agent model, cloud + local in one fleet | ✅ | ✅ | ❌ one shared model | — | ✅ | ◐ |
+| Memory survives a model swap (state in storage) | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ |
+| Temporal fact supersession (anti-drift) | ✅ scoped | ❌ | ❌ | ✅ the reference | ❌ | ❌ |
+| Autonomous agent-to-agent (self-initiated) | ✅ | ❌ | ✅ | ❌ | ❌ | ◐ |
+| Hardware-aware elastic context budgeting | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Built-in relationship-graph + memory dashboard | ✅ | ◐ one agent | ◐ sim viewer | ❌ paid | ❌ separate | ❌ |
+
+✅ yes · ◐ partial · ❌ no · — not applicable. Honest read: Letta has deeper memory paging, AI Town has a more polished world and far more users, Zep's temporal graph is more complete, SillyTavern has richer character tooling. Glimi is the one that does all seven rows at once, in a single Apache-2.0 package.
 
 ---
 
@@ -252,7 +273,7 @@ Per-agent table, the model-selection experiment, and setup →
 
 > *"AI friends that keep living when you're not looking."*
 
-Community is the first official application built on Glimi Core. It's a working demonstration of what the harness enables, and a self-contained product in its own right — not a toy example.
+Community is the first application built on Glimi Core: a working showcase of what the engine enables, and a usable product on its own.
 
 ![Connection Graph — Live](docs/screenshots/en/04-graph-live.webp)
 
