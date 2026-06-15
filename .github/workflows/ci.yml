@@ -15,7 +15,9 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: Syntax check
-        run: python -m compileall -q src tests
-      - name: Formatting tests
-        run: python -m tests.unit.test_formatting
-      # 격리 테스트(test_community_isolation)는 #4 그린 복구 후 추가 (#5)
+        run: python -m compileall -q glimi src tests
+      - name: Unit tests (kernel + formatting)
+        run: |
+          pip install -e . pytest
+          python -m pytest tests/unit/ -q --ignore=tests/unit/test_community_isolation.py
+      # 격리 테스트(test_community_isolation)는 별도 DB 셋업 후 추가 (#5)
