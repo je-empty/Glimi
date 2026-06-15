@@ -43,22 +43,33 @@ want a specific backend or the full showcase app.
 
 ## Quick start
 
-A single-line convenience API is still being finalized. The kernel is real and
-dependency-free — these imports work today:
+The kernel ships a dependency-free in-memory store and an offline `echo` backend,
+so this runs with **zero dependencies and no API key** (the `echo` backend doesn't
+reach a real model — it lets you see the harness wire up and persist a chat):
 
 ```python
-from glimi.runtime import runtime, AgentRuntime
-from glimi.conversation import start_conversation
-from glimi.store import KernelStore            # storage contract — implement for your DB
-from glimi.profiles import ProfileProvider, OwnerContext
-from glimi.observability import KernelObserver
+from glimi import Glimi
+
+chat = Glimi(backend="echo")          # offline: no deps, no API key, no network
+chat.add_agent("nova", persona="A curious, upbeat companion who loves questions.")
+
+print(chat.reply("nova", "Hi! What's your name?"))
+print(chat.reply("nova", "Nice — tell me something fun."))
 ```
 
-To run agents you supply concrete `KernelStore` / `ProfileProvider` /
-`KernelObserver` implementations, inject them into the kernel
-(`runtime.set_store(...)`, …), then drive the conversation engine. A complete,
-working wiring (SQLite + Discord) lives in the repo at `src/adapters/` and the
-Glimi Community app built on top.
+Switch to a real model by changing the backend (the rest stays the same):
+
+```python
+chat = Glimi(backend="claude_cli")    # uses your Claude CLI subscription (no SDK)
+chat = Glimi(backend="ollama")        # fully local via Ollama (set GLIMI_OLLAMA_MODEL)
+```
+
+`Glimi` wires an in-memory `KernelStore`, a simple `ProfileProvider`/`OwnerContext`,
+a `NullObserver`, and the chosen backend. To plug in your own database, implement
+`KernelStore` (exported from `glimi`, alongside `InMemoryKernelStore`,
+`SimpleProfileProvider`, `EchoBackend`, `LLMBackend`, …) and inject it via
+`glimi.runtime.set_store(...)`. A complete production wiring (SQLite + Discord)
+lives in the repo at `src/adapters/` and the Glimi Community app built on top.
 
 Full documentation, architecture diagrams, the live observability dashboard, and
 a working end-to-end application live in the monorepo:
