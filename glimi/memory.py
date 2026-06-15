@@ -28,7 +28,7 @@ import queue
 import shutil
 import subprocess
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -127,16 +127,21 @@ def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
     if not ts:
         return None
     try:
-        return datetime.fromisoformat(ts)
+        dt = datetime.fromisoformat(ts)
     except Exception:
         return None
+    # 저장 포맷 혼재: 마이그레이션 이후 행은 tz-aware(+00:00), SQLite CURRENT_TIMESTAMP 행은 naive.
+    # naive 는 UTC 로 간주해 항상 tz-aware 로 정규화 → 이후 datetime.now(timezone.utc) 와 안전하게 연산.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _format_age(created_at: str) -> str:
     dt = _parse_iso(created_at)
     if not dt:
         return ""
-    secs = (datetime.utcnow() - dt).total_seconds()
+    secs = (datetime.now(timezone.utc) - dt).total_seconds()
     if secs < 60:
         return "방금"
     if secs < 3600:
@@ -150,14 +155,14 @@ def _is_stale(created_at: str, hours: float) -> bool:
     dt = _parse_iso(created_at)
     if not dt:
         return False
-    return (datetime.utcnow() - dt).total_seconds() >= hours * 3600
+    return (datetime.now(timezone.utc) - dt).total_seconds() >= hours * 3600
 
 
 def _days_since(created_at: str) -> float:
     dt = _parse_iso(created_at)
     if not dt:
         return 9999.0
-    return max(0.0, (datetime.utcnow() - dt).total_seconds() / 86400.0)
+    return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0)
 
 
 _OWNER_ROLE_TERMS = ("오너", "owner", "user", "유저", "사용자", "서버 주인")
