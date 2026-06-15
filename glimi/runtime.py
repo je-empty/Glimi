@@ -875,10 +875,12 @@ class AgentRuntime:
         overview = _store.get_channel_overview()
         active = []
         for ch in overview:
-            from datetime import datetime
+            from datetime import datetime, timezone
             try:
                 last = datetime.fromisoformat(ch["last_active"])
-                mins = (datetime.now() - last).total_seconds() / 60
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                mins = (datetime.now(timezone.utc) - last).total_seconds() / 60
             except Exception:
                 mins = 9999
 
