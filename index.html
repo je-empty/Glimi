@@ -1089,29 +1089,35 @@ Good: "(oh, I should bring up something else)" ← LLM 이 자기 생각으로 �
     <div class="section-eyebrow">08 — Code</div>
     <h2>코드베이스 구조.</h2>
     <p class="section-lead">
-      141 Python 파일, 36,659 라인. 모노레포로 시작 → 커널 추출 진행 중 (Glimi Core 분리).
+      141 Python 파일, 36,659 라인. 모노레포로 시작 → 커널 추출 완료 (Glimi Core = 최상위 <code>glimi/</code> 패키지).
     </p>
 
     <div class="tree">
-<span class="comment"># 현재 구조 (커널 추출 진행 중)</span>
+<span class="comment"># 현재 구조 (커널 추출 완료)</span>
 <span class="dir">Glimi/</span>
-├── <span class="dir">src/</span>
-│   ├── <span class="dir">core/</span>                    <span class="comment"># 도메인 무관 (→ src/glimi/ 이동 예정)</span>
-│   │   ├── <span class="dir">prompts/</span>             <span class="comment"># en/ + ko/ overlay, locale, model dialect</span>
-│   │   ├── <span class="dir">tools/</span>               <span class="comment"># &lt;tools&gt; protocol</span>
-│   │   ├── <span class="file">memory.py</span>           <span class="comment"># 5-layer (1,801 LOC)</span>
-│   │   ├── <span class="file">runtime.py</span>          <span class="comment"># AgentRuntime + AVAILABLE_MODELS (1,555 LOC)</span>
-│   │   ├── <span class="file">conversation.py</span>     <span class="comment"># A2A loop</span>
-│   │   ├── <span class="file">dev_agent.py</span>        <span class="comment"># Sena (dev manager)</span>
-│   │   └── <span class="file">dev_dispatch.py</span>     <span class="comment"># Opus subprocess + git branch/commit/PR</span>
-│   ├── <span class="dir">llm/</span>                     <span class="comment"># claude_cli, anthropic_sdk</span>
-│   ├── <span class="dir">bot/</span>                     <span class="comment"># Discord 어댑터 (→ apps/community/ 이동 예정)</span>
-│   ├── <span class="dir">platform/</span>                <span class="comment"># FastAPI + 대시보드</span>
-│   ├── <span class="dir">scenes/</span>                  <span class="comment"># tutorial 등</span>
-│   ├── <span class="dir">supervisors/</span>             <span class="comment"># orchestrator, chat, commitment, events</span>
-│   ├── <span class="dir">achievements/</span>            <span class="comment"># 7개 unlock</span>
-│   ├── <span class="dir">glimi_imagegen/</span>          <span class="comment"># LoRA portrait (opt-in)</span>
-│   └── <span class="file">db.py</span>                   <span class="comment"># SQLite layer (2,083 LOC)</span>
+├── <span class="dir">glimi/</span>                   <span class="comment"># ⭐ Glimi Core 커널 (pip install glimi · Discord/DB 의존 0)</span>
+│   ├── <span class="dir">llm/</span>                 <span class="comment"># claude_cli, anthropic_sdk, ollama</span>
+│   ├── <span class="dir">tools/</span>               <span class="comment"># &lt;tools&gt; protocol</span>
+│   ├── <span class="file">runtime.py</span>          <span class="comment"># AgentRuntime + AVAILABLE_MODELS</span>
+│   ├── <span class="file">memory.py</span>           <span class="comment"># 5-layer 메모리</span>
+│   ├── <span class="file">conversation.py</span>     <span class="comment"># A2A loop</span>
+│   ├── <span class="file">store.py</span>            <span class="comment"># KernelStore ABC (스토리지 중립)</span>
+│   ├── <span class="file">profiles.py</span>         <span class="comment"># AgentProfile / OwnerContext protocol</span>
+│   ├── <span class="file">observability.py</span>    <span class="comment"># KernelObserver protocol</span>
+│   └── <span class="file">context_budget.py</span>   <span class="comment"># Elastic Memory (context budget)</span>
+├── <span class="dir">src/</span>                    <span class="comment"># Glimi Community — 커널 위에 올린 앱</span>
+│   ├── <span class="dir">adapters/</span>            <span class="comment"># SqliteKernelStore 등 커널 어댑터 배선</span>
+│   ├── <span class="dir">core/</span>                <span class="comment"># 앱 shim(runtime/memory) + prompts + dev 에이전트</span>
+│   │   ├── <span class="dir">prompts/</span>         <span class="comment"># en/ + ko/ overlay, locale, model dialect</span>
+│   │   ├── <span class="file">dev_agent.py</span>    <span class="comment"># Sena (dev manager)</span>
+│   │   └── <span class="file">dev_dispatch.py</span> <span class="comment"># Opus subprocess + git branch/commit/PR</span>
+│   ├── <span class="dir">bot/</span>                 <span class="comment"># Discord 어댑터</span>
+│   ├── <span class="dir">platform/</span>            <span class="comment"># FastAPI + 대시보드</span>
+│   ├── <span class="dir">scenes/</span>              <span class="comment"># tutorial 등</span>
+│   ├── <span class="dir">supervisors/</span>         <span class="comment"># orchestrator, chat, commitment, events</span>
+│   ├── <span class="dir">achievements/</span>        <span class="comment"># unlock</span>
+│   ├── <span class="dir">glimi_imagegen/</span>      <span class="comment"># LoRA portrait (opt-in)</span>
+│   └── <span class="file">db.py</span>               <span class="comment"># SQLite layer</span>
 ├── <span class="dir">tests/</span>                       <span class="comment"># unit + e2e</span>
 ├── <span class="dir">scripts/</span>                     <span class="comment"># qa.sh · stop.sh · 마이그레이션</span>
 ├── <span class="dir">docs/</span>                        <span class="comment"># architecture, memory, scenes, etc.</span>
