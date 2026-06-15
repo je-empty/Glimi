@@ -1,9 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "glimi"
 version = "0.1.0"
-description = "Claude Agent 기반 소셜 시뮬레이션 시스템"
+description = "Glimi Core — a domain-neutral, platform-neutral multi-agent kernel (agent runtime, layered memory, <tools> protocol, conversation engine)."
+readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
+license = { text = "Apache-2.0" }
+authors = [{ name = "Jaebin Sim" }]
+keywords = ["agent", "multi-agent", "llm", "memory", "claude", "ollama"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# 커널은 표준 라이브러리만으로 동작한다.
+#   - Claude: Claude CLI 를 subprocess 로 호출 (SDK 불필요)
+#   - Ollama: urllib (stdlib) 로 로컬 HTTP 호출
+# Anthropic SDK 직접 호출 경로가 필요하면 `pip install glimi[sdk]`.
+dependencies = []
+
+[project.optional-dependencies]
+# Anthropic Python SDK 로 직접 호출하고 싶을 때 (CLI 대신).
+sdk = ["anthropic>=0.40"]
+
+# Glimi Hangout (쇼케이스 앱) 전체 실행에 필요한 것 — Discord 어댑터 + 웹 대시보드.
+# 설치: pip install -e ".[hangout]"
+hangout = [
     "discord.py>=2.3.0",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
@@ -16,7 +47,6 @@ dependencies = [
     "jinja2>=3.1.0",
 ]
 
-[project.optional-dependencies]
 # 로컬 프로필 이미지 생성 (Animagine XL 4.0 + Glimi Style LoRA).
 # 설치: pip install -e ".[imagegen]"
 # LoRA 가중치는 src/glimi_imagegen/loras/ 에 별도 배치 (gitignore — 93MB × 2).
@@ -31,6 +61,6 @@ imagegen = [
     "numpy",
 ]
 
-[project.scripts]
-glimi-cli = "src.cli:main"
-glimi-bot = "src.discord_bot:main"
+# 배포 대상은 커널(glimi) 패키지만. 쇼케이스 앱(src/*)은 모노레포 소스에서 실행한다.
+[tool.setuptools]
+packages = ["glimi", "glimi.llm", "glimi.tools"]

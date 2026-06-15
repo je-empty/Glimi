@@ -30,6 +30,8 @@ Thumbs.db
 # Build
 *.egg-info/
 dist/
+build/
+*.whl
 
 # Claude Code
 .claude/
