@@ -31,7 +31,7 @@ _profiles = None
 _owner = None
 _observer = NullObserver()
 
-# 선택적 앱 훅 (미등록 = no-op, standalone 동작) — Hangout-특화 기능을 커널 밖으로.
+# 선택적 앱 훅 (미등록 = no-op, standalone 동작) — 앱-특화 기능을 커널 밖으로.
 _leak_reporter = None        # fn(agent_id, channel, leaked_text, source) — self-healing dev-request 등
 _profile_reminder_fn = None  # fn(owner_profile: dict) -> Optional[str] — 오너 프로필 이상치 힌트
 

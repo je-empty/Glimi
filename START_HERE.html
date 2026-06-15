@@ -564,7 +564,7 @@
       <p>대부분의 멀티 에이전트 프레임워크는 1번밖에 없다. Glimi 는 2번을 추가했다.</p>
     </div>
 
-    <h3>30초 데모 시나리오 (Hangout)</h3>
+    <h3>30초 데모 시나리오 (Community)</h3>
     <pre><code>14:02 — 너가 잠든 사이, OrchestratorSupervisor 가 3분 타이머에 깨어남
         Haiku judge: "A 와 B 는 1.2h idle, 친밀도 30. 페어 후보."
         → internal-dm-A-B 채널 자동 개설, context="가볍게 근황 토크"
@@ -587,11 +587,11 @@
       <h3>중요 — 전환 중인 프로젝트</h3>
       <ul>
         <li><span class="badge tag">완료</span> <strong>방향 전환</strong>: 사업화 → OSS career capital. 분석 문서: <code>analysis/pivot_subagent_review.md</code> (gitignored)</li>
-        <li><span class="badge tag">완료</span> <strong>네이밍 재정의</strong>: Glimi = umbrella 브랜드. <code>Glimi Core</code> (라이브러리) + <code>Glimi Hangout</code> (flagship 앱)</li>
+        <li><span class="badge tag">완료</span> <strong>네이밍 재정의</strong>: Glimi = umbrella 브랜드. <code>Glimi Core</code> (라이브러리) + <code>Glimi Community</code> (flagship 앱)</li>
         <li><span class="badge tag">완료</span> <strong>라이선스</strong>: Apache-2.0 확정. <code>LICENSE</code> 파일 존재</li>
         <li><span class="badge priority">진행 중</span> <strong>커널 추출</strong>: 도메인 무관 코어를 <code>src/core/*</code> 에서 <code>src/glimi/*</code> 로 분리. 2-3주 예상</li>
         <li><span class="badge priority">진행 중</span> <strong>첫 contributor task</strong>: 로컬 모델 (Gemma 4, Qwen 3.5) 지원 — 아래 섹션 5 참조</li>
-        <li><span class="badge do">활성</span> <strong>Hangout 풀-스택</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 동작 (<code>./run.sh</code>)</li>
+        <li><span class="badge do">활성</span> <strong>Community 풀-스택</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 동작 (<code>./run.sh</code>)</li>
       </ul>
     </div>
   </section>
@@ -599,7 +599,7 @@
   <!-- ============================================ -->
   <section id="layers">
     <h2><span class="num">3</span>두 개의 레이어 — Glimi = umbrella</h2>
-    <p class="lead">Glimi 는 단일 제품이 아니라 우산 브랜드. 라이브러리(Core) + flagship 앱(Hangout). LangChain → LangGraph/LangSmith 와 같은 패턴.</p>
+    <p class="lead">Glimi 는 단일 제품이 아니라 우산 브랜드. 라이브러리(Core) + flagship 앱(Community). LangChain → LangGraph/LangSmith 와 같은 패턴.</p>
 
     <div class="umbrella">
       <div class="brand">Glimi</div>
@@ -613,8 +613,8 @@
         </div>
         <div class="child app">
           <div class="label">flagship 앱</div>
-          <div class="name app">Glimi Hangout</div>
-          <div class="pip">apps/hangout/ (재배치 예정)</div>
+          <div class="name app">Glimi Community</div>
+          <div class="pip">apps/community/ (재배치 예정)</div>
           <p>"AI friends that keep living when you're not looking." Glimi Core 로 만든 첫 official 앱. 가벼운 example 이 아닌 독립 정체성을 가진 application.</p>
         </div>
       </div>
@@ -622,11 +622,11 @@
 
     <div class="card">
       <h4>새 코드 추가할 때 첫 질문</h4>
-      <p><strong>이건 Core 냐 Hangout 이냐?</strong></p>
+      <p><strong>이건 Core 냐 Community 이냐?</strong></p>
       <ul>
         <li><strong>Core</strong> = 도메인 무관. "리서치 두 명이 짝지어 토픽 분석" 시나리오에도 똑같이 적용되나? → YES 면 Core</li>
-        <li><strong>Hangout</strong> = 도메인 종속. "유나가 친구 셋 만들기 튜토리얼" 같은 community-sim 메타가 필요 → Hangout</li>
-        <li>모호하면 Hangout 쪽에 두고, 패턴이 굳어지면 Core 로 승격</li>
+        <li><strong>Community</strong> = 도메인 종속. "유나가 친구 셋 만들기 튜토리얼" 같은 community-sim 메타가 필요 → Community</li>
+        <li>모호하면 Community 쪽에 두고, 패턴이 굳어지면 Core 로 승격</li>
       </ul>
     </div>
   </section>
@@ -634,7 +634,7 @@
   <!-- ============================================ -->
   <section id="setup">
     <h2><span class="num">4</span>로컬 셋업 — 30분 안에 실행</h2>
-    <p class="lead">Windows / macOS / Linux 어디서든 동작. 우선은 Hangout 풀-스택 (Discord 봇 + 웹 대시보드) 가동을 목표로.</p>
+    <p class="lead">Windows / macOS / Linux 어디서든 동작. 우선은 Community 풀-스택 (Discord 봇 + 웹 대시보드) 가동을 목표로.</p>
 
     <h3>공통 사전 요구</h3>
     <table>
@@ -644,7 +644,7 @@
         <tr><td>Node.js (Claude Code CLI 의존)</td><td><a href="https://nodejs.org">nodejs.org</a> 또는 <code>nvm</code></td></tr>
         <tr><td>Claude Code CLI</td><td><code>npm install -g @anthropic-ai/claude-code</code></td></tr>
         <tr><td>Anthropic API key 또는 Claude Code Max 플랜</td><td>페르소나가 Claude 모델로 응답 (로컬 모델 지원 = 첫 contributor task)</td></tr>
-        <tr><td>Discord 봇 토큰</td><td><a href="https://discord.com/developers/applications">discord.com/developers</a> — Hangout 풀-스택만 필요. Core 만 만지면 불필요</td></tr>
+        <tr><td>Discord 봇 토큰</td><td><a href="https://discord.com/developers/applications">discord.com/developers</a> — Community 풀-스택만 필요. Core 만 만지면 불필요</td></tr>
         <tr><td>git</td><td>당연히</td></tr>
       </tbody>
     </table>
@@ -782,7 +782,7 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
       <li class="todo">llama.cpp 백엔드 (Apple Silicon 최적화 · 작은 VRAM)</li>
       <li class="todo">네이티브 Windows 지원 (<code>run.ps1</code> + 의존성 가이드)</li>
       <li class="todo">Telegram 어댑터 (Discord 와 같은 자리에)</li>
-      <li class="todo">새 Hangout scene: birthday / healing / outing</li>
+      <li class="todo">새 Community scene: birthday / healing / outing</li>
       <li class="todo">메모리 retrieval 에 임베딩 기반 semantic 추가</li>
     </ul>
   </section>
@@ -967,7 +967,7 @@ git commit -m "feat: ollama backend — Gemma 4 / Qwen 3.5 비교 추가"</code>
     <h4>예시 (실제 history 에서)</h4>
     <pre><code>feat: bring_friend 도구 — 친한 페르소나가 자기 친구 데려오는 메커니즘
 fix: A2A 대화 모두 실패 회귀 — _parse_response 의 _auto_report_leak 호출 제거
-docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></pre>
+docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE Apache-2.0</code></pre>
   </section>
 
   <!-- ============================================ -->
@@ -982,7 +982,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
         <ul>
           <li>새 기능: "이 로직을 Telegram·웹챗 어댑터에서 재사용 가능한가?" 통과해야 Core 자격</li>
           <li>플랫폼 중립 타입만 사용 (<code>str</code>, <code>int</code>, dataclass)</li>
-          <li>Discord 결합 코드는 <code>src/bot/</code> 안에 (또는 향후 <code>apps/hangout/</code>)</li>
+          <li>Discord 결합 코드는 <code>src/bot/</code> 안에 (또는 향후 <code>apps/community/</code>)</li>
         </ul>
       </div>
       <div class="col dont">
@@ -1043,7 +1043,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
         <h3>Phase 1 — 커널 추출 (메인테이너)</h3>
         <ul>
           <li><code>src/core/{runtime, tools, memory, llm, conversation}</code> → <code>src/glimi/*</code></li>
-          <li>도메인 종속 코드 → <code>apps/hangout/</code></li>
+          <li>도메인 종속 코드 → <code>apps/community/</code></li>
           <li><code>KernelStore</code> ABC + <code>AgentProfile</code> protocol 정의</li>
           <li>2-3주 예상</li>
         </ul>
@@ -1094,11 +1094,11 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
 
       <div class="phase future">
         <div class="phase-label">미래</div>
-        <h3>Phase 4 — 비-Discord 어댑터 (Hangout 확장)</h3>
+        <h3>Phase 4 — 비-Discord 어댑터 (Community 확장)</h3>
         <ul>
           <li>Telegram 어댑터</li>
           <li>웹챗 어댑터 (Glimi 자체 client)</li>
-          <li>Hangout 새 scene: birthday, healing, outing</li>
+          <li>Community 새 scene: birthday, healing, outing</li>
           <li>오너 부재 시뮬레이션 + 복귀 브리핑</li>
         </ul>
       </div>
@@ -1121,7 +1121,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
       <tbody>
         <tr><td><span class="badge do">easy</span></td><td>새 example 추가 (<code>examples/</code> 도메인별)</td><td><code>examples/</code></td></tr>
         <tr><td><span class="badge do">easy</span></td><td>문서 / README 개선 · 다이어그램 추가</td><td><code>README.md</code>, <code>docs/</code></td></tr>
-        <tr><td><span class="badge do">easy</span></td><td>새 Hangout scene (birthday 등)</td><td><code>src/scenes/</code></td></tr>
+        <tr><td><span class="badge do">easy</span></td><td>새 Community scene (birthday 등)</td><td><code>src/scenes/</code></td></tr>
         <tr><td><span class="badge warn">medium</span></td><td><strong>★ Ollama 로컬 모델 백엔드 (첫 task)</strong></td><td><code>src/llm/</code></td></tr>
         <tr><td><span class="badge warn">medium</span></td><td>vLLM / llama.cpp 백엔드</td><td><code>src/llm/</code></td></tr>
         <tr><td><span class="badge warn">medium</span></td><td>대시보드 시각화 확장</td><td><code>src/platform/dashboard/</code></td></tr>

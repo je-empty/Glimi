@@ -380,7 +380,7 @@
       <ul>
         <li><span class="badge tag">전환 중</span> <strong>피벗 진행 중</strong>: 사업화 → OSS career capital 방향. <code>analysis/pivot_subagent_review.md</code> 참조 (gitignored, 메인테이너만 접근)</li>
         <li><span class="badge tag">리팩터 중</span> <strong>커널 추출 중</strong>: 도메인 무관 코어 (<code>src/core/*</code>, <code>src/llm/*</code>) 를 <code>src/glimi/</code> 로 분리해 <code>pip install glimi</code> 라이브러리 화 작업. 2-3주 예상</li>
-        <li><span class="badge do">활성</span> <strong>Hangout 풀-스택 작동</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 가동 가능 (<code>./run.sh</code>)</li>
+        <li><span class="badge do">활성</span> <strong>Community 풀-스택 작동</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 가동 가능 (<code>./run.sh</code>)</li>
       </ul>
     </div>
   </section>
@@ -388,7 +388,7 @@
   <!-- ============================================ -->
   <section id="layers">
     <h2><span class="num">2</span>두 개의 레이어 — Glimi = umbrella</h2>
-    <p class="lead">Glimi 는 단일 제품이 아니라 우산 브랜드. 그 아래에 라이브러리(Core) 와 flagship 앱(Hangout) 이 있다. LangChain → LangSmith/LangGraph 패턴.</p>
+    <p class="lead">Glimi 는 단일 제품이 아니라 우산 브랜드. 그 아래에 라이브러리(Core) 와 flagship 앱(Community) 이 있다. LangChain → LangSmith/LangGraph 패턴.</p>
 
     <div class="umbrella">
       <div class="brand">Glimi</div>
@@ -402,8 +402,8 @@
         </div>
         <div class="child app">
           <div class="label">flagship 앱</div>
-          <div class="name app">Glimi Hangout</div>
-          <div class="pip">apps/hangout/ (재배치 예정)</div>
+          <div class="name app">Glimi Community</div>
+          <div class="pip">apps/community/ (재배치 예정)</div>
           <p>"AI friends that keep living when you're not looking." Glimi Core 로 만든 첫 official 앱. 가벼운 example 이 아닌 별도 정체성을 가진 application.</p>
         </div>
       </div>
@@ -411,11 +411,11 @@
 
     <div class="card">
       <h4>두 레이어 구분이 중요한 이유 (코드 차원)</h4>
-      <p>새 기능을 추가할 때 첫 질문: <strong>이건 Core 냐 Hangout 이냐?</strong></p>
+      <p>새 기능을 추가할 때 첫 질문: <strong>이건 Core 냐 Community 이냐?</strong></p>
       <ul>
         <li><strong>Core</strong> = 도메인 무관. "리서치 두 명이 짝지어 토픽 분석" 시나리오에서도 똑같이 쓸 수 있나? → YES 면 Core</li>
-        <li><strong>Hangout</strong> = 도메인 종속. "유나가 친구 셋 만들기 튜토리얼" 처럼 community-sim 메타가 필요 → Hangout</li>
-        <li>모호하면 Hangout 쪽에 두고, 패턴이 굳어지면 Core 로 승격</li>
+        <li><strong>Community</strong> = 도메인 종속. "유나가 친구 셋 만들기 튜토리얼" 처럼 community-sim 메타가 필요 → Community</li>
+        <li>모호하면 Community 쪽에 두고, 패턴이 굳어지면 Core 로 승격</li>
       </ul>
     </div>
   </section>
@@ -431,7 +431,7 @@
       <li><strong>Node.js</strong> (Claude Code CLI 가 필요)</li>
       <li><strong>Claude Code CLI</strong>: <code>npm install -g @anthropic-ai/claude-code</code></li>
       <li><strong>Anthropic API 또는 Claude Code Max 플랜</strong> (페르소나 응답이 Claude 모델로 동작)</li>
-      <li><strong>Discord 봇 토큰</strong> (Hangout 풀-스택 돌리려면 필요. Core 만 만지면 불필요)</li>
+      <li><strong>Discord 봇 토큰</strong> (Community 풀-스택 돌리려면 필요. Core 만 만지면 불필요)</li>
     </ul>
 
     <h3>한 번에 가동</h3>
@@ -544,11 +544,11 @@ Retrieval scoring:
 │   │   ├── dev_dispatch.py     <span style="color:var(--muted)"># Opus subprocess 분기</span>
 │   │   └── ...
 │   ├── llm/                    <span style="color:var(--muted)"># claude_cli, anthropic_sdk (이전 예정 → src/glimi/llm/)</span>
-│   ├── bot/                    <span style="color:var(--muted)"># Discord 어댑터 (이전 예정 → apps/hangout/src/bot/)</span>
+│   ├── bot/                    <span style="color:var(--muted)"># Discord 어댑터 (이전 예정 → apps/community/src/bot/)</span>
 │   ├── platform/               <span style="color:var(--muted)"># FastAPI + 대시보드</span>
-│   ├── scenes/                 <span style="color:var(--muted)"># tutorial 등 (Hangout 도메인)</span>
+│   ├── scenes/                 <span style="color:var(--muted)"># tutorial 등 (Community 도메인)</span>
 │   ├── supervisors/            <span style="color:var(--muted)"># cross-scene 감시자</span>
-│   ├── achievements/           <span style="color:var(--muted)"># Hangout UX 메타</span>
+│   ├── achievements/           <span style="color:var(--muted)"># Community UX 메타</span>
 │   ├── tools/                  <span style="color:var(--muted)"># CLI · dev_runner · migrate</span>
 │   ├── glimi_imagegen/         <span style="color:var(--muted)"># LoRA 초상화 (opt-in)</span>
 │   └── tui/                    <span style="color:var(--muted)"># legacy wizard</span>
@@ -566,7 +566,7 @@ Retrieval scoring:
 ├── src/glimi/                  <span style="color:var(--accent-green)"># Glimi Core (pip install glimi)</span>
 │   ├── runtime/  tools/  memory/  llm/  conversation/  supervisor/  observability/
 ├── apps/
-│   └── hangout/                <span style="color:var(--accent-orange)"># Glimi Hangout (flagship)</span>
+│   └── community/                <span style="color:var(--accent-orange)"># Glimi Community (flagship)</span>
 ├── examples/                   <span style="color:var(--muted)"># research_buddies, dev_pair</span>
 ├── docs/ · tests/
 ├── pyproject.toml              <span style="color:var(--muted)"># Glimi Core 패키지</span>
@@ -619,7 +619,7 @@ Retrieval scoring:
 
 fix: creator 프롬프트 Korean f-string placeholder NameError — '{소개한_친구}' → '&lt;소개한친구이름&gt;'
 
-docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></pre>
+docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE Apache-2.0</code></pre>
     </div>
 
     <h3>PR 머지 정책</h3>
@@ -643,7 +643,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
         <ul>
           <li>새 기능: "이 로직을 Telegram·웹챗 어댑터에서 재사용 가능한가?" 통과해야 Core 자격</li>
           <li>플랫폼 중립 타입만 사용 (<code>str</code>, <code>int</code>, dataclass)</li>
-          <li>Discord 결합 코드는 <code>src/bot/</code> 또는 향후 <code>apps/hangout/</code> 안에</li>
+          <li>Discord 결합 코드는 <code>src/bot/</code> 또는 향후 <code>apps/community/</code> 안에</li>
         </ul>
       </div>
       <div class="col dont">
@@ -732,7 +732,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
       </div>
       <div class="entry easy">
         <div class="label">시작용 · easy</div>
-        <h4>새 Hangout scene</h4>
+        <h4>새 Community scene</h4>
         <p><code>src/scenes/</code> 패턴 따라 birthday · healing · outing 등. <code>docs/scenes_and_supervisors.md</code> 참조.</p>
       </div>
       <div class="entry medium">
@@ -748,7 +748,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
       <div class="entry medium">
         <div class="label">중급 · medium</div>
         <h4>새 도구 (ToolSpec)</h4>
-        <p><code>src/core/tools/registry.py</code> 에 등록. 도구 design 가이드: 도메인 무관이면 Core, Hangout 종속이면 거기.</p>
+        <p><code>src/core/tools/registry.py</code> 에 등록. 도구 design 가이드: 도메인 무관이면 Core, Community 종속이면 거기.</p>
       </div>
       <div class="entry hard">
         <div class="label">고급 · hard</div>
@@ -795,7 +795,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Hangout) + LICENSE Apache-2.0</code></
     <pre><code>pytest tests/                      # 빠른 unit / integration
 pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
 
-    <p>새 기능 추가 시 <strong>가능하면 unit test 추가</strong>. Core 쪽 모듈은 도메인 무관이라 unit test 잘 어울림. Hangout/UX 영역은 E2E 위주.</p>
+    <p>새 기능 추가 시 <strong>가능하면 unit test 추가</strong>. Core 쪽 모듈은 도메인 무관이라 unit test 잘 어울림. Community/UX 영역은 E2E 위주.</p>
   </section>
 
   <!-- ============================================ -->

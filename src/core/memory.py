@@ -1,7 +1,7 @@
 """App shim for the Glimi-kernel memory module.
 
 The memory engine now lives in ``glimi.memory`` (kernel, storage/profile/
-observer-neutral). This shim wires the Hangout app's adapters into the kernel
+observer-neutral). This shim wires the Community app's adapters into the kernel
 and re-exports the public API so existing ``from src.core.memory import ...``
 call sites keep working unchanged.
 """
