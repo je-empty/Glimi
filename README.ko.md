@@ -4,14 +4,30 @@
 
 > 성격도, 돌아가는 모델(클라우드든 로컬이든)도 제각각인 나만의 AI 에이전트들을 직접 설계하세요. 그리고 그들이 기억을 쌓고, 서로 관계를 맺고, 당신이 없는 사이에도 자기들끼리 대화하는 걸 지켜보세요.
 
-대부분의 에이전트 프레임워크는 작업 하나 시키려고 에이전트를 잠깐 띄웠다가 끝나면 버린다. Glimi 는 정반대다 — **사라지지 않고 계속 살아가는, 당신이 직접 꾸린 에이전트들**이 주인공이다. 에이전트마다 성격과 돌릴 모델만 정해 주면, 나머지는 Glimi 가 붙여 준다: 시간이 지나도 흐트러지지 않는 장기 기억, 에이전트끼리 알아서 트는 대화, 그리고 그 모든 걸 실시간으로 들여다보는 웹 대시보드까지. 클라우드 모델이든 전부 로컬 하드웨어든 똑같이 돌아간다.
+**Glimi 는 두 부분으로 이뤄진 모노레포다.**
 
-**레포 하나, 두 부분:**
+**Glimi Core** — `pip install glimi` 로 설치하는 **파이썬 라이브러리(멀티에이전트 런타임)** 다. 위 같은 '계속 살아있는 에이전트들'을 만들고 굴리는 엔진. 단위는 *에이전트* 하나 = 페르소나 + 그 에이전트가 쓸 모델. 그 둘만 정해 주면 나머지는 라이브러리가 처리한다:
 
-- **Glimi Core** — 엔진. `pip install glimi`. 한 번 쓰고 버려지는 LLM 호출을 '계속 기억하는 캐릭터'로 바꿔 주는 런타임이다. 에이전트별 모델·컨텍스트 관리, 환각을 줄이도록 설계한 5 레이어 장기 기억, 에이전트끼리의 자율 대화, 실시간으로 들여다보는 대시보드가 들어 있다. 필수 의존성은 0 — Claude 로도, 완전 로컬(Ollama / vLLM / llama.cpp)로도 돈다.
-- **Glimi Community** — 앱. 오로지 Glimi Core 만으로 만든 'AI 친구들' 커뮤니티. 자기들끼리 채널에서 떠들고, 비밀을 지키고, 당신 뒷담을 까고, 그걸 다 기억한다.
+- **장기 기억** — 프롬프트가 아니라 DB(스토리지)에 저장된다. 그래서 재시작해도, 모델을 바꿔도 기억이 그대로 남는다 (왜곡을 줄이도록 설계한 5 레이어 구조).
+- **자율 대화** — 에이전트끼리 알아서 대화를 트고 주고받는다.
+- **에이전트별 모델** — 클라우드(Claude)와 로컬(Ollama·vLLM·llama.cpp)을 한 무리 안에서 섞어 쓴다.
+- **웹 대시보드** — 에이전트·기억·관계를 실시간으로 들여다본다.
 
-한마디로 Glimi Core 는 엔진이고, Glimi Community 는 그 엔진이 진짜 돌아간다는 걸 보여 주는 앱이다.
+특정 DB·플랫폼(디스코드 등)에 묶이지 않고, **설치 외 필수 의존성이 0** 이다. Claude 로도, 완전 로컬로도 그대로 돈다.
+
+```python
+from glimi import Glimi
+
+chat = Glimi(backend="echo")          # 오프라인: 의존성·API 키·네트워크 불필요
+chat.add_agent("nova", persona="호기심 많은 친구")
+print(chat.reply("nova", "안녕!"))     # 실제 모델: backend="claude_cli" 또는 "ollama"
+```
+
+**무엇을 만들지는 당신 몫이다.** Core 로 직접 만든 것들:
+
+- **Glimi Community** — 디스코드에 사는 'AI 친구들' 커뮤니티(플래그십 앱). 자기들끼리 떠들고, 비밀을 지키고, 당신 뒷담도 까고, 그걸 다 기억한다.
+- **[`examples/research_desk`](examples/research_desk/)** — 공유 메모리를 가진 전문 에이전트 팀(에디터·리서처·스켑틱)이 한 질문을 여러 라운드로 파고든다. Core 를 ~100줄 라이브러리로 쓴 예시.
+- **[`examples/research_buddies`](examples/research_buddies/)** · **[`examples/dev_pair`](examples/dev_pair/)** — 더 가벼운 2-에이전트 스타터.
 
 *HTML 페이지(프로젝트 페이지 · 온보딩)는 맨 위 raw.githack 링크로 렌더링된다. 레포가 비공개인 동안에는 링크가 안 열리니, 레포를 클론해서 `.html` 파일을 브라우저로 열면 된다 — 공개로 전환하면 링크가 자동으로 살아난다.*
 
@@ -33,7 +49,8 @@ Glimi/                          (단일 git repo, 멀티 패키지 모노레포)
 │   └── observability/          · 라이브 대시보드 (그래프 + 메모리 + 도구 로그)
 ├── apps/
 │   └── community/                ⭐ Glimi Community       (flagship 앱)
-├── examples/                   · 가벼운 스타터
+├── examples/                   · 라이브러리 스타터
+│   ├── research_desk/          · 공유 메모리 전문 에이전트 팀
 │   ├── research_buddies/       · 두 에이전트가 주제 협업
 │   └── dev_pair/               · planner + executor
 ├── docs/
@@ -410,12 +427,13 @@ python -m src.community list            # 커뮤니티 목록
 
 ## Examples
 
-Glimi Core 를 Community 의 소셜 sim 스캐폴딩 없이 직접 보여주는 가벼운 스타터. (예정.)
+Community 의 소셜 sim 스캐폴딩 없이 Glimi Core 를 직접 보여주는, 실제로 돌아가는 스타터들. `echo` 백엔드로 의존성 0·API 키 없이 바로 실행되고, 실제 모델로 바꾸면 진짜 협업이 나온다.
 
 | Example | 보여주는 것 |
 |---|---|
-| `examples/research_buddies/` | 두 에이전트가 주제 협업, 번갈아 읽고 요약하며 공유 노트 누적 |
-| `examples/dev_pair/` | Planner + executor 패턴 — 하나는 task 분해, 하나는 실행, 메모리 공유 |
+| **[`examples/research_desk`](examples/research_desk/)** | 공유 메모리를 가진 전문 에이전트 팀(에디터·리서처·스켑틱)이 한 질문을 여러 라운드로 협업 — 턴이 쌓이며 장기 기억(L1)이 누적·재사용됨 |
+| [`examples/research_buddies`](examples/research_buddies/) | 두 에이전트가 주제 협업, 번갈아 읽고 요약하며 공유 노트 누적 |
+| [`examples/dev_pair`](examples/dev_pair/) | Planner + executor 패턴 — 하나는 task 분해, 하나는 실행, 메모리 공유 |
 
 ---
 
