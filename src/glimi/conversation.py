@@ -14,8 +14,8 @@ import random
 import re
 from typing import Optional, Callable, Awaitable
 
-from src.glimi.store import KernelStore
-from src.glimi.profiles import OwnerContext
+from .store import KernelStore
+from .profiles import OwnerContext
 
 # transitional: runtime 은 Phase 2 다음 단계에서 src/glimi/ 로 이동 → 그때 `from .runtime import runtime`
 from .runtime import runtime
