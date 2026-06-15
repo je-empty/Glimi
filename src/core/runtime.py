@@ -16,21 +16,37 @@ import subprocess
 import shutil
 import os
 from typing import Optional, Callable
-from .profile import load_profile, build_system_prompt, get_user_name, get_user_id, get_user_display_name
 from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
 from src.glimi.tools import parse_response as parse_tools_in_output, ToolCall
 from src.glimi.tools import strip_control_tokens as _strip_control_tokens
 from src import log_writer
 
-# ── KernelStore 주입 (Phase 2) — 커널 런타임은 DB 를 직접 안 보고 KernelStore 로만 접근.
-# 기본은 앱 SQLite 어댑터. 앱이 set_store() 로 다른 구현 주입 가능.
-from src.adapters.kernel_store import kernel_store as _store
+# ── 커널 의존성 주입 (Phase 2) — 런타임은 DB/프로필을 직접 안 보고 추상 인터페이스로만 접근.
+# KernelStore(데이터) · ProfileProvider(에이전트 페르소나) · OwnerContext(오너 정체).
+# 기본은 앱 어댑터. 앱이 set_store()/set_profiles()/set_owner() 로 다른 구현 주입 가능.
+from src.adapters.kernel_store import (
+    kernel_store as _store,
+    profile_provider as _profiles,
+    owner_context as _owner,
+)
 
 
 def set_store(store):
     """KernelStore 구현 주입 (미호출 시 기본 SQLite 어댑터)."""
     global _store
     _store = store
+
+
+def set_profiles(provider):
+    """ProfileProvider 구현 주입 (미호출 시 기본 profile 어댑터)."""
+    global _profiles
+    _profiles = provider
+
+
+def set_owner(owner):
+    """OwnerContext 구현 주입 (미호출 시 기본 profile 어댑터)."""
+    global _owner
+    _owner = owner
 
 
 def _check_claude_cli() -> bool:
@@ -276,12 +292,11 @@ def _looks_like_owner_echo(line: str) -> bool:
     """라인이 '오너이름: ...' / '별칭: ...' 형태 = 유저 발화 에코 (로컬 모델이 대화 포맷을
     그대로 복사). 오너 이름/별칭으로 시작하면 drop. 짧은 이름만(오인 방지)."""
     try:
-        from .profile import get_owner_call_name
         names = set()
-        n = get_user_display_name()
+        n = _owner.display_name()
         if n:
             names.add(n)
-        oc = get_owner_call_name()
+        oc = _owner.call_name()
         if oc:
             names.add(oc)
     except Exception:
@@ -402,7 +417,7 @@ class AgentRuntime:
             print("[Runtime]   설치: npm install -g @anthropic-ai/claude-code")
 
     def activate_agent(self, agent_id: str) -> bool:
-        profile = load_profile(agent_id)
+        profile = _profiles.get(agent_id)
         if not profile:
             return False
 
@@ -413,7 +428,7 @@ class AgentRuntime:
         model_id = _resolve_agent_model(agent_id, profile.get("type", "persona"))
         tok = set_active_model(model_id)
         try:
-            system_prompt = build_system_prompt(agent_id)
+            system_prompt = _profiles.system_prompt(agent_id)
         finally:
             reset_active_model(tok)
 
@@ -428,8 +443,7 @@ class AgentRuntime:
         return list(self._active_agents.keys())
 
     def get_agent_name(self, agent_id: str) -> str:
-        from .profile import get_agent_display_name
-        return get_agent_display_name(agent_id)
+        return _profiles.display_name(agent_id)
 
     # ── Prompt building ──────────────────────────────
 
@@ -478,11 +492,10 @@ class AgentRuntime:
 
             # 오너 프로필 이상치 검사 — placeholder/비현실 값 있으면 자연스레 정정 요청 단서.
             try:
-                from src.core.profile import get_user_profile
                 from src.core.profile_anomalies import (
                     check_user_profile_anomalies, format_anomaly_hint,
                 )
-                up = get_user_profile() or {}
+                up = _owner.profile() or {}
                 anomalies = check_user_profile_anomalies(up)
                 hint = format_anomaly_hint(anomalies)
                 if hint:
@@ -527,17 +540,17 @@ class AgentRuntime:
                 # internal- 채널(에이전트간 대화)에서는 전체 이력 필요
                 filtered = []
                 for msg in recent:
-                    if msg["speaker"] == get_user_id():
+                    if msg["speaker"] == _owner.id():
                         filtered.append(msg)
-                    elif len(filtered) == 0 or filtered[-1]["speaker"] == get_user_id():
+                    elif len(filtered) == 0 or filtered[-1]["speaker"] == _owner.id():
                         # 오너 메시지 바로 다음 유나 응답만 포함
                         filtered.append(msg)
                 for msg in filtered[-15:]:
-                    speaker = get_user_display_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
+                    speaker = _owner.display_name() if msg["speaker"] == _owner.id() else self.get_agent_name(msg["speaker"])
                     prompt_parts.append(f"{speaker}: {msg['message']}")
             else:
                 for msg in recent:
-                    speaker = get_user_display_name() if msg["speaker"] == get_user_id() else self.get_agent_name(msg["speaker"])
+                    speaker = _owner.display_name() if msg["speaker"] == _owner.id() else self.get_agent_name(msg["speaker"])
                     prompt_parts.append(f"{speaker}: {msg['message']}")
             prompt_parts.append("")
 
@@ -571,7 +584,7 @@ class AgentRuntime:
 
         # 이전 턴의 tool_results가 있으면 user_message 앞에 주입
         tool_results = self._consume_tool_results(agent_id, channel)
-        name = speaker_name or get_user_display_name()
+        name = speaker_name or _owner.display_name()
 
         # 최근 자기 도구 호출 이력 주입 — mgr/creator 만.
         # raw conversation 엔 도구 호출 이력이 안 들어가서, 유나가 직전에
@@ -657,7 +670,7 @@ class AgentRuntime:
 
         lines = []
         for r in recent:
-            speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+            speaker = _owner.display_name() if r["speaker"] == _owner.id() else self.get_agent_name(r["speaker"])
             lines.append(f"{speaker}: {r['message']}")
         conversation = "\n".join(lines[-10:])
 
@@ -735,7 +748,7 @@ class AgentRuntime:
 
             # 채널 라벨
             if ch_name.startswith("dm-"):
-                label = f"{get_user_display_name()}과 DM"
+                label = f"{_owner.display_name()}과 DM"
             elif ch_name.startswith("internal-dm-"):
                 names = ch_name.replace("internal-dm-", "").split("-")
                 other = [n for n in names if n != self.get_agent_name(agent_id)]
@@ -754,9 +767,9 @@ class AgentRuntime:
             # 여러 줄 — 시간 순 (oldest → newest)
             msg_lines = []
             for r in recent:
-                if strip_owner_lines and r["speaker"] == get_user_id():
+                if strip_owner_lines and r["speaker"] == _owner.id():
                     continue  # 오너 발화는 internal 채널 peek 에서 제외 (환각 유발 차단)
-                speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+                speaker = _owner.display_name() if r["speaker"] == _owner.id() else self.get_agent_name(r["speaker"])
                 preview = r["message"][:80]
                 msg_lines.append(f"  {speaker}: \"{preview}\"")
             if not msg_lines:
@@ -792,14 +805,14 @@ class AgentRuntime:
         for pid in participants:
             if pid == my_agent_id:
                 continue
-            profile = load_profile(pid)
+            profile = _profiles.get(pid)
             if profile:
                 names.append(profile["name"])
 
-        my_profile = load_profile(my_agent_id) or {}
+        my_profile = _profiles.get(my_agent_id) or {}
         my_type = my_profile.get("type", "persona")
         is_staff = my_type in ("mgr", "creator")  # 메타 자각 있는 staff
-        owner_name = get_user_display_name()
+        owner_name = _owner.display_name()
 
         # 채널 타입별 설명
         if channel.startswith("dm-"):
@@ -890,7 +903,7 @@ class AgentRuntime:
                 recent = _store.get_recent_messages(ch_name, limit=1)
                 if recent:
                     r = recent[0]
-                    speaker = get_user_display_name() if r["speaker"] == get_user_id() else self.get_agent_name(r["speaker"])
+                    speaker = _owner.display_name() if r["speaker"] == _owner.id() else self.get_agent_name(r["speaker"])
                     msg_preview = r["message"][:30]
                     lines.append(f"  {ch_name}({mins_ago}분전): {speaker}→\"{msg_preview}\"")
                 else:
@@ -1081,8 +1094,8 @@ class AgentRuntime:
 
         # 로깅
         if log_user_message:
-            _store.log_message(channel, get_user_id(), user_message)
-            log_writer.chat(channel, get_user_name(), user_message)
+            _store.log_message(channel, _owner.id(), user_message)
+            log_writer.chat(channel, _owner.name(), user_message)
 
         agent_db = _store.get_agent(agent_id)
         current_emotion = agent_db.get("current_emotion", "평온") if agent_db else None
@@ -1378,8 +1391,8 @@ class AgentRuntime:
 
         # 오너 메시지 먼저 로깅
         if log_user_message:
-            _store.log_message(channel, get_user_id(), user_message)
-            log_writer.chat(channel, get_user_name(), user_message)
+            _store.log_message(channel, _owner.id(), user_message)
+            log_writer.chat(channel, _owner.name(), user_message)
 
         log_writer.mark_thinking(agent_id, channel)
         log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
@@ -1682,7 +1695,7 @@ class AgentRuntime:
         agent_type = profile.get("type", "persona")
 
         rel = profile.get("relationship_to_owner", {})
-        owner_call = rel.get("pet_name") or get_user_display_name() or "사용자"
+        owner_call = rel.get("pet_name") or _owner.display_name() or "사용자"
 
         if agent_type == "mgr":
             return [
@@ -1704,7 +1717,7 @@ class AgentRuntime:
 
     def refresh_agent(self, agent_id: str):
         if agent_id in self._active_agents:
-            self._active_agents[agent_id]["system_prompt"] = build_system_prompt(agent_id)
+            self._active_agents[agent_id]["system_prompt"] = _profiles.system_prompt(agent_id)
             print(f"[Runtime] {agent_id} prompt 갱신")
 
     # ── 에이전트 간 대화 ─────────────────────────────
