@@ -15,6 +15,7 @@ import json
 import subprocess
 import shutil
 import os
+import logging
 from typing import Optional, Callable
 from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
 from .tools import parse_response as parse_tools_in_output, ToolCall
@@ -25,6 +26,8 @@ from .tools import strip_control_tokens as _strip_control_tokens
 # 커널은 앱 어댑터를 import 하지 않는다 (standalone 설치 가능). 앱이 set_store()/
 # set_profiles()/set_owner()/set_observer() 로 주입 (src/core/runtime.py shim 참조).
 from .observability import NullObserver
+
+logger = logging.getLogger("glimi.runtime")
 
 _store = None
 _profiles = None
@@ -422,12 +425,14 @@ class AgentRuntime:
             _m = os.environ.get("GLIMI_OLLAMA_MODEL", "?")
             _mm = _ollama_model_map()
             _map_note = f", type_map={_mm}" if _mm else ""
-            print(f"[Runtime] LLM 백엔드: Ollama (model={_m}{_map_note}) — 로컬 대화 모드")
+            logger.info("LLM 백엔드: Ollama (model=%s%s) — 로컬 대화 모드", _m, _map_note)
         elif CLAUDE_AVAILABLE:
-            print("[Runtime] Claude Code CLI 감지됨 — 실제 대화 모드")
+            logger.info("Claude Code CLI 감지됨 — 기본 백엔드 사용 가능")
         else:
-            print("[Runtime] Claude Code CLI 미감지 — placeholder 모드")
-            print("[Runtime]   설치: npm install -g @anthropic-ai/claude-code")
+            logger.warning(
+                "Claude Code CLI 미감지 — placeholder 모드. "
+                "설치: npm install -g @anthropic-ai/claude-code"
+            )
 
     def activate_agent(self, agent_id: str) -> bool:
         profile = _profiles.get(agent_id)
