@@ -135,7 +135,8 @@ OPUS_MODEL = "claude-opus-4-8"
 
 
 def _provider_for(agent_type: str, model: str) -> str:
-    """이 호출이 어느 백엔드로 갈지 결정 — 'claude' (직접 CLI) | 'ollama' (src.llm).
+    """이 호출이 어느 백엔드로 갈지 결정 — 'claude' (직접 CLI) | 'ollama' (src.llm) |
+    그 외 백엔드 이름 (예: 'echo' — src.llm.generate 의 backend= 로 위임).
 
     우선순위 (src/llm/__init__._select_backend 와 일관):
       1) GLIMI_LLM_AGENT_MAP (agent_type 별 매핑) — 하이브리드 탈출구
@@ -143,6 +144,9 @@ def _provider_for(agent_type: str, model: str) -> str:
       2) GLIMI_LLM_BACKEND (전역 강제)
       3) model id prefix ("ollama:...")
       4) AVAILABLE_MODELS 레지스트리의 provider
+
+    반환값 규약: 'claude' 면 직접 CLI 경로. 그 외(ollama/echo/…)는 모두
+    src.llm.generate(backend=<반환값>) 의 비-claude 경로로 라우팅된다.
     """
     # 1) agent_type 별 매핑
     raw = os.environ.get("GLIMI_LLM_AGENT_MAP", "").strip()
@@ -151,8 +155,12 @@ def _provider_for(agent_type: str, model: str) -> str:
             m = json.loads(raw)
             if isinstance(m, dict):
                 v = (m.get(agent_type) or m.get("_default") or "").strip().lower()
-                if v:
-                    return "ollama" if v == "ollama" else "claude"
+                if v == "ollama":
+                    return "ollama"
+                if v in ("claude_cli", "anthropic_sdk", "claude"):
+                    return "claude"
+                if v:  # 기타 명시 백엔드 (echo 등) 은 그대로 위임
+                    return v
         except Exception:
             pass
     # 2) 전역 백엔드
@@ -161,6 +169,8 @@ def _provider_for(agent_type: str, model: str) -> str:
         return "ollama"
     if glob in ("claude_cli", "anthropic_sdk", "claude"):
         return "claude"
+    if glob:  # echo 등 — src.llm.generate(backend=glob) 로 위임
+        return glob
     # 3) model id prefix
     if model.startswith("ollama:"):
         return "ollama"
@@ -219,17 +229,25 @@ _OLLAMA_OK = {"v": False}
 
 def _backend_available(provider: str) -> bool:
     """해당 provider 백엔드가 호출 가능한지. False 면 placeholder 로 폴백."""
-    if provider != "ollama":
+    if provider == "claude":
         return CLAUDE_AVAILABLE
-    if _OLLAMA_OK["v"]:
-        return True
+    if provider == "ollama":
+        if _OLLAMA_OK["v"]:
+            return True
+        try:
+            from .llm.ollama import OllamaBackend
+            ok = OllamaBackend().available()
+        except Exception:
+            ok = False
+        _OLLAMA_OK["v"] = ok
+        return ok
+    # 기타 명시 백엔드 (echo 등) — src.llm 셀렉터에 위임해 available() 질의.
     try:
-        from .llm.ollama import OllamaBackend
-        ok = OllamaBackend().available()
+        from . import llm
+        b = llm._get_backend_instance(provider)
+        return bool(b and b.available())
     except Exception:
-        ok = False
-    _OLLAMA_OK["v"] = ok
-    return ok
+        return False
 
 
 def _normalize(s):
@@ -962,6 +980,13 @@ class AgentRuntime:
                     system=force_system, user=full_prompt,
                     model=model, agent_type=atype, timeout=_bt,
                 )
+            elif provider != "claude":
+                # 명시 백엔드 (echo 등) — src.llm.generate(backend=) 위임.
+                responses = self._backend_blocking(
+                    backend=provider, agent_id=agent_id, name=name,
+                    system=force_system, user=full_prompt,
+                    model=model, agent_type=atype, timeout=60,
+                )
             else:
                 # Timeout 120s — force 경로는 prompt 크기 큼 (메모리 + cross-channel + recent).
                 # 60s 로는 Haiku + CLI overhead 까지 감안 빈번히 초과 → 매번 실패하던 버그.
@@ -1129,6 +1154,16 @@ class AgentRuntime:
                 model=model, agent_type=_atype, timeout=_bt,
             )
 
+        if provider != "claude":
+            # 명시 백엔드 (echo 등) — src.llm.generate(backend=provider) 위임.
+            _atype = profile.get("type", "persona")
+            _observer.agent_thinking(agent_id, f"{provider} 호출")
+            return self._backend_blocking(
+                backend=provider, agent_id=agent_id, name=name,
+                system=system_prompt, user=full_prompt,
+                model=model, agent_type=_atype, timeout=60,
+            )
+
         _observer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
         cli_args = [
@@ -1221,6 +1256,38 @@ class AgentRuntime:
         self._last_tool_calls[agent_id] = parsed.tool_calls
         if parsed.errors:
             _observer.system(f"[Tools] ollama 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+        return self._parse_response(parsed.chat, agent_name=name)
+
+    def _backend_blocking(
+        self, *, backend: str, agent_id: str, name: str, system: str, user: str,
+        model: str, agent_type: str, timeout: int = 120,
+    ) -> list[str]:
+        """명시 백엔드(echo 등) 블로킹 호출 — src.llm.generate(backend=) 위임 + 공통 후처리.
+
+        ollama 전용 모델 태그 해석 없이 backend 셀렉터에 그대로 위임. Claude CLI 경로와
+        동일한 <tools> 파싱 / _parse_response 후처리를 거친다.
+        """
+        try:
+            from . import llm
+            resp = llm.generate(
+                system=system, user=user, model=model,
+                agent_type=agent_type, backend=backend,
+                max_tokens=2048, timeout=timeout,
+            )
+        except Exception as e:
+            _observer.system(f"❌ {backend} 호출 예외 ({name}): {type(e).__name__}: {str(e)[:140]}")
+            return []
+        if resp.error:
+            _observer.system(f"❌ {backend} 오류 ({name}): {resp.error[:160]}")
+            return []
+        raw = (resp.text or "").strip()
+        if not raw:
+            _observer.system(f"⚠ {backend} 빈 응답 ({name})")
+            return []
+        parsed = parse_tools_in_output(raw)
+        self._last_tool_calls[agent_id] = parsed.tool_calls
+        if parsed.errors:
+            _observer.system(f"[Tools] {backend} 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
         return self._parse_response(parsed.chat, agent_name=name)
 
     # ── Streaming ────────────────────────────────────
@@ -1410,8 +1477,10 @@ class AgentRuntime:
 
         if provider == "ollama":
             _observer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, atype)})")
-        else:
+        elif provider == "claude":
             _observer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
+        else:
+            _observer.agent_thinking(agent_id, f"{provider} 호출")
 
         messages: list[str] = []
         tool_buffer: list[str] = []  # <tools> 블록 누적 (_consume_response_stream 이 채움)
@@ -1429,16 +1498,23 @@ class AgentRuntime:
         agent_type = profile.get("type", "persona")
         max_messages = MAX_STREAMING_MESSAGES.get(agent_type, 10)
 
-        # ── Ollama 스트리밍 분기 (src.llm.stream_lines + 공유 헬퍼) ──
+        # ── 비-Claude 스트리밍 분기 (src.llm.stream_lines + 공유 헬퍼) ──
         # 프로세스가 없으므로 watchdog kill 대신 stream_lines(timeout=...) 으로 종료.
-        if provider == "ollama":
-            _ollama_to = {"persona": 180, "mgr": 300, "creator": 360, "dev": 300}.get(agent_type, 180)
+        # ollama: 모델 태그 해석 + backend 미지정(env/셀렉터). echo 등: model 그대로 + backend 명시.
+        if provider != "claude":
+            _stream_to = {"persona": 180, "mgr": 300, "creator": 360, "dev": 300}.get(agent_type, 180)
+            if provider == "ollama":
+                _stream_model = _ollama_model_arg(model, agent_type)
+                _stream_backend = ""  # env/셀렉터 위임 (기존 동작 보존)
+            else:
+                _stream_model = model
+                _stream_backend = provider
             try:
                 from . import llm
                 line_iter = llm.stream_lines(
                     system=system_prompt, user=full_prompt,
-                    model=_ollama_model_arg(model, agent_type), agent_type=agent_type,
-                    max_tokens=2048, timeout=_ollama_to,
+                    model=_stream_model, agent_type=agent_type, backend=_stream_backend,
+                    max_tokens=2048, timeout=_stream_to,
                 )
                 messages, tool_buffer, _stop = self._consume_response_stream(
                     line_iter, agent_id=agent_id, name=name, channel=channel,
@@ -1454,7 +1530,7 @@ class AgentRuntime:
                     except Exception as e:
                         _observer.system(f"[Tools] 스트림 파싱 실패: {e}")
             except Exception as e:
-                _observer.system(f"❌ ollama 스트림 오류 ({name}): {type(e).__name__}: {str(e)[:160]}")
+                _observer.system(f"❌ {provider} 스트림 오류 ({name}): {type(e).__name__}: {str(e)[:160]}")
                 if not messages:
                     fallback = self._placeholder_response(profile, user_message)
                     for m in fallback:
@@ -1753,25 +1829,32 @@ class AgentRuntime:
             if _backend_available(provider):
                 result = None
                 last_exc = None
-                if provider == "ollama":
-                    # ollama 출력을 기존 claude 다운스트림(역할 leak/독백 필터)에 그대로
-                    # 흘리기 위해 result 를 CompletedProcess 흉내 shim 으로 채움.
+                if provider != "claude":
+                    # 비-claude 백엔드 (ollama/echo/…) 출력을 기존 claude 다운스트림
+                    # (역할 leak/독백 필터)에 그대로 흘리기 위해 result 를 CompletedProcess
+                    # 흉내 shim 으로 채움. ollama 는 모델 태그 해석 + env 셀렉터, 그 외는 backend 명시.
                     from . import llm
                     from types import SimpleNamespace
+                    if provider == "ollama":
+                        _a2a_model = _ollama_model_arg(model, speaker_type)
+                        _a2a_backend = ""
+                    else:
+                        _a2a_model = model
+                        _a2a_backend = provider
                     try:
                         _r = llm.generate(
                             system=speaker_info["system_prompt"], user=full_prompt,
-                            model=_ollama_model_arg(model, speaker_type), agent_type=speaker_type,
+                            model=_a2a_model, agent_type=speaker_type, backend=_a2a_backend,
                             max_tokens=2048, timeout=180,
                         )
                         if _r.error:
-                            last_exc = f"ollama: {_r.error[:160]}"
+                            last_exc = f"{provider}: {_r.error[:160]}"
                         elif (_r.text or "").strip():
                             result = SimpleNamespace(returncode=0, stdout=_r.text, stderr="")
                         else:
-                            last_exc = "ollama: empty response"
+                            last_exc = f"{provider}: empty response"
                     except Exception as e:
-                        last_exc = f"ollama: {type(e).__name__}: {str(e)[:140]}"
+                        last_exc = f"{provider}: {type(e).__name__}: {str(e)[:140]}"
                 else:
                     # timeout/empty-stdout 시 1회 retry. Haiku 가 큰 프롬프트에서 간헐적 지연
                     # (cross-channel peek + facts + 메모리 누적). 첫 시도 실패해도 대부분 재시도에서 성공.
