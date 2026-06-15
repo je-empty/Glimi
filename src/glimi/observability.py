@@ -19,8 +19,9 @@ class KernelObserver(Protocol):
     def system(self, message: str) -> None: ...
     def agent_thinking(self, agent_id: str, line: str) -> None: ...
     def chat(self, channel: str, speaker: str, message: str) -> None: ...
-    def mark_thinking(self, agent_id: str) -> None: ...
+    def mark_thinking(self, agent_id: str, channel: str = "") -> None: ...
     def mark_done(self, agent_id: str) -> None: ...
+    def is_thinking(self, agent_id: str) -> bool: ...
 
 
 class NullObserver:
@@ -35,8 +36,11 @@ class NullObserver:
     def chat(self, channel: str, speaker: str, message: str) -> None:
         pass
 
-    def mark_thinking(self, agent_id: str) -> None:
+    def mark_thinking(self, agent_id: str, channel: str = "") -> None:
         pass
 
     def mark_done(self, agent_id: str) -> None:
         pass
+
+    def is_thinking(self, agent_id: str) -> bool:
+        return False

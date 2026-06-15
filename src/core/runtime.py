@@ -19,15 +19,15 @@ from typing import Optional, Callable
 from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
 from src.glimi.tools import parse_response as parse_tools_in_output, ToolCall
 from src.glimi.tools import strip_control_tokens as _strip_control_tokens
-from src import log_writer
 
-# ── 커널 의존성 주입 (Phase 2) — 런타임은 DB/프로필을 직접 안 보고 추상 인터페이스로만 접근.
-# KernelStore(데이터) · ProfileProvider(에이전트 페르소나) · OwnerContext(오너 정체).
-# 기본은 앱 어댑터. 앱이 set_store()/set_profiles()/set_owner() 로 다른 구현 주입 가능.
+# ── 커널 의존성 주입 (Phase 2) — 런타임은 DB/프로필/관측을 직접 안 보고 추상 인터페이스로만 접근.
+# KernelStore(데이터) · ProfileProvider(페르소나) · OwnerContext(오너) · KernelObserver(관측/로그).
+# 기본은 앱 어댑터. 앱이 set_store()/set_profiles()/set_owner()/set_observer() 로 주입 가능.
 from src.adapters.kernel_store import (
     kernel_store as _store,
     profile_provider as _profiles,
     owner_context as _owner,
+    observer as _observer,
 )
 
 
@@ -47,6 +47,12 @@ def set_owner(owner):
     """OwnerContext 구현 주입 (미호출 시 기본 profile 어댑터)."""
     global _owner
     _owner = owner
+
+
+def set_observer(obs):
+    """KernelObserver 구현 주입 (미호출 시 기본 log_writer 어댑터)."""
+    global _observer
+    _observer = obs
 
 
 def _check_claude_cli() -> bool:
@@ -285,7 +291,7 @@ def _auto_report_leak(agent_id: str, channel_name: str, leaked_text: str, source
             return
         enqueue_dev_request(community_id, agent_id or "system", payload)
     except Exception as e:
-        log_writer.system(f"[leak auto-report] enqueue 실패 (무시): {type(e).__name__}: {e}")
+        _observer.system(f"[leak auto-report] enqueue 실패 (무시): {type(e).__name__}: {e}")
 
 
 def _looks_like_owner_echo(line: str) -> bool:
@@ -386,7 +392,7 @@ def _report_claude_error(agent_name: str, text: str, source: str):
     """에러 텍스트 필터링 시 system.log + Discord mgr-system-log 양쪽에 남김."""
     snippet = text.strip().replace("\n", " ")[:200]
     msg = f"⚠ Claude CLI 에러 필터 [{agent_name}/{source}]: {snippet}"
-    log_writer.system(msg)
+    _observer.system(msg)
     # Discord mgr-system-log 채널에도 송출 (bot 모듈 임포트는 lazy — 순환 방지)
     try:
         from src.bot.core import queue_system_log
@@ -459,7 +465,7 @@ class AgentRuntime:
             now = _time.monotonic()
             dt = now - _t
             if dt > 5.0:
-                log_writer.system(f"⏱ _build_context[{label}] {dt:.1f}s")
+                _observer.system(f"⏱ _build_context[{label}] {dt:.1f}s")
             _t = now
 
         profile = agent_info["profile"]
@@ -609,18 +615,18 @@ class AgentRuntime:
                 # 시스템 프롬프트만으로 예산 초과 — 메모리/대화 0 으로도 못 막음.
                 # (mgr 캐릭터+도구 ≈5000tok 라 num_ctx 8192 미만이면 발생.) 관찰 가능하게 경고.
                 if _plan["system_tokens"] >= _plan["prompt_budget"]:
-                    log_writer.system(
+                    _observer.system(
                         f"⚠ [ctx-budget] {agent_id} 시스템 프롬프트({_plan['system_tokens']}tok)가 "
                         f"예산({_plan['prompt_budget']}tok) 초과 — num_ctx={_num_ctx} 너무 작음. "
                         f"{atype} 는 8192+ 권장 (GLIMI_OLLAMA_NUM_CTX)"
                     )
                 elif len(recent) < _before or mem_scale < 0.999:
-                    log_writer.system(
+                    _observer.system(
                         f"[ctx-budget] {agent_id} num_ctx={_num_ctx} mem_scale={mem_scale} "
                         f"recent {_before}→{len(recent)} (budget {_plan['recent_token_budget']}tok)"
                     )
             except Exception as _e:
-                log_writer.system(f"[ctx-budget] 예산 계산 실패 (무시): {type(_e).__name__}: {_e}")
+                _observer.system(f"[ctx-budget] 예산 계산 실패 (무시): {type(_e).__name__}: {_e}")
 
         context = self._build_context(agent_info, channel, recent,
                                       user_message=user_message, mem_scale=mem_scale)
@@ -910,10 +916,9 @@ class AgentRuntime:
                     lines.append(f"  {ch_name}({mins_ago}분전, {cnt}건)")
 
         # 현재 진행중인 내부 대화
-        from src import log_writer
         thinking = []
         for aid, info in self._active_agents.items():
-            if log_writer.is_thinking(aid) and info["profile"].get("type") == "persona":
+            if _observer.is_thinking(aid) and info["profile"].get("type") == "persona":
                 thinking.append(info["profile"]["name"])
         if thinking:
             lines.append(f"[추론중] {', '.join(thinking)}")
@@ -949,8 +954,8 @@ class AgentRuntime:
         _limit = RAW_WINDOW
         recent = _store.get_recent_messages(channel, limit=_limit)
 
-        log_writer.mark_thinking(agent_id, channel)
-        log_writer.agent_thinking(agent_id, f"강제 지시 [{channel}]: {user_message[:40]}")
+        _observer.mark_thinking(agent_id, channel)
+        _observer.agent_thinking(agent_id, f"강제 지시 [{channel}]: {user_message[:40]}")
 
         responses: list[str] = []
         try:
@@ -996,12 +1001,12 @@ class AgentRuntime:
 
                 if result.returncode != 0:
                     err = (result.stderr or result.stdout or "")[:180]
-                    log_writer.system(f"⚠ 강제지시 실패 ({name} @ {channel}): exit={result.returncode} {err}")
+                    _observer.system(f"⚠ 강제지시 실패 ({name} @ {channel}): exit={result.returncode} {err}")
                     return []
 
                 raw = result.stdout.strip()
                 if not raw:
-                    log_writer.system(f"⚠ 강제지시 빈 응답 ({name} @ {channel})")
+                    _observer.system(f"⚠ 강제지시 빈 응답 ({name} @ {channel})")
                     return []
 
                 if _looks_like_claude_error(raw):
@@ -1014,17 +1019,17 @@ class AgentRuntime:
                 parsed = parse_tools_in_output(raw)
                 self._last_tool_calls[agent_id] = parsed.tool_calls
                 if parsed.errors:
-                    log_writer.system(f"[Tools] 강제 지시 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                    _observer.system(f"[Tools] 강제 지시 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                 responses = self._parse_response(parsed.chat, agent_name=name)
 
         except subprocess.TimeoutExpired:
-            log_writer.system(f"⚠ 강제지시 타임아웃 ({name} @ {channel}, 120s)")
+            _observer.system(f"⚠ 강제지시 타임아웃 ({name} @ {channel}, 120s)")
             return []
         except Exception as e:
-            log_writer.system(f"❌ 강제 지시 오류 ({name} @ {channel}): {type(e).__name__}: {str(e)[:140]}")
+            _observer.system(f"❌ 강제 지시 오류 ({name} @ {channel}): {type(e).__name__}: {str(e)[:140]}")
             return []
         finally:
-            log_writer.mark_done(agent_id)
+            _observer.mark_done(agent_id)
 
         agent_db = _store.get_agent(agent_id)
         current_emotion = agent_db.get("current_emotion", "평온") if agent_db else None
@@ -1055,8 +1060,8 @@ class AgentRuntime:
         _limit = RAW_WINDOW
         recent = _store.get_recent_messages(channel, limit=_limit)
 
-        log_writer.mark_thinking(agent_id, channel)
-        log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
+        _observer.mark_thinking(agent_id, channel)
+        _observer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
         # 단계별 타이밍 로그 + 하드 타임아웃 watchdog (>120초면 외부에서 stuck 알림)
         import time as _time, threading as _threading
@@ -1065,7 +1070,7 @@ class AgentRuntime:
         def _watchdog():
             if _watchdog_fired["v"]:
                 return
-            log_writer.system(f"⚠ {agent_id} 응답 생성 120초 초과 — stuck 가능성")
+            _observer.system(f"⚠ {agent_id} 응답 생성 120초 초과 — stuck 가능성")
         _wd_timer = _threading.Timer(120.0, _watchdog)
         _wd_timer.daemon = True
         _wd_timer.start()
@@ -1079,23 +1084,23 @@ class AgentRuntime:
                 responses = self._placeholder_response(profile, user_message)
             elapsed = _time.monotonic() - _t0
             if elapsed > 60:
-                log_writer.system(f"⚠ {agent_id} 응답 생성 {elapsed:.1f}초 (느림)")
+                _observer.system(f"⚠ {agent_id} 응답 생성 {elapsed:.1f}초 (느림)")
         except Exception as e:
             import traceback
-            log_writer.system(f"❌ generate_response 예외 ({agent_id}): {type(e).__name__}: {e}")
-            log_writer.system(f"   trace: {traceback.format_exc()[:500]}")
+            _observer.system(f"❌ generate_response 예외 ({agent_id}): {type(e).__name__}: {e}")
+            _observer.system(f"   trace: {traceback.format_exc()[:500]}")
             responses = self._placeholder_response(profile, user_message)
         finally:
             _watchdog_fired["v"] = True
             _wd_timer.cancel()
-            log_writer.mark_done(agent_id)
+            _observer.mark_done(agent_id)
 
-        log_writer.agent_thinking(agent_id, f"응답 {len(responses)}건")
+        _observer.agent_thinking(agent_id, f"응답 {len(responses)}건")
 
         # 로깅
         if log_user_message:
             _store.log_message(channel, _owner.id(), user_message)
-            log_writer.chat(channel, _owner.name(), user_message)
+            _observer.chat(channel, _owner.name(), user_message)
 
         agent_db = _store.get_agent(agent_id)
         current_emotion = agent_db.get("current_emotion", "평온") if agent_db else None
@@ -1132,11 +1137,11 @@ class AgentRuntime:
                 handoff = self._build_handoff_summary(agent_id, channel)
                 if handoff:
                     full_prompt = handoff + "\n\n" + full_prompt
-                log_writer.agent_thinking(agent_id, f"모델 전환: {base_model} → {model}")
+                _observer.agent_thinking(agent_id, f"모델 전환: {base_model} → {model}")
 
         if provider == "ollama":
             _atype = profile.get("type", "persona")
-            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, _atype)})")
+            _observer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, _atype)})")
             # 큰 로컬 모델(26b)은 콜드 로드(~수십초) + 느린 생성 → 넉넉히. 스트리밍 경로와 동일 수준.
             _bt = {"persona": 200, "mgr": 320, "creator": 360, "dev": 320}.get(_atype, 200)
             return self._ollama_blocking(
@@ -1145,7 +1150,7 @@ class AgentRuntime:
                 model=model, agent_type=_atype, timeout=_bt,
             )
 
-        log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
+        _observer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
         cli_args = [
             "claude",
@@ -1170,10 +1175,10 @@ class AgentRuntime:
                     err_detail = result.stderr[:200] if result.stderr else result.stdout[:200]
                     last_err = f"exit={result.returncode}: {err_detail}"
                     if attempt == 0:
-                        log_writer.system(f"⚠ CLI 오류 ({last_err}) — 재시도")
+                        _observer.system(f"⚠ CLI 오류 ({last_err}) — 재시도")
                         import time; time.sleep(2)
                         continue
-                    log_writer.system(f"❌ CLI 오류 ({last_err})")
+                    _observer.system(f"❌ CLI 오류 ({last_err})")
                     return self._placeholder_response(profile, user_message)
 
                 raw = result.stdout.strip()
@@ -1189,20 +1194,20 @@ class AgentRuntime:
                 parsed = parse_tools_in_output(raw)
                 self._last_tool_calls[agent_id] = parsed.tool_calls
                 if parsed.errors:
-                    log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                    _observer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                 return self._parse_response(parsed.chat, agent_name=name)
 
             except subprocess.TimeoutExpired:
-                log_writer.system(f"❌ CLI 타임아웃 (60초)")
+                _observer.system(f"❌ CLI 타임아웃 (60초)")
                 return [f"({name} 응답 지연 — 다시 시도해주세요)"]
             except FileNotFoundError:
                 print("[Runtime] claude CLI를 찾을 수 없습니다")
                 return self._placeholder_response(profile, user_message)
             except Exception as e:
-                log_writer.system(f"❌ 런타임 오류: {e}")
+                _observer.system(f"❌ 런타임 오류: {e}")
                 return self._placeholder_response(profile, user_message)
 
-        log_writer.system(f"❌ CLI 재시도 실패: {last_err}")
+        _observer.system(f"❌ CLI 재시도 실패: {last_err}")
         return self._placeholder_response(profile, user_message)
 
     # ── Ollama (src.llm) blocking ────────────────────
@@ -1224,19 +1229,19 @@ class AgentRuntime:
                 max_tokens=2048, timeout=timeout,
             )
         except Exception as e:
-            log_writer.system(f"❌ ollama 호출 예외 ({name}): {type(e).__name__}: {str(e)[:140]}")
+            _observer.system(f"❌ ollama 호출 예외 ({name}): {type(e).__name__}: {str(e)[:140]}")
             return []
         if resp.error:
-            log_writer.system(f"❌ ollama 오류 ({name}): {resp.error[:160]}")
+            _observer.system(f"❌ ollama 오류 ({name}): {resp.error[:160]}")
             return []
         raw = (resp.text or "").strip()
         if not raw:
-            log_writer.system(f"⚠ ollama 빈 응답 ({name})")
+            _observer.system(f"⚠ ollama 빈 응답 ({name})")
             return []
         parsed = parse_tools_in_output(raw)
         self._last_tool_calls[agent_id] = parsed.tool_calls
         if parsed.errors:
-            log_writer.system(f"[Tools] ollama 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+            _observer.system(f"[Tools] ollama 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
         return self._parse_response(parsed.chat, agent_name=name)
 
     # ── Streaming ────────────────────────────────────
@@ -1334,12 +1339,12 @@ class AgentRuntime:
 
             # Safety net — <tools>/<call> 이 in_tools 감지 뚫고 도달하면 drop.
             if "<tools>" in cleaned.lower() or "<call" in cleaned.lower() or "</tools>" in cleaned.lower():
-                log_writer.system(f"[Tools] ⚠ stream leak 차단 ({name}): {cleaned[:60]}")
+                _observer.system(f"[Tools] ⚠ stream leak 차단 ({name}): {cleaned[:60]}")
                 continue
 
             # Internal-monologue / silence-reasoning leak 차단 (NO_REPLY, [침묵] 등)
             if _is_reasoning_leak(cleaned):
-                log_writer.system(f"[Reasoning leak] ⚠ stream drop ({name}): {cleaned[:80]}")
+                _observer.system(f"[Reasoning leak] ⚠ stream drop ({name}): {cleaned[:80]}")
                 _auto_report_leak(agent_id, channel, cleaned, source="stream")
                 continue
 
@@ -1359,7 +1364,7 @@ class AgentRuntime:
                     # break 하지 않고 chat 방출만 중단 — 뒤따라오는 <tools> 블록 회수.
                     maxed = True
                     continue
-                log_writer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
+                _observer.system(f"⚠ {name} 응답 {max_messages}건 도달 — 스트리밍 종료")
                 break
 
         return messages, tool_buffer, stop_reason
@@ -1392,15 +1397,15 @@ class AgentRuntime:
         # 오너 메시지 먼저 로깅
         if log_user_message:
             _store.log_message(channel, _owner.id(), user_message)
-            log_writer.chat(channel, _owner.name(), user_message)
+            _observer.chat(channel, _owner.name(), user_message)
 
-        log_writer.mark_thinking(agent_id, channel)
-        log_writer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
+        _observer.mark_thinking(agent_id, channel)
+        _observer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
         atype = profile.get("type", "persona")
         provider = _provider_for(atype, _resolve_agent_model(agent_id, atype))
         if not _backend_available(provider):
-            log_writer.mark_done(agent_id)
+            _observer.mark_done(agent_id)
             msgs = self._placeholder_response(profile, user_message)
             for m in msgs:
                 on_message(m)
@@ -1415,19 +1420,19 @@ class AgentRuntime:
             )
         except Exception as e:
             import traceback
-            log_writer.mark_done(agent_id)
-            log_writer.system(f"❌ _build_prompt 예외 ({agent_id}): {type(e).__name__}: {e}")
-            log_writer.system(f"   trace: {traceback.format_exc()[:400]}")
+            _observer.mark_done(agent_id)
+            _observer.system(f"❌ _build_prompt 예외 ({agent_id}): {type(e).__name__}: {e}")
+            _observer.system(f"   trace: {traceback.format_exc()[:400]}")
             on_message(f"({name} 응답 생성 실패)")
             return [f"({name} 응답 생성 실패)"]
         _bp_elapsed = _time.monotonic() - _bp_start
         if _bp_elapsed > 5:
-            log_writer.system(f"⏱ {agent_id} _build_prompt {_bp_elapsed:.1f}s")
+            _observer.system(f"⏱ {agent_id} _build_prompt {_bp_elapsed:.1f}s")
 
         if provider == "ollama":
-            log_writer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, atype)})")
+            _observer.agent_thinking(agent_id, f"Ollama 호출 ({_ollama_display_model(model, atype)})")
         else:
-            log_writer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
+            _observer.agent_thinking(agent_id, f"Claude CLI 호출 ({model})")
 
         messages: list[str] = []
         tool_buffer: list[str] = []  # <tools> 블록 누적 (_consume_response_stream 이 채움)
@@ -1466,19 +1471,19 @@ class AgentRuntime:
                         parsed = parse_tools_in_output("\n".join(tool_buffer))
                         self._last_tool_calls[agent_id] = parsed.tool_calls
                         if parsed.errors:
-                            log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                            _observer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                     except Exception as e:
-                        log_writer.system(f"[Tools] 스트림 파싱 실패: {e}")
+                        _observer.system(f"[Tools] 스트림 파싱 실패: {e}")
             except Exception as e:
-                log_writer.system(f"❌ ollama 스트림 오류 ({name}): {type(e).__name__}: {str(e)[:160]}")
+                _observer.system(f"❌ ollama 스트림 오류 ({name}): {type(e).__name__}: {str(e)[:160]}")
                 if not messages:
                     fallback = self._placeholder_response(profile, user_message)
                     for m in fallback:
                         on_message(m)
                     messages = fallback
             finally:
-                log_writer.mark_done(agent_id)
-                log_writer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
+                _observer.mark_done(agent_id)
+                _observer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
             return messages
 
         try:
@@ -1517,7 +1522,7 @@ class AgentRuntime:
             def _wd_kill():
                 if process.poll() is None:
                     _wd_killed["v"] = True
-                    log_writer.system(f"❌ {name} CLI 응답 {_watchdog_secs}초 초과 — 강제 kill")
+                    _observer.system(f"❌ {name} CLI 응답 {_watchdog_secs}초 초과 — 강제 kill")
                     try:
                         process.kill()
                     except Exception:
@@ -1556,14 +1561,14 @@ class AgentRuntime:
                     parsed = parse_tools_in_output("\n".join(tool_buffer))
                     self._last_tool_calls[agent_id] = parsed.tool_calls
                     if parsed.errors:
-                        log_writer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
+                        _observer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                 except Exception as e:
-                    log_writer.system(f"[Tools] 스트림 파싱 실패: {e}")
+                    _observer.system(f"[Tools] 스트림 파싱 실패: {e}")
 
             if process.returncode != 0 and not _intentional_kill:
                 stderr = process.stderr.read() if process.stderr else ""
                 err_detail = stderr[:200] if stderr.strip() else "(stderr empty)"
-                log_writer.system(f"❌ CLI 오류 (exit={process.returncode}): {err_detail}")
+                _observer.system(f"❌ CLI 오류 (exit={process.returncode}): {err_detail}")
                 if not messages:
                     fallback = self._placeholder_response(profile, user_message)
                     for m in fallback:
@@ -1572,13 +1577,13 @@ class AgentRuntime:
 
         except subprocess.TimeoutExpired:
             process.kill()
-            log_writer.system(f"❌ CLI 타임아웃 (60초)")
+            _observer.system(f"❌ CLI 타임아웃 (60초)")
             if not messages:
                 msg = f"({name} 응답 지연 — 다시 시도해주세요)"
                 on_message(msg)
                 messages = [msg]
         except Exception as e:
-            log_writer.system(f"❌ 런타임 오류: {e}")
+            _observer.system(f"❌ 런타임 오류: {e}")
             if not messages:
                 fallback = self._placeholder_response(profile, user_message)
                 for m in fallback:
@@ -1589,8 +1594,8 @@ class AgentRuntime:
                 _wd.cancel()
             except Exception:
                 pass
-            log_writer.mark_done(agent_id)
-            log_writer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
+            _observer.mark_done(agent_id)
+            _observer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
 
         # DB 로깅은 handlers에서 디스코드 전송 후 처리
         # (대시보드에 디스코드보다 먼저 보이는 문제 방지)
@@ -1764,7 +1769,7 @@ class AgentRuntime:
         model = _resolve_agent_model(speaker_id, speaker_type)
         provider = _provider_for(speaker_type, model)
 
-        log_writer.mark_thinking(speaker_id, channel)
+        _observer.mark_thinking(speaker_id, channel)
         try:
             if _backend_available(provider):
                 result = None
@@ -1823,7 +1828,7 @@ class AgentRuntime:
                         except Exception as e:
                             last_exc = f"{type(e).__name__}: {e}"
                         if attempt == 1:
-                            log_writer.system(
+                            _observer.system(
                                 f"⚠ A2A retry ({speaker_name}→{listener_name}): {last_exc}"
                             )
                 try:
@@ -1834,7 +1839,7 @@ class AgentRuntime:
                         parsed = parse_tools_in_output(result.stdout.strip())
                         self._last_tool_calls[speaker_id] = parsed.tool_calls
                         if parsed.errors:
-                            log_writer.system(
+                            _observer.system(
                                 f"[Tools] 파싱 에러 (A2A {speaker_name}): {'; '.join(parsed.errors[:3])}"
                             )
                         responses = self._parse_response(parsed.chat, agent_name=speaker_name)
@@ -1853,7 +1858,7 @@ class AgentRuntime:
                                 continue
                             cleaned.append(msg)
                         if dropped:
-                            log_writer.system(
+                            _observer.system(
                                 f"[A2A] {speaker_name} 응답에서 {listener_name} 역할 leak {dropped}건 제거"
                             )
                         responses = cleaned
@@ -1891,7 +1896,7 @@ class AgentRuntime:
                                 continue
                             filtered.append(m2)
                         if len(filtered) != len(responses):
-                            log_writer.system(
+                            _observer.system(
                                 f"[A2A drift] {speaker_name} 응답 {len(responses)-len(filtered)}건 drop"
                             )
                         responses = filtered
@@ -1910,17 +1915,17 @@ class AgentRuntime:
 
                         return responses
                 except Exception as e:
-                    log_writer.system(f"❌ 에이전트간 대화 오류: {e}")
+                    _observer.system(f"❌ 에이전트간 대화 오류: {e}")
 
             # LLM 호출 실패 — 이전엔 [테스트] 플레이스홀더를 채팅으로 노출시켰으나
             # 유저 경험 저해. 빈 list 반환 → 호출부에서 "전송할 내용 없음" 처리.
-            log_writer.system(
+            _observer.system(
                 f"⚠ A2A 응답 생성 실패 (provider={provider}) — "
                 f"{speaker_name}→{listener_name} — 최종 사유: {last_exc or 'unknown'}"
             )
             return []
         finally:
-            log_writer.mark_done(speaker_id)
+            _observer.mark_done(speaker_id)
 
 
 # 싱글턴
