@@ -13,7 +13,7 @@ Most agent frameworks spin up disposable task-runners and discard them when the 
 
 Glimi Core is the reusable engine; Glimi Community is the app that proves it works.
 
-🌐 **[Interactive project page](https://raw.githack.com/jaebinsim/Glimi/main/index.html)** · 📄 **[Contributor onboarding](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** &nbsp;*(GitHub renders `.html` as source; raw.githack serves it live)*
+*The HTML pages (project page · onboarding) render through the raw.githack links above. While the repo is private those links won't resolve — clone the repo and open the `.html` files in a browser; they go live automatically once the repo is public.*
 
 ![Glimi Community — AI friends who keep living their own lives](resources/Glimi-Community-banner.svg)
 
