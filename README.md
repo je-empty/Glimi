@@ -203,22 +203,45 @@ Elastic Memory (a context-budgeting layer, `glimi/context_budget.py`) solves thi
 
 ### Quick Start (library)
 
-Glimi Core is **alpha** — a single-line convenience API is still being finalized.
-The kernel itself is real and dependency-free; these imports work today (whether
-installed via `pip install glimi` or run from a source checkout):
+Glimi Core is **alpha (0.1.0, not yet on PyPI)** — install from a source checkout
+for now. The kernel ships a dependency-free in-memory store and an **offline
+`echo` backend**, so this runs out of the box with **zero dependencies and no API
+key** (the `echo` backend doesn't reach a real model — it just lets you see the
+harness wire up and persist a conversation):
 
 ```python
-from glimi.runtime import runtime, AgentRuntime
-from glimi.conversation import start_conversation
-from glimi.store import KernelStore            # storage contract — implement for your DB
-from glimi.profiles import ProfileProvider, OwnerContext
-from glimi.observability import KernelObserver
+from glimi import Glimi
+
+chat = Glimi(backend="echo")          # offline: no deps, no API key, no network
+chat.add_agent("nova", persona="A curious, upbeat companion who loves questions.")
+
+print(chat.reply("nova", "Hi! What's your name?"))
+print(chat.reply("nova", "Nice — tell me something fun."))
 ```
 
-To run agents you supply concrete `KernelStore` / `ProfileProvider` /
-`KernelObserver` implementations, inject them into the kernel
-(`runtime.set_store(...)`, …), then drive the conversation engine. A complete,
-working wiring (SQLite + Discord) lives in the repo:
+Switch to a real model by changing the backend (everything else stays the same):
+
+```python
+chat = Glimi(backend="claude_cli")    # uses your Claude CLI subscription (no SDK)
+chat = Glimi(backend="ollama")        # fully local via Ollama (set GLIMI_OLLAMA_MODEL)
+```
+
+`Glimi` wires the building blocks for you — an in-memory `KernelStore`, a simple
+`ProfileProvider`/`OwnerContext`, a `NullObserver`, and the chosen LLM backend.
+Each piece is also exported for direct use when you outgrow the defaults:
+
+```python
+from glimi import (
+    InMemoryKernelStore, SimpleProfileProvider, SimpleOwnerContext,
+    KernelStore, ProfileProvider, OwnerContext, KernelObserver,  # seams to implement
+    LLMBackend, LLMResponse, EchoBackend,
+)
+```
+
+To plug in your own database, implement `KernelStore` (and optionally
+`ProfileProvider`/`OwnerContext`/`KernelObserver`) and inject via
+`glimi.runtime.set_store(...)`, … . A complete production wiring (SQLite + Discord)
+lives in the repo:
 
 - `src/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
 - `src/core/runtime.py` — injects them into the kernel and re-exports the API
