@@ -21,7 +21,7 @@ from src.core.profile import (
     load_profile, list_all_profiles, get_user_name, get_user_id,
 )
 from src.core.runtime import runtime
-from src.core.conversation import (
+from src.bot.conversation_bridge import (
     start_conversation, stop_conversation, list_active_conversations,
     detect_room_request,
 )
@@ -69,7 +69,7 @@ async def parse_and_execute_actions(
 
     caller_agent_id: 호출한 에이전트. None이면 MGR_ID (유나) 가정.
     """
-    from src.core.tools import run_tools, ToolContext, format_results_block, get_tool
+    from src.glimi.tools import run_tools, ToolContext, format_results_block, get_tool
     from src.core.runtime import runtime
 
     cleaned = [r.strip() for r in responses if r and r.strip()]
