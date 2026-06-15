@@ -1,12 +1,12 @@
 """App shim for the Glimi-kernel memory module.
 
-The memory engine now lives in ``src.glimi.memory`` (kernel, storage/profile/
+The memory engine now lives in ``glimi.memory`` (kernel, storage/profile/
 observer-neutral). This shim wires the Hangout app's adapters into the kernel
 and re-exports the public API so existing ``from src.core.memory import ...``
 call sites keep working unchanged.
 """
-from src.glimi.memory import *  # noqa: F401,F403  (re-export kernel memory API)
-from src.glimi import memory as _km
+from glimi.memory import *  # noqa: F401,F403  (re-export kernel memory API)
+from glimi import memory as _km
 from src.adapters.kernel_store import (
     kernel_store as _kernel_store,
     profile_provider as _profile_provider,

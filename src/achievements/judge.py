@@ -109,7 +109,7 @@ def batch_classify(
     # src.llm 경유 — GLIMI_LLM_BACKEND=ollama 면 로컬 gemma, 아니면 claude(haiku) 폴백.
     # 백엔드 선택은 _select_backend 가 env 기반으로 결정. 실패는 모두 False (보수적).
     try:
-        from src.glimi import llm
+        from glimi import llm
         resp = llm.generate(
             system="", user=prompt,
             model=JUDGE_MODEL, agent_type="judge",

@@ -28,14 +28,14 @@ def tools_reference(agent_type: str) -> str:
       full(16384)    = brief (동일 — 도구 verbose 는 토큰 과다라 on-demand 유지)
     상세는 항상 `get_tool_details(name)` 로 on-demand."""
     try:
-        from src.glimi.tools.reference import build_brief_list, build_compact_list
-        from src.glimi.context_budget import prompt_detail_level
+        from glimi.tools.reference import build_brief_list, build_compact_list
+        from glimi.context_budget import prompt_detail_level
         if prompt_detail_level() == "compact":
             return build_compact_list(agent_type)
         return build_brief_list(agent_type)
     except Exception:
         try:
-            from src.glimi.tools.reference import build_brief_list
+            from glimi.tools.reference import build_brief_list
             return build_brief_list(agent_type)
         except Exception:
             return ""

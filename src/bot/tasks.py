@@ -61,7 +61,7 @@ async def on_ready():
     try:
         from src.bot.tool_handlers import register_all as _register_tools
         _register_tools()
-        from src.glimi.tools import TOOLS as _TOOLS
+        from glimi.tools import TOOLS as _TOOLS
         log_writer.system(f"Tools registered: {len(_TOOLS)}")
     except Exception as e:
         log_writer.system(f"❌ Tool registration failed: {e}")
