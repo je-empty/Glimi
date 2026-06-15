@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glimi Core — Dashboard</title>
+  <link rel="stylesheet" href="static/css/tokens.css">
+  <link rel="stylesheet" href="static/css/dashboard.css">
+  <!-- Cytoscape (connection graph) from CDN — same as the Community dashboard -->
+  <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="status">
+      <span class="brand">
+        <span class="brand-name">Glimi</span>
+        <span class="brand-sub">Core · Dashboard</span>
+      </span>
+      <span class="spacer"></span>
+      <span class="ro-pill" title="This dashboard is read-only: it observes the store and never mutates it.">
+        <span class="dot"></span> Read-only
+      </span>
+      <button class="theme-toggle" id="theme-toggle">☾ Dark</button>
+    </header>
+
+    <div id="load-error" class="disabled-note" style="display:none">
+      Could not load <code>/api/snapshot</code>. Is the store available?
+    </div>
+
+    <!-- KPI strip -->
+    <section class="kpis">
+      <div class="kpi"><div class="label">Agents</div><div class="value" id="kpi-agents">—</div></div>
+      <div class="kpi"><div class="label">Channels</div><div class="value" id="kpi-channels">—</div></div>
+      <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-messages">—</div></div>
+      <div class="kpi"><div class="label">Relationships</div><div class="value" id="kpi-relationships">—</div></div>
+    </section>
+
+    <!-- Connection graph -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Connection Graph</h2>
+        <span class="note">click an agent for detail</span>
+      </div>
+      <div id="cy-graph"></div>
+      <div id="graph-empty" class="graph-empty" style="display:none">
+        No connections yet — agents are quietly waiting.
+      </div>
+      <div class="graph-chips">
+        <span class="gchip"><span class="gdot" style="background:var(--user)"></span>Owner</span>
+        <span class="gchip"><span class="gdot" style="background:var(--mgr)"></span>Manager</span>
+        <span class="gchip"><span class="gdot" style="background:var(--creator)"></span>Creator</span>
+        <span class="gchip"><span class="gdot" style="background:var(--persona)"></span>Persona</span>
+        <span class="gchip"><span class="gline" style="background:var(--accent)"></span>Close relationship</span>
+      </div>
+    </section>
+
+    <!-- Agents -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Agents</h2>
+        <span class="note">click a card for profile · memory · facts · relationships</span>
+      </div>
+      <div class="agent-grid" id="agent-grid">
+        <div class="empty">Loading…</div>
+      </div>
+    </section>
+
+    <!-- Channels -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Channels</h2>
+        <span class="note">click a channel to view messages</span>
+      </div>
+      <div class="channel-list" id="channel-list">
+        <div class="empty">Loading…</div>
+      </div>
+    </section>
+  </div>
+
+  <script src="static/js/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+/* ============================================================
+   Glimi Design Tokens — single source of truth
+   문서: docs/design_system.md
+   톤: je-empty 계열 (ink-forward 미니멀 · 네이비 accent · 레이어드 paper).
+   새 화면(setup wizard / web-chat)은 이 파일 + 컴포넌트 CSS 만 import.
+   기존 base.css / dashboard.css 는 인라인 :root 를 들고 있음 → 점진적으로 이 파일로 수렴.
+   ============================================================ */
+
+/* 폰트 — @import 는 파일 최상단이어야 적용됨. 이 파일을 가장 먼저 link 하면 됨. */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
+@import url('https://cdn.jsdelivr.net/npm/jetbrains-mono@1/css/jetbrains-mono.min.css');
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css');
+
+:root[data-theme="light"] {
+  /* surfaces — 레이어드 paper */
+  --bg:        #fafafa;
+  --bg-elev:   #ffffff;
+  --panel:     #ffffff;   /* paper   — 카드/패널 기본 */
+  --panel-2:   #f6f7f9;   /* paper-2 — hover / 보조 면 */
+  --panel-3:   #eceef2;   /* paper-3 — 깊은 hover / 입력 트랙 */
+  /* lines */
+  --border:      #e5e7eb; /* line       — 표준 경계 */
+  --border-soft: #eef0f3; /* line-soft  — 약한 분할선 */
+  /* ink */
+  --text:       #14161a;  /* ink */
+  --text-dim:   #4a4e57;  /* ink-muted */
+  --text-faint: #8a8e98;  /* ink-faint */
+  /* accent — navy */
+  --accent:    #2a4365;
+  --accent-2:  #51678f;   /* slate (navy 보조) */
+  --accent-fg: #ffffff;   /* accent 위 텍스트 */
+  --accent-soft: #eef2f8; /* accent 틴트 면 */
+  /* status */
+  --ok:   #047857;
+  --warn: #b45309;
+  --err:  #b91c1c;
+  --cmd:  #9333ea;
+  /* Glimi 정체성 — agent 사분면 + 대화 상태 (브랜드색, 함부로 바꾸지 말 것) */
+  --thinking: #ca8a04;
+  --speaking: #0891b2;
+  --mgr:      #dc2626;
+  --creator:  #ea580c;
+  --persona:  #2563eb;
+  --dev:      #16a34a;
+  --user:     #db2777;
+  /* elevation */
+  --shadow:    0 1px 2px rgba(0,0,0,0.06);
+  --shadow-lg: 0 4px 14px -2px rgba(0,0,0,0.16), 0 0 0 1px var(--border);
+  --glow-thinking: 0 0 0 1px rgba(202,138,4,0.6), 0 0 28px rgba(202,138,4,0.15);
+  --glow-speaking: 0 0 0 1px rgba(8,145,178,0.6), 0 0 28px rgba(8,145,178,0.15);
+}
+
+:root[data-theme="dark"] {
+  --bg:        #1a1a1a;
+  --bg-elev:   #1f1f1f;
+  --panel:     #212121;
+  --panel-2:   #2f2f2f;
+  --panel-3:   #424242;
+  --border:      rgba(255,255,255,0.10);
+  --border-soft: rgba(255,255,255,0.06);
+  --text:       #ececec;
+  --text-dim:   #b4b4b4;
+  --text-faint: #8a8a8a;
+  --accent:    #9fb8e0;   /* lightened navy — 다크에선 밝혀야 대비 확보 */
+  --accent-2:  #b8c5dd;
+  --accent-fg: #14161a;
+  --accent-soft: #1a2536;
+  --ok:   #34d399;
+  --warn: #fbbf24;
+  --err:  #f87171;
+  --cmd:  #d8b4fe;
+  --thinking: #fde047;
+  --speaking: #67e8f9;
+  --mgr:      #f87171;
+  --creator:  #fb923c;
+  --persona:  #93c5fd;
+  --dev:      #86efac;
+  --user:     #f9a8d4;
+  --shadow:    0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px var(--border);
+  --glow-thinking: 0 0 0 1px var(--thinking), 0 0 28px rgba(253,224,71,0.15);
+  --glow-speaking: 0 0 0 1px var(--speaking), 0 0 28px rgba(103,232,249,0.15);
+}
+
+/* theme 무관 토큰 — 타이포/간격/반경/모션 스케일 */
+:root {
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* type scale (px) */
+  --fs-xs:   11px;
+  --fs-sm:   12.5px;
+  --fs-base: 14px;
+  --fs-md:   15px;
+  --fs-lg:   17px;
+  --fs-xl:   20px;
+  --fs-2xl:  26px;
+
+  /* spacing scale (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* radius */
+  --r-sm:   6px;
+  --r-md:   10px;
+  --r-lg:   14px;
+  --r-pill: 999px;
+
+  /* motion — 짧고 차분하게. 화려한 ease-bounce 금지. */
+  --ease:       cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:   0.12s;
+  --dur:        0.2s;
+  --dur-slow:   0.3s;
+
+  --tap-min: 40px;  /* 최소 터치 타깃 */
+}
