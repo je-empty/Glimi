@@ -185,21 +185,43 @@ graph LR
 
 ### Quick Start (라이브러리)
 
-Glimi Core 는 **알파** — 한 줄짜리 편의 API 는 아직 다듬는 중. 커널 자체는 실재하고
-의존성이 없으며, 아래 import 는 지금 바로 동작함 (`pip install glimi` 설치든 소스
-체크아웃이든 `from glimi ...` 동일):
+Glimi Core 는 **알파 (0.1.0, 아직 PyPI 미배포)** — 당분간은 소스 체크아웃에서
+설치. 커널은 의존성 없는 인메모리 스토어와 **오프라인 `echo` 백엔드**를 기본 탑재해서,
+아래 예제는 **의존성 0·API 키 없이** 바로 돌아간다 (`echo` 백엔드는 실제 모델을
+호출하지 않고, 하네스가 배선되고 대화가 저장되는 걸 눈으로 확인시켜 줄 뿐):
 
 ```python
-from glimi.runtime import runtime, AgentRuntime
-from glimi.conversation import start_conversation
-from glimi.store import KernelStore            # 스토리지 계약 — 본인 DB 에 맞게 구현
-from glimi.profiles import ProfileProvider, OwnerContext
-from glimi.observability import KernelObserver
+from glimi import Glimi
+
+chat = Glimi(backend="echo")          # 오프라인: 의존성·API 키·네트워크 전부 불필요
+chat.add_agent("nova", persona="호기심 많고 잘 묻는 명랑한 친구.")
+
+print(chat.reply("nova", "안녕! 이름이 뭐야?"))
+print(chat.reply("nova", "좋네 — 재밌는 얘기 하나 해줘."))
 ```
 
-에이전트를 돌리려면 `KernelStore` / `ProfileProvider` / `KernelObserver` 구체
-구현을 만들어 커널에 주입(`runtime.set_store(...)` 등)한 뒤 conversation 엔진을
-구동. 완성된 실동작 배선(SQLite + Discord)은 repo 에 있음:
+백엔드만 바꾸면 실제 모델로 전환된다 (나머지 코드는 그대로):
+
+```python
+chat = Glimi(backend="claude_cli")    # Claude CLI 구독 사용 (SDK 불필요)
+chat = Glimi(backend="ollama")        # Ollama 로 완전 로컬 (GLIMI_OLLAMA_MODEL 설정)
+```
+
+`Glimi` 가 구성요소를 알아서 배선해 준다 — 인메모리 `KernelStore`, 간단한
+`ProfileProvider`/`OwnerContext`, `NullObserver`, 그리고 선택한 LLM 백엔드. 기본값을
+넘어서고 싶으면 각 조각을 직접 가져다 쓸 수도 있다:
+
+```python
+from glimi import (
+    InMemoryKernelStore, SimpleProfileProvider, SimpleOwnerContext,
+    KernelStore, ProfileProvider, OwnerContext, KernelObserver,  # 직접 구현할 seam
+    LLMBackend, LLMResponse, EchoBackend,
+)
+```
+
+본인 DB 를 쓰려면 `KernelStore` (선택적으로 `ProfileProvider`/`OwnerContext`/
+`KernelObserver`) 를 구현해 `glimi.runtime.set_store(...)` 등으로 주입. 완성된 실동작
+배선(SQLite + Discord)은 repo 에 있음:
 
 - `src/adapters/kernel_store.py` — `SqliteKernelStore` + 프로필/옵저버 어댑터
 - `src/core/runtime.py` — 커널에 주입 + API 재export
