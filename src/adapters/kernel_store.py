@@ -190,7 +190,25 @@ class ProfileOwnerContext:
     def call_name(self) -> str:
         return profile.get_owner_call_name()
 
+    def profile(self) -> dict:
+        return profile.get_user_profile() or {}
+
+
+class ProfileProviderAdapter:
+    """:class:`~src.glimi.profiles.ProfileProvider` over ``src.core.profile`` +
+    the app's prompt builder (``build_system_prompt``)."""
+
+    def get(self, agent_id: str):
+        return profile.load_profile(agent_id)
+
+    def system_prompt(self, agent_id: str, include_profile_image_template: bool = False) -> str:
+        return profile.build_system_prompt(agent_id, include_profile_image_template=include_profile_image_template)
+
+    def display_name(self, agent_id: str) -> str:
+        return profile.get_agent_display_name(agent_id)
+
 
 # Convenience singletons for the app to inject at the edge.
 kernel_store = SqliteKernelStore()
 owner_context = ProfileOwnerContext()
+profile_provider = ProfileProviderAdapter()
