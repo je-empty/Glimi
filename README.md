@@ -49,9 +49,9 @@ Glimi/                          (single git repo, multi-package monorepo)
 
 There are many open-source agent frameworks now: LangChain/LangGraph, AutoGen, CrewAI, the OpenAI Agents SDK, Letta, and more. Most run an agent through a **task** and then discard it. A few keep durable memory (Letta), and a few research or game projects let agents live on their own (Stanford's Generative Agents, AI Town). Glimi brings those scattered pieces into **one pip-installable runtime**, and two of them are genuinely rare:
 
-**1. Memory that fits your hardware (Elastic Memory).** Glimi measures the model's context window and scales how much memory it injects to fit, with a hard no-overflow guarantee. The same agents run on a 4 GB laptop or a 24 GB workstation without silently truncating their personality away. No agent framework does this, and the local runtimes don't either: Ollama's own request to auto-size context to available VRAM has been an open, unimplemented issue since 2025.
+**1. Memory that fits your hardware (Elastic Memory).** Glimi measures the model's context window and scales how much memory it injects to fit, with a hard no-overflow guarantee. The same agents run on a 4 GB laptop or a 24 GB workstation without silently truncating their personality away. Agent frameworks can trim history to fit the window (CrewAI, Letta, the OpenAI Agents SDK, AutoGen, LangGraph each do some form of this), but none sizes the memory budget to the **hardware** or gives a **hard no-overflow guarantee** — and the local runtimes don't either: Ollama's own request to auto-size context to available VRAM has been an open, unimplemented issue since 2025.
 
-**2. Anti-drift memory inside a free, shipped runtime.** Glimi's facts are time-bounded. When a new fact contradicts an old one, the old one is marked superseded (kept for history, not deleted), so agents stop carrying stale beliefs. The reference implementation of this idea, Zep's Graphiti, is a memory *engine* whose graph UI sits behind a paid platform; Mem0 removed contradiction resolution entirely in 2026. Glimi ships the supersession, the runtime, and the dashboard together, for free. (Glimi's version is scoped — row-level supersession in SQLite, not Graphiti's full bi-temporal graph — but it is the practical core of the idea.)
+**2. Anti-drift memory inside a free, shipped runtime.** Glimi's facts are time-bounded. When a new fact contradicts an old one, the old one is marked superseded (kept for history, not deleted), so agents stop carrying stale beliefs. The reference implementation of this idea, Zep's Graphiti, is a memory *engine* whose graph UI lives in Zep's proprietary hosted platform (free tier available; the graph UI isn't part of the open-source Graphiti package); Mem0 removed contradiction resolution entirely in 2026. Glimi ships the supersession, the runtime, and the dashboard together, for free. (Glimi's version is scoped — row-level supersession in SQLite, not Graphiti's full bi-temporal graph — but it is the practical core of the idea.)
 
 Around those two, the integration is the point:
 
@@ -68,13 +68,13 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 
 | Capability | Glimi | Letta (MemGPT) | AI Town | Zep / Graphiti | CrewAI / LangGraph | SillyTavern |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
-| Pip-install library, you design the fleet | ✅ | ✅ | ❌ TS game stack | ✅ engine only | ✅ | ❌ chat app |
+| Pip-install library, you design the fleet | ✅ | ✅ | ❌ TS game stack | ✅ engine only | ✅ | ❌ chat front-end |
 | Per-agent model, cloud + local in one fleet | ✅ | ✅ | ❌ one shared model | — | ✅ | ◐ |
 | Memory survives a model swap (state in storage) | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ |
 | Temporal fact supersession (anti-drift) | ✅ scoped | ❌ | ❌ | ✅ the reference | ❌ | ❌ |
 | Autonomous agent-to-agent (self-initiated) | ✅ | ❌ | ✅ | ❌ | ❌ | ◐ |
 | Hardware-aware elastic context budgeting | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Built-in relationship-graph + memory dashboard | ✅ | ◐ one agent | ◐ sim viewer | ❌ paid | ❌ separate | ❌ |
+| Built-in relationship-graph + memory dashboard | ✅ | ◐ one agent | ◐ sim viewer | ❌ hosted | ❌ separate | ❌ |
 
 ✅ yes · ◐ partial · ❌ no · — not applicable. Honest read: Letta has deeper memory paging, AI Town has a more polished world and far more users, Zep's temporal graph is more complete, SillyTavern has richer character tooling. Glimi is the one that does all seven rows at once, in a single Apache-2.0 package.
 
