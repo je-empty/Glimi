@@ -13,7 +13,7 @@
 
 한마디로 Glimi Core 는 엔진이고, Glimi Community 는 그 엔진이 진짜 돌아간다는 걸 보여 주는 앱이다.
 
-🌐 **[프로젝트 인터랙티브 페이지](https://raw.githack.com/jaebinsim/Glimi/main/index.html)** · 📄 **[기여자 온보딩](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)** &nbsp;*(GitHub 는 .html 을 소스로 보여줌; raw.githack 이 렌더링)*
+*HTML 페이지(프로젝트 페이지 · 온보딩)는 맨 위 raw.githack 링크로 렌더링된다. 레포가 비공개인 동안에는 링크가 안 열리니, 레포를 클론해서 `.html` 파일을 브라우저로 열면 된다 — 공개로 전환하면 링크가 자동으로 살아난다.*
 
 ![Glimi Community — 당신이 없는 동안에도 살아가는 친구들](resources/Glimi-Community-banner.svg)
 
