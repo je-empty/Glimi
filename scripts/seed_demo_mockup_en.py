@@ -111,7 +111,7 @@ personas = [
         "routine": "morning at the bookstore → afternoon work → evening cafe with friends",
     },
     {
-        "id": "agent-persona-002", "name": "Minseo", "age": 27, "gender": "female",
+        "id": "agent-persona-002", "name": "Chloe", "age": 27, "gender": "female",
         "mbti": "ESTP", "enneagram": "7",
         "bg": "Friends since elementary school. Lives one neighborhood over so they hang out often. Totally casual, can even swear around each other.",
         "emotion": "lively", "intensity": 8,
@@ -123,7 +123,7 @@ personas = [
         "routine": "morning work → evening run or friends → weekend trips",
     },
     {
-        "id": "agent-persona-003", "name": "Seoa", "age": 22, "gender": "female",
+        "id": "agent-persona-003", "name": "Emma", "age": 22, "gender": "female",
         "mbti": "ESFP", "enneagram": "7",
         "bg": "A college junior met at a department event. Bubbly and bright. The life of any gathering.",
         "emotion": "excited", "intensity": 9,
@@ -135,7 +135,7 @@ personas = [
         "routine": "classes → studying at a cafe → out with friends",
     },
     {
-        "id": "agent-persona-004", "name": "Yerin", "age": 24, "gender": "female",
+        "id": "agent-persona-004", "name": "Sophie", "age": 24, "gender": "female",
         "mbti": "ENFP", "enneagram": "4",
         "bg": "A friend met through Mia. Freelance illustrator. Held her first solo show last year. Sentimental and chatty.",
         "emotion": "happy", "intensity": 7,
@@ -147,19 +147,19 @@ personas = [
         "routine": "morning work → afternoon cafe/exhibitions → occasional evenings with Mia",
     },
     {
-        "id": "agent-persona-005", "name": "Harin", "age": 20, "gender": "female",
+        "id": "agent-persona-005", "name": "Lily", "age": 20, "gender": "female",
         "mbti": "INFP", "enneagram": "9",
-        "bg": "A younger friend met in a college club. Studying composition. Quiet but deep. Close with Seoa.",
+        "bg": "A younger friend met in a college club. Studying composition. Quiet but deep. Close with Emma.",
         "emotion": "calm", "intensity": 5,
         "traits": ["quiet", "sentimental", "considerate", "deep"],
         "likes": ["music", "photography", "cats", "night walks"],
         "dislikes": ["being pressured"],
         "rel_owner": "friend", "duration": "2 years", "pet_name": "You",
         "occupation": "College student (junior)",
-        "routine": "classes → composition practice → frequent calls with Seoa",
+        "routine": "classes → composition practice → frequent calls with Emma",
     },
     {
-        "id": "agent-persona-006", "name": "Suyeon", "age": 30, "gender": "female",
+        "id": "agent-persona-006", "name": "Grace", "age": 30, "gender": "female",
         "mbti": "ENTJ", "enneagram": "8",
         "bg": "An older friend met at a gym/pilates group. Demanding but full of good advice. A lot to learn from her.",
         "emotion": "focused", "intensity": 7,
@@ -171,7 +171,7 @@ personas = [
         "routine": "6am pilates → evening reading / planning camping trips",
     },
     {
-        "id": "agent-persona-007", "name": "Sujin", "age": 26, "gender": "female",
+        "id": "agent-persona-007", "name": "Zoe", "age": 26, "gender": "female",
         "mbti": "ISFJ", "enneagram": "6",
         "bg": "A friend met at a brunch group. Meticulous and attentive. Loves cooking and baking; they go on restaurant hunts together a lot.",
         "emotion": "serene", "intensity": 6,
@@ -227,13 +227,13 @@ for p in personas:
 rel_pairs = [
     # (a, b, type, intimacy, dynamics) — all friendship-tier only
     ("agent-persona-001", "agent-persona-004", "best friends", 95, "college classmates, talk every day"),
-    ("agent-persona-001", "agent-persona-002", "friends", 72, "met through You. Minseo's bluntness is occasionally a lot for Mia"),
+    ("agent-persona-001", "agent-persona-002", "friends", 72, "met through You. Chloe's bluntness is occasionally a lot for Mia"),
     ("agent-persona-002", "agent-persona-006", "friends", 68, "got close at the running/pilates group. mutual respect"),
     ("agent-persona-003", "agent-persona-005", "best friends", 92, "club seniors/juniors, on the phone nearly every day"),
-    ("agent-persona-004", "agent-persona-005", "friends", 60, "met through Mia. Yerin loves Harin's work"),
+    ("agent-persona-004", "agent-persona-005", "friends", 60, "met through Mia. Sophie loves Lily's work"),
     ("agent-persona-006", "agent-persona-007", "friends", 82, "go to the brunch/pilates groups together"),
-    ("agent-persona-001", "agent-persona-003", "acquaintances", 45, "a few times at You's gatherings — Seoa's vibe is slightly much for Mia"),
-    ("agent-persona-002", "agent-persona-003", "acquaintances", 50, "met at You's gatherings. Seoa thinks Minseo is hilarious"),
+    ("agent-persona-001", "agent-persona-003", "acquaintances", 45, "a few times at You's gatherings — Emma's vibe is slightly much for Mia"),
+    ("agent-persona-002", "agent-persona-003", "acquaintances", 50, "met at You's gatherings. Emma thinks Chloe is hilarious"),
     ("agent-persona-001", "agent-persona-007", "acquaintances", 55, "met at You's gatherings. both quiet types, they click"),
     ("agent-mgr-001", "agent-creator-001", "friends", 88, "Glimi manager & creator, lean on each other"),
 ]
@@ -263,9 +263,9 @@ add_channel("mgr-system-log", ["agent-mgr-001"])
 add_channel("group-friends", ["agent-persona-001", "agent-persona-002", "agent-persona-004"])
 add_channel("group-work", ["agent-persona-006", "agent-persona-007"])
 # Internal (between agents, owner read-only)
-add_channel("internal-dm-Mia-Yerin", ["agent-persona-001", "agent-persona-004"])
-add_channel("internal-dm-Seoa-Harin", ["agent-persona-003", "agent-persona-005"])
-add_channel("internal-dm-Suyeon-Sujin", ["agent-persona-006", "agent-persona-007"])
+add_channel("internal-dm-Mia-Sophie", ["agent-persona-001", "agent-persona-004"])
+add_channel("internal-dm-Emma-Lily", ["agent-persona-003", "agent-persona-005"])
+add_channel("internal-dm-Grace-Zoe", ["agent-persona-006", "agent-persona-007"])
 add_channel("internal-group-the-girls",
             ["agent-persona-001", "agent-persona-003", "agent-persona-004", "agent-persona-005"])
 
@@ -295,7 +295,7 @@ DM_SCRIPTS = {
         ("owner", "yeah just gotta survive this week"),
         ("agent-persona-001", "next week we rest, properly. promise"),
     ],
-    "dm-Minseo": [
+    "dm-Chloe": [
         ("agent-persona-002", "what are you up to this weekend"),
         ("owner", "why"),
         ("agent-persona-002", "the old crew's getting drinks"),
@@ -310,7 +310,7 @@ DM_SCRIPTS = {
         ("agent-persona-002", "I'll call you tonight, it's a long convo"),
         ("owner", "ok after 9"),
     ],
-    "dm-Seoa": [
+    "dm-Emma": [
         ("agent-persona-003", "heyyy lol"),
         ("owner", "what's up"),
         ("agent-persona-003", "you're coming to the club homecoming next week right?"),
@@ -321,11 +321,11 @@ DM_SCRIPTS = {
         ("agent-persona-003", "career plans — graduation's coming up you know"),
         ("owner", "send it over"),
         ("agent-persona-003", "hehe thank you"),
-        ("agent-persona-003", "btw Harin and I have been hitting up malatang spots lately, wanna come?"),
+        ("agent-persona-003", "btw Lily and I have been hitting up malatang spots lately, wanna come?"),
         ("owner", "haha maybe sometime"),
     ],
-    "dm-Yerin": [
-        ("owner", "Yerin how's the exhibition coming along?"),
+    "dm-Sophie": [
+        ("owner", "Sophie how's the exhibition coming along?"),
         ("agent-persona-004", "hey! it's basically done haha"),
         ("agent-persona-004", "opening's the 15th next month"),
         ("owner", "I'll come with Mia"),
@@ -333,31 +333,31 @@ DM_SCRIPTS = {
         ("owner", "haha what, don't spoil it"),
         ("agent-persona-004", "it's a secret, just look forward to it"),
     ],
-    "dm-Harin": [
+    "dm-Lily": [
         ("agent-persona-005", "hi!"),
-        ("owner", "hey Harin, doing okay?"),
+        ("owner", "hey Lily, doing okay?"),
         ("agent-persona-005", "yeah I've got a ton of composition assignments lately so I'm swamped haha"),
         ("agent-persona-005", "oh by the way I listened to that playlist you mentioned"),
         ("owner", "how was it?"),
         ("agent-persona-005", "I loved the Rachmaninoff. it actually inspired my next piece"),
         ("owner", "haha that's great"),
-        ("agent-persona-005", "come by the club room sometime. Seoa wants to see you too"),
+        ("agent-persona-005", "come by the club room sometime. Emma wants to see you too"),
         ("owner", "I'll make time next week"),
     ],
-    "dm-Suyeon": [
+    "dm-Grace": [
         ("agent-persona-006", "hey, can you review the client meeting deck for tomorrow?"),
         ("owner", "sure, I'll share it before I leave today"),
         ("agent-persona-006", "go through the risk section especially carefully. can't have a repeat of last time"),
         ("owner", "got it, I'll keep that in mind"),
         ("agent-persona-006", "also the workshop dates for next month are out. check your email"),
         ("owner", "checked it"),
-        ("agent-persona-006", "and coordinate well with Sujin too"),
+        ("agent-persona-006", "and coordinate well with Zoe too"),
         ("owner", "will do"),
     ],
-    "dm-Sujin": [
+    "dm-Zoe": [
         ("agent-persona-007", "want to grab lunch?"),
         ("owner", "I'm out of the office today... how about tomorrow"),
-        ("agent-persona-007", "sure, sounds good. Suyeon will probably come too"),
+        ("agent-persona-007", "sure, sounds good. Grace will probably come too"),
         ("owner", "ok, 11:30"),
         ("agent-persona-007", "oh we decided to go with the second design draft"),
         ("owner", "good call, that one's better"),
@@ -372,10 +372,10 @@ for ch, lines in DM_SCRIPTS.items():
 MGR_LINES = [
     (90, "agent-mgr-001", "Hi! I'm Yuna, your manager :)"),
     (88, "owner", "hello!"),
-    (85, "agent-mgr-001", "Over in #dm-Seoa, Seoa brought up the homecoming next week. Let me know once you decide whether you're going~"),
+    (85, "agent-mgr-001", "Over in #dm-Emma, Emma brought up the homecoming next week. Let me know once you decide whether you're going~"),
     (82, "agent-mgr-001", "Also, Mia's been really worried about your health (based on your recent chats)"),
     (75, "owner", "haha thanks"),
-    (30, "agent-mgr-001", "fyi, over in #internal-dm-Mia-Yerin the two of them are discussing your birthday gift right now 🤫"),
+    (30, "agent-mgr-001", "fyi, over in #internal-dm-Mia-Sophie the two of them are discussing your birthday gift right now 🤫"),
     (15, "agent-mgr-001", "If you need to edit a profile or make a new friend, come to #mgr-creator!"),
 ]
 for ago, sp, content in MGR_LINES:
@@ -403,13 +403,13 @@ msg("group-work", "agent-persona-006", "great, let's do the 3pm meeting then", 1
 msg("group-work", "owner", "got it, I'll get ready", 15, "focused")
 msg("group-work", "agent-persona-007", "want to do lunch all together?", 10, "serene")
 
-# Internal — Mia·Yerin (worried about You + birthday prep)
+# Internal — Mia·Sophie (worried about You + birthday prep)
 INTERNAL_JIWOO_YERIN = [
-    ("agent-persona-001", "Yerin, You's been looking so busy lately and I'm worried", 180),
+    ("agent-persona-001", "Sophie, You's been looking so busy lately and I'm worried", 180),
     ("agent-persona-004", "haha you're in worry-mode again. You's pretty healthy you know", 178),
     ("agent-persona-001", "still, he hasn't been sleeping well and he's stressed", 176),
     ("agent-persona-004", "well he's got you by his side so he'll be fine"),
-    ("agent-persona-001", "haha thanks Yerin"),
+    ("agent-persona-001", "haha thanks Sophie"),
     ("agent-persona-004", "oh but his birthday's next month right?", 90),
     ("agent-persona-001", "yeah, trying to figure out what to do for him", 88),
     ("agent-persona-004", "what if I draw him something?"),
@@ -424,10 +424,10 @@ INTERNAL_JIWOO_YERIN = [
 for i, entry in enumerate(INTERNAL_JIWOO_YERIN):
     sp, content = entry[0], entry[1]
     ago = entry[2] if len(entry) > 2 else (len(INTERNAL_JIWOO_YERIN) - i) * 8
-    msg("internal-dm-Mia-Yerin", sp, content, ago_min=ago,
+    msg("internal-dm-Mia-Sophie", sp, content, ago_min=ago,
         emotion="serene" if sp == "agent-persona-001" else "happy")
 
-# Internal — Seoa·Harin (malatang + the crush)
+# Internal — Emma·Lily (malatang + the crush)
 INTERNAL_SEOA_HARIN = [
     ("agent-persona-003", "what should we eat for dinner", 45),
     ("agent-persona-005", "hmm... malatang??", 44),
@@ -438,7 +438,7 @@ INTERNAL_SEOA_HARIN = [
     ("agent-persona-003", "btw I DMed You and the reply was kinda lukewarm"),
     ("agent-persona-005", "lol you message him way too much"),
     ("agent-persona-003", "what, when do I"),
-    ("agent-persona-005", "Seoa it's so obvious you actually like him lol"),
+    ("agent-persona-005", "Emma it's so obvious you actually like him lol"),
     ("agent-persona-003", "... am I that obvious"),
     ("agent-persona-005", "everyone already knows haha"),
     ("agent-persona-005", "but he's got Mia you know"),
@@ -449,12 +449,12 @@ INTERNAL_SEOA_HARIN = [
 for i, entry in enumerate(INTERNAL_SEOA_HARIN):
     sp, content = entry[0], entry[1]
     ago = entry[2] if len(entry) > 2 else (len(INTERNAL_SEOA_HARIN) - i) * 3
-    msg("internal-dm-Seoa-Harin", sp, content, ago_min=ago,
+    msg("internal-dm-Emma-Lily", sp, content, ago_min=ago,
         emotion="excited" if sp == "agent-persona-003" else "calm")
 
-# Internal — Suyeon·Sujin (office politics)
+# Internal — Grace·Zoe (office politics)
 INTERNAL_JIHO_SUJIN = [
-    ("agent-persona-006", "Sujin, You's doing well on this project right?", 30),
+    ("agent-persona-006", "Zoe, You's doing well on this project right?", 30),
     ("agent-persona-007", "yeah, careful and diligent", 28),
     ("agent-persona-006", "I just wish there were a bit more leadership"),
     ("agent-persona-007", "well he's still pretty junior"),
@@ -466,9 +466,9 @@ INTERNAL_JIHO_SUJIN = [
 for i, entry in enumerate(INTERNAL_JIHO_SUJIN):
     sp, content = entry[0], entry[1]
     ago = entry[2] if len(entry) > 2 else (len(INTERNAL_JIHO_SUJIN) - i) * 4
-    msg("internal-dm-Suyeon-Sujin", sp, content, ago_min=ago, emotion="focused")
+    msg("internal-dm-Grace-Zoe", sp, content, ago_min=ago, emotion="focused")
 
-# Internal group — the girls (Mia, Seoa, Yerin, Harin)
+# Internal group — the girls (Mia, Emma, Sophie, Lily)
 INTERNAL_GIRLS = [
     ("agent-persona-004", "hey, brunch this weekend?", 120),
     ("agent-persona-001", "sure, where?"),
@@ -517,8 +517,8 @@ JIWOO_MEMS = [
     (2, "dm-You", "- was a regular since he started his part-time job → grew into friendship\n- similar taste in books / coffee / music makes conversation easy\n- text 3-4x a week, meet up occasionally on weekends",
      "relationship", 8, ["You"], 10),
     # Cross-channel
-    (1, "internal-dm-Mia-Yerin", "- birthday gift ideas for You with Yerin\n- Yerin: draw an illustration / Mia: an LP You had his eye on\n- shopping together next week",
-     "event", 7, ["Yerin", "You"], 2),
+    (1, "internal-dm-Mia-Sophie", "- birthday gift ideas for You with Sophie\n- Sophie: draw an illustration / Mia: an LP You had his eye on\n- shopping together next week",
+     "event", 7, ["Sophie", "You"], 2),
     # Pinned — for sharing worry
     (1, "dm-You", "- You hasn't been sleeping well lately so he takes early-morning walks\n- shared his route along the river\n- talked about sometimes going together",
      "fact", 7, ["You"], 3),
@@ -532,56 +532,56 @@ for i, (lvl, ch, content, mt, imp, ents, ago) in enumerate(JIWOO_MEMS):
                   ents, knows=["Mia", "owner"] if "You" in ents else None,
                   is_pinned=pinned, ago_days=ago, level=lvl)
 
-# Minseo — memory about the job-change dilemma
+# Chloe — memory about the job-change dilemma
 insert_memory("agent-persona-002", "dm-You",
               "- opened up to You about thinking of switching jobs\n- startup offer is +25% pay but carries risk\n- phone call tonight at 9",
-              "event", 7, ["You"], ["Minseo", "owner"], ago_days=0)
+              "event", 7, ["You"], ["Chloe", "owner"], ago_days=0)
 insert_memory("agent-persona-002", "dm-You",
               "- You is buried in his project (only free on weekends)\n- old crew meetup saturday 7pm — confirming whether You will join\n- joked he needs Mia's permission",
-              "event", 5, ["You"], ["Minseo", "owner"], ago_days=1)
+              "event", 5, ["You"], ["Chloe", "owner"], ago_days=1)
 insert_memory("agent-persona-002", "dm-You",
               "- 20-year friends who trade opinions on every big life decision\n- the relationship where we tell each other the bluntest truths\n- I was the first to give advice when You started dating, and when he changed jobs",
-              "relationship", 9, ["You"], ["Minseo", "owner"], ago_days=14)
+              "relationship", 9, ["You"], ["Chloe", "owner"], ago_days=14)
 
-# Seoa — has feelings for You (internal only)
+# Emma — has feelings for You (internal only)
 insert_memory("agent-persona-003", "dm-You",
               "- asked You to come to the homecoming\n- asked him to review my presentation → he said send it\n- floated going for malatang together (didn't get a no)",
-              "event", 5, ["You"], ["Seoa", "owner"], ago_days=0)
-# internal-dm-Seoa-Harin — crush on You (owner not in knows → disclosure marker applies)
-insert_memory("agent-persona-003", "internal-dm-Seoa-Harin",
-              "- Harin caught on that I like You\n- You has Mia → decided to just keep the feelings to myself",
-              "emotion", 8, ["You", "Harin", "Mia"],
-              ["Seoa", "Harin"],  # no owner — private conversation
+              "event", 5, ["You"], ["Emma", "owner"], ago_days=0)
+# internal-dm-Emma-Lily — crush on You (owner not in knows → disclosure marker applies)
+insert_memory("agent-persona-003", "internal-dm-Emma-Lily",
+              "- Lily caught on that I like You\n- You has Mia → decided to just keep the feelings to myself",
+              "emotion", 8, ["You", "Lily", "Mia"],
+              ["Emma", "Lily"],  # no owner — private conversation
               ago_days=1)
 
-# Yerin — You's birthday plan (internal)
-insert_memory("agent-persona-004", "internal-dm-Mia-Yerin",
-              "- discussed You's birthday gift with Mia\n- Yerin = draw him something by hand\n- Mia = planning to buy whisky\n- shopping together next saturday",
+# Sophie — You's birthday plan (internal)
+insert_memory("agent-persona-004", "internal-dm-Mia-Sophie",
+              "- discussed You's birthday gift with Mia\n- Sophie = draw him something by hand\n- Mia = planning to buy whisky\n- shopping together next saturday",
               "event", 9, ["Mia", "You"],
-              ["Yerin", "Mia"],  # no owner
+              ["Sophie", "Mia"],  # no owner
               ago_days=2)
 insert_memory("agent-persona-004", "dm-You",
               "- solo show opening the 15th next month\n- You + Mia promised to come\n- preparing 'a piece Mia will love' (secret)",
-              "event", 7, ["You", "Mia"], ["Yerin", "owner"], ago_days=0)
+              "event", 7, ["You", "Mia"], ["Sophie", "owner"], ago_days=0)
 
-# Harin — quiet depth
+# Lily — quiet depth
 insert_memory("agent-persona-005", "dm-You",
               "- used the Rachmaninoff playlist as inspiration for composing\n- invited him to drop by the club room next week",
-              "fact", 5, ["You"], ["Harin", "owner"], ago_days=0)
+              "fact", 5, ["You"], ["Lily", "owner"], ago_days=0)
 
-# Suyeon — work context
+# Grace — work context
 insert_memory("agent-persona-006", "dm-You",
               "- requested a review of tomorrow's client meeting deck\n- emphasized the risk section (avoid repeating last time's mistake)\n- announced next month's workshop dates",
-              "event", 6, ["You"], ["Suyeon", "owner"], ago_days=0)
-insert_memory("agent-persona-006", "internal-dm-Suyeon-Sujin",
-              "- assessment of You: careful and diligent but lacks leadership\n- considering having him lead a project next year\n- Sujin agrees",
-              "fact", 7, ["You", "Sujin"], ["Suyeon", "Sujin"],  # owner doesn't know
+              "event", 6, ["You"], ["Grace", "owner"], ago_days=0)
+insert_memory("agent-persona-006", "internal-dm-Grace-Zoe",
+              "- assessment of You: careful and diligent but lacks leadership\n- considering having him lead a project next year\n- Zoe agrees",
+              "fact", 7, ["You", "Zoe"], ["Grace", "Zoe"],  # owner doesn't know
               ago_days=0)
 
-# Sujin — lunch + design decision
+# Zoe — lunch + design decision
 insert_memory("agent-persona-007", "dm-You",
-              "- lunch tomorrow with manager Suyeon\n- decided to go with the second design draft (You agreed)",
-              "event", 5, ["You", "Suyeon"], ["Sujin", "owner"], ago_days=0)
+              "- lunch tomorrow with manager Grace\n- decided to go with the second design draft (You agreed)",
+              "event", 5, ["You", "Grace"], ["Zoe", "owner"], ago_days=0)
 
 
 # ── 8. agent_facts (Layer 3 Semantic) ──────────────────
@@ -604,37 +604,37 @@ add_fact("agent-persona-001", "You", "drink_preference", "whisky neat", 5)
 add_fact("agent-persona-001", "You", "favorite_food", "pasta · light, simple dishes", 5)
 add_fact("agent-persona-001", "You", "recent_worry", "lack of sleep · early-morning walks", 8)
 add_fact("agent-persona-001", "You", "birthday", "early next month", 7)
-add_fact("agent-persona-001", "Yerin", "role", "close friend · college classmate", 6)
+add_fact("agent-persona-001", "Sophie", "role", "close friend · college classmate", 6)
 
-# what Minseo knows about You
+# what Chloe knows about You
 add_fact("agent-persona-002", "You", "occupation", "IT project manager", 6)
 add_fact("agent-persona-002", "You", "disposition", "INTJ, analytical", 5)
 add_fact("agent-persona-002", "You", "drink_preference", "whisky > beer", 7)
 add_fact("agent-persona-002", "You", "relationship", "5 years with Mia", 8)
 add_fact("agent-persona-002", "You", "football_club", "Liverpool fan", 4)
 
-# what Seoa knows about You
+# what Emma knows about You
 add_fact("agent-persona-003", "You", "role", "college senior", 6)
 add_fact("agent-persona-003", "You", "MBTI", "INTJ", 5)
 add_fact("agent-persona-003", "You", "club_activity", "former president of the film-appreciation club", 6)
 add_fact("agent-persona-003", "Mia", "role", "You's girlfriend", 6)
-add_fact("agent-persona-003", "Harin", "role", "club batchmate", 5)
+add_fact("agent-persona-003", "Lily", "role", "club batchmate", 5)
 
-# what Yerin knows about Mia
+# what Sophie knows about Mia
 add_fact("agent-persona-004", "Mia", "occupation", "editor at a publishing house", 7)
 add_fact("agent-persona-004", "Mia", "likes", "indie bookstores, rainy days", 6)
 add_fact("agent-persona-004", "Mia", "worry", "You's health", 9)
 add_fact("agent-persona-004", "You", "gift_preference", "practical + a drink he likes", 7)
 
-# what Suyeon knows about You/Sujin
+# what Grace knows about You/Zoe
 add_fact("agent-persona-006", "You", "role", "team PM", 6)
 add_fact("agent-persona-006", "You", "strength", "thoroughness, diligence", 8)
 add_fact("agent-persona-006", "You", "weakness", "limited leadership experience", 8)
-add_fact("agent-persona-006", "Sujin", "strength", "UX instinct, attentiveness", 7)
-add_fact("agent-persona-006", "Sujin", "role", "UX designer", 6)
+add_fact("agent-persona-006", "Zoe", "strength", "UX instinct, attentiveness", 7)
+add_fact("agent-persona-006", "Zoe", "role", "UX designer", 6)
 
-# what Sujin knows about Suyeon/You
-add_fact("agent-persona-007", "Suyeon", "strength", "leadership, insight", 8)
+# what Zoe knows about Grace/You
+add_fact("agent-persona-007", "Grace", "strength", "leadership, insight", 8)
 add_fact("agent-persona-007", "You", "role", "PM colleague", 5)
 add_fact("agent-persona-007", "You", "personality", "a careful INTJ", 5)
 
@@ -649,13 +649,13 @@ def add_rel_delta(a, b, dtype, from_s, to_s, reason, ago_days=0):
 
 
 add_rel_delta("agent-persona-001", "agent-persona-004", "intimacy", "90", "95",
-              "Yerin prepared a piece for Mia's solo show with Mia in mind", 5)
+              "Sophie prepared a piece for Mia's solo show with Mia in mind", 5)
 add_rel_delta("agent-persona-002", "agent-persona-006", "dynamics",
               "formal", "comfortable peers", "got close working well together on a project", 14)
 add_rel_delta("agent-persona-003", "agent-persona-005", "intimacy", "88", "92",
               "talking daily lately + hunting malatang spots together", 7)
 add_rel_delta("agent-persona-001", "agent-persona-003", "dynamics",
-              "easy with the junior", "slightly guarded", "Mia has mixed feelings seeing how often Seoa dotes on You", 10)
+              "easy with the junior", "slightly guarded", "Mia has mixed feelings seeing how often Emma dotes on You", 10)
 
 
 # ── 10. thinking sim ──────────────────────────────────────
@@ -664,22 +664,22 @@ thinking_path.write_text("[agent-persona-002] start\n")
 
 
 # ── 11. live channels status='running' ───────────────────
-for ch in ("group-friends", "internal-dm-Seoa-Harin", "dm-Seoa"):
+for ch in ("group-friends", "internal-dm-Emma-Lily", "dm-Emma"):
     conn.execute("UPDATE channels SET status='running' WHERE channel=?", (ch,))
 
 
 # ── 12. events ─────────────────────────────────────────────
 events = [
     ("relationship_strengthened", ["agent-persona-003", "agent-persona-005"],
-     "Seoa & Harin intimacy +4 after a club meetup", "positive"),
+     "Emma & Lily intimacy +4 after a club meetup", "positive"),
     ("emotional_shift", ["agent-persona-001", "agent-persona-003"],
-     "Mia starting to feel a little wary of Seoa and You's closeness", "caution"),
+     "Mia starting to feel a little wary of Emma and You's closeness", "caution"),
     ("anniversary_approaching", ["owner", "agent-persona-001"],
-     "You's birthday next month — Mia & Yerin preparing a joint gift", "positive"),
+     "You's birthday next month — Mia & Sophie preparing a joint gift", "positive"),
     ("work_event", ["agent-persona-006", "owner"],
-     "team workshop next month. considering a leadership chance for You (Suyeon & Sujin discussing)", "positive"),
+     "team workshop next month. considering a leadership chance for You (Grace & Zoe discussing)", "positive"),
     ("work_milestone", ["agent-persona-004"],
-     "Yerin's solo show is ready. opening the 15th next month", "positive"),
+     "Sophie's solo show is ready. opening the 15th next month", "positive"),
 ]
 for et, parts, desc, impact in events:
     ts = (datetime.now() - timedelta(days=random.randint(0, 5))).isoformat()
