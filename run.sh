@@ -37,6 +37,38 @@ case "${1:-}" in
         exit 0 ;;
 esac
 
+# ── (macOS) 부족한 prereq 자동 설치 — 별도 bootstrap 없이 ./run.sh 한 줄로 끝나게 ──
+# 이미 있으면 즉시 통과(빠름). Python 3.11+ 가 없을 때만 Homebrew→Python 설치, Claude CLI 는
+# 클라우드 응답용으로 best-effort(로컬모델이면 생략). 비-macOS 는 각자 패키지매니저/ run.bat.
+_ensure_prereqs() {
+    [ "$(uname)" = "Darwin" ] || return 0
+    _LM=0; case " $* " in *" --local-models "*) _LM=1;; esac
+    _havepy=0
+    if command -v python3.12 >/dev/null 2>&1 || command -v python3.11 >/dev/null 2>&1 \
+       || python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3,11) else 1)' 2>/dev/null; then
+        _havepy=1
+    fi
+    # 핵심(파이썬) + (클라우드면 claude) 다 있으면 바로 통과
+    if [ "$_havepy" = "1" ] && { [ "$_LM" = "1" ] || command -v claude >/dev/null 2>&1; }; then
+        return 0
+    fi
+    if ! command -v brew >/dev/null 2>&1; then
+        echo -e "${CYAN}[setup] Homebrew 설치 중 (확인·비밀번호를 물어볼 수 있음)...${NC}"
+        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+            || echo -e "${YELLOW}[setup] Homebrew 설치 실패 — 수동: https://brew.sh${NC}"
+    fi
+    for _b in /opt/homebrew/bin/brew /usr/local/bin/brew; do [ -x "$_b" ] && eval "$("$_b" shellenv)" && break; done
+    if [ "$_havepy" = "0" ] && command -v brew >/dev/null 2>&1; then
+        echo -e "${CYAN}[setup] Python 3.12 설치 중...${NC}"; brew install python@3.12 || true
+    fi
+    if [ "$_LM" != "1" ] && ! command -v claude >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
+        command -v node >/dev/null 2>&1 || { echo -e "${CYAN}[setup] Node 설치 중...${NC}"; brew install node || true; }
+        echo -e "${CYAN}[setup] Claude CLI 설치 중...${NC}"; npm install -g @anthropic-ai/claude-code 2>/dev/null \
+            || echo -e "${YELLOW}[setup] Claude CLI 설치 실패 — .env 의 ANTHROPIC_API_KEY 또는 --local-models 로 대체 가능${NC}"
+    fi
+}
+_ensure_prereqs "$@"
+
 # ── 자동 세팅 ──────────────────────────────────────────
 if [ ! -d .venv ]; then
     echo -e "${CYAN}[setup] 가상환경 생성 중...${NC}"
@@ -301,7 +333,9 @@ if [ "$1" = "workspace" ]; then
     exec python -m apps.workspace.run "$@"
 fi
 
-# ── 플랫폼 모드 (기본) ─────────────────────────────────
+# ── 플랫폼 모드 = Glimi Community 앱 (기본) ─────────────
+# `./run.sh community` (명시) 또는 `./run.sh` (기본) 둘 다 여기로 온다.
+if [ "$1" = "community" ]; then shift; fi
 HOST="${GLIMI_HOST:-0.0.0.0}"
 PORT="${GLIMI_PORT:-8000}"
 while [ $# -gt 0 ]; do
