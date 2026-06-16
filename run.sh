@@ -193,6 +193,7 @@ _cleanup_existing() {
     pkill -f "src.tui.dashboard" 2>/dev/null || true
     pkill -f "src.tui.wizard" 2>/dev/null || true
     pkill -f "src.tools.dev_runner" 2>/dev/null || true
+    pkill -f "apps/workspace/run.py" 2>/dev/null || true
     rm -f dev/.bot*.pid dev/.platform.pid 2>/dev/null || true
     sleep 1
     pkill -9 -f "src.platform" 2>/dev/null || true
@@ -271,6 +272,33 @@ if [ "$1" = "--legacy" ]; then
         sleep 5
     done
     exit 0
+fi
+
+# ── Glimi Workspace 앱 모드 ───────────────────────────
+# ./run.sh workspace [--serve] [--name X] [--goal "..."] [--backend echo|claude_cli|ollama]
+# 같은 venv·커널(glimi)로 apps/workspace 를 실행. --serve 면 대시보드(:8800) + 브라우저 자동 오픈.
+if [ "$1" = "workspace" ]; then
+    shift
+    WS_PORT="${GLIMI_WS_PORT:-8800}"
+    echo -e "${CYAN}◈ Glimi Workspace${NC}"
+    case " $* " in
+        *" --serve "*)
+            echo -e "  대시보드: ${GREEN}http://127.0.0.1:${WS_PORT}${NC}"
+            if [ -z "${GLIMI_NO_BROWSER:-}" ]; then
+                (
+                    for _ in $(seq 1 60); do
+                        curl -s -o /dev/null "http://127.0.0.1:${WS_PORT}/api/snapshot" 2>/dev/null && break
+                        sleep 0.5
+                    done
+                    _u="http://127.0.0.1:${WS_PORT}"
+                    if command -v open >/dev/null 2>&1; then open "$_u"
+                    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$_u"; fi
+                ) &
+            fi
+            ;;
+    esac
+    # -m (모듈 실행) → repo 루트가 sys.path 에 올라가 glimi/src 가 잡힘 (Community 의 -m 패턴과 동일).
+    exec python -m apps.workspace.run "$@"
 fi
 
 # ── 플랫폼 모드 (기본) ─────────────────────────────────
