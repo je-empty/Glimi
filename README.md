@@ -400,6 +400,14 @@ Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `dis
 - Anthropic API key or Claude Code Max plan (personas reply via Claude — *until the local-model contributor task lands, see below*)
 - Discord bot token (only if running the full Community stack)
 
+**Fresh Mac (nothing installed)** — one command installs the prerequisites above
+(Homebrew, Python, Node, Claude CLI), sets up the project, and opens your browser to
+the setup wizard:
+```bash
+git clone https://github.com/jaebinsim/Glimi.git && cd Glimi && ./bootstrap.sh
+```
+Already have Python 3.12+? Skip straight to `./run.sh` below.
+
 **macOS / Linux**:
 ```bash
 git clone https://github.com/jaebinsim/Glimi.git

@@ -40,8 +40,19 @@ esac
 # ── 자동 세팅 ──────────────────────────────────────────
 if [ ! -d .venv ]; then
     echo -e "${CYAN}[setup] 가상환경 생성 중...${NC}"
-    python3 -m venv .venv || { echo -e "${RED}[setup] venv 생성 실패. Python 3.11+ 필요${NC}"; exit 1; }
-    echo -e "${GREEN}[setup] 가상환경 생성 완료${NC}"
+    # 3.11+ 인 인터프리터를 우선순위로 선택 (시스템 python3 가 구버전일 수 있음).
+    PY=""
+    for _cand in python3.12 python3.11 python3; do
+        if command -v "$_cand" >/dev/null 2>&1 && \
+           "$_cand" -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3,11) else 1)' 2>/dev/null; then
+            PY="$_cand"; break
+        fi
+    done
+    if [ -z "$PY" ]; then
+        echo -e "${RED}[setup] Python 3.11+ 필요 — 미설치/구버전. macOS 면 ${CYAN}./bootstrap.sh${RED} 가 자동 설치, 아니면 https://www.python.org/downloads/${NC}"; exit 1
+    fi
+    "$PY" -m venv .venv || { echo -e "${RED}[setup] venv 생성 실패 ($PY)${NC}"; exit 1; }
+    echo -e "${GREEN}[setup] 가상환경 생성 완료 ($PY)${NC}"
 fi
 source .venv/bin/activate
 
