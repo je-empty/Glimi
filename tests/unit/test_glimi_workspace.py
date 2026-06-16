@@ -3,11 +3,16 @@
 검증:
   - **setup 해석**: flag → env → state file → default 우선순위. 비대화형(non-TTY)
     에서는 절대 input() 으로 막히지 않고 default 로 떨어진다 (CI 안전).
-  - **flow**: echo 백엔드로 전체 워크스페이스를 돌리면 Coordinator + 3 specialist 가
-    하나의 공유 채널에 turn 을 남기고, 최종 deliverable 을 반환한다.
-  - **dashboard 통합**: 작업 후 store 가 Core 대시보드를 채운다 —
-    create_app(DashboardReader(g.store)) 의 /api/snapshot 이 Coordinator + 3
-    specialist 를 모두 나열한다. (--serve 와 같은 store-driven 경로, 블로킹 없음.)
+  - **topology**: echo 백엔드로 전체 워크스페이스를 돌리면 owner↔Coordinator DM,
+    Coordinator↔각 specialist delegation DM, specialist↔specialist 내부 A2A 채널,
+    group 채널이 모두 store 에 남고, 최종 deliverable 을 반환한다 (멀티채널 상호작용).
+  - **relationship web**: 작업 후 store 에 owner↔Coordinator(lead),
+    Coordinator↔각 specialist(manages), specialist↔specialist(collaborator)
+    관계가 기록된다 — 이게 대시보드 connection graph 의 엣지다.
+  - **dashboard 통합 + graph**: 작업 후 store 가 Core 대시보드를 채운다 —
+    /api/snapshot 이 Coordinator + 3 specialist + 상호작용 채널을 나열하고,
+    snapshot()['relationships'] 가 비어있지 않으며 owner↔coordinator +
+    specialist↔specialist 엣지를 포함한다 (그래프가 상호작용 웹을 그린다는 증명).
   - **kernel-only**: apps/workspace 가 discord / src 를 import 하지 않는다.
 
 web 부분은 fastapi 가 있어야 하므로 ``pytest.importorskip("fastapi")`` 로 가드.
@@ -117,7 +122,7 @@ def test_setup_reads_saved_state(tmp_path):
 # ────────────────────────────────────────────────────
 
 def test_run_workspace_echo_flow(capsys):
-    """Full echo run via main(): exit 0, every member contributes, one channel."""
+    """Full echo run via main(): exit 0, every member contributes, web printed."""
     import run
 
     rc = run.main(["--name", "Owner", "--goal", "Plan our launch", "--backend", "echo"])
@@ -127,14 +132,20 @@ def test_run_workspace_echo_flow(capsys):
     assert "Glimi Workspace" in out
     for label in ("Coordinator:", "Researcher:", "Builder:", "Critic:"):
         assert label in out
-    # the deliverable + summary printed
+    # the deliverable + the interaction-web summary printed
     assert "Deliverable for Owner:" in out
-    assert "one shared store" in out
+    assert "interaction web" in out
+    assert "relationships" in out  # the summary lists the graph edges
 
 
-def test_run_workspace_one_shared_channel():
-    """All members work on a single shared channel (shared store)."""
+def test_run_workspace_multi_channel_topology():
+    """The team works across a real interaction web — not one round-robin room.
+
+    Owner↔Coordinator DM, per-specialist delegation DMs, specialist↔specialist
+    internal A2A channels, and a group channel must all appear in the store.
+    """
     import run
+    import team
     from glimi import Glimi
 
     g = Glimi(backend="echo", owner_name="Owner")
@@ -143,13 +154,53 @@ def test_run_workspace_one_shared_channel():
     final = run.run_workspace(g, "Owner", "Plan our launch")
 
     assert final  # a deliverable came back
-    # Coordinator (1 greet + 1 deliver) + 3 specialists * 2 rounds = 8 agent turns,
-    # +2 owner prompts logged → 10 messages, all in ONE channel.
-    log = g.history("coordinator", channel=run.WORKSPACE, limit=999)
-    assert len(log) == 10
-    # no per-agent DM channels were created — everything is on the shared channel
-    overview = {c["channel"] for c in g.store.get_channel_overview()}
-    assert overview == {run.WORKSPACE}
+    channels = {c["channel"] for c in g.store.get_channel_overview()}
+    # the full interaction topology is present
+    expected = {
+        team.COORDINATOR_DM,
+        *team.DELEGATION_CHANNELS.values(),
+        *(ch for _, _, ch, _ in team.COLLAB_PAIRS),
+        team.GROUP_CHANNEL,
+    }
+    assert expected <= channels
+    # the internal A2A channels carry genuine agent-to-agent turns (both speakers)
+    for a, b, ch, _ in team.COLLAB_PAIRS:
+        speakers = {m["speaker"] for m in g.store.get_recent_messages(ch, limit=99)}
+        assert {a, b} <= speakers, f"{ch} should carry both {a} and {b}"
+
+
+def test_run_workspace_forms_relationship_web():
+    """The run records the working relationships → the dashboard graph's edges.
+
+    The store's relationships must include owner↔Coordinator (lead),
+    Coordinator↔each specialist (manages), and specialist↔specialist
+    (collaborator). These are exactly what the connection graph draws.
+    """
+    import run
+    import team
+    from glimi import Glimi
+
+    g = Glimi(backend="echo", owner_name="Owner")
+    for aid, name, agent_type, persona in run.TEAM:
+        g.add_agent(aid, name=name, persona=persona, agent_type=agent_type)
+    run.run_workspace(g, "Owner", "Plan our launch")
+
+    owner_id = g.owner.id()
+
+    # owner ↔ Coordinator (lead)
+    lead = g.store.get_relationship("coordinator", owner_id)
+    assert lead and lead["type"] == "lead"
+
+    # Coordinator ↔ each specialist (manages)
+    for sid in team.SPECIALISTS:
+        rel = g.store.get_relationship("coordinator", sid)
+        assert rel and rel["type"] == "manages"
+
+    # specialist ↔ specialist (collaborator), one per collaborating pair
+    for a, b, _, _ in team.COLLAB_PAIRS:
+        rel = g.store.get_relationship(a, b)
+        assert rel and rel["type"] == "collaborator"
+        assert rel["intimacy_score"] > 0
 
 
 # ────────────────────────────────────────────────────
@@ -161,7 +212,7 @@ def test_workspace_populates_core_dashboard():
 
     This mirrors what ``--serve`` does (serve(g.store)) without binding a port:
     build create_app(DashboardReader(g.store)) and assert /api/snapshot carries
-    the Coordinator + the three specialists.
+    the Coordinator + the three specialists + the interaction channels.
     """
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
@@ -170,6 +221,7 @@ def test_workspace_populates_core_dashboard():
     from glimi.dashboard.app import create_app
 
     import run
+    import team
 
     g = Glimi(backend="echo", owner_name="Owner")
     for aid, name, agent_type, persona in run.TEAM:
@@ -183,10 +235,48 @@ def test_workspace_populates_core_dashboard():
     # the Coordinator is the manager (ranked first, type mgr)
     coordinator = next(a for a in snap["agents"] if a["id"] == "coordinator")
     assert coordinator["type"] == "mgr"
-    # the shared workspace channel shows up with the team's turns
+    # the interaction channels show up with the team's turns
     chans = {c["channel"]: c for c in snap["channels"]}
-    assert run.WORKSPACE in chans
-    assert chans[run.WORKSPACE]["msg_count"] >= 1
+    assert team.COORDINATOR_DM in chans
+    assert team.GROUP_CHANNEL in chans
+    assert chans[team.COORDINATOR_DM]["msg_count"] >= 1
+
+
+def test_snapshot_relationships_populate_graph():
+    """THE key assertion: after a run, snapshot()['relationships'] is NON-EMPTY
+    and carries owner↔coordinator + at least one specialist↔specialist edge.
+
+    This is what proves the interaction web shows up in the dashboard's
+    connection graph — the graph's edges come straight from these relationships.
+    """
+    from glimi import Glimi
+    from glimi.dashboard import DashboardReader
+
+    import run
+    import team
+
+    g = Glimi(backend="echo", owner_name="Owner")
+    for aid, name, agent_type, persona in run.TEAM:
+        g.add_agent(aid, name=name, persona=persona, agent_type=agent_type)
+    run.run_workspace(g, "Owner", "Plan our launch")
+
+    owner_id = g.owner.id()
+    rels = DashboardReader(g.store).snapshot()["relationships"]
+    assert rels, "snapshot() must expose relationships — the graph would be empty"
+
+    # represent each edge as an unordered {source, target} pair → type
+    edges = {frozenset((e["source"], e["target"])): e["type"] for e in rels}
+
+    # owner ↔ Coordinator edge is present
+    assert frozenset(("coordinator", owner_id)) in edges
+
+    # at least one specialist ↔ specialist collaboration edge is present
+    collab = [
+        e for e in rels
+        if e["type"] == "collaborator"
+        and {e["source"], e["target"]} <= set(team.SPECIALISTS)
+    ]
+    assert collab, "expected ≥1 specialist↔specialist collaboration edge in the graph"
 
 
 # ────────────────────────────────────────────────────
