@@ -411,6 +411,7 @@ cd Glimi
 
 **유용한 명령**:
 ```bash
+./run.sh workspace --serve              # Glimi Workspace 앱 실행 + 대시보드 자동 오픈 (→ http://127.0.0.1:8800)
 ./run.sh --port 9000                    # 대시보드 포트 변경
 ./run.sh --imagegen                     # 로컬 LoRA 초상화 생성 (opt-in, ~6분/장)
 ./run.sh --legacy <community>           # 레거시 단일 봇 모드 (QA / 디버깅)
