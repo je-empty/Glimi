@@ -127,6 +127,7 @@ def test_serve_is_exported_without_importing_app():
 @pytest.fixture
 def client(population):
     pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")  # fastapi's TestClient requires httpx
     from fastapi.testclient import TestClient
     from glimi.dashboard import DashboardReader
     from glimi.dashboard.app import create_app
