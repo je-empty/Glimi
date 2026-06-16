@@ -194,7 +194,7 @@
     aside.side-nav .nav-title { display: none; }
     aside.side-nav a {
       flex: 0 0 auto; white-space: nowrap;
-      padding: 9px 12px; min-height: 40px;
+      padding: 11px 12px; min-height: 44px;
     }
 
     /* Detail sections — 여백 축소, 가로 overflow 차단 */
@@ -248,6 +248,12 @@
 
     /* 모델 전환 칩 줄 — wrap 허용 (탭 타깃 보존) */
     main.page-body .model-tag { white-space: normal; }
+
+    /* 모델 전환 모달 액션 버튼 — ≥44px 탭 타깃 */
+    #am-overlay .act-btn {
+      min-height: 44px; display: inline-flex; align-items: center;
+      padding: 10px 16px;
+    }
   }
 
   @media (max-width: 420px) {

@@ -212,3 +212,27 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .gp-main, .gp-user-dropdown.open { animation: none; }
 }
+
+/* ── Mobile foundation (loaded on every page) ────────────────
+   F4: kill iOS focus-zoom by guaranteeing >=16px form text.
+   F3: 44px tap targets on touch (applied in media block only —
+       --tap-min stays 40px so desktop density is unchanged).
+   Topbar density + username collapse. Desktop layout untouched. */
+@media (max-width: 720px) {
+  /* F4 — iOS Safari auto-zooms on focus of <16px inputs */
+  input, select, textarea { font-size: 16px; }
+
+  /* F3 — 44px tap targets */
+  button, .btn, .gp-btn-icon, .gp-user-btn { min-height: 44px; }
+  .gp-btn-icon { width: 44px; height: 44px; }
+
+  /* topbar density — keep min-height:56px (agent_detail sticky offset
+     top:76px / side-nav top:56px assume the unshrunk topbar) */
+  .gp-topbar { padding: 8px 12px; gap: 8px; }
+  .gp-main   { padding: 16px 12px; }
+}
+@media (max-width: 480px) {
+  /* collapse user pill to avatar-only; name + logout live in dropdown */
+  .gp-user-name { display: none; }
+  .gp-user-chev { display: none; }
+}

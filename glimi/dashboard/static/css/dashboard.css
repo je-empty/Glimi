@@ -425,4 +425,28 @@ header.status .spacer { flex: 1; }
   .app { padding: var(--sp-4) var(--sp-3) var(--sp-5); }
   .chat-msg .who { min-width: 70px; }
   .rel-name { min-width: 80px; }
+
+  /* header — wrap 허용 */
+  header.status { flex-wrap: wrap; gap: var(--sp-2); }
+
+  /* graph — 고정 460px → 가변 높이 */
+  #cy-graph, .graph-empty { height: 300px; max-width: 100%; }
+
+  /* grids — 단일/2-col 로 collapse */
+  .agent-grid { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+
+  /* modal — 모바일 풀스크린, 닫기 버튼 ≥44px */
+  .modal-backdrop { padding: 10px; align-items: stretch; }
+  .modal { max-width: none; max-height: calc(100dvh - 20px); }
+  .modal-head .x { width: 44px; height: 44px; }
+
+  /* tap target */
+  .theme-toggle { min-height: 44px; }
+}
+
+@media (max-width: 420px) {
+  #cy-graph, .graph-empty { height: 260px; }
+  .kpis { grid-template-columns: 1fr; }
+  header.status .brand-sub { display: none; }
 }

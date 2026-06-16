@@ -65,6 +65,10 @@
     .community-row { grid-template-columns: 1fr; }
     .community-row .controls { justify-content: start; }
   }
+  @media (max-width: 480px) {
+    /* delete dialog: drop fixed 420px floor → fits 375px */
+    #delete-dialog { min-width: auto; width: calc(100vw - 24px); }
+  }
 </style>
 {% endblock %}
 {% block content %}
