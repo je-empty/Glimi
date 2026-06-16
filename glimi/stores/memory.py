@@ -68,6 +68,9 @@ class InMemoryKernelStore(KernelStore):
         self._events: list[dict] = []
         self._event_seq = 0
         self._message_hooks: list = []
+        # reactions: list of rows {id, message_id, actor_id, emoji, created_at}.
+        self._reactions: list[dict] = []
+        self._react_seq = 0
 
     # ── helpers for the convenience facade (not part of the ABC) ──────
     def upsert_agent(self, agent_id: str, *, name: str, agent_type: str = "persona",
@@ -132,7 +135,9 @@ class InMemoryKernelStore(KernelStore):
     def get_recent_messages(self, channel: str, limit: int = 20) -> list[dict]:
         with self._lock:
             rows = [m for m in self._conversations if m["channel"] == channel]
-            return [dict(r) for r in rows[-limit:]]
+            out = [dict(r) for r in rows[-limit:]]
+            self._attach_reactions(out)
+            return out
 
     def get_messages_by_range(self, channel: str, after_id: int, limit: int = 15) -> list[dict]:
         with self._lock:
@@ -140,6 +145,102 @@ class InMemoryKernelStore(KernelStore):
                     if m["channel"] == channel and m["id"] > after_id]
             rows.sort(key=lambda r: r["id"])
             return [dict(r) for r in rows[:limit]]
+
+    # ── reactions / replies / threads ─────────────────────────────────
+    def add_reaction(self, message_id: int, actor_id: str, emoji: str) -> bool:
+        with self._lock:
+            # Parent must exist (mirror FK ON).
+            if not any(m["id"] == message_id for m in self._conversations):
+                return False
+            # UNIQUE(message_id, actor_id, emoji) — idempotent add.
+            for r in self._reactions:
+                if (r["message_id"] == message_id and r["actor_id"] == actor_id
+                        and r["emoji"] == emoji):
+                    return False
+            self._react_seq += 1
+            self._reactions.append({
+                "id": self._react_seq, "message_id": message_id,
+                "actor_id": actor_id, "emoji": emoji, "created_at": _now_iso(),
+            })
+            return True
+
+    def remove_reaction(self, message_id: int, actor_id: str, emoji: str) -> None:
+        with self._lock:
+            self._reactions = [
+                r for r in self._reactions
+                if not (r["message_id"] == message_id and r["actor_id"] == actor_id
+                        and r["emoji"] == emoji)
+            ]
+
+    def get_reactions(self, message_id: int) -> list[dict]:
+        with self._lock:
+            rows = [r for r in self._reactions if r["message_id"] == message_id]
+            rows.sort(key=lambda r: r["id"])
+            return [{"emoji": r["emoji"], "actor_id": r["actor_id"],
+                     "created_at": r["created_at"]} for r in rows]
+
+    def get_reactions_for(self, message_ids: list[int]) -> dict[int, list[dict]]:
+        if not message_ids:
+            return {}
+        idset = set(message_ids)
+        with self._lock:
+            rows = [r for r in self._reactions if r["message_id"] in idset]
+            rows.sort(key=lambda r: r["id"])
+            out: dict[int, list[dict]] = {}
+            for r in rows:
+                out.setdefault(r["message_id"], []).append(
+                    {"emoji": r["emoji"], "actor_id": r["actor_id"],
+                     "created_at": r["created_at"]})
+            return out
+
+    def set_reply(self, message_id: int, reply_to: int) -> None:
+        with self._lock:
+            thread_root = None
+            for m in self._conversations:
+                if m["id"] == reply_to:
+                    thread_root = m.get("thread_root") or m["id"]
+                    break
+            for m in self._conversations:
+                if m["id"] == message_id:
+                    m["reply_to"] = reply_to
+                    m["thread_root"] = thread_root
+                    return
+
+    def get_thread(self, root_id: int, limit: int = 50) -> list[dict]:
+        with self._lock:
+            rows = [m for m in self._conversations
+                    if m.get("thread_root") == root_id or m["id"] == root_id]
+            rows.sort(key=lambda r: r["id"])
+            out = [dict(r) for r in rows[:limit]]
+            self._attach_reactions(out)
+            return out
+
+    @staticmethod
+    def _summarize_reactions(rows: list[dict]) -> list[dict]:
+        by_emoji: dict[str, dict] = {}
+        order: list[str] = []
+        for r in rows:
+            e = r["emoji"]
+            slot = by_emoji.get(e)
+            if slot is None:
+                slot = {"emoji": e, "count": 0, "actors": []}
+                by_emoji[e] = slot
+                order.append(e)
+            slot["count"] += 1
+            slot["actors"].append(r["actor_id"])
+        return [by_emoji[e] for e in order]
+
+    def _attach_reactions(self, rows: list[dict]) -> None:
+        """Fold a compact ``reactions`` summary onto each row (caller holds the lock)."""
+        if not rows:
+            return
+        ids = {r["id"] for r in rows if r.get("id") is not None}
+        grouped: dict[int, list[dict]] = {}
+        for rr in sorted(self._reactions, key=lambda r: r["id"]):
+            if rr["message_id"] in ids:
+                grouped.setdefault(rr["message_id"], []).append(rr)
+        for r in rows:
+            r["reactions"] = self._summarize_reactions(grouped.get(r.get("id"), []))
 
     # ── runtime ───────────────────────────────────────────────────────
     def get_agent(self, agent_id: str) -> Optional[dict]:
@@ -202,9 +303,11 @@ class InMemoryKernelStore(KernelStore):
             return row.get("model_override") if row else None
 
     def log_message(self, channel: str, speaker: str, message: str,
-                    emotion: Optional[str] = None) -> None:
+                    emotion: Optional[str] = None,
+                    reply_to: Optional[int] = None) -> Optional[int]:
         with self._lock:
             # Turn-level dedup: skip identical channel/speaker/message within window.
+            # Returns the EXISTING row id (not None) so a broadcast frame stays addressable.
             cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.DEDUP_WINDOW_SEC)
             for m in reversed(self._conversations):
                 if m["channel"] != channel or m["speaker"] != speaker:
@@ -213,14 +316,26 @@ class InMemoryKernelStore(KernelStore):
                     continue
                 dt = _parse_iso(m["timestamp"])
                 if dt and dt > cutoff:
-                    return  # duplicate within window
+                    return m["id"]  # duplicate within window
+            # Reply → denormalize thread_root (parent's thread_root or parent id).
+            thread_root = None
+            if reply_to is not None:
+                for m in self._conversations:
+                    if m["id"] == reply_to:
+                        thread_root = m.get("thread_root") or m["id"]
+                        break
+                else:
+                    reply_to = None  # unknown parent → plain message
             self._conv_seq += 1
+            new_id = self._conv_seq
             self._conversations.append({
-                "id": self._conv_seq,
+                "id": new_id,
                 "channel": channel,
                 "speaker": speaker,
                 "message": message,
                 "context_emotion": emotion,
+                "reply_to": reply_to,
+                "thread_root": thread_root,
                 "timestamp": _now_iso(),
             })
             if speaker in self._agents:
@@ -232,6 +347,7 @@ class InMemoryKernelStore(KernelStore):
                 hook(channel, speaker, message)
             except Exception as e:  # noqa: BLE001
                 print(f"[InMemoryKernelStore hook] {getattr(hook, '__name__', hook)}: {e}")
+        return new_id
 
     def add_message_hook(self, fn) -> None:
         with self._lock:

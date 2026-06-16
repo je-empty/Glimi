@@ -46,11 +46,32 @@ class SqliteKernelStore(KernelStore):
     def get_agent_model_override(self, agent_id: str) -> Optional[str]:
         return db.get_agent_model_override(agent_id)
 
-    def log_message(self, channel: str, speaker: str, message: str, emotion: Optional[str] = None) -> None:
-        db.log_message(channel, speaker, message, emotion)
+    def log_message(self, channel: str, speaker: str, message: str,
+                    emotion: Optional[str] = None,
+                    reply_to: Optional[int] = None) -> Optional[int]:
+        return db.log_message(channel, speaker, message, emotion, reply_to=reply_to)
 
     def add_message_hook(self, fn) -> None:
         db.add_message_hook(fn)
+
+    # ── reactions / replies / threads ─────────────────────────────────
+    def add_reaction(self, message_id: int, actor_id: str, emoji: str) -> bool:
+        return db.add_reaction(message_id, actor_id, emoji)
+
+    def remove_reaction(self, message_id: int, actor_id: str, emoji: str) -> None:
+        db.remove_reaction(message_id, actor_id, emoji)
+
+    def get_reactions(self, message_id: int) -> list[dict]:
+        return db.get_reactions(message_id)
+
+    def get_reactions_for(self, message_ids: list[int]) -> dict[int, list[dict]]:
+        return db.get_reactions_for(message_ids)
+
+    def set_reply(self, message_id: int, reply_to: int) -> None:
+        db.set_reply(message_id, reply_to)
+
+    def get_thread(self, root_id: int, limit: int = 50) -> list[dict]:
+        return db.get_thread(root_id, limit)
 
     # ── runtime — higher-level (raw SQL lives here, not in the kernel) ──
     def get_recent_events(self, agent_id: str, event_types: list[str],
