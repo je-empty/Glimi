@@ -117,15 +117,18 @@ def invalidate_cache(agent_id: str = None):
 
 def get_owner_call_name() -> str:
     """에이전트가 오너를 부를 때 사용할 이름 (별칭 > 이름 > fallback)"""
-    user = get_user_profile()
-    # personality에 nickname 있으면 사용
-    p = user.get("personality", {})
+    user = get_user_profile() or {}
+    # personality에 nickname 있으면 사용 (미설정/NULL 이면 {} 로 폴백 — 오너 프로필이
+    # 아직 비어 있는 새 커뮤니티에서 None.get() 크래시 방지)
+    p = user.get("personality") or {}
     if isinstance(p, str):
         try:
             import json
-            p = json.loads(p)
+            p = json.loads(p) or {}
         except Exception:
             p = {}
+    if not isinstance(p, dict):
+        p = {}
     nickname = p.get("nickname", "")
     if nickname:
         return nickname
