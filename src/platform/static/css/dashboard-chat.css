@@ -1,0 +1,58 @@
+/* ============================================================
+   Glimi Dashboard — embedded chat tab scoping
+   Loaded ONLY on the community dashboard, AFTER chat.css. Re-anchors the chat
+   surface to fill the active dashboard view (#view-chat) instead of the viewport.
+   The standalone /chat page does NOT load this file, so it keeps its own 100dvh
+   full-viewport layout.
+   Token-based only (tokens.css). No hardcoded color values.
+   ============================================================ */
+
+/* ── Neutralize chat.css's GLOBAL body/html viewport rules on the dashboard ──
+   chat.css sets `html,body{height:100%}` + `body{min-height:100dvh; height:100dvh;
+   overflow:hidden; display:flex; flex-direction:column}` to own the viewport under
+   base.html. On the dashboard the .app grid (index.html inline style + dashboard.css
+   .app{height:100vh}) owns the document, so re-assert the dashboard's body layout. */
+html, body {
+  height: 100%;
+}
+body {
+  min-height: 0;
+  height: 100%;
+  display: block;          /* dashboard body is NOT a flex column — .app grid owns layout */
+}
+
+/* ── #view-chat owns its own height; chat owns its own scroll ──
+   The base .view rule is `flex:1; overflow-y:auto; padding:18px 24px 24px;
+   display:none` (active → display:block). For chat we want a flex column with no
+   padding and no view-level scroll (the feed scrolls internally). */
+#view-chat {
+  padding: 0;
+  overflow: hidden;
+}
+#view-chat.active {
+  display: flex;           /* override .view.active{display:block} so .chat-shell can flex */
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+/* capture-mode is ON by default on the dashboard (html/body get .capture-mode),
+   and dashboard.css forces `.view.active{height:auto; flex:none; overflow:visible}`
+   under capture-mode — that would collapse the chat to content height. Re-pin the
+   chat view to fill its main cell. Scoped to #view-chat so full-page capture of the
+   OTHER tabs is unaffected. */
+body.capture-mode #view-chat.active {
+  overflow: hidden !important;
+  height: 100% !important;
+  max-height: none !important;
+  flex: 1 !important;
+}
+
+/* Re-anchor the chat shell to 100% of #view-chat (NOT 100dvh). chat.css gives
+   .chat-shell `flex:1 1 auto; min-height:0` which already fills a flex column —
+   make the height explicit so it works regardless of the parent's flex resolution. */
+#view-chat .chat-shell {
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
