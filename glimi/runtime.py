@@ -466,6 +466,49 @@ class AgentRuntime:
     def get_agent_name(self, agent_id: str) -> str:
         return _profiles.display_name(agent_id)
 
+    def _build_reactions_reminder(self, agent_id: str, recent: list[dict]) -> str:
+        """이 에이전트 자신의 메시지에 달린 리액션을 terse 알림으로. 없으면 빈 문자열.
+
+        budget-gated (memory.BUDGET_REACTIONS) — num_ctx 작은 ollama 턴에서 reminder_parts 는
+        trim 대상이 아니라 self-limit 필수. perceive-only: 에이전트는 받기만 함."""
+        from . import memory as _mem
+        own_ids = [m["id"] for m in recent
+                   if m.get("speaker") == agent_id and m.get("id") is not None]
+        if not own_ids:
+            return ""
+        try:
+            reactions = _store.get_reactions_for(own_ids)
+        except Exception:
+            return ""
+        if not reactions:
+            return ""
+        by_id = {m["id"]: m for m in recent if m.get("id") is not None}
+        lines: list[str] = []
+        for mid in own_ids:
+            rl = reactions.get(mid)
+            if not rl:
+                continue
+            msg = by_id.get(mid)
+            gist = ((msg.get("message") if msg else "") or "")[:30]
+            for r in rl:
+                actor = r.get("actor_id", "")
+                actor_name = (_owner.display_name() if actor == _owner.id()
+                              else self.get_agent_name(actor))
+                lines.append(f"[{actor_name} reacted {r.get('emoji','')} to your message: \"{gist}\"]")
+        if not lines:
+            return ""
+        # self-limit to budget (chars). 레이어 완전 증발 방지 위해 _mem._scaled 와 같은 floor 적용 X —
+        # 작은 블록이라 단순 char-budget 절단.
+        budget = _mem._scaled(_mem.BUDGET_REACTIONS)
+        out: list[str] = []
+        used = 0
+        for ln in lines:
+            if used + len(ln) + 1 > budget and out:
+                break
+            out.append(ln)
+            used += len(ln) + 1
+        return "\n".join(out)
+
     # ── Prompt building ──────────────────────────────
 
     def _build_context(self, agent_info: dict, channel: str, recent: list[dict],
@@ -530,6 +573,22 @@ class AgentRuntime:
         if memory_text:
             reminder_parts.append("━━━ 기억 ━━━\n" + memory_text + "\n━━━━━━━━━━━")
 
+        # ── 내 메시지에 달린 리액션 (perceive-only) ──
+        # 이 에이전트 자신의 최근 메시지에 달린 리액션만 terse 한 줄로. 리액션이 있을 때만 블록 추가.
+        # raw 대화 render 가 아닌 system-reminder 안에 두어 echo/hallucination 방지.
+        # mgr/dm persona-격리 채널에서는 오너 노출을 막는 동일 규율 적용 (mgr 가 raw 이력에서
+        # 오너 메시지를 안 보는 채널이면 리액션 actor 도 노출 X).
+        react_isolated = (agent_type == "mgr"
+                          and (channel.startswith("mgr-") or channel.startswith("dm-")))
+        if not react_isolated:
+            try:
+                react_block = self._build_reactions_reminder(agent_id, recent)
+                if react_block:
+                    reminder_parts.append(react_block)
+            except Exception as e:
+                print(f"[runtime] 리액션 알림 빌드 실패 (무시): {e}")
+        _checkpoint("reactions_reminder")
+
         # ── 다른 채널 최근 대화 (요약 없이 직접 주입) ──
         # 첫 발화 (이 채널 기존 메시지 2 미만) 시 cross-channel peek 주입 X.
         # Haiku 가 다른 채널 주제를 현재 대화로 끌고 오는 bleed 방지 (QA 회귀: 지아가 internal-dm-지아-소연
@@ -552,6 +611,28 @@ class AgentRuntime:
             if prompt_parts:
                 prompt_parts.append("")
 
+            # 답글 부모 빠른 조회 — recent 안의 행만 (hot path, per-row DB fetch 금지).
+            by_id = {m["id"]: m for m in recent if m.get("id") is not None}
+
+            def _render_msg(msg, *, mgr_isolated: bool) -> str:
+                speaker = _owner.display_name() if msg["speaker"] == _owner.id() else self.get_agent_name(msg["speaker"])
+                line = f"{speaker}: {msg['message']}"
+                rt = msg.get("reply_to")
+                if rt:
+                    parent = by_id.get(rt)
+                    if parent is not None:
+                        # mgr/dm 격리 채널: 부모가 오너면 답글 부모 노출도 동일하게 격리.
+                        if mgr_isolated and parent["speaker"] != _owner.id():
+                            p_name = self.get_agent_name(parent["speaker"])
+                            gist = (parent.get("message") or "")[:40]
+                            line = f"↳ replying to {p_name}: \"{gist}\"\n{line}"
+                        elif not mgr_isolated:
+                            p_name = (_owner.display_name() if parent["speaker"] == _owner.id()
+                                      else self.get_agent_name(parent["speaker"]))
+                            gist = (parent.get("message") or "")[:40]
+                            line = f"↳ replying to {p_name}: \"{gist}\"\n{line}"
+                return line
+
             if agent_type == "mgr" and (channel.startswith("mgr-") or channel.startswith("dm-")):
                 # mgr/dm 채널에서만 오너 메시지 + 직전 유나 응답만 (유나 보고 반복 방지)
                 # internal- 채널(에이전트간 대화)에서는 전체 이력 필요
@@ -563,12 +644,10 @@ class AgentRuntime:
                         # 오너 메시지 바로 다음 유나 응답만 포함
                         filtered.append(msg)
                 for msg in filtered[-15:]:
-                    speaker = _owner.display_name() if msg["speaker"] == _owner.id() else self.get_agent_name(msg["speaker"])
-                    prompt_parts.append(f"{speaker}: {msg['message']}")
+                    prompt_parts.append(_render_msg(msg, mgr_isolated=True))
             else:
                 for msg in recent:
-                    speaker = _owner.display_name() if msg["speaker"] == _owner.id() else self.get_agent_name(msg["speaker"])
-                    prompt_parts.append(f"{speaker}: {msg['message']}")
+                    prompt_parts.append(_render_msg(msg, mgr_isolated=False))
             prompt_parts.append("")
 
         return "\n".join(prompt_parts)
