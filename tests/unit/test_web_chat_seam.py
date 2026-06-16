@@ -1,9 +1,15 @@
-"""End-to-end web-chat seam test — WebSocket echo round-trip + internal reject.
+"""End-to-end web-chat seam tests — Phase 2.
 
 Exercises the real FastAPI app (src.platform.app:app) over the Starlette/FastAPI
-TestClient WebSocket transport, with the ECHO backend so there is no LLM/network
-cost. A throwaway community is seeded (one ``mgr`` agent) and a real admin
+TestClient WS + REST transports. A throwaway community is seeded (mgr + persona
+agents, a group channel, and a couple of conversation rows) and a real admin
 session cookie is minted so the connect-time auth gate is satisfied for real.
+
+The dispatcher is CONFIG-DRIVEN (Phase 2): it does NOT force a backend. Tests
+that need echo configure it the REAL way — a ``GLIMI_LLM_BACKEND=echo`` line in
+the community's ``communities/{cid}/.env`` (config-layering), NOT a hardcoded env
+in the handler. This proves the handler no longer forces echo: the only thing
+that makes the reply echo is the community config the adapter loads.
 
 CI without httpx/websockets installed will skip via importorskip.
 """
@@ -25,26 +31,55 @@ from starlette.testclient import TestClient
 
 @pytest.fixture()
 def seeded_app(monkeypatch):
-    """Isolated platform data dir + a throwaway community with one mgr agent,
-    plus an admin session cookie. Yields (client, cookies, community_id)."""
+    """Isolated platform data dir + a throwaway community, plus an admin session
+    cookie. Yields (client, anon, community_id).
+
+    The community's backend is configured to ECHO the REAL way — a
+    ``GLIMI_LLM_BACKEND=echo`` line in ``communities/{cid}/.env`` — NOT a process
+    env force. We deliberately do NOT set ``GLIMI_LLM_BACKEND`` in the process
+    env, so the only thing that routes a turn to echo is the community config the
+    dispatcher loads. (If the dispatcher still forced echo on its own, this would
+    pass trivially; combined with ``test_dispatcher_is_config_driven`` — which
+    asserts no echo *without* the .env — it proves config-drive.)
+
+    Seeds: mgr + persona agents, a registered group channel, and a couple of
+    conversation rows for history.
+    """
     data_dir = tempfile.mkdtemp(prefix="glimi-webchat-test-")
     monkeypatch.setenv("GLIMI_DATA_DIR", data_dir)
-    monkeypatch.setenv("GLIMI_LLM_BACKEND", "echo")
     monkeypatch.setenv("GLIMI_LANG", "ko")
+    # Make sure no inherited process-env backend masks the config-layering path.
+    monkeypatch.delenv("GLIMI_LLM_BACKEND", raising=False)
+    monkeypatch.delenv("GLIMI_LLM_AGENT_MAP", raising=False)
 
-    cid = "wschat"
+    # Unique community per test → fresh DB, no cross-test bleed (the WS turn
+    # persists agent replies, which would otherwise leak into later tests).
+    n = next(_USER_SEQ)
+    cid = f"wschat{n}"
     from src import community as comm
     cdir = comm.COMMUNITIES_DIR / cid
     community_preexisted = cdir.exists()
     (cdir / "logs").mkdir(parents=True, exist_ok=True)
+    # Config-layering: configure THIS community's backend = echo via its .env.
+    (cdir / ".env").write_text("GLIMI_LLM_BACKEND=echo\n", encoding="utf-8")
 
-    # Scope + init the community DB and seed one mgr agent.
+    # Scope + init the community DB and seed agents + a group channel + history.
     monkeypatch.setenv("GLIMI_COMMUNITY", cid)
     comm.set_community(cid)
     import src.db as db
     db.DB_PATH = None
     db.init_db()
     db.save_agent_profile({"id": "mgr", "type": "mgr", "name": "유나"})
+    db.save_agent_profile({"id": "agent-persona-001", "type": "persona", "name": "소은"})
+    # The owner row so history's is_user flag resolves the human turn.
+    db.save_user({"id": "owner", "name": "오너"})
+    # A registered, user-postable group channel (mgr + persona).
+    db.set_channel_participants("group-cafe", ["mgr", "agent-persona-001"])
+    # A registered internal channel — must NOT show up in the postable list.
+    db.set_channel_participants("internal-group-backchannel", ["mgr", "agent-persona-001"])
+    # Seed history for the persona DM channel (owner + agent turns).
+    db.log_message("dm-agent-persona-001", "owner", "안녕 소은")
+    db.log_message("dm-agent-persona-001", "agent-persona-001", "안녕하세요!")
 
     # Platform account DB lives under GLIMI_DATA_DIR — create an admin (admin role
     # grants access to all communities) and mint a signed session cookie.
@@ -54,7 +89,7 @@ def seeded_app(monkeypatch):
     # signed session stays consistent because the same secret key is reused.
     from src.platform import accounts, sessions
     from src.platform.config import SESSION_COOKIE_NAME
-    uid = accounts.create_account(f"wstester{next(_USER_SEQ)}", "pw-12345", role="admin")
+    uid = accounts.create_account(f"wstester{n}", "pw-12345", role="admin")
     token = sessions.sign_session(uid)
 
     # Import the app AFTER env is set so config/secret-key resolve under data_dir.
@@ -83,6 +118,12 @@ def _drain_until_text(ws, max_frames=10):
 
 
 def test_ws_echo_round_trip(seeded_app):
+    """A real turn flows back over WS using the community's CONFIGURED backend.
+
+    Echo is set via the community ``.env`` (config-layering), NOT a process env or
+    a handler force — so a successful echo round-trip proves the dispatcher loads
+    and honors the configured backend.
+    """
     client, _anon, cid = seeded_app
     with client.websocket_connect(f"/community/{cid}/chat/ws") as ws:
         ws.send_json({
@@ -92,11 +133,11 @@ def test_ws_echo_round_trip(seeded_app):
             "text": "hello from web",
         })
         frame = _drain_until_text(ws)
-        assert frame is not None, "no text frame received from echo backend"
+        assert frame is not None, "no text frame received from configured backend"
         assert frame["type"] == "text"
         assert frame["channel"] == "dm-mgr"
         assert frame["agent_id"] == "mgr"
-        # echo backend echoes the user message back into the reply.
+        # echo backend (configured via community .env) echoes the user message.
         assert "hello from web" in frame["text"]
 
 
@@ -123,3 +164,129 @@ def test_ws_rejects_unauthenticated(seeded_app):
         with anon.websocket_connect(f"/community/{cid}/chat/ws") as ws:
             ws.send_json({"type": "text", "channel": "dm-mgr", "agent": "mgr", "text": "hi"})
             ws.receive_json()
+
+
+# ── History cold-load endpoint ──────────────────────────────────────────
+
+def test_history_returns_seeded_messages(seeded_app):
+    client, _anon, cid = seeded_app
+    r = client.get(f"/community/{cid}/chat/history?channel=dm-agent-persona-001&limit=50")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["channel"] == "dm-agent-persona-001"
+    msgs = body["messages"]
+    # Newest-last (ASC): owner turn first, then the agent reply.
+    texts = [m["text"] for m in msgs]
+    assert "안녕 소은" in texts
+    assert "안녕하세요!" in texts
+    assert texts.index("안녕 소은") < texts.index("안녕하세요!")
+    # is_user distinguishes the human turn from the agent turn.
+    by_text = {m["text"]: m for m in msgs}
+    assert by_text["안녕 소은"]["is_user"] is True
+    assert by_text["안녕하세요!"]["is_user"] is False
+    assert by_text["안녕하세요!"]["speaker_id"] == "agent-persona-001"
+
+
+def test_history_community_scoped_empty_for_unknown_channel(seeded_app):
+    client, _anon, cid = seeded_app
+    # A user-postable channel with no rows → empty (community-scoped read).
+    r = client.get(f"/community/{cid}/chat/history?channel=dm-mgr&limit=50")
+    assert r.status_code == 200
+    assert r.json()["messages"] == []
+
+
+def test_history_rejects_internal_channel(seeded_app):
+    client, _anon, cid = seeded_app
+    r = client.get(f"/community/{cid}/chat/history?channel=mgr-system-log")
+    assert r.status_code == 400
+    assert "not user-postable" in r.json()["error"]
+
+
+def test_history_requires_auth(seeded_app):
+    _client, anon, cid = seeded_app
+    r = anon.get(f"/community/{cid}/chat/history?channel=dm-mgr")
+    # require_user → 401/403 (redirect disabled for API). Either way: not 200.
+    assert r.status_code in (401, 403)
+
+
+# ── Channel list endpoint ───────────────────────────────────────────────
+
+def test_channels_lists_dm_and_group_excludes_internal(seeded_app):
+    client, _anon, cid = seeded_app
+    r = client.get(f"/community/{cid}/chat/channels")
+    assert r.status_code == 200
+    chans = r.json()["channels"]
+    ids = {c["channel"] for c in chans }
+    # DM-per-agent (web convention dm-<agent_id>) for both seeded agents.
+    assert "dm-mgr" in ids
+    assert "dm-agent-persona-001" in ids
+    # Registered user-postable group channel is listed.
+    assert "group-cafe" in ids
+    # Internal / mgr-* channels are EXCLUDED from the postable list.
+    assert not any(c["channel"].startswith("internal-") for c in chans)
+    assert not any(c["channel"].startswith("mgr-") for c in chans)
+    # DM entries carry display metadata for rendering.
+    dm = next(c for c in chans if c["channel"] == "dm-agent-persona-001")
+    assert dm["kind"] == "dm"
+    assert dm["agent_id"] == "agent-persona-001"
+    assert dm["name"] == "소은"
+    assert dm["avatar_url"] and "agent-persona-001" in dm["avatar_url"]
+
+
+def test_channels_requires_auth(seeded_app):
+    _client, anon, cid = seeded_app
+    r = anon.get(f"/community/{cid}/chat/channels")
+    assert r.status_code in (401, 403)
+
+
+# ── Dispatcher is config-driven, NOT echo-forced ────────────────────────
+
+def test_dispatcher_loads_agent_map_config(seeded_app, monkeypatch):
+    """Echo selected via a DIFFERENT config key proves the dispatcher loads the
+    community's real LLM-routing config, not a hardcoded GLIMI_LLM_BACKEND=echo.
+
+    We reconfigure the community .env to route ``mgr → echo`` via
+    ``GLIMI_LLM_AGENT_MAP`` (the per-agent-type mechanism) with NO bare
+    ``GLIMI_LLM_BACKEND`` line, and assert the mgr turn still echoes. The only way
+    that happens is if the adapter loaded the agent-map from the .env into the
+    kernel's provider resolution — i.e. it is config-driven, not echo-forced.
+    """
+    import json
+    import os as _os
+    from src import community as comm
+    client, _anon, cid = seeded_app
+    env_path = comm.COMMUNITIES_DIR / cid / ".env"
+    # Rewrite the .env to use the agent-map mechanism only (no bare backend line).
+    env_path.write_text(
+        "GLIMI_LLM_AGENT_MAP=" + json.dumps({"mgr": "echo"}) + "\n",
+        encoding="utf-8",
+    )
+    # Clear any backend leaked into os.environ by a previous in-process turn so we
+    # don't accidentally satisfy the route via a stale global.
+    _os.environ.pop("GLIMI_LLM_BACKEND", None)
+    _os.environ.pop("GLIMI_LLM_AGENT_MAP", None)
+    monkeypatch.delenv("GLIMI_LLM_BACKEND", raising=False)
+
+    sentinel = "ZZUNIQUESENTINEL42"
+    with client.websocket_connect(f"/community/{cid}/chat/ws") as ws:
+        ws.send_json({"type": "text", "channel": "dm-mgr", "agent": "mgr", "text": sentinel})
+        frame = _drain_until_text(ws)
+    assert frame is not None, "no reply with agent-map echo config"
+    assert sentinel in frame["text"], (
+        "mgr did not echo via GLIMI_LLM_AGENT_MAP → adapter is not loading the "
+        "community's LLM-routing config"
+    )
+
+
+def test_dispatcher_source_has_no_backend_force():
+    """Source-level guard: the dispatcher must not set GLIMI_LLM_BACKEND, and must
+    call the runtime's streaming entry (delegating provider selection to the
+    kernel's config-layering)."""
+    import inspect
+    from src.platform.routers import chat as chat_mod
+    src = inspect.getsource(chat_mod)
+    assert 'os.environ.setdefault("GLIMI_LLM_BACKEND"' not in src
+    assert 'os.environ["GLIMI_LLM_BACKEND"]' not in src
+    assert "generate_response_streaming" in src
+    # The single-owner human turn must NOT be suppressed (kernel logs it).
+    assert "log_user_message=False" not in src
