@@ -9,7 +9,11 @@
   <span class="chat-topbar-title">{{ community_name }}</span>
 {% endblock %}
 
-{% block content %}
+{# 채팅은 전체 높이 화면 — base.html 의 .gp-main (padding/max-width/진입 애니) 를
+   완전히 우회하려고 body 블록을 직접 오버라이드. .gp-topbar 는 그대로 두고
+   그 아래를 flex 로 채워 하단 고정 컴포저가 항상 화면 안에 머물게 함.
+   dashboard/index.html 의 풀하이트 패턴과 동일한 접근. #}
+{% block body %}
 <div class="chat-wrap">
   <div class="chat-head">
     <span class="chat-channel-label" id="chat-channel-label"># {{ channel }}</span>

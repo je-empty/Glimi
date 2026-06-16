@@ -3,12 +3,30 @@
    Token-based only (tokens.css). No hardcoded colors.
    ============================================================ */
 
+/* 풀하이트 채팅 — base.html 의 body 블록을 오버라이드해 .gp-main 을 우회한다.
+   문서 스크롤을 죽이고(100dvh 클램프) body 를 세로 flex 로 만들어
+   .gp-topbar 는 자연 높이, .chat-wrap 이 남은 공간을 채운다.
+   → topbar 가 좁은 화면에서 줄바꿈으로 더 커져도 magic number 없이 정확.
+   100vh 대신 100dvh 사용 — 모바일 URL 바 안전. (dashboard 풀하이트 패턴과 동일) */
+html, body {
+  height: 100%;
+}
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--fs-base);
+  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* topbar 는 줄어들지 않게 고정 — 남은 공간은 전부 채팅 */
+.gp-topbar {
+  flex: 0 0 auto;
 }
 
 .chat-topbar-title {
@@ -18,12 +36,14 @@ body {
 }
 
 .chat-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   max-width: 760px;
   margin: 0 auto;
   padding: var(--sp-4);
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
   box-sizing: border-box;
 }
 
