@@ -128,7 +128,7 @@
   {% endfor %}
 </div>
 
-<dialog id="delete-dialog" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 22px; min-width: 420px; max-width: 500px;">
+<dialog id="delete-dialog" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 22px; min-width: min(420px, calc(100vw - 32px)); max-width: 500px;">
   <h3 style="margin-top: 0; color: var(--err);">커뮤니티 삭제</h3>
   <p style="margin: 10px 0 6px 0; font-size: 13.5px; line-height: 1.6;">
     <strong id="del-cid" style="color: var(--err); font-family: ui-monospace, monospace;">...</strong> 커뮤니티를 완전히 삭제합니다.<br>
