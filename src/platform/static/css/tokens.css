@@ -11,7 +11,13 @@
 @import url('https://cdn.jsdelivr.net/npm/jetbrains-mono@1/css/jetbrains-mono.min.css');
 @import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css');
 
-:root[data-theme="light"] {
+/* Light = true zero-config default. data-theme 미지정/제거 시에도 light 가 렌더되도록
+   bare :root 와 :not([data-theme="dark"]) 를 light 셀렉터에 별칭. base.html 은
+   여전히 data-theme="light" 를 박지만, 속성이 없거나 제거돼도 unstyled 가 아니라
+   light 로 떨어진다 (방어적 기본값). dark 는 명시적 data-theme="dark" 일 때만. */
+:root,
+:root[data-theme="light"],
+:root:not([data-theme="dark"]) {
   /* surfaces — 레이어드 paper */
   --bg:        #fafafa;
   --bg-elev:   #ffffff;
