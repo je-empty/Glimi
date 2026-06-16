@@ -30,6 +30,10 @@
   var CHANNEL = window.__GLIMI_CHANNEL__ || params.get('channel') || '';
   var AGENT = window.__GLIMI_AGENT__ || params.get('agent') || 'mgr';
   var OWNER_NAME = window.__GLIMI_USER__ || '나';
+  // Embedded (dashboard #view-chat) vs standalone (/chat). Embedded does NOT
+  // auto-boot at load — the dashboard lazy-inits on first Chat-tab entry so the
+  // WS isn't opened until the tab is actually shown. Standalone auto-boots.
+  var EMBEDDED = !!window.__GLIMI_EMBEDDED__;
 
   // Theme: canonical platform key 'glimi-theme' (base.html FOUC guard +
   // toggleTheme() own this; this read is redundant-but-harmless, kept for
@@ -1279,8 +1283,46 @@
     });
   })();
 
-  // ==== Boot ====
-  setChannelLabel('# ' + CHANNEL);
-  loadChannels();
-  loadHistory().then(function () { connect(); });
+  // ==== Boot / public API ====
+  // The DOM consts + listener bindings above run ONCE at load (idempotent, bind
+  // to the single #view-chat / chat.html instance). Only the data-loading boot
+  // (channel list + history cold-load + WS connect) is deferred behind init() so
+  // the embedded dashboard can lazy-start it on first Chat-tab entry.
+  var _inited = false;
+  function _boot() {
+    setChannelLabel('# ' + CHANNEL);
+    loadChannels();
+    loadHistory().then(function () { connect(); });
+  }
+  window.GlimiChat = {
+    // Idempotent: first call boots (channels + history + WS); later calls no-op.
+    init: function () {
+      if (_inited) return;
+      _inited = true;
+      _boot();
+    },
+    // Graph→chat jump: switch to channelId on the single live WS. Reuses
+    // selectChannel (history reload + WS reconnect on channel change). If not
+    // yet inited, seed the target then boot straight onto it.
+    selectChannelById: function (channelId, agentId) {
+      if (!channelId) return;
+      if (!_inited) {
+        CHANNEL = channelId;
+        if (agentId) AGENT = agentId;
+        window.GlimiChat.init();
+        return;
+      }
+      var resolvedAgent = agentId ||
+        (channelId.indexOf('dm-') === 0 ? channelId.slice(3) : AGENT);
+      // selectChannel early-returns when the target is already the active
+      // channel — that's correct here (the channel is already live; the caller
+      // has already shown the tab), so the jump is a safe no-op in that case.
+      selectChannel({ channel: channelId, agent_id: resolvedAgent });
+    },
+    // Re-entry into the Chat tab: re-pin the feed to bottom (the WS is untouched).
+    refit: function () { if ($feed) { pinned = true; $feed.scrollTop = $feed.scrollHeight; } }
+  };
+
+  // Standalone /chat auto-boots; embedded dashboard lazy-inits on first tab entry.
+  if (!EMBEDDED) window.GlimiChat.init();
 })();
