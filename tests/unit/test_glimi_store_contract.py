@@ -39,6 +39,7 @@ class FakeStore(KernelStore):
         self.pins: set[int] = set()
         self.emotions: dict[str, tuple[str, int]] = {}
         self.hooks: list = []
+        self.reactions: list[dict] = []
         self._next_id = 1
 
     # ── conversation engine ──────────────────────────
@@ -76,17 +77,62 @@ class FakeStore(KernelStore):
     def get_agent_model_override(self, agent_id):
         return None
 
-    def log_message(self, channel, speaker, message, emotion=None):
+    def log_message(self, channel, speaker, message, emotion=None, reply_to=None):
         mid = self._next_id
         self._next_id += 1
         self.messages.setdefault(channel, []).append(
-            {"id": mid, "speaker": speaker, "message": message, "emotion": emotion}
+            {"id": mid, "speaker": speaker, "message": message, "emotion": emotion,
+             "reply_to": reply_to, "thread_root": None}
         )
         for fn in self.hooks:
             fn(channel, speaker, message)
+        return mid
 
     def add_message_hook(self, fn):
         self.hooks.append(fn)
+
+    def add_reaction(self, message_id, actor_id, emoji):
+        for r in self.reactions:
+            if r["message_id"] == message_id and r["actor_id"] == actor_id and r["emoji"] == emoji:
+                return False
+        self.reactions.append({"message_id": message_id, "actor_id": actor_id,
+                               "emoji": emoji, "created_at": ""})
+        return True
+
+    def remove_reaction(self, message_id, actor_id, emoji):
+        self.reactions = [r for r in self.reactions
+                          if not (r["message_id"] == message_id and r["actor_id"] == actor_id
+                                  and r["emoji"] == emoji)]
+
+    def get_reactions(self, message_id):
+        return [{"emoji": r["emoji"], "actor_id": r["actor_id"], "created_at": r["created_at"]}
+                for r in self.reactions if r["message_id"] == message_id]
+
+    def get_reactions_for(self, message_ids):
+        idset = set(message_ids)
+        out: dict[int, list[dict]] = {}
+        for r in self.reactions:
+            if r["message_id"] in idset:
+                out.setdefault(r["message_id"], []).append(
+                    {"emoji": r["emoji"], "actor_id": r["actor_id"], "created_at": r["created_at"]})
+        return out
+
+    def set_reply(self, message_id, reply_to):
+        for msgs in self.messages.values():
+            for m in msgs:
+                if m["id"] == message_id:
+                    m["reply_to"] = reply_to
+                    m["thread_root"] = reply_to
+                    return
+
+    def get_thread(self, root_id, limit=50):
+        out = []
+        for msgs in self.messages.values():
+            for m in msgs:
+                if m["id"] == root_id or m.get("thread_root") == root_id:
+                    out.append(m)
+        out.sort(key=lambda r: r["id"])
+        return out[:limit]
 
     def get_recent_events(self, agent_id, event_types, window_sec, limit=8):
         return []
