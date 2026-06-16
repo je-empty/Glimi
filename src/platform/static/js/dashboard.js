@@ -333,6 +333,8 @@ const _railThumb = document.createElement('span');
 _railThumb.className = 'rail-thumb';
 _railEl.appendChild(_railThumb);
 function positionRailThumb(instant) {
+  // 모바일(≤720)에선 탭바가 가로 스크롤러 → 세로축 썸은 어긋나므로 CSS 로 숨기고 JS 도 스킵
+  if (window.matchMedia('(max-width:720px)').matches) return;
   const btn = _railEl.querySelector('button.active');
   if (!btn || !btn.offsetHeight) return;
   if (instant) _railThumb.style.transition = 'none';
@@ -480,6 +482,8 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
+    // 모바일 가로 탭바: 활성 탭이 잘리지 않게 스크롤로 노출
+    btn.scrollIntoView({ inline: 'nearest', block: 'nearest' });
     const view = document.getElementById('view-' + btn.dataset.tab);
     view.classList.add('active');
     markJustEntered(view);
@@ -889,7 +893,7 @@ async function openModelPicker(agentId, agentName, currentModel) {
       대화 이력·메모리는 DB 기반이라 자동 보존됩니다. 다음 턴부터 반영 (재시작 불필요).
     </div>
     <form id="model-pick-form">${lines}</form>
-    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap">
       <button class="act-btn" onclick="event.stopPropagation(); resetAgentModel('${esc(agentId)}')">기본값으로 (Override 해제)</button>
       <button class="act-btn primary" onclick="event.stopPropagation(); applyAgentModel('${esc(agentId)}')">적용</button>
     </div>
@@ -1611,7 +1615,7 @@ function renderScanTable() {
         ▶ 선택한 ${_syncSelectedChannels.size}개 채널 싱크
       </button>
     </div>
-    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:8px">
+    <div class="modal-table-wrap" style="max-height:360px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:8px">
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead style="background:var(--panel-2);position:sticky;top:0">
           <tr>

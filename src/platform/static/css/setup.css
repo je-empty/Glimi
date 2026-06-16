@@ -111,3 +111,15 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--panel-
   .choice-grid { grid-template-columns: 1fr; }
   .setup-card { padding: var(--sp-4); }
 }
+/* base.css F4 (input,select,textarea) is element-level; setup's
+   .field input[type="..."] is class+attr (higher specificity) so it must
+   re-declare 16px in its own mobile block. Buttons here are custom classes
+   (not button/.btn) so base.css F3 doesn't reach them → bump to 44px. */
+@media (max-width: 720px) {
+  .field input[type="password"], .field input[type="text"] { font-size: 16px; }
+  .btn-primary, .btn-ghost { min-height: 44px; }
+}
+@media (max-width: 420px) {
+  .setup-steps { gap: var(--sp-1); }
+  .setup-steps li { font-size: var(--fs-xs); gap: var(--sp-1); }
+}
