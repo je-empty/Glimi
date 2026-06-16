@@ -13,7 +13,7 @@ import os
 
 from . import accounts, setup as setup_mod, templates  # noqa: F401 — 서브모듈 초기화
 from .db import init_db
-from .routers import admin_dev, auth, communities, dashboard, pages, setup as setup_router
+from .routers import admin_dev, auth, chat, communities, dashboard, pages, setup as setup_router
 from .supervisor import supervisor
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -64,6 +64,7 @@ app.include_router(communities.router)
 app.include_router(communities.avatar_router)
 app.include_router(dashboard.router)
 app.include_router(admin_dev.router)
+app.include_router(chat.router)
 
 
 @app.get("/healthz")
