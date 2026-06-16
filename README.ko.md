@@ -381,6 +381,13 @@ flowchart LR
 - Anthropic API key 또는 Claude Code Max 플랜 (페르소나가 Claude 로 응답 — *로컬 모델 지원은 첫 contributor task, 아래 참조*)
 - Discord 봇 토큰 (Community 풀-스택 가동 시만)
 
+**아무것도 안 깔린 맥** — 한 줄이면 위 사전 요구(Homebrew·Python·Node·Claude CLI)를
+알아서 설치하고, 프로젝트 셋업까지 한 뒤 브라우저로 setup 위저드를 열어 준다:
+```bash
+git clone https://github.com/jaebinsim/Glimi.git && cd Glimi && ./bootstrap.sh
+```
+이미 Python 3.12+ 있으면 아래 `./run.sh` 로 바로 가도 된다.
+
 **macOS / Linux**:
 ```bash
 git clone https://github.com/jaebinsim/Glimi.git
