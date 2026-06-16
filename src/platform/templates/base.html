@@ -2,10 +2,18 @@
 <html lang="ko" data-theme="light" class="{% block html_class %}{% endblock %}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Glimi{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/logo?v={{ asset_v }}">
-  <link rel="apple-touch-icon" href="/logo?v={{ asset_v }}">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png?v={{ asset_v }}">
+  {# PWA: installable app shell. theme-color matches the warm amber accent
+     (light #b76e0e / dark #e0a44c — tokens.css). #}
+  <link rel="manifest" href="/static/manifest.webmanifest?v={{ asset_v }}">
+  <meta name="theme-color" content="#b76e0e" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#e0a44c" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Glimi">
   <script>
     // 페이지 렌더 전에 저장된 테마 적용 — FOUC 방지
     (function() {
@@ -101,5 +109,20 @@
     });
   </script>
   {% block bottom_scripts %}{% endblock %}
+  <script>
+    // PWA service worker — same-origin, secure-context only (https or localhost).
+    // The SW version is tied to asset_v so a deploy busts the app-shell cache;
+    // it is passed as a query param the SW reads for its cache name.
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      var secure = window.isSecureContext ||
+        location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if (!secure) return;
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js?v={{ asset_v }}', { scope: '/' })
+          .catch(function () { /* registration failure is non-fatal */ });
+      });
+    })();
+  </script>
 </body>
 </html>

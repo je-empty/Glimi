@@ -467,39 +467,61 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
       이후 Python 에서 reverse 해서 ASC(오래된→최신) 로 반환 — 채팅 UI 가 위에서
       아래로 시간순 읽기에 자연스럽고, slice(-N) 이 최신 N 건을 가져오는 JS 관용 사용.
     """
-    try:
+    # reply_to/thread_root 컬럼은 마이그레이션 후에만 존재 — SELECT 에 포함하되
+    # 컬럼 부재 (마이그레이션 전 DB) 면 빈 메타로 graceful degrade.
+    cols = ("c.id, c.speaker, c.channel, c.message, c.timestamp, "
+            "c.reply_to, c.thread_root, "
+            "a.name as agent_name, u.name as user_name")
+    cols_legacy = ("c.id, c.speaker, c.channel, c.message, c.timestamp, "
+                   "a.name as agent_name, u.name as user_name")
+
+    def _select(col_list):
         conn = db.get_conn()
-        if channel:
-            rows = conn.execute(
-                "SELECT c.id, c.speaker, c.channel, c.message, c.timestamp, "
-                "       a.name as agent_name, u.name as user_name "
-                "FROM conversations c "
-                "LEFT JOIN agents a ON a.id = c.speaker "
-                "LEFT JOIN users u ON u.id = c.speaker "
-                "WHERE c.channel = ? "
-                "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
-                (channel, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT c.id, c.speaker, c.channel, c.message, c.timestamp, "
-                "       a.name as agent_name, u.name as user_name "
-                "FROM conversations c "
-                "LEFT JOIN agents a ON a.id = c.speaker "
-                "LEFT JOIN users u ON u.id = c.speaker "
-                "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        # (기존 output 루프에서 reversed(rows) 로 ASC 변환 — 여기선 그대로 둠)
-        total = conn.execute("SELECT COUNT(*) as c FROM conversations").fetchone()["c"]
-        conn.close()
+        try:
+            if channel:
+                rows = conn.execute(
+                    f"SELECT {col_list} FROM conversations c "
+                    "LEFT JOIN agents a ON a.id = c.speaker "
+                    "LEFT JOIN users u ON u.id = c.speaker "
+                    "WHERE c.channel = ? "
+                    "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
+                    (channel, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"SELECT {col_list} FROM conversations c "
+                    "LEFT JOIN agents a ON a.id = c.speaker "
+                    "LEFT JOIN users u ON u.id = c.speaker "
+                    "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    has_reply_cols = True
+    try:
+        rows = _select(cols)
     except Exception:
-        return []
+        try:
+            rows = _select(cols_legacy)
+            has_reply_cols = False
+        except Exception:
+            return []
+
+    # reactions 배치 폴드인 (N+1 방지) — 테이블 부재 시 빈 dict.
+    reactions_by_id: dict = {}
+    try:
+        ids = [r["id"] for r in rows if r.get("id") is not None]
+        if ids:
+            reactions_by_id = db.get_reactions_for(ids)
+    except Exception:
+        reactions_by_id = {}
 
     out = []
     for r in reversed(rows):
         who = r["agent_name"] or r["user_name"] or r["speaker"]
-        out.append({
+        row = {
             "id": r["id"],
             "speaker_id": r["speaker"],
             "speaker": who,
@@ -507,8 +529,11 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
             "channel": r["channel"],
             "message": r["message"] or "",
             "timestamp": r["timestamp"] or "",
-        })
-    # total 접근은 별도 조회로
+            "reply_to": r.get("reply_to") if has_reply_cols else None,
+            "thread_root": r.get("thread_root") if has_reply_cols else None,
+            "reactions": db._summarize_reactions(reactions_by_id.get(r["id"], [])),
+        }
+        out.append(row)
     return out
 
 
