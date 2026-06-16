@@ -1494,14 +1494,65 @@
       max-width: none;
     }
 
-    /* Detail modals / lightbox — viewport 한계 안에서 */
-    .detail-panel { width: calc(100vw - 16px); max-width: none; padding: 16px; }
+    /* Detail modals / lightbox — viewport 한계 안에서.
+       모달은 거의 풀스크린 (상단 정렬 backdrop padding 축소) + 내부 스크롤.
+       헤더/바디 분리되어 있어 헤더 고정 + 바디만 스크롤 → 닫기 버튼 항상 도달. */
+    .detail-backdrop { padding: 10px; align-items: stretch; }
+    .detail-panel {
+      width: 100%; max-width: none;
+      max-height: calc(100dvh - 20px); max-height: calc(100vh - 20px);
+    }
+    .detail-head { padding: 12px 14px; gap: 10px; }
+    .detail-head .d-close {
+      padding: 9px 14px; min-height: 40px; display: inline-flex; align-items: center;
+    }
+    .detail-head .d-detail-link {
+      padding: 9px 12px !important; min-height: 40px;
+      display: inline-flex !important; align-items: center;
+    }
+    .detail-body { padding: 14px 14px; }
     .lightbox img { max-width: 92vw; max-height: 80vh; }
+
+    /* 모달/상세 공용 surface — 가로 overflow 차단 + media/콘텐츠 폭 제한 */
+    .detail-section { padding: 14px 14px; }
+    .detail-section img, .detail-section pre, .detail-section table { max-width: 100%; }
+
+    /* kv 그리드 — 110px 고정 라벨 컬럼이 좁은 폭을 잠식 → 라벨 위/값 아래 스택 */
+    .kv { grid-template-columns: 1fr; gap: 2px 0; }
+    .kv dt { margin-top: 6px; }
+    .kv dt:first-child { margin-top: 0; }
+    .kv dd { word-break: break-word; }
+
+    /* emotion / intimacy 바 — 좁은 폭에서 모달 dl 을 뚫지 않게 */
+    .emotion-bar { max-width: 100%; }
+    .intimacy-bar-v2 { max-width: 100%; min-width: 0; }
+
+    /* rel-row — flex 3분할이 좁은 폭에서 깨짐 → wrap 스택 */
+    .rel-row { flex-wrap: wrap; align-items: stretch; gap: 6px; }
+    .rel-row .rname { max-width: 100%; }
+    .rel-row .dynamics { max-width: 100%; white-space: normal; }
+
+    /* mem-item / fact row — 고정 폭 없이 wrap, 콘텐츠 줄바꿈 */
+    .mem-item { flex-wrap: wrap; gap: 5px 8px; }
+    .mem-item .mcontent { flex: 1 1 100%; word-break: break-word; }
+    .mem-item .mts { margin-left: 0; }
+
+    /* 메시지 head(이름/채널/시각) wrap */
+    .msg .head { flex-wrap: wrap; gap: 4px 8px; }
+    .msg .ts { margin-left: auto; }
+
+    /* monospace 블록 — 페이지가 아니라 박스 안에서 가로 스크롤 */
+    .log-view, .logline, pre { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* 카드/그리드 surface 일괄 — 가로 overflow 안전망 */
+    .kpi, .agent-card, .channel-card, .sup-card, .event-card,
+    .scene-card, .ach-card, .health-card { max-width: 100%; min-width: 0; }
+    .agent-card img, .channel-card img { max-width: 100%; }
 
     /* Dev Requests admin page (모바일 단일 컬럼은 페이지 자체 CSS 에서 처리됨) */
 
     /* 길어지는 chip 들 wrap */
-    .filters, .toolbar { gap: 6px; }
+    .filters, .toolbar { gap: 6px; flex-wrap: wrap; }
     .chip { padding: 4px 10px; font-size: 11.5px; }
   }
 
@@ -1516,6 +1567,12 @@
     .kpi .value { font-size: 14px; }
     .graph-stage { height: 280px; }
     .view { padding: 10px 8px; }
+
+    /* 모달 — 아주 좁은 폭에선 backdrop 여백 더 줄여 풀스크린에 근접 */
+    .detail-backdrop { padding: 6px; }
+    .detail-panel { max-height: calc(100dvh - 12px); max-height: calc(100vh - 12px); }
+    .detail-head { padding: 11px 12px; }
+    .detail-body { padding: 12px 12px; }
   }
 
 /* inline spin keyframe */

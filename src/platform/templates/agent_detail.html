@@ -141,8 +141,124 @@
   }
 
   @media (max-width: 720px) {
-    .agent-page { grid-template-columns: 1fr; }
-    aside.side-nav { position: static; max-height: none; }
+    /* 2-col grid → single column (사이드바 nav 를 상단 가로 스크롤 칩으로) */
+    .agent-page {
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin: 12px auto;
+      padding: 0 12px 56px;
+    }
+
+    /* Page head — wrap 허용. avatar 축소, 이름/서브 truncate, back 버튼 도달 가능 */
+    .agent-page header.page-head {
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 14px 16px;
+    }
+    .agent-page header.page-head .avatar-wrap {
+      width: 56px; height: 56px; border-width: 2px;
+    }
+    .agent-page header.page-head .avatar-wrap .emoji-badge {
+      width: 22px; height: 22px; font-size: 13px; border-width: 2px;
+      bottom: -3px; right: -3px;
+    }
+    .agent-page header.page-head .hd-text {
+      /* avatar(56) + gap + back 가 한 줄에 안 들어가면 hd-text 가 줄바꿈하도록 */
+      flex: 1 1 140px; min-width: 0;
+    }
+    .agent-page header.page-head .hd-name {
+      font-size: 18px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .agent-page header.page-head .hd-sub {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .agent-page header.page-head .hd-back {
+      /* 도달 가능한 탭 타깃 (≥44px) — avatar 옆에서 wrap 되면 줄 끝으로 */
+      margin-left: auto;
+      padding: 11px 16px; font-size: 13px;
+      min-height: 44px; display: inline-flex; align-items: center;
+    }
+
+    /* Side nav — 상단 가로 스크롤 칩 줄로 (sticky 해제) */
+    aside.side-nav {
+      position: static; max-height: none;
+      flex-direction: row;
+      gap: 6px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 8px;
+      scrollbar-width: none;
+    }
+    aside.side-nav::-webkit-scrollbar { height: 0; }
+    aside.side-nav .nav-title { display: none; }
+    aside.side-nav a {
+      flex: 0 0 auto; white-space: nowrap;
+      padding: 9px 12px; min-height: 40px;
+    }
+
+    /* Detail sections — 여백 축소, 가로 overflow 차단 */
+    main.page-body { gap: 12px; }
+    main.page-body .detail-section { padding: 14px 14px; }
+
+    /* kv 그리드 — 110px 고정 라벨 컬럼이 좁은 폭을 잠식 → 라벨 위/값 아래 스택 */
+    main.page-body .kv {
+      grid-template-columns: 1fr;
+      gap: 2px 0;
+    }
+    main.page-body .kv dt { margin-top: 6px; }
+    main.page-body .kv dt:first-child { margin-top: 0; }
+    main.page-body .kv dd { word-break: break-word; }
+
+    /* emotion / intimacy 바 — 폭 꽉 채우되 넘치지 않게 */
+    main.page-body .emotion-bar { max-width: 100%; }
+    main.page-body .intimacy-bar-v2 { max-width: 100%; min-width: 0; }
+
+    /* rel-row — flex 3분할이 좁은 폭에서 깨짐 → 세로 스택 */
+    main.page-body .rel-row {
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: 6px;
+      padding: 9px 2px;
+    }
+    main.page-body .rel-row .rname { max-width: 100%; }
+    main.page-body .rel-row .dynamics { max-width: 100%; white-space: normal; }
+
+    /* mem-item / fact row — 고정 폭 없이 wrap, 타임스탬프도 줄바꿈 */
+    main.page-body .mem-item {
+      flex-wrap: wrap;
+      gap: 5px 8px;
+      padding: 8px 10px;
+    }
+    main.page-body .mem-item .mcontent { flex: 1 1 100%; word-break: break-word; }
+    main.page-body .mem-item .mts { margin-left: 0; }
+
+    /* 메시지 — 좁은 폭에서 head(이름/채널/시각) wrap */
+    main.page-body .msg { padding: 10px 2px; }
+    main.page-body .msg .head { flex-wrap: wrap; gap: 4px 8px; }
+    main.page-body .msg .ts { margin-left: auto; }
+
+    /* 추론 로그 / pre 등 monospace — 페이지가 아니라 박스 안에서 가로 스크롤 */
+    main.page-body .logline,
+    main.page-body pre {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      white-space: pre;
+    }
+
+    /* 모델 전환 칩 줄 — wrap 허용 (탭 타깃 보존) */
+    main.page-body .model-tag { white-space: normal; }
+  }
+
+  @media (max-width: 420px) {
+    .agent-page { padding: 0 10px 48px; }
+    .agent-page header.page-head .avatar-wrap { width: 48px; height: 48px; }
+    .agent-page header.page-head .hd-name { font-size: 16px; }
+    .agent-page header.page-head .hd-back {
+      /* 아주 좁은 폭 — back 을 전체 폭 한 줄로 떨어뜨려 항상 누르기 쉽게 */
+      flex: 1 1 100%; margin-left: 0; justify-content: center;
+    }
+    main.page-body .detail-section { padding: 12px 12px; }
   }
 </style>
 {% endblock %}
