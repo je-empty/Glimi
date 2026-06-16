@@ -179,7 +179,7 @@
     return c ? (c.type || '') : '';
   }
   function tagFor(isUser, speakerId) {
-    if (isUser) return { cls: 'me', label: '나' };
+    if (isUser) return { cls: 'self', label: '나' };
     // For DM channels the responding agent's type drives the tag.
     if (CHANNEL.indexOf('dm-') === 0 && speakerId === AGENT) {
       if (activeChannelType() === 'mgr') return { cls: 'mgr', label: '매니저' };
@@ -1291,8 +1291,19 @@
   var _inited = false;
   function _boot() {
     setChannelLabel('# ' + CHANNEL);
-    loadChannels();
-    loadHistory().then(function () { connect(); });
+    loadChannels().then(function () {
+      // If the seeded default channel isn't a real one (e.g. an empty 'dm-mgr'
+      // placeholder), fall back to the first actual channel so the chat opens on
+      // a live conversation instead of a blank pane.
+      if (channels.length && !channels.some(function (x) { return x.channel === CHANNEL; })) {
+        var c = channels[0];
+        CHANNEL = c.channel;
+        AGENT = c.agent_id || AGENT;
+        renderChannels();
+        syncHead();
+      }
+      loadHistory().then(function () { connect(); });
+    });
   }
   window.GlimiChat = {
     // Idempotent: first call boots (channels + history + WS); later calls no-op.

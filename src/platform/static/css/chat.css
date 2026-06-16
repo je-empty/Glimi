@@ -407,6 +407,7 @@ body {
 .msg .line1 { display: flex; align-items: baseline; gap: var(--sp-2); margin-bottom: 2px; flex-wrap: wrap; }
 .msg .who { font-size: var(--fs-base); font-weight: 600; letter-spacing: -0.2px; color: var(--text); cursor: default; }
 .msg .tag {
+  display: inline-block;
   font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.4px;
@@ -419,7 +420,7 @@ body {
   color: var(--text-dim);
 }
 .msg .tag.mgr { background: var(--chat-accent-soft); color: var(--chat-accent-deep); }
-.msg .tag.me  { background: var(--text); color: var(--panel); }
+.msg .tag.self { background: var(--text); color: var(--panel); }
 .msg .stamp { font-size: var(--fs-xs); color: var(--text-faint); letter-spacing: 0.2px; }
 .msg .txt {
   font-size: var(--fs-base);
