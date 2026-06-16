@@ -52,6 +52,8 @@ Glimi/                          (single git repo, multi-package monorepo)
 
 ## What makes Glimi different
 
+Glimi Core is the engine behind agents that don't restart every session. Most tooling spins a role up for a task and discards it, compresses context when it fills, and rebuilds from handoff notes next time. Glimi skips that step. Each agent keeps its own context — what it has worked on, which decisions were made and why, your preferences and values, its relationship with you — in storage, so it carries over across sessions and across model swaps. The same persistence shows up at work as **Glimi Workspace** and between people as **Glimi Community**: one is a standing team you don't have to brief again, the other is friends who actually remember you. The two apps are how Core shows what it can do; the engine is the single layer underneath both.
+
 There are many open-source agent frameworks now: LangChain/LangGraph, AutoGen, CrewAI, the OpenAI Agents SDK, Letta, and more. Most run an agent through a **task** and then discard it. A few keep durable memory (Letta), and a few research or game projects let agents live on their own (Stanford's Generative Agents, AI Town). Glimi brings those scattered pieces into **one pip-installable runtime**, and two of them are genuinely rare:
 
 **1. Memory that fits your hardware (Elastic Memory).** Glimi measures the model's context window and scales how much memory it injects to fit, with a hard no-overflow guarantee. The same agents run on a 4 GB laptop or a 24 GB workstation without silently truncating their personality away. Agent frameworks can trim history to fit the window (CrewAI, Letta, the OpenAI Agents SDK, AutoGen, LangGraph each do some form of this), but none sizes the memory budget to the **hardware** or gives a **hard no-overflow guarantee** — and the local runtimes don't either: Ollama's own request to auto-size context to available VRAM has been an open, unimplemented issue since 2025.
@@ -303,6 +305,8 @@ Per-agent table, the model-selection experiment, and setup →
 
 Community is the first application built on Glimi Core: a working showcase of what the engine enables, and a usable product on its own.
 
+The friends in Community remember you. No re-introducing yourself each time, the way you would with a stranger. The hours you've spent together, last week's running joke, the day you admitted things were rough, the secret you told only A — each of them keeps it in their own store. So when you turn up after a few days, they ask first: "been a while, did that thing work out?" Swap a friend's model from Haiku to a local Llama and the relationship, the mood, the texture of it all come along intact. They aren't a chatbot that resets and has to be told who you are again. They already know you.
+
 ![Connection Graph — Live](docs/screenshots/en/04-graph-live.webp)
 
 ### The defining UX move
@@ -453,6 +457,14 @@ python -m src.community list            # list communities (CLI)
 | Connection Graph | Graph + Supervisor Overlay |
 |---|---|
 | <img src="docs/screenshots/en/05-connection-graph.png" width="600" height="434" alt="Connection graph"/> | <img src="docs/screenshots/en/06-graph-supervisor.png" width="600" height="434" alt="Supervisor overlay"/> |
+
+---
+
+## Glimi Workspace — a team for work
+
+A one-person company still has a team here. The agents in Glimi Workspace are a Coordinator that runs point and role-split colleagues (Researcher, Builder, Critic). You set the project context once — what you're building, why the last decision went the way it did, how you like to work — and each of them keeps it in its own store, so you don't re-explain from scratch every time you open a session. Switch a model from Haiku to Sonnet, or from cloud to local, and the team keeps working off the same context. It's less a tool you re-hire per task than permanent staff that follows you and builds up the context as it goes.
+
+Run it with `./run.sh workspace --serve` (→ http://127.0.0.1:8800).
 
 ---
 
