@@ -54,10 +54,17 @@ class WebOutbox(Outbox):
     broadcasts them to every connection watching ``(community_id, channel_id)``.
 
     Frame shapes (all carry ``type`` + ``channel``):
-      - ``{type:'text',    channel, agent_id, speaker, text}``
+      - ``{type:'text',    channel, id, agent_id, speaker, text, reply_to?, client_msg_id?}``
       - ``{type:'typing',  channel, agent_id, speaker, on}``
-      - ``{type:'image',   channel, agent_id, speaker, url, caption}``
+      - ``{type:'image',   channel, id, agent_id, speaker, url, caption}``
       - ``{type:'interrupted', channel, agent_id, speaker}``
+      - ``{type:'reaction'|'reaction_removed', channel, id, actor_id, actor_name, emoji, count}``
+      - ``{type:'thread',  channel, root, messages:[...]}``
+
+    The ``text``/``image`` frames carry the persisted message ``id`` (from
+    ``db.log_message``'s ``lastrowid``) so the client can anchor reactions /
+    reply quotes on the rendered row, and an optional ``client_msg_id`` so the
+    sender's optimistic bubble reconciles instead of duplicating.
     """
 
     def __init__(self, community_id: str):
@@ -66,19 +73,30 @@ class WebOutbox(Outbox):
     async def _broadcast(self, channel_id: str, frame: dict) -> str:
         frame.setdefault("channel", channel_id)
         await chat_hub.broadcast(self.community_id, channel_id, frame)
-        return ""
+        return str(frame.get("id") or "")
 
-    async def send_text(self, channel_id: str, speaker: Speaker, text: str) -> str:
-        return await self._broadcast(channel_id, {
+    async def send_text(self, channel_id: str, speaker: Speaker, text: str,
+                        *, message_id: Optional[int] = None,
+                        reply_to: Optional[int] = None,
+                        client_msg_id: str = "") -> str:
+        frame = {
             "type": "text",
+            "id": message_id,
             "agent_id": speaker.agent_id,
             "speaker": speaker.display_name,
             "text": text,
-        })
+        }
+        if reply_to is not None:
+            frame["reply_to"] = reply_to
+        if client_msg_id:
+            frame["client_msg_id"] = client_msg_id
+        return await self._broadcast(channel_id, frame)
 
-    async def send_image(self, channel_id: str, speaker: Speaker, image: ImagePart) -> str:
+    async def send_image(self, channel_id: str, speaker: Speaker, image: ImagePart,
+                         *, message_id: Optional[int] = None) -> str:
         return await self._broadcast(channel_id, {
             "type": "image",
+            "id": message_id,
             "agent_id": speaker.agent_id,
             "speaker": speaker.display_name,
             "url": image.url or "",
@@ -98,6 +116,23 @@ class WebOutbox(Outbox):
             "type": "interrupted",
             "agent_id": speaker.agent_id,
             "speaker": speaker.display_name,
+        })
+
+    async def emit_reaction(self, channel_id: str, *, message_id: int,
+                            actor_id: str, actor_name: str, emoji: str,
+                            count: int, removed: bool = False) -> None:
+        """Broadcast a reaction add/remove for ``message_id`` to the room.
+
+        ``count`` is the post-mutation total for ``emoji`` on that message so the
+        client can reconcile its optimistic pill against the authoritative count.
+        """
+        await self._broadcast(channel_id, {
+            "type": "reaction_removed" if removed else "reaction",
+            "id": message_id,
+            "actor_id": actor_id,
+            "actor_name": actor_name,
+            "emoji": emoji,
+            "count": count,
         })
 
 
@@ -286,13 +321,37 @@ def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dic
     """Recent messages for ``channel_id``, ASC (newest-last), display-ready.
 
     Uses the display-resolving read API (``monitor.get_recent_messages``) so the
-    speaker is resolved to a name and ``is_user`` flags the bubble side.
+    speaker is resolved to a name and ``is_user`` flags the bubble side. Each row
+    also carries ``reactions`` (a compact emoji/count summary folded in by the
+    read API) and ``reply_to`` (a ``{id, preview, author}`` context resolved from
+    the parent row when one is in the loaded window, else ``{id}``) so a
+    cold-loaded message shows the SAME affordances as a live frame — ONE client
+    contract for history + WS.
     """
     def _query() -> list[dict]:
         from src.core import monitor
         rows = monitor.get_recent_messages(limit=limit, channel=channel_id)
+        # Index rows by id so a reply can resolve its parent's preview/author
+        # from the already-loaded window (no extra query for the common case).
+        by_id = {r.get("id"): r for r in rows if r.get("id") is not None}
         out: list[dict] = []
         for r in rows:
+            reply_to = None
+            parent_id = r.get("reply_to")
+            if parent_id is not None:
+                parent = by_id.get(parent_id)
+                if parent is not None:
+                    reply_to = {
+                        "id": parent_id,
+                        "author": parent.get("speaker") or "",
+                        "author_id": parent.get("speaker_id") or "",
+                        "is_user": bool(parent.get("is_user")),
+                        "preview": (parent.get("message") or "")[:120],
+                    }
+                else:
+                    # Parent is outside the loaded window — keep the pointer so the
+                    # client can still render a minimal reply quote / fetch it.
+                    reply_to = {"id": parent_id}
             out.append({
                 "id": r.get("id"),
                 "speaker_id": r.get("speaker_id"),
@@ -300,6 +359,9 @@ def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dic
                 "is_user": bool(r.get("is_user")),
                 "text": r.get("message") or "",
                 "timestamp": r.get("timestamp") or "",
+                "reactions": r.get("reactions") or [],
+                "reply_to": reply_to,
+                "thread_root": r.get("thread_root"),
                 # Images are not modeled in the conversations table — placeholder
                 # so the client shape is stable when image support lands.
                 "images": [],
@@ -310,9 +372,170 @@ def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dic
     return run_in_community(community_id, _query)
 
 
+# ── reactions / threads — community-scoped sync helpers ────────────────
+
+def _message_in_channel(community_id: str, message_id: int, channel_id: str) -> bool:
+    """True iff ``message_id`` exists AND belongs to ``channel_id`` (cross-channel
+    reaction rejection — a target message must live in the channel the actor is
+    reacting from). Scopes the community for the lookup."""
+    def _check() -> bool:
+        from src import db
+        try:
+            conn = db.get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT channel FROM conversations WHERE id=?", (message_id,)
+                ).fetchone()
+            finally:
+                conn.close()
+            return bool(row) and row["channel"] == channel_id
+        except Exception:
+            return False
+    from src.platform.community_ctx import run_in_community
+    try:
+        return run_in_community(community_id, _check)
+    except Exception:
+        return False
+
+
+def _apply_reaction(
+    community_id: str, *, message_id: int, actor_id: str, emoji: str, removed: bool,
+) -> Optional[dict]:
+    """Add/remove a reaction (community-scoped) and return a result dict
+    ``{count, changed}`` where ``count`` is the post-mutation total for ``emoji``
+    on ``message_id`` and ``changed`` flags a REAL insert (add) so the caller
+    fires the relational signal at most once. Returns None on failure.
+
+    Add uses ``store.add_reaction`` (returns True only on a real insert — already
+    idempotent via UNIQUE). Remove is unconditional toggle-off. On a real add we
+    fire ``memory.record_reaction_signal`` ONCE (dup-guarded in the kernel too).
+    """
+    def _do() -> dict:
+        from src import db
+        changed = False
+        if removed:
+            db.remove_reaction(message_id, actor_id, emoji)
+        else:
+            changed = db.add_reaction(message_id, actor_id, emoji)
+            if changed:
+                # Relational interpretation lives in the kernel — the platform
+                # only delivers the event. Resolve the agent whose message was
+                # reacted to (the message speaker) so the signal targets the
+                # right relationship. Fire ONCE (on the real-insert path).
+                try:
+                    conn = db.get_conn()
+                    try:
+                        row = conn.execute(
+                            "SELECT speaker FROM conversations WHERE id=?",
+                            (message_id,),
+                        ).fetchone()
+                    finally:
+                        conn.close()
+                    target_agent = row["speaker"] if row else None
+                except Exception:
+                    target_agent = None
+                if target_agent and target_agent != actor_id:
+                    try:
+                        from glimi import memory
+                        memory.record_reaction_signal(target_agent, actor_id, emoji)
+                    except Exception:
+                        pass
+        # Post-mutation count for this emoji on this message.
+        try:
+            reacts = db.get_reactions(message_id)
+            count = sum(1 for r in reacts if r.get("emoji") == emoji)
+        except Exception:
+            count = 0
+        return {"count": count, "changed": changed}
+
+    from src.platform.community_ctx import run_in_community
+    try:
+        return run_in_community(community_id, _do)
+    except Exception:
+        return None
+
+
+def _resolve_actor_name(community_id: str, actor_id: str) -> str:
+    """Display name for a reaction actor (owner or agent). Community-scoped."""
+    def _name() -> str:
+        try:
+            from src.core import profile as _profile
+            if actor_id == _profile.get_user_id():
+                return _profile.get_user_name() or actor_id
+            return _profile.get_agent_display_name(actor_id) or actor_id
+        except Exception:
+            return actor_id
+    from src.platform.community_ctx import run_in_community
+    try:
+        return run_in_community(community_id, _name)
+    except Exception:
+        return actor_id
+
+
+def _fetch_thread(community_id: str, root_id: int, limit: int = 50) -> list[dict]:
+    """The thread (root + replies) for ``root_id``, display-ready, id ASC.
+
+    Resolves each row's speaker to a display name + ``is_user`` flag (the raw
+    ``get_thread`` returns kernel speaker ids), and carries ``reactions`` already
+    folded in by the store. Tolerates a missing/trashed root (returns []).
+    """
+    def _query() -> list[dict]:
+        from src import db
+        try:
+            rows = db.get_thread(root_id, limit=limit)
+        except Exception:
+            return []
+        if not rows:
+            return []
+        # Resolve display names + user flag (mirror monitor.get_recent_messages).
+        agent_names: dict = {}
+        user_ids: set = set()
+        try:
+            for a in db.list_agents():
+                if a.get("id"):
+                    agent_names[a["id"]] = a.get("name") or a["id"]
+        except Exception:
+            agent_names = {}
+        try:
+            for u in db.list_users():
+                if u.get("id"):
+                    user_ids.add(u["id"])
+        except Exception:
+            user_ids = set()
+        out: list[dict] = []
+        for r in rows:
+            sid = r.get("speaker")
+            is_user = sid in user_ids
+            who = agent_names.get(sid)
+            if not who and is_user:
+                try:
+                    u = db.get_user(sid)
+                    who = (u or {}).get("name") or sid
+                except Exception:
+                    who = sid
+            out.append({
+                "id": r.get("id"),
+                "speaker_id": sid,
+                "display_name": who or sid,
+                "is_user": bool(is_user),
+                "text": r.get("message") or "",
+                "timestamp": r.get("timestamp") or "",
+                "reply_to": {"id": r.get("reply_to")} if r.get("reply_to") else None,
+                "thread_root": r.get("thread_root"),
+                "reactions": r.get("reactions") or [],
+            })
+        return out
+
+    from src.platform.community_ctx import run_in_community
+    try:
+        return run_in_community(community_id, _query)
+    except Exception:
+        return []
+
+
 async def _run_turn(
     *, community_id: str, channel_id: str, agent_id: str, text: str,
-    outbox: WebOutbox,
+    outbox: WebOutbox, reply_to: Optional[int] = None,
 ) -> None:
     """Stream one agent turn back over the socket using the agent's CONFIGURED
     backend (config-layering) — NO backend is forced here.
@@ -325,13 +548,19 @@ async def _run_turn(
 
     The kernel streaming call is BLOCKING, so it runs in an executor thread and
     bridges its synchronous ``on_message`` callback onto the event loop via an
-    asyncio.Queue (the Discord handler pattern). Each emitted line is broadcast
-    as a 'text' frame; typing is driven from this turn's lifecycle.
+    asyncio.Queue (the Discord handler pattern). Each emitted line is
+    **persisted first** (``db.log_message`` → row id) and then broadcast as a
+    'text' frame carrying that id, so the client can anchor reactions / replies
+    on the rendered row (persist-then-broadcast).
 
     Single-owner: the kernel logs the human turn itself under the owner id
     (its ``log_user_message`` flag defaults True), so we leave that default in
     place and do NOT re-log the owner turn. The kernel does NOT persist agent
-    replies — we log each emitted line ourselves below.
+    replies — we log each emitted line ourselves (inline, per line).
+
+    ``reply_to`` (the parent message id when the human turn was a reply) is NOT
+    threaded onto the agent's reply rows — the agent answers the conversation,
+    not the specific quoted line; the reply pointer lives on the human turn only.
     """
     from src.core.runtime import runtime
     from src.platform.community_ctx import run_in_community
@@ -367,6 +596,33 @@ async def _run_turn(
     # Resolve the outbound speaker inside the community scope.
     speaker = run_in_community(community_id, lambda: _resolve_speaker(agent_id))
 
+    def _agent_emotion() -> Optional[str]:
+        try:
+            from src import db
+            row = db.get_agent(agent_id)
+            return (row or {}).get("current_emotion")
+        except Exception:
+            return None
+
+    def _persist_line(line: str, emotion: Optional[str]) -> Optional[int]:
+        """Persist one agent line and return its row id (None on failure).
+
+        The kernel does NOT persist agent replies (only the owner turn) — we log
+        each line here so chat history shows both sides (mirrors Discord's
+        handlers._process_and_send). ``db.log_message`` has 30s dup-suppression
+        and returns the EXISTING row id on a dup, so the frame always carries a
+        real, anchorable id even when a line is re-emitted within the window.
+        """
+        try:
+            from src import db
+            return db.log_message(channel_id, agent_id, line, emotion=emotion)
+        except Exception:
+            return None
+
+    # Resolve emotion once inside the community scope (cheap, avoids per-line
+    # scope churn). Falls back to None on any failure.
+    emotion = run_in_community(community_id, _agent_emotion)
+
     await outbox.set_typing(channel_id, speaker, True)
     fut = loop.run_in_executor(None, _generate)
     lines: list[str] = []
@@ -377,7 +633,18 @@ async def _run_turn(
             if item is SENTINEL:
                 break
             lines.append(item)
-            await outbox.send_text(channel_id, speaker, item)
+            # Persist-then-broadcast: the frame must carry the persisted id so the
+            # client can anchor reactions / replies. Persist in an executor thread
+            # (blocking sqlite) scoped to the community; a persist failure still
+            # broadcasts with id=None so the user is never left hanging.
+            try:
+                mid = await loop.run_in_executor(
+                    None, lambda ln=item: run_in_community(
+                        community_id, lambda: _persist_line(ln, emotion)),
+                )
+            except Exception:
+                mid = None
+            await outbox.send_text(channel_id, speaker, item, message_id=mid)
     except asyncio.TimeoutError:
         timed_out = True
         await outbox.send_text(channel_id, speaker, "[오류] 응답 시간이 초과되었습니다.")
@@ -385,6 +652,39 @@ async def _run_turn(
         await outbox.set_typing(channel_id, speaker, False)
         try:
             await fut
+        except Exception:
+            pass
+
+    # Reply pointer backfill: the kernel logs the human turn itself (under the
+    # owner id) WITHOUT a reply_to (it does not know the web reply context). When
+    # the human turn was a reply, backfill the pointer onto that just-logged row
+    # so the reply survives reload + threads. We do NOT suppress the kernel's
+    # human-turn logging (the kernel must own it — source guard keeps the default
+    # log flag True) — instead we resolve the row the kernel wrote and set its
+    # reply_to (a post-hoc backfill, not a logging override). Validated against the
+    # owner id + the exact text within the channel; best-effort, never fatal.
+    if reply_to is not None:
+        def _backfill_reply() -> None:
+            from src import db
+            owner_id = _resolve_owner_speaker_id()
+            try:
+                conn = db.get_conn()
+                try:
+                    row = conn.execute(
+                        "SELECT id FROM conversations "
+                        "WHERE channel=? AND speaker=? AND message=? "
+                        "ORDER BY id DESC LIMIT 1",
+                        (channel_id, owner_id, text),
+                    ).fetchone()
+                finally:
+                    conn.close()
+                if row is not None:
+                    db.set_reply(row["id"], reply_to)
+            except Exception:
+                pass
+        try:
+            await loop.run_in_executor(
+                None, lambda: run_in_community(community_id, _backfill_reply))
         except Exception:
             pass
 
@@ -397,29 +697,6 @@ async def _run_turn(
         await outbox.send_text(
             channel_id, speaker, f"[오류] 응답을 생성하지 못했어요{detail}.",
         )
-
-    # The kernel does NOT persist the agent's reply (only the owner turn) — log
-    # each line here so chat history shows both sides (mirrors Discord's
-    # handlers._process_and_send). db.log_message has 30s dup-suppression so
-    # re-logging identical lines is safe.
-    if lines:
-        def _persist():
-            from src import db
-            emotion = None
-            try:
-                row = db.get_agent(agent_id)
-                emotion = (row or {}).get("current_emotion")
-            except Exception:
-                emotion = None
-            for ln in lines:
-                try:
-                    db.log_message(channel_id, agent_id, ln, emotion=emotion)
-                except Exception:
-                    break
-        try:
-            await loop.run_in_executor(None, lambda: run_in_community(community_id, _persist))
-        except Exception:
-            pass
 
 
 @router.get("/community/{cid}/chat/channels")
@@ -479,6 +756,8 @@ async def chat_ws(websocket: WebSocket, cid: str):
     outbox = WebOutbox(cid)
     joined: set[str] = set()  # channels this socket is registered for
 
+    from src.platform.community_ctx import run_in_community
+
     try:
         while True:
             frame = await websocket.receive_json()
@@ -499,6 +778,82 @@ async def chat_ws(websocket: WebSocket, cid: str):
                 await websocket.send_json({"type": "pong"})
                 continue
 
+            # All non-text frames (reactions / threads) require a user-postable
+            # channel too — the same guard the text path uses.
+            if ftype in ("add_reaction", "remove_reaction", "fetch_thread"):
+                if not is_user_postable(channel_id):
+                    await websocket.send_json({
+                        "type": "error", "channel": channel_id,
+                        "error": "channel is not user-postable",
+                    })
+                    continue
+
+            if ftype in ("add_reaction", "remove_reaction"):
+                # {type, channel, id(target), emoji}. Auth = is_user_postable
+                # (above) + the target must belong to THIS channel (reject
+                # cross-channel). Actor = the single owner.
+                try:
+                    target_id = int(frame.get("id"))
+                except (TypeError, ValueError):
+                    await websocket.send_json({
+                        "type": "error", "channel": channel_id,
+                        "error": "missing/invalid message id",
+                    })
+                    continue
+                emoji = (frame.get("emoji") or "").strip()
+                if not emoji:
+                    await websocket.send_json({
+                        "type": "error", "channel": channel_id,
+                        "error": "missing emoji",
+                    })
+                    continue
+                if not _message_in_channel(cid, target_id, channel_id):
+                    await websocket.send_json({
+                        "type": "error", "channel": channel_id,
+                        "error": "target message not in channel",
+                    })
+                    continue
+                actor_id = run_in_community(cid, _resolve_owner_speaker_id)
+                removed = (ftype == "remove_reaction")
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: _apply_reaction(
+                        cid, message_id=target_id, actor_id=actor_id,
+                        emoji=emoji, removed=removed),
+                )
+                if result is None:
+                    await websocket.send_json({
+                        "type": "error", "channel": channel_id,
+                        "error": "reaction failed",
+                    })
+                    continue
+                actor_name = _resolve_actor_name(cid, actor_id)
+                await outbox.emit_reaction(
+                    channel_id, message_id=target_id, actor_id=actor_id,
+                    actor_name=actor_name, emoji=emoji,
+                    count=int(result.get("count") or 0), removed=removed,
+                )
+                continue
+
+            if ftype == "fetch_thread":
+                # {type, channel, root} → a 'thread' frame (root + replies) back
+                # to THIS socket only (not a broadcast).
+                try:
+                    root_id = int(frame.get("root"))
+                except (TypeError, ValueError):
+                    await websocket.send_json({
+                        "type": "error", "channel": channel_id,
+                        "error": "missing/invalid thread root",
+                    })
+                    continue
+                msgs = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: _fetch_thread(cid, root_id),
+                )
+                await websocket.send_json({
+                    "type": "thread", "channel": channel_id,
+                    "root": root_id, "messages": msgs,
+                })
+                continue
+
             if ftype != "text":
                 await websocket.send_json({"type": "error", "error": f"unknown frame type: {ftype}"})
                 continue
@@ -517,6 +872,18 @@ async def chat_ws(websocket: WebSocket, cid: str):
                 })
                 continue
 
+            # Optional reply pointer (the parent message id this turn replies to).
+            reply_to = None
+            if frame.get("reply_to") is not None:
+                try:
+                    reply_to = int(frame.get("reply_to"))
+                except (TypeError, ValueError):
+                    reply_to = None
+                # A reply target must belong to this channel (cross-channel reject
+                # — silently drop the pointer rather than fail the whole turn).
+                if reply_to is not None and not _message_in_channel(cid, reply_to, channel_id):
+                    reply_to = None
+
             # Resolve which agent answers (DM → channel's agent; group → frame's
             # agent, v1 single-agent; never crash). channel_kind falls UNKNOWN →
             # 'group' → postable, so validate the agent exists before spawning a
@@ -533,6 +900,7 @@ async def chat_ws(websocket: WebSocket, cid: str):
             await _run_turn(
                 community_id=cid, channel_id=channel_id,
                 agent_id=agent_id, text=text, outbox=outbox,
+                reply_to=reply_to,
             )
     except WebSocketDisconnect:
         pass

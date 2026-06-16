@@ -10,13 +10,17 @@
 // gated pinned-autoscroll, an in-stream breathing-dots typing row at the reply
 // landing spot, and a lightweight client-side thread view.
 //
-// THREADS — v1 is client/session-local. The reply action sets a composer
-// reply-cue and the WS text frame carries `reply_to:<msgId>`. The backend
-// (routers/chat.py chat_ws) reads only type/channel/agent/text, so reply_to is
-// a SAFE passthrough but is NOT persisted — /chat/history has no reply_to
-// column, so threads reset on reload. BACKEND FOLLOW-UP (do not block this
-// redesign): add a reply_to column + persist it on the WS text path + include
-// reply_to in the /chat/history row shape so threads survive reload.
+// REACTIONS + THREADS — now REAL end-to-end (backend phases 1-3 + the chat.py
+// wiring landed). The reply action sets a composer reply-cue and the WS text
+// frame carries `reply_to:<msgId>`; the backend persists it (reply pointer
+// backfilled onto the human turn) and returns it on /chat/history, so replies
+// survive reload. Reactions are sent as `add_reaction`/`remove_reaction` frames
+// and broadcast back as `reaction`/`reaction_removed` (rendered optimistically,
+// reconciled on the authoritative broadcast count). The thread panel fetches the
+// REAL thread (`fetch_thread` → `thread` frame) instead of client-only grouping.
+// Outbound `text`/`image` frames now carry a persisted `id` so rows are
+// anchorable; the owner turn is rendered optimistically and reconciled by
+// `client_msg_id` on the broadcast echo.
 (function () {
   'use strict';
 
@@ -79,8 +83,6 @@
   var msgCounter = 0;        // local id source for frame-born messages
   // Message index for this channel render (id → {speakerId, name, text, ...}).
   var msgIndex = {};
-  // Threads: rootId → [reply message objects] (client/session-local only).
-  var threadsByRoot = {};
   // Reply target captured from a message's reply action.
   var replyTo = null;        // { id, speaker, text }
   // Thread panel state.
@@ -90,6 +92,17 @@
   var unread = {};
   // In-stream typing rows keyed by speakerId.
   var typingRows = {};
+  // Optimistic owner bubbles awaiting their broadcast echo, keyed by client_msg_id.
+  var pendingByClientId = {};
+  // Default emoji for the one-tap reaction affordance (positive signal — matches
+  // the kernel's POSITIVE_REACTION_EMOJI so it feeds the relationship layer).
+  var DEFAULT_EMOJI = '❤️';
+  // The owner's resolved speaker id (filled from history is_user rows) so the
+  // optimistic reaction "mine" state matches the actor the server records.
+  var OWNER_ID = null;
+  // The last reaction WE initiated, so its broadcast echo can bind OWNER_ID
+  // ({id, emoji}); cleared once consumed.
+  var pendingReaction = null;
 
   // ==== Small helpers ====
   // XSS-safe: textContent escape, then rich() only re-introduces known spans.
@@ -199,7 +212,8 @@
   }
 
   // ==== Message model ====
-  // m = { id, speakerId, name, isUser, lines:[], ts, replyTo, images:[], kind }
+  // m = { id, speakerId, name, isUser, lines:[], ts, replyTo, replyMeta,
+  //       reactions:[{emoji,count,actors:[]}], images:[], kind, clientId }
   function frameToMsg(speakerId, name, isUser, text, ts, opts) {
     opts = opts || {};
     var id = opts.id != null ? opts.id : ('m' + (++msgCounter));
@@ -210,17 +224,36 @@
       isUser: !!isUser,
       lines: text != null ? [String(text)] : [],
       ts: ts != null ? ts : Date.now(),
-      replyTo: opts.replyTo || null,
+      replyTo: opts.replyTo != null ? opts.replyTo : null,
+      threadRoot: opts.threadRoot != null ? opts.threadRoot : null,
+      // Server-resolved parent context {id, author, author_id, is_user, preview}
+      // — used to render a reply quote even when the parent isn't in msgIndex.
+      replyMeta: opts.replyMeta || null,
+      reactions: opts.reactions || [],
       images: opts.images || [],
-      kind: opts.kind || 'msg'
+      kind: opts.kind || 'msg',
+      clientId: opts.clientId || null
     };
+  }
+  // Stable client-side id for an optimistic owner bubble (echo-reconcile key).
+  function newClientId() {
+    return 'c' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
   }
 
   // ==== Row builders ====
-  function quoteHtml(rt) {
-    if (!rt) return '';
-    var src = msgIndex[rt] || replyToObj(rt);
-    if (!src) return '';
+  // Renders the reply quote above a bubble. Resolution order: the live msgIndex
+  // (parent rendered this session) → the server-resolved replyMeta (parent
+  // outside the window, from /chat/history) → the reply-cue captured object.
+  function quoteHtml(m) {
+    var rt = m.replyTo;
+    if (rt == null) return '';
+    var src = msgIndex[rt] || metaToSrc(m.replyMeta, rt) || replyToObj(rt);
+    if (!src) {
+      // We know there IS a parent (pointer present) but can't resolve it — still
+      // render a minimal "replying" quote so the affordance is honest.
+      return '<button type="button" class="quote" data-jump="' + escAttr(String(rt)) + '">' +
+        '<span class="qn">답장</span><span class="qt"></span></button>';
+    }
     var qa = src.isUser
       ? '<span class="qa" style="background:' + avBg(OWNER_NAME) + '">' + esc(initialOf(OWNER_NAME)) + '</span>'
       : '<span class="qa" style="background:' + avBg(src.speakerId || src.name) + '">' + esc(initialOf(src.name)) + '</span>';
@@ -228,6 +261,16 @@
     return '<button type="button" class="quote" data-jump="' + escAttr(String(rt)) + '">' +
       qa + '<span class="qn">' + esc(src.name) + '</span>' +
       '<span class="qt">' + esc(preview.slice(0, 80)) + '</span></button>';
+  }
+  function metaToSrc(meta, rt) {
+    if (!meta || meta.id == null || String(meta.id) !== String(rt)) return null;
+    if (!meta.author && !meta.preview) return null;  // bare {id} pointer
+    return {
+      name: meta.author || '',
+      isUser: !!meta.is_user,
+      speakerId: meta.author_id || '',
+      lines: [meta.preview || '']
+    };
   }
   function replyToObj(id) {
     // The reply-cue captured object (used before the target is in msgIndex).
@@ -248,15 +291,55 @@
     return out;
   }
 
+  // The thread affordance opens the REAL thread (fetch_thread). It shows for a
+  // root that HAS replies (this row is itself a thread_root referenced by some
+  // reply) — we render it lazily and refresh it as replies arrive / on cold-load.
   function threadAffordanceHtml(m) {
-    var n = (threadsByRoot[m.id] || []).length;
-    if (!n) return '';
-    return '<button type="button" class="thread-open" data-thread="' + escAttr(String(m.id)) + '">' +
-      '<i class="ti ti-messages" aria-hidden="true"></i>스레드 ' + n + '개</button>';
+    // Persisted/optimistic ids only (temp 'm…' client ids have no server thread).
+    var rootId = m.id;
+    if (!isServerId(rootId)) return '';
+    if (!hasReplies(rootId)) return '';
+    return '<button type="button" class="thread-open" data-thread="' + escAttr(String(rootId)) + '">' +
+      '<i class="ti ti-messages" aria-hidden="true"></i>스레드 보기</button>';
+  }
+
+  // Reaction pills. ``reactions`` is [{emoji, count, actors:[ids]}]. A pill is
+  // .mine when the owner is among the actors (drives toggle + accent styling).
+  function reactrowHtml(m) {
+    var rs = m.reactions || [];
+    if (!rs.length) return '';
+    var inner = rs.map(function (r) { return reactPillHtml(r); }).join('');
+    return '<div class="reactrow">' + inner + '</div>';
+  }
+  function reactPillHtml(r) {
+    var mine = OWNER_ID && (r.actors || []).indexOf(OWNER_ID) !== -1;
+    return '<button type="button" class="react' + (mine ? ' mine' : '') + '"' +
+      ' data-emoji="' + escAttr(r.emoji) + '" aria-pressed="' + (mine ? 'true' : 'false') + '">' +
+      '<span class="e">' + esc(r.emoji) + '</span>' +
+      '<span class="n">' + esc(String(r.count)) + '</span></button>';
+  }
+  // A row is a thread root with replies if any rendered message points at it.
+  function hasReplies(rootId) {
+    var key = String(rootId);
+    for (var k in msgIndex) {
+      if (!msgIndex.hasOwnProperty(k)) continue;
+      var mm = msgIndex[k];
+      if (mm && mm.replyTo != null && String(mm.replyTo) === key) return true;
+    }
+    return false;
+  }
+  function isServerId(id) {
+    // Server ids are numeric; optimistic client ids are 'm…' / 'c…'.
+    return id != null && /^[0-9]+$/.test(String(id));
   }
 
   function actsPopHtml(m) {
+    var canReact = isServerId(m.id);
     return '<div class="acts-pop">' +
+      (canReact
+        ? '<b class="react-btn" data-react="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="공감">' +
+            '<i class="ti ti-heart" aria-hidden="true"></i></b><span class="sep"></span>'
+        : '') +
       '<b class="reply-btn" data-reply="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="답장">' +
         '<i class="ti ti-arrow-back-up" aria-hidden="true"></i></b>' +
       '<span class="sep"></span>' +
@@ -290,7 +373,8 @@
       : '';
 
     var body = '<div class="body">' +
-      quoteHtml(m.replyTo) + head + linesHtml(m) +
+      quoteHtml(m) + head + linesHtml(m) +
+      reactrowHtml(m) +
       threadAffordanceHtml(m) +
       '</div>';
 
@@ -311,13 +395,20 @@
 
   function appendMessage(m, animate) {
     msgIndex[m.id] = m;
+    if (m.clientId) pendingByClientId[m.clientId] = m;
 
-    // Thread membership: a reply registers under its root.
+    // Thread affordance: a reply means its parent is now a thread root with
+    // replies — refresh the parent row's "스레드 보기" affordance if on screen.
     if (m.replyTo != null) {
-      var root = String(m.replyTo);
-      (threadsByRoot[root] = threadsByRoot[root] || []).push(m);
-      // Refresh the root row's affordance if it's already on screen.
-      refreshThreadAffordance(root);
+      refreshThreadAffordance(String(m.replyTo));
+      // If that thread panel is open, refresh it from the server.
+      if (openThreadRootId != null && hasReplies(openThreadRootId)) {
+        var orootM = msgIndex[m.replyTo];
+        var openRoot = orootM ? rootIdOf(orootM) : null;
+        if (openRoot != null && String(openRoot) === String(openThreadRootId)) {
+          fetchThread(openThreadRootId);
+        }
+      }
     }
 
     var dayChanged = maybeDayDivider($stream, m.ts);
@@ -343,23 +434,34 @@
     return el;
   }
 
-  function refreshThreadAffordance(rootId) {
+  // The thread root id for a message: its server thread_root if it is a reply,
+  // else the message's own id (a root with no parent). Falls back to the id.
+  function rootIdOf(m) {
+    if (!m) return null;
+    if (m.threadRoot != null) return m.threadRoot;
+    if (m.replyTo != null) return m.replyTo;  // 1-level fallback
+    return m.id;
+  }
+  // Refresh the thread affordance on the ROOT row of whatever ``parentId`` (the
+  // reply's target) belongs to. The root is the parent's thread_root if the
+  // parent is itself a reply, else the parent id.
+  function refreshThreadAffordance(parentId) {
+    var parent = msgIndex[parentId];
+    var rootId = parent ? rootIdOf(parent) : parentId;
     var rootEl = $stream.querySelector('.msg[data-mid="' + cssEsc(rootId) + '"]');
     if (!rootEl) return;
     var body = rootEl.querySelector('.body');
     if (!body) return;
     var existing = body.querySelector('.thread-open');
-    var n = (threadsByRoot[rootId] || []).length;
     if (existing) existing.remove();
-    if (n > 0) {
+    if (isServerId(rootId) && hasReplies(rootId)) {
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'thread-open';
       btn.dataset.thread = rootId;
-      btn.innerHTML = '<i class="ti ti-messages" aria-hidden="true"></i>스레드 ' + n + '개';
+      btn.innerHTML = '<i class="ti ti-messages" aria-hidden="true"></i>스레드 보기';
       body.appendChild(btn);
     }
-    if (openThreadRootId === rootId) renderThreadPanel(rootId);
   }
   function cssEsc(s) {
     if (window.CSS && CSS.escape) return CSS.escape(String(s));
@@ -370,8 +472,8 @@
     $stream.innerHTML = '';
     lastRow = null;
     msgIndex = {};
-    threadsByRoot = {};
     typingRows = {};
+    pendingByClientId = {};
   }
 
   // ==== Typing (typefoot + in-stream landing spot) ====
@@ -438,8 +540,15 @@
       case 'text': {
         var sid = frame.agent_id || '';
         var name = frame.speaker || frame.agent_id || '';
+        // Reconcile an optimistic owner bubble: a broadcast carrying our own
+        // client_msg_id swaps the temp id → real id instead of duplicating.
+        if (frame.client_msg_id && pendingByClientId[frame.client_msg_id]) {
+          reconcileOptimistic(frame.client_msg_id, frame.id);
+          break;
+        }
         clearTyping(sid);
         var m = frameToMsg(sid, name, false, frame.text || '', Date.now(), {
+          id: frame.id != null ? frame.id : undefined,
           replyTo: frame.reply_to != null ? frame.reply_to : null
         });
         appendMessage(m);
@@ -453,11 +562,19 @@
         var iname = frame.speaker || frame.agent_id || '';
         clearTyping(isid);
         var im = frameToMsg(isid, iname, false, null, Date.now(), {
+          id: frame.id != null ? frame.id : undefined,
           images: [{ url: frame.url || '', caption: frame.caption || '' }]
         });
         appendMessage(im);
         break;
       }
+      case 'reaction':
+      case 'reaction_removed':
+        applyReactionFrame(frame, type === 'reaction_removed');
+        break;
+      case 'thread':
+        renderThreadFromServer(frame.root, frame.messages || []);
+        break;
       case 'interrupted':
         showTyping(false);
         appendMessage(frameToMsg('', '', false, (frame.speaker || '상대') + '의 응답이 중단되었습니다.', Date.now(), { kind: 'sys' }));
@@ -473,6 +590,103 @@
     }
   }
 
+  // Swap an optimistic owner bubble's temp id for the server id once the echo
+  // lands (reconcile, not duplicate). Re-stamps the row + msgIndex + any pending
+  // reaction targets.
+  function reconcileOptimistic(clientId, realId) {
+    var m = pendingByClientId[clientId];
+    delete pendingByClientId[clientId];
+    if (!m) return;
+    if (realId == null) return;
+    var oldId = m.id;
+    var el = $stream.querySelector('.msg[data-mid="' + cssEsc(oldId) + '"]');
+    delete msgIndex[oldId];
+    m.id = realId;
+    m.clientId = null;
+    msgIndex[realId] = m;
+    if (el) {
+      el.dataset.mid = realId;
+      // Now that the row has a real id, it can be reacted to — rebuild acts-pop.
+      var pop = el.querySelector('.acts-pop');
+      if (pop) { pop.outerHTML = actsPopHtml(m); }
+    }
+  }
+
+  // Apply a reaction add/remove broadcast to the target row's pill set. The
+  // server's authoritative ``count`` reconciles any optimistic local pill.
+  function applyReactionFrame(frame, removed) {
+    var id = frame.id;
+    var m = msgIndex[id];
+    var emoji = frame.emoji;
+    var actor = frame.actor_id;
+    var count = frame.count != null ? frame.count : 0;
+    // Bind OWNER_ID from our own reaction echo: if we just sent this exact
+    // reaction, the broadcast's actor IS the owner id the server records. This
+    // lets the "mine" pill state resolve even before any history is loaded, and
+    // migrates any optimistic '__me' placeholder actor to the real id.
+    if (pendingReaction && pendingReaction.emoji === emoji &&
+        String(pendingReaction.id) === String(id)) {
+      if (OWNER_ID == null) OWNER_ID = actor;
+      pendingReaction = null;
+      if (m) migrateOptimisticActor(m, emoji, actor);
+    }
+    if (m) {
+      m.reactions = mergeReaction(m.reactions || [], emoji, actor, count, removed);
+    }
+    renderReactrow(id, m ? m.reactions : reconstructReactions(id, emoji, actor, count, removed));
+  }
+  // Replace the '__me' placeholder actor with the real owner id on a pill (so the
+  // count isn't double-counted when the authoritative actor merges in).
+  function migrateOptimisticActor(m, emoji, realActor) {
+    (m.reactions || []).forEach(function (r) {
+      if (r.emoji !== emoji || !r.actors) return;
+      var i = r.actors.indexOf('__me');
+      if (i !== -1) r.actors[i] = realActor;
+    });
+  }
+  // Merge a single emoji's authoritative state into a reactions array.
+  function mergeReaction(reactions, emoji, actor, count, removed) {
+    var out = reactions.slice();
+    var idx = -1;
+    for (var i = 0; i < out.length; i++) { if (out[i].emoji === emoji) { idx = i; break; } }
+    if (count <= 0) { if (idx !== -1) out.splice(idx, 1); return out; }
+    var actors;
+    if (idx !== -1) {
+      actors = (out[idx].actors || []).slice();
+    } else {
+      actors = [];
+    }
+    var ai = actors.indexOf(actor);
+    if (removed) { if (ai !== -1) actors.splice(ai, 1); }
+    else { if (ai === -1) actors.push(actor); }
+    var pill = { emoji: emoji, count: count, actors: actors };
+    if (idx !== -1) out[idx] = pill; else out.push(pill);
+    return out;
+  }
+  function reconstructReactions(id, emoji, actor, count, removed) {
+    return mergeReaction([], emoji, actor, count, removed);
+  }
+  // Re-render the .reactrow for a message row from its reactions array.
+  function renderReactrow(id, reactions) {
+    var el = $stream.querySelector('.msg[data-mid="' + cssEsc(id) + '"]');
+    if (!el) return;
+    var body = el.querySelector('.body');
+    if (!body) return;
+    var existing = body.querySelector('.reactrow');
+    var html = (reactions && reactions.length)
+      ? reactions.map(function (r) { return reactPillHtml(r); }).join('') : '';
+    if (!html) { if (existing) existing.remove(); return; }
+    if (existing) { existing.innerHTML = html; }
+    else {
+      var row = document.createElement('div');
+      row.className = 'reactrow';
+      row.innerHTML = html;
+      // Insert before the thread affordance if present, else append.
+      var to = body.querySelector('.thread-open');
+      if (to) body.insertBefore(row, to); else body.appendChild(row);
+    }
+  }
+
   // ==== History cold-load ====
   function loadHistory() {
     var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=50';
@@ -483,12 +697,27 @@
         pinned = true;
         var msgs = (data && data.messages) || [];
         msgs.forEach(function (row) {
+          // Capture the owner's speaker id once so reaction "mine" state matches.
+          if (row.is_user && row.speaker_id && OWNER_ID == null) OWNER_ID = row.speaker_id;
+          var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
           var m = frameToMsg(
             row.speaker_id, row.display_name || row.speaker_id || '',
             !!row.is_user, row.text || '', parseTs(row.timestamp),
-            { id: row.id != null ? row.id : undefined, images: row.images || [] }
+            {
+              id: row.id != null ? row.id : undefined,
+              images: row.images || [],
+              reactions: row.reactions || [],
+              replyTo: rt,
+              replyMeta: row.reply_to || null,
+              threadRoot: row.thread_root != null ? row.thread_root : null
+            }
           );
           appendMessage(m, false);  // no enter animation on cold-load
+        });
+        // A second pass: now that all rows are indexed, refresh thread
+        // affordances on roots whose replies were loaded after them.
+        msgs.forEach(function (row) {
+          if (row.reply_to && row.reply_to.id != null) refreshThreadAffordance(String(row.reply_to.id));
         });
         updateChannelPreviewFromHistory(msgs);
         pinned = true;
@@ -647,20 +876,43 @@
   if ($sideRefresh) $sideRefresh.addEventListener('click', function () { loadChannels(); });
   if ($search) $search.addEventListener('input', renderChannels);
 
-  // ==== Connection (preserved) ====
+  // ==== Connection (reconnect-with-backoff) ====
+  // A backgrounded mobile tab drops its socket; recover automatically with
+  // exponential backoff (capped) so the chat survives sleep/resume without a
+  // manual reload. ``intentionalClose`` suppresses reconnect on a channel switch
+  // (reconnect() tears down then connects fresh).
+  var reconnectAttempts = 0;
+  var reconnectTimer = null;
+  var intentionalClose = false;
+  var RECONNECT_MAX = 15000;  // 15s cap
+
   function wsUrl() {
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return proto + '//' + location.host + apiBase() + '/ws';
   }
+  function scheduleReconnect() {
+    if (intentionalClose) return;
+    if (reconnectTimer) return;
+    var delay = Math.min(RECONNECT_MAX, 500 * Math.pow(2, reconnectAttempts));
+    reconnectAttempts++;
+    setStatus('connecting', '재연결 중…');
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  }
   function connect() {
+    intentionalClose = false;
     setStatus('connecting', '연결 중…');
     try {
       ws = new WebSocket(wsUrl());
     } catch (e) {
       setStatus('closed', '연결 실패');
+      scheduleReconnect();
       return;
     }
     ws.onopen = function () {
+      reconnectAttempts = 0;
       setStatus('open', '연결됨');
       syncSendDisabled();
       try { ws.send(JSON.stringify({ type: 'ping', channel: CHANNEL, agent: AGENT })); } catch (e2) {}
@@ -674,26 +926,74 @@
       setStatus('closed', '연결 끊김');
       syncSendDisabled();
       showTyping(false);
+      scheduleReconnect();
     };
     ws.onerror = function () {
       setStatus('closed', '연결 오류');
+      // onclose fires after onerror → reconnect is scheduled there.
     };
   }
   function reconnect() {
+    intentionalClose = true;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectAttempts = 0;
     if (ws) {
       try { ws.onclose = null; ws.close(); } catch (e) {}
       ws = null;
     }
     connect();
   }
-  function sendText(text, replyToId) {
+  // Recover proactively when a backgrounded tab returns to the foreground.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' &&
+        (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING)) {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      reconnectAttempts = 0;
+      connect();
+    }
+  });
+
+  function sendText(text, replyToId, clientId) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     var frame = { type: 'text', channel: CHANNEL, agent: AGENT, text: text };
-    // THREADS: reply_to passthrough — backend ignores unknown keys (safe), but
-    // does NOT persist it (flagged follow-up). See top-of-file comment.
+    // reply_to is now PERSISTED by the backend (pointer backfilled onto the
+    // human turn) and round-trips through /chat/history.
     if (replyToId != null) frame.reply_to = replyToId;
+    if (clientId) frame.client_msg_id = clientId;
     ws.send(JSON.stringify(frame));
     return true;
+  }
+  // Reaction send: optimistic local toggle, reconciled by the broadcast count.
+  function sendReaction(targetId, emoji, on) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify({
+      type: on ? 'add_reaction' : 'remove_reaction',
+      channel: CHANNEL, id: Number(targetId), emoji: emoji
+    }));
+    return true;
+  }
+  function fetchThread(rootId) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify({ type: 'fetch_thread', channel: CHANNEL, root: Number(rootId) }));
+    return true;
+  }
+  // Toggle the default emoji on a message: optimistic pill, send the frame, the
+  // server's broadcast reconciles the authoritative count.
+  function toggleReaction(targetId, emoji) {
+    emoji = emoji || DEFAULT_EMOJI;
+    var m = msgIndex[targetId];
+    if (!m) return;
+    var existing = null;
+    (m.reactions || []).forEach(function (r) { if (r.emoji === emoji) existing = r; });
+    var mineNow = !!(existing && OWNER_ID && (existing.actors || []).indexOf(OWNER_ID) !== -1);
+    var on = !mineNow;  // toggle
+    // Optimistic local update (count ±1, actor in/out) — reconciled on broadcast.
+    var optimisticCount = (existing ? existing.count : 0) + (on ? 1 : -1);
+    if (optimisticCount < 0) optimisticCount = 0;
+    m.reactions = mergeReaction(m.reactions || [], emoji, OWNER_ID || '__me', optimisticCount, !on);
+    renderReactrow(targetId, m.reactions);
+    pendingReaction = { id: targetId, emoji: emoji };
+    sendReaction(targetId, emoji, on);
   }
 
   // ==== Composer (2-tier contenteditable) ====
@@ -762,10 +1062,22 @@
     var text = fieldText().trim();
     if (!text) return;
     var rt = replyTo ? replyTo.id : null;
-    if (!sendText(text, rt)) return;  // gated on ws OPEN
+    // reply_to must be a server id to persist; a temp id can't be a parent.
+    if (rt != null && !isServerId(rt)) rt = null;
+    var clientId = newClientId();
+    if (!sendText(text, rt, clientId)) return;  // gated on ws OPEN
     // Optimistic local echo of the owner's message — left-aligned grouped row.
-    var ownerId = (channels[0] && channels[0]._ownerId) || '__owner';
-    var m = frameToMsg(ownerId, OWNER_NAME, true, text, Date.now(), { replyTo: rt });
+    // Reconciled to the server id when its broadcast echo (carrying client_msg_id)
+    // lands. ``replyMeta`` is seeded from the captured reply-cue so the optimistic
+    // quote renders before the echo.
+    var ownerId = OWNER_ID || '__owner';
+    var meta = (replyTo && rt != null) ? {
+      id: rt, author: replyTo.speaker, author_id: replyTo.speakerId,
+      is_user: replyTo.isUser, preview: replyTo.text
+    } : null;
+    var m = frameToMsg(ownerId, OWNER_NAME, true, text, Date.now(), {
+      replyTo: rt, replyMeta: meta, clientId: clientId
+    });
     appendMessage(m);
     clearField();
     clearReplyCue();
@@ -793,8 +1105,21 @@
   }
   if ($replyCueClear) $replyCueClear.addEventListener('click', clearReplyCue);
 
-  // Delegated clicks for in-stream actions (reply / thread / quote jump).
+  // Delegated clicks for in-stream actions (react / reply / thread / quote jump).
+  function midOfEvent(e) {
+    var row = e.target.closest && e.target.closest('.msg[data-mid]');
+    return row ? row.dataset.mid : null;
+  }
   $stream.addEventListener('click', function (e) {
+    // A reaction pill toggles its own emoji on this row.
+    var pill = e.target.closest && e.target.closest('.react[data-emoji]');
+    if (pill) {
+      var mid = midOfEvent(e);
+      if (mid && isServerId(mid)) toggleReaction(mid, pill.getAttribute('data-emoji'));
+      return;
+    }
+    var reactBtn = e.target.closest && e.target.closest('[data-react]');
+    if (reactBtn) { toggleReaction(reactBtn.getAttribute('data-react'), DEFAULT_EMOJI); return; }
     var replyBtn = e.target.closest && e.target.closest('[data-reply]');
     if (replyBtn) { setReplyTo(replyBtn.getAttribute('data-reply')); return; }
     var threadBtn = e.target.closest && e.target.closest('[data-thread]');
@@ -804,11 +1129,19 @@
   });
   $stream.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    var b = e.target.closest && e.target.closest('[data-reply],[data-thread]');
+    var b = e.target.closest && e.target.closest('[data-react],[data-reply],[data-thread],.react[data-emoji]');
     if (!b) return;
     e.preventDefault();
-    if (b.hasAttribute('data-reply')) setReplyTo(b.getAttribute('data-reply'));
-    else openThreadPanel(b.getAttribute('data-thread'));
+    if (b.classList.contains('react')) {
+      var mid = midOfEvent(e);
+      if (mid && isServerId(mid)) toggleReaction(mid, b.getAttribute('data-emoji'));
+    } else if (b.hasAttribute('data-react')) {
+      toggleReaction(b.getAttribute('data-react'), DEFAULT_EMOJI);
+    } else if (b.hasAttribute('data-reply')) {
+      setReplyTo(b.getAttribute('data-reply'));
+    } else {
+      openThreadPanel(b.getAttribute('data-thread'));
+    }
   });
 
   function jumpToMessage(id) {
@@ -816,31 +1149,65 @@
     if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
   }
 
-  // ==== Thread panel ====
-  function renderThreadPanel(rootId) {
-    var root = msgIndex[rootId];
-    if (!root) return;
-    var replies = threadsByRoot[rootId] || [];
-    if ($threadSub) $threadSub.textContent = root.name + ' · 답글 ' + replies.length + '개';
-
+  // ==== Thread panel (REAL server thread via fetch_thread) ====
+  // Render the thread panel from a server ``thread`` frame (root + replies). The
+  // rows are server-resolved (display name + is_user + reactions), so we build a
+  // lightweight message model per row and render them read-only.
+  function renderThreadFromServer(rootId, rows) {
+    // Only render if this is the thread the user has open (a stale frame from a
+    // previous open is ignored).
+    if (openThreadRootId == null || String(openThreadRootId) !== String(rootId)) return;
+    var models = (rows || []).map(function (row) {
+      var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
+      return frameToMsg(
+        row.speaker_id, row.display_name || row.speaker_id || '',
+        !!row.is_user, row.text || '', parseTs(row.timestamp),
+        {
+          id: row.id != null ? row.id : undefined,
+          reactions: row.reactions || [],
+          replyTo: rt,
+          threadRoot: row.thread_root != null ? row.thread_root : null
+        }
+      );
+    });
+    var root = models[0] || msgIndex[rootId];
+    var replyCount = Math.max(0, models.length - 1);
+    if ($threadSub) {
+      $threadSub.textContent = (root ? (root.name + ' · ') : '') + '답글 ' + replyCount + '개';
+    }
     $threadBody.innerHTML = '';
-    // Root rendered as a standalone lead row (no hover-pop in panel CSS).
-    $threadBody.appendChild(threadRow(root, true));
-    replies.forEach(function (r) { $threadBody.appendChild(threadRow(r, true)); });
+    models.forEach(function (r) { $threadBody.appendChild(threadRow(r, true)); });
+    if (!models.length) {
+      var empty = document.createElement('div');
+      empty.className = 'msg sys in';
+      empty.innerHTML = '<div class="body"><div class="txt">스레드를 찾을 수 없습니다.</div></div>';
+      $threadBody.appendChild(empty);
+    }
 
     // Footer = a "reply to thread" affordance that seeds the reply-cue to root.
     $threadFoot.innerHTML = '';
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'tp-reply';
-    btn.innerHTML = '<i class="ti ti-arrow-back-up" aria-hidden="true"></i><span>' +
-      esc(root.name) + ' 님에게 답장</span>';
-    btn.addEventListener('click', function () {
-      setReplyTo(rootId);
-      closeThreadPanel();
-      $input.focus();
-    });
-    $threadFoot.appendChild(btn);
+    if (root && isServerId(root.id)) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tp-reply';
+      btn.innerHTML = '<i class="ti ti-arrow-back-up" aria-hidden="true"></i><span>' +
+        esc(root.name) + ' 님에게 답장</span>';
+      btn.addEventListener('click', function () {
+        // Seed the reply-cue from the (possibly panel-only) root model.
+        replyTo = {
+          id: root.id, speaker: root.name, speakerId: root.speakerId,
+          isUser: root.isUser, text: (root.lines && root.lines.join(' ')) || ''
+        };
+        if ($replyCue) {
+          $replyCue.hidden = false;
+          $replyCueText.innerHTML = '<b>' + esc(root.name) + '</b> 님에게 답장 — ' +
+            esc(replyTo.text.slice(0, 40));
+        }
+        closeThreadPanel();
+        $input.focus();
+      });
+      $threadFoot.appendChild(btn);
+    }
   }
   function threadRow(m, lead) {
     var el = buildRow(m, lead);
@@ -852,15 +1219,23 @@
     return el;
   }
   function openThreadPanel(rootId) {
-    if (!msgIndex[rootId]) return;
-    openThreadRootId = rootId;
+    // Resolve the actual thread root: if the clicked row is itself a reply, open
+    // its thread_root; else it IS the root.
+    var clicked = msgIndex[rootId];
+    var actualRoot = clicked ? rootIdOf(clicked) : rootId;
+    if (!isServerId(actualRoot)) return;
+    openThreadRootId = actualRoot;
     lastFocused = document.activeElement;
-    renderThreadPanel(rootId);
+    // Show a loading shell, then fetch the real thread over the socket.
+    if ($threadSub) $threadSub.textContent = '불러오는 중…';
+    $threadBody.innerHTML = '';
+    $threadFoot.innerHTML = '';
     $threadPanel.hidden = false;
     $threadPanel.setAttribute('aria-modal', isNarrow() ? 'true' : 'false');
     requestAnimationFrame(function () { $threadPanel.classList.add('open'); });
     if ($threadToggle) { $threadToggle.hidden = false; $threadToggle.classList.add('on'); }
     if ($threadClose) $threadClose.focus();
+    fetchThread(actualRoot);
   }
   function closeThreadPanel() {
     if (!openThreadRootId) { $threadPanel.hidden = true; return; }
@@ -878,6 +1253,31 @@
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && openThreadRootId) { closeThreadPanel(); }
   });
+
+  // ==== Mobile: on-screen keyboard handling (visualViewport) ====
+  // 100dvh alone does NOT track the soft keyboard. When the keyboard opens,
+  // visualViewport.height shrinks; lift the composer by the occluded amount via
+  // --kb-inset and keep the feed pinned to bottom so the latest message + the
+  // composer stay visible above the keyboard.
+  (function () {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    function onViewport() {
+      // Occluded height = layout viewport - (visual viewport height + its top
+      // offset). On desktop / no keyboard this is ~0.
+      var occluded = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      if (occluded < 2) occluded = 0;  // ignore sub-pixel noise
+      if ($shell) $shell.style.setProperty('--kb-inset', occluded + 'px');
+      // Keep the conversation pinned to bottom while the keyboard animates in.
+      if (pinned) requestAnimationFrame(stick);
+    }
+    vv.addEventListener('resize', onViewport);
+    vv.addEventListener('scroll', onViewport);
+    // Re-pin when the input gains focus (keyboard about to open).
+    if ($input) $input.addEventListener('focus', function () {
+      setTimeout(function () { if (pinned) stick(); }, 250);
+    });
+  })();
 
   // ==== Boot ====
   setChannelLabel('# ' + CHANNEL);
