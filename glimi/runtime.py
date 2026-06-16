@@ -29,6 +29,15 @@ from .observability import NullObserver
 
 logger = logging.getLogger("glimi.runtime")
 
+
+def _a2a_lang() -> str:
+    """Locale for agent-to-agent prompt scaffolding. Default 'ko' (back-compat —
+    Community is Korean); apps set GLIMI_LANG=en for English-default A2A turns.
+    Staged i18n seam: the kernel stays language-neutral via this switch instead of
+    hardcoding one language into the A2A path."""
+    return os.environ.get("GLIMI_LANG", "ko").strip().lower()
+
+
 _store = None
 _profiles = None
 _owner = None
@@ -1816,20 +1825,33 @@ class AgentRuntime:
 
         # 엄격한 role guard — 하나가 유나 역할까지 같이 생성하는 버그 방지.
         # 같은 내용 재요약 방지 — internal-dm 에서 같은 보고를 4-5회 반복하는 회귀 발견.
-        role_guard = (
-            f"\n[역할 엄수] 너는 {speaker_name} 한 사람. "
-            f"{listener_name} 의 대사/답변은 절대 쓰지 마. 내가 한 턴 말하면 끝, "
-            f"상대 반응은 상대가 알아서 함.\n"
-            f"[출력] 한 번에 카톡 1~4개 짧은 메시지만. 긴 독백·양쪽 대화 시뮬레이션 금지.\n"
-            f"[반복 금지] 네가 이미 한 말은 절대 재요약·재진술 하지 마. 위 대화이력에 "
-            f"본인의 같은 요지 메시지가 이미 있으면 그 주제는 종료됐다는 뜻. 다음 화제 or 마무리로 넘어가.\n"
-            f"[종료 감지] 대화가 맴돌면 '그럼 이따 봐' '또 얘기하자' 같이 자연스럽게 끊어. "
-            f"끝없이 맴돌지 마."
-        )
-        if context:
-            full_prompt = base_context + f"상황: {context}\n{listener_name}과(와)의 대화를 이어가.{role_guard}"
+        if _a2a_lang().startswith("en"):
+            role_guard = (
+                f"\n[ROLE] You are {speaker_name}, one person only. "
+                f"Never write {listener_name}'s lines or replies. You take one turn, then stop — "
+                f"the other side responds on their own.\n"
+                f"[OUTPUT] Only 1-4 short chat messages at a time. No long monologues, no simulating both sides.\n"
+                f"[NO REPEAT] Never re-summarize or restate what you've already said. If your same point is "
+                f"already in the history above, that topic is settled — move to a new point or wrap up.\n"
+                f"[CLOSE] If the conversation starts going in circles, end it naturally "
+                f"(\"let's pick this up later\", \"talk soon\"). Don't loop forever."
+            )
+            cont = f"Continue your conversation with {listener_name}."
+            sit = f"Situation: {context}\n" if context else ""
         else:
-            full_prompt = base_context + f"{listener_name}과(와)의 대화를 이어가.{role_guard}"
+            role_guard = (
+                f"\n[역할 엄수] 너는 {speaker_name} 한 사람. "
+                f"{listener_name} 의 대사/답변은 절대 쓰지 마. 내가 한 턴 말하면 끝, "
+                f"상대 반응은 상대가 알아서 함.\n"
+                f"[출력] 한 번에 카톡 1~4개 짧은 메시지만. 긴 독백·양쪽 대화 시뮬레이션 금지.\n"
+                f"[반복 금지] 네가 이미 한 말은 절대 재요약·재진술 하지 마. 위 대화이력에 "
+                f"본인의 같은 요지 메시지가 이미 있으면 그 주제는 종료됐다는 뜻. 다음 화제 or 마무리로 넘어가.\n"
+                f"[종료 감지] 대화가 맴돌면 '그럼 이따 봐' '또 얘기하자' 같이 자연스럽게 끊어. "
+                f"끝없이 맴돌지 마."
+            )
+            cont = f"{listener_name}과(와)의 대화를 이어가."
+            sit = f"상황: {context}\n" if context else ""
+        full_prompt = base_context + sit + cont + role_guard
 
         speaker_type = speaker_info["profile"].get("type", "persona")
         model = _resolve_agent_model(speaker_id, speaker_type)
