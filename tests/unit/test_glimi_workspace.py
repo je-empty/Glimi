@@ -215,6 +215,7 @@ def test_workspace_populates_core_dashboard():
     the Coordinator + the three specialists + the interaction channels.
     """
     pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")  # fastapi's TestClient requires httpx
     from fastapi.testclient import TestClient
     from glimi import Glimi
     from glimi.dashboard import DashboardReader
