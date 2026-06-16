@@ -1,20 +1,31 @@
-"""Web-chat WebSocket adapter — the ``src/adapters/web_chat`` seam.
+"""Web-chat adapter — the ``src/adapters/web_chat`` seam.
 
-ONE WebSocket endpoint that bridges the platform-neutral kernel chat brain
-(:meth:`AgentRuntime.generate_response_streaming`) to a browser over a socket.
-This is a NEW adapter layer: it lives in ``src/platform`` (app side), imports the
-kernel via the discord-free shim ``src.core.runtime``, and contains NO Discord
-imports / types.
+A WebSocket endpoint plus a couple of read-only REST endpoints that bridge the
+platform-neutral kernel chat brain (:meth:`AgentRuntime.generate_response_streaming`)
+to a browser. This is a NEW adapter layer: it lives in ``src/platform`` (app
+side), imports the kernel via the discord-free shim ``src.core.runtime``, and
+contains NO Discord imports / types.
 
-Phase 1 scope (stub-quality, intentionally small):
+Phase 2 scope (real chat, single-owner):
 - auth at connect time (cookie → ``verify_session`` → ``user_can_access``) BEFORE
-  ``accept()``;
+  ``accept()`` for the socket, and ``require_user`` + per-community access for the
+  REST endpoints;
 - a :class:`WebOutbox` implementing :class:`glimi.transport.Outbox`, serializing
   frames over the socket via :mod:`chat_hub`;
-- a dispatcher that rejects non-user-postable channels and otherwise streams an
-  echo reply back line-by-line.
+- a dispatcher that rejects non-user-postable channels and otherwise streams a
+  REAL turn using **each agent's CONFIGURED backend** (config-layering) — it does
+  NOT force any backend. The community's per-community LLM-routing env keys are
+  loaded from ``communities/{cid}/.env`` into ``os.environ`` *inside the
+  community scope* (via the kernel's canonical reader) so the kernel's provider
+  resolution sees them — Phase-1's ``_apply_community`` switches DB/caches but
+  does NOT load the community ``.env``;
+- a channel-list endpoint (DM-per-agent + groups) and a history cold-load
+  endpoint, both community-scoped via :mod:`community_ctx`.
 
-No debounce / interrupt / image handling yet (Phase 3/4).
+Single-owner v1: the inbound author is always the community owner
+(``profile.get_user_id``); there is no per-connection identity. No debounce /
+interrupt / image handling yet (Phase 3/4); no multi-agent group fan-out yet
+(Phase 3 — a group channel currently runs the single ``agent`` on the frame).
 """
 from __future__ import annotations
 
@@ -22,16 +33,18 @@ import asyncio
 import os
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
+from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from glimi.transport import ImagePart, Outbox, Speaker
 
 from .. import accounts
+from ..auth import get_current_user
 from ..config import SESSION_COOKIE_NAME
 from ..sessions import verify_session
 from .. import chat_hub
-from src.core.channels import is_user_postable
+from src.core.channels import channel_kind, is_user_postable
 
 router = APIRouter()
 
@@ -103,6 +116,19 @@ def _authenticate(websocket: WebSocket, community_id: str) -> Optional[dict]:
     return user
 
 
+def _api_user(request: Request, community_id: str) -> dict:
+    """API-style auth for the REST chat endpoints: JSON 401/403, never an HTML
+    redirect. These return JSON, so a browser ``fetch`` must get a clean status
+    code (``require_user`` 307-redirects browser requests to /login, which a
+    fetch would receive as HTML)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="login required")
+    if not accounts.user_can_access(user, community_id):
+        raise HTTPException(status_code=403, detail="no access to this community")
+    return user
+
+
 def _resolve_speaker(agent_id: str) -> Speaker:
     """Build the outbound :class:`Speaker` for an agent (must run inside an active
     community scope so display-name lookup hits the right DB)."""
@@ -125,26 +151,195 @@ def _resolve_owner_speaker_id() -> str:
         return "owner"
 
 
+def _load_community_llm_env() -> None:
+    """Load the active community's LLM provider keys from its ``.env`` into
+    ``os.environ`` (override) so the kernel's provider resolution picks up the
+    CONFIGURED backend (config-layering).
+
+    Must run INSIDE an active community scope. Reuses the kernel's canonical
+    community-LLM-env reader (``monitor._community_llm_env`` — the single source
+    of truth for *which* keys are LLM-routing keys), so only the LLM-routing keys
+    are touched — never the whole ``.env`` — to avoid clobbering platform-wide
+    env (Discord tokens, session secrets, data dir). This mirrors the effect of
+    ``src/bot/__init__.py``'s ``load_dotenv(get_env_path(), override=True)`` for
+    the keys that matter, without importing ``src.bot`` (it pulls
+    ``import discord``).
+
+    Keys absent from the community ``.env`` are left untouched in ``os.environ``
+    (the kernel then falls through its default provider chain, e.g. claude) —
+    this never *injects* a forced backend of its own.
+    """
+    try:
+        from src.core import monitor as _monitor
+        for key, val in _monitor._community_llm_env().items():
+            if val is not None:
+                os.environ[key] = val
+    except Exception:
+        # A missing/unreadable .env is fine — leave os.environ as-is.
+        pass
+
+
+def _resolve_responding_agent(channel_id: str, frame_agent: str) -> str:
+    """Resolve which agent answers a user turn on ``channel_id``.
+
+    Web convention (asymmetric vs Discord — do NOT reuse CHANNEL_AGENT_MAP):
+      - ``dm-<agent_id>``: the channel's agent answers. The frame carries the
+        agent explicitly; fall back to deriving it from the channel id.
+      - ``group-*``: v1 runs the single ``agent`` from the frame. Full
+        multi-agent group fan-out (Discord's ``GROUP_PARTICIPANTS`` + parallel
+        ``_process_agent``) is NOT ported yet — that is Phase 3. If the frame has
+        no agent for a group, fall back to ``mgr`` so we never crash.
+    """
+    agent = (frame_agent or "").strip()
+    if agent:
+        return agent
+    kind = channel_kind(channel_id)
+    if kind == "dm" and channel_id.startswith("dm-"):
+        derived = channel_id[len("dm-"):].strip()
+        if derived:
+            return derived
+    # group / unknown without an explicit agent → mgr (never crash on a group).
+    return "mgr"
+
+
+def _agent_exists(community_id: str, agent_id: str) -> bool:
+    """True iff ``agent_id`` is a real agent in this community. Scopes the
+    community for the lookup (the read API is global-DB-path based)."""
+    if not agent_id:
+        return False
+
+    def _check() -> bool:
+        try:
+            from src import db
+            return db.get_agent(agent_id) is not None
+        except Exception:
+            return False
+
+    try:
+        from src.platform.community_ctx import run_in_community
+        return run_in_community(community_id, _check)
+    except Exception:
+        return False
+
+
+# ── read APIs (channel list + history) — community-scoped ──────────────
+
+def _list_postable_channels(community_id: str) -> list[dict]:
+    """The owner's user-postable channels for this community.
+
+    DMs are synthesized per agent as ``dm-<agent_id>`` (the web convention,
+    matching pages.py / chat.js) with display name + avatar url. Group channels
+    are taken from the registered channel list, filtered to ``group-*`` (the
+    only registered channels a user may post into). ``mgr-*`` / ``internal-*``
+    are EXCLUDED (not user-postable).
+    """
+    def _query() -> list[dict]:
+        from src import db
+        out: list[dict] = []
+        # DM-per-agent. Order: mgr → creator → dev → persona, then by id.
+        try:
+            agents = db.list_agents()
+        except Exception:
+            agents = []
+        type_rank = {"mgr": 0, "creator": 1, "dev": 2, "persona": 3}
+        agents.sort(key=lambda a: (type_rank.get(a.get("type", ""), 9), a.get("id", "")))
+        for a in agents:
+            aid = a.get("id")
+            if not aid:
+                continue
+            out.append({
+                "channel": f"dm-{aid}",
+                "kind": "dm",
+                "agent_id": aid,
+                "name": a.get("name") or aid,
+                "type": a.get("type", ""),
+                "avatar_url": f"/api/avatar?community={community_id}&id={aid}",
+            })
+        # Registered group channels (user-postable, multi-agent). Exclude
+        # mgr-/internal-/dm- via is_user_postable + explicit group prefix.
+        try:
+            from src.core import monitor
+            channels = monitor.get_channels()
+        except Exception:
+            channels = []
+        for ch in channels:
+            name = ch.get("name") or ""
+            if not name.startswith("group-"):
+                continue
+            if not is_user_postable(name):
+                continue
+            out.append({
+                "channel": name,
+                "kind": "group",
+                "agent_id": None,
+                "name": name,
+                "type": "group",
+                "avatar_url": None,
+            })
+        return out
+
+    from src.platform.community_ctx import run_in_community
+    return run_in_community(community_id, _query)
+
+
+def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dict]:
+    """Recent messages for ``channel_id``, ASC (newest-last), display-ready.
+
+    Uses the display-resolving read API (``monitor.get_recent_messages``) so the
+    speaker is resolved to a name and ``is_user`` flags the bubble side.
+    """
+    def _query() -> list[dict]:
+        from src.core import monitor
+        rows = monitor.get_recent_messages(limit=limit, channel=channel_id)
+        out: list[dict] = []
+        for r in rows:
+            out.append({
+                "id": r.get("id"),
+                "speaker_id": r.get("speaker_id"),
+                "display_name": r.get("speaker"),
+                "is_user": bool(r.get("is_user")),
+                "text": r.get("message") or "",
+                "timestamp": r.get("timestamp") or "",
+                # Images are not modeled in the conversations table — placeholder
+                # so the client shape is stable when image support lands.
+                "images": [],
+            })
+        return out
+
+    from src.platform.community_ctx import run_in_community
+    return run_in_community(community_id, _query)
+
+
 async def _run_turn(
     *, community_id: str, channel_id: str, agent_id: str, text: str,
     outbox: WebOutbox,
 ) -> None:
-    """Stream one agent turn back over the socket using the ECHO backend.
+    """Stream one agent turn back over the socket using the agent's CONFIGURED
+    backend (config-layering) — NO backend is forced here.
+
+    Provider selection lives in the kernel runtime (``_provider_for``) and is
+    driven by ``os.environ``; the community's LLM keys are loaded from its
+    ``.env`` inside the community scope (:func:`_load_community_llm_env`) before
+    the runtime call. A misconfigured community emits the kernel's placeholder
+    text rather than crashing.
 
     The kernel streaming call is BLOCKING, so it runs in an executor thread and
     bridges its synchronous ``on_message`` callback onto the event loop via an
     asyncio.Queue (the Discord handler pattern). Each emitted line is broadcast
     as a 'text' frame; typing is driven from this turn's lifecycle.
-    """
-    # Echo backend — zero cost, no network. Set before the first runtime call.
-    os.environ.setdefault("GLIMI_LLM_BACKEND", "echo")
 
+    Single-owner: the kernel logs the human turn itself under the owner id
+    (its ``log_user_message`` flag defaults True), so we leave that default in
+    place and do NOT re-log the owner turn. The kernel does NOT persist agent
+    replies — we log each emitted line ourselves below.
+    """
     from src.core.runtime import runtime
     from src.platform.community_ctx import run_in_community
 
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
     SENTINEL = object()
+    gen_err: dict = {}
 
     def _on_message(msg: str) -> None:
         # Synchronous kernel callback → hop back onto the loop.
@@ -154,11 +349,18 @@ async def _run_turn(
         # Scope the community inside the worker thread; the kernel reads
         # process-global state guarded by the community lock.
         def _call():
+            # Load this community's CONFIGURED backend keys before the runtime
+            # call (Phase-1 _apply_community switches DB/caches but NOT the .env).
+            _load_community_llm_env()
             return runtime.generate_response_streaming(
                 agent_id, channel_id, text, on_message=_on_message,
             )
         try:
             run_in_community(community_id, _call)
+        except Exception as e:
+            # Captured (not swallowed) — surfaced as a frame after the drain loop
+            # so a kernel failure is visible to the client, never a silent hang.
+            gen_err["e"] = e
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, SENTINEL)
 
@@ -168,6 +370,7 @@ async def _run_turn(
     await outbox.set_typing(channel_id, speaker, True)
     fut = loop.run_in_executor(None, _generate)
     lines: list[str] = []
+    timed_out = False
     try:
         while True:
             item = await asyncio.wait_for(queue.get(), timeout=60.0)
@@ -176,6 +379,7 @@ async def _run_turn(
             lines.append(item)
             await outbox.send_text(channel_id, speaker, item)
     except asyncio.TimeoutError:
+        timed_out = True
         await outbox.send_text(channel_id, speaker, "[오류] 응답 시간이 초과되었습니다.")
     finally:
         await outbox.set_typing(channel_id, speaker, False)
@@ -184,20 +388,80 @@ async def _run_turn(
         except Exception:
             pass
 
+    # No line produced and no timeout → the kernel raised or returned nothing.
+    # Surface it as a 'text' frame so the user sees a result and the client is
+    # never left blocking on a reply that never comes (was a silent hang).
+    if not lines and not timed_out:
+        err = gen_err.get("e")
+        detail = f" ({type(err).__name__})" if err is not None else ""
+        await outbox.send_text(
+            channel_id, speaker, f"[오류] 응답을 생성하지 못했어요{detail}.",
+        )
+
     # The kernel does NOT persist the agent's reply (only the owner turn) — log
-    # each line here so chat history shows both sides.
+    # each line here so chat history shows both sides (mirrors Discord's
+    # handlers._process_and_send). db.log_message has 30s dup-suppression so
+    # re-logging identical lines is safe.
     if lines:
         def _persist():
             from src import db
+            emotion = None
+            try:
+                row = db.get_agent(agent_id)
+                emotion = (row or {}).get("current_emotion")
+            except Exception:
+                emotion = None
             for ln in lines:
                 try:
-                    db.log_message(channel_id, agent_id, ln)
+                    db.log_message(channel_id, agent_id, ln, emotion=emotion)
                 except Exception:
                     break
         try:
             await loop.run_in_executor(None, lambda: run_in_community(community_id, _persist))
         except Exception:
             pass
+
+
+@router.get("/community/{cid}/chat/channels")
+async def chat_channels(cid: str, request: Request):
+    """The owner's user-postable channels (dm-*, group-*) with display metadata.
+
+    Auth-gated (login + per-community access). Internal channels (mgr-*/
+    internal-*) are excluded — they are not user-postable.
+    """
+    _api_user(request, cid)
+    try:
+        channels = _list_postable_channels(cid)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"community_id": cid, "channels": channels})
+
+
+@router.get("/community/{cid}/chat/history")
+async def chat_history(
+    cid: str, request: Request,
+    channel: str = "", limit: int = 50,
+):
+    """Recent messages for a channel, newest-last, display-ready.
+
+    Auth-gated + per-community access. Rejects non-user-postable channels so the
+    history surface matches the postable channel list.
+    """
+    _api_user(request, cid)
+    channel = (channel or "").strip()
+    if not channel:
+        return JSONResponse({"error": "missing channel"}, status_code=400)
+    if not is_user_postable(channel):
+        return JSONResponse({"error": "channel is not user-postable"}, status_code=400)
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        messages = _channel_history(cid, channel, limit)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"community_id": cid, "channel": channel, "messages": messages})
 
 
 @router.websocket("/community/{cid}/chat/ws")
@@ -220,7 +484,7 @@ async def chat_ws(websocket: WebSocket, cid: str):
             frame = await websocket.receive_json()
             ftype = (frame.get("type") or "text").strip()
             channel_id = (frame.get("channel") or "").strip()
-            agent_id = (frame.get("agent") or "mgr").strip()
+            frame_agent = (frame.get("agent") or "").strip()
 
             if not channel_id:
                 await websocket.send_json({"type": "error", "error": "missing channel"})
@@ -250,6 +514,19 @@ async def chat_ws(websocket: WebSocket, cid: str):
                     "type": "error",
                     "channel": channel_id,
                     "error": "channel is not user-postable",
+                })
+                continue
+
+            # Resolve which agent answers (DM → channel's agent; group → frame's
+            # agent, v1 single-agent; never crash). channel_kind falls UNKNOWN →
+            # 'group' → postable, so validate the agent exists before spawning a
+            # turn for a non-existent agent.
+            agent_id = _resolve_responding_agent(channel_id, frame_agent)
+            if not _agent_exists(cid, agent_id):
+                await websocket.send_json({
+                    "type": "error",
+                    "channel": channel_id,
+                    "error": f"unknown agent: {agent_id}",
                 })
                 continue
 

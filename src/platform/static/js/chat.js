@@ -1,5 +1,6 @@
-// Glimi Web Chat — Phase 1. Single file, vanilla JS (matches dashboard.js style).
-// Opens a WebSocket to the chat seam, sends text frames, renders incoming
+// Glimi Web Chat — Phase 2. Single file, vanilla JS (matches dashboard.js style).
+// Channel list (DM-per-agent + groups), history cold-load on open, and a single
+// WebSocket to the chat seam that is (re)connected per selected channel. Renders
 // text/typing/image/interrupted/error frames into the message list.
 (function () {
   'use strict';
@@ -20,8 +21,29 @@
   var $status = document.getElementById('chat-status');
   var $typing = document.getElementById('chat-typing');
   var $typingWho = document.getElementById('chat-typing-who');
+  var $channelLabel = document.getElementById('chat-channel-label');
+  var $channelList = document.getElementById('chat-channel-list');
+  var $sidebar = document.getElementById('chat-sidebar');
+  var $sidebarToggle = document.getElementById('chat-sidebar-toggle');
 
   var ws = null;
+  var channels = [];
+
+  // ==== Small helpers ====
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function apiBase() {
+    return '/community/' + encodeURIComponent(COMMUNITY) + '/chat';
+  }
+
+  function avatarUrl(agentId) {
+    return '/api/avatar?id=' + encodeURIComponent(agentId) +
+      (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '');
+  }
 
   // ==== Rendering ====
   function scrollToBottom() {
@@ -66,10 +88,18 @@
     });
   }
 
+  function clearMessages() {
+    $messages.innerHTML = '';
+  }
+
   function setStatus(state, label) {
     if (!$status) return;
     $status.setAttribute('data-state', state);
     $status.textContent = label;
+  }
+
+  function setChannelLabel(text) {
+    if ($channelLabel) $channelLabel.textContent = text;
   }
 
   function showTyping(on, who) {
@@ -85,6 +115,9 @@
   // ==== Frame handling ====
   function handleFrame(frame) {
     var type = frame && frame.type;
+    // Only render frames for the active channel (the socket may briefly carry
+    // frames during a switch).
+    if (frame && frame.channel && frame.channel !== CHANNEL) return;
     switch (type) {
       case 'text':
         addText('agent', frame.speaker || frame.agent_id || '', frame.text || '');
@@ -110,11 +143,103 @@
     }
   }
 
+  // ==== History cold-load ====
+  function loadHistory() {
+    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=50';
+    return fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { messages: [] }; })
+      .then(function (data) {
+        clearMessages();
+        var msgs = (data && data.messages) || [];
+        msgs.forEach(function (m) {
+          if (m.is_user) {
+            addText('user', null, m.text || '');
+          } else {
+            addText('agent', m.display_name || m.speaker_id || '', m.text || '');
+          }
+        });
+        scrollToBottom();
+      })
+      .catch(function () { /* leave whatever is shown */ });
+  }
+
+  // ==== Channel list ====
+  function renderChannels() {
+    if (!$channelList) return;
+    $channelList.innerHTML = '';
+    channels.forEach(function (c) {
+      var li = document.createElement('li');
+      li.className = 'chat-channel-item' + (c.channel === CHANNEL ? ' is-active' : '');
+      li.setAttribute('role', 'button');
+      li.tabIndex = 0;
+      li.dataset.channel = c.channel;
+      li.dataset.agent = c.agent_id || '';
+
+      if (c.kind === 'dm' && c.agent_id) {
+        var img = document.createElement('img');
+        img.className = 'chat-channel-avatar';
+        img.src = avatarUrl(c.agent_id);
+        img.alt = '';
+        li.appendChild(img);
+      } else {
+        var ph = document.createElement('span');
+        ph.className = 'chat-channel-avatar is-group';
+        ph.textContent = '#';
+        li.appendChild(ph);
+      }
+
+      var name = document.createElement('span');
+      name.className = 'chat-channel-name';
+      name.textContent = c.name || c.channel;
+      li.appendChild(name);
+
+      li.addEventListener('click', function () { selectChannel(c); });
+      li.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectChannel(c); }
+      });
+      $channelList.appendChild(li);
+    });
+  }
+
+  function loadChannels() {
+    return fetch(apiBase() + '/channels', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { channels: [] }; })
+      .then(function (data) {
+        channels = (data && data.channels) || [];
+        // If the current channel isn't in the list, keep it (seeded default);
+        // otherwise sync the active highlight.
+        renderChannels();
+      })
+      .catch(function () { /* no sidebar data */ });
+  }
+
+  function selectChannel(c) {
+    if (!c || c.channel === CHANNEL) { closeSidebarMobile(); return; }
+    CHANNEL = c.channel;
+    AGENT = c.agent_id || AGENT;
+    setChannelLabel('# ' + CHANNEL);
+    renderChannels();
+    closeSidebarMobile();
+    // Cold-load history, then (re)connect the socket to the new channel.
+    loadHistory().then(function () { reconnect(); });
+  }
+
+  // ==== Sidebar (mobile toggle) ====
+  function closeSidebarMobile() {
+    if ($sidebar) $sidebar.classList.remove('is-open');
+    if ($sidebarToggle) $sidebarToggle.setAttribute('aria-expanded', 'false');
+  }
+  if ($sidebarToggle && $sidebar) {
+    $sidebarToggle.addEventListener('click', function () {
+      var open = $sidebar.classList.toggle('is-open');
+      $sidebarToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
+
   // ==== Connection ====
   function wsUrl() {
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return proto + '//' + location.host +
-      '/community/' + encodeURIComponent(COMMUNITY) + '/chat/ws';
+    return proto + '//' + location.host + apiBase() + '/ws';
   }
 
   function connect() {
@@ -129,6 +254,10 @@
     ws.onopen = function () {
       setStatus('open', '연결됨');
       if ($send) $send.disabled = false;
+      // Register this socket for the active channel (a no-text frame would be
+      // rejected, so registration happens lazily on the first send; we ping to
+      // keep the seam aware of liveness).
+      try { ws.send(JSON.stringify({ type: 'ping', channel: CHANNEL, agent: AGENT })); } catch (e2) {}
     };
     ws.onmessage = function (ev) {
       var frame;
@@ -143,6 +272,14 @@
     ws.onerror = function () {
       setStatus('closed', '연결 오류');
     };
+  }
+
+  function reconnect() {
+    if (ws) {
+      try { ws.onclose = null; ws.close(); } catch (e) {}
+      ws = null;
+    }
+    connect();
   }
 
   function sendText(text) {
@@ -165,5 +302,8 @@
     });
   }
 
-  connect();
+  // ==== Boot ====
+  setChannelLabel('# ' + CHANNEL);
+  loadChannels();
+  loadHistory().then(function () { connect(); });
 })();
