@@ -9,6 +9,12 @@
 {% block head %}
 <!-- 대시보드 고유 스타일 -->
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ asset_v }}">
+<!-- 임베드된 채팅 탭 (#view-chat) — tokens → chat → scoped override, dashboard.css 뒤로 로드.
+     dashboard-chat.css 는 chat.css 의 전역 body/html 100dvh 규칙을 무력화하고 .chat-shell 을
+     #view-chat 안에 100% 로 재고정 (full-height 채팅을 뷰포트가 아니라 활성 뷰에 맞춤). -->
+<link rel="stylesheet" href="/static/css/tokens.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/static/css/chat.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/static/css/dashboard-chat.css?v={{ asset_v }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
@@ -92,7 +98,8 @@
   </header>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="overview" class="active"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
+    <button data-tab="chat" class="active"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">채팅</span></button>
+    <button data-tab="overview"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
     <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">Agents</span> <span class="count" id="tc-agents">0</span></button>
     <button data-tab="channels"><i class="ti ti-message-circle tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>
     <button data-tab="messages"><i class="ti ti-mail tab-emoji" aria-hidden="true"></i><span class="tab-label">Messages</span> <span class="count" id="tc-messages">0</span></button>
@@ -107,7 +114,9 @@
   </nav>
 
   <main>
-    <div class="view active" id="view-overview">
+    <div class="view view-chat active" id="view-chat">{% include "_chat_shell.html" %}</div>
+
+    <div class="view" id="view-overview">
       <div class="empty-banner">
         <h2>📭 이 커뮤니티는 비어있어요</h2>
         <div>아직 에이전트나 대화가 없어요. 상단의 <b>▶ 시작</b> 버튼을 눌러 봇을 실행해 봐.</div>
@@ -238,6 +247,23 @@
 
 <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <script src="/static/js/dashboard.js?v={{ asset_v }}"></script>
+
+<!-- 임베드된 채팅 탭 — chat.js 에 채널/에이전트/오너/임베드 플래그 주입.
+     __GLIMI_COMMUNITY__ 는 위에서 이미 주입됨. EMBEDDED=true → chat.js 가 load 시 자동
+     부팅하지 않음 (Chat 탭 첫 진입 때 dashboard.js 가 GlimiChat.init() 지연 호출).
+     Chat 이 기본 활성 탭이므로 load 리스너로 한 번 init() 보장 (#view-chat 존재 후 실행). -->
+<script>
+  window.__GLIMI_CHANNEL__  = {{ chat_channel|tojson }};
+  window.__GLIMI_AGENT__    = {{ chat_agent|tojson }};
+  window.__GLIMI_USER__     = {{ (user.username if user else "나")|tojson }};
+  window.__GLIMI_EMBEDDED__ = true;
+</script>
+<script src="/static/js/chat.js?v={{ asset_v }}"></script>
+<script>
+  window.addEventListener('load', function () {
+    if (window.GlimiChat) window.GlimiChat.init();
+  });
+</script>
 
 <!-- 플랫폼 서버 컨트롤 로직 -->
 <script>
