@@ -134,6 +134,32 @@ async def serve_logo():
     )
 
 
+@router.get("/sw.js")
+async def serve_service_worker():
+    """Serve the PWA service worker from the ROOT path so it may claim ``scope: /``.
+
+    A service worker can only control a scope at or below its own URL's path. The
+    file lives under ``/static/js/sw.js`` (StaticFiles), but a worker served from
+    ``/static/js/`` could only control ``/static/js/*``. Serving it here at
+    ``/sw.js`` with the ``Service-Worker-Allowed: /`` header lets it register with
+    root scope (so it can cache navigations + the app shell across the whole app).
+    No-store on the SW script itself so a new deploy's worker is always fetched
+    fresh; the worker then versions ITS cache by the ``?v=`` query (asset_v).
+    """
+    from pathlib import Path
+    sw_path = Path(__file__).resolve().parent.parent / "static" / "js" / "sw.js"
+    if not sw_path.exists():
+        return Response(status_code=404)
+    return Response(
+        content=sw_path.read_bytes(),
+        media_type="text/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 # ── POST mutations ────────────────────────────
 _POST_MUTATIONS = {
     "/api/action/scan_discord": dash_actions.api_action_scan_discord,

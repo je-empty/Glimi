@@ -297,6 +297,9 @@ body {
   flex: 0 0 auto;
   display: flex; align-items: center; gap: var(--sp-3);
   padding: 0 var(--sp-4);
+  /* Landscape notch clearance (viewport-fit=cover). */
+  padding-left: calc(var(--sp-4) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--sp-4) + env(safe-area-inset-right, 0px));
   border-bottom: 1px solid var(--border-soft);
 }
 .head .hash { font-size: var(--fs-xl); color: var(--text-faint); flex: 0 0 auto; }
@@ -352,6 +355,9 @@ body {
   flex: 1 1 auto; min-height: 0;
   overflow-y: auto; overflow-x: hidden;
   padding: var(--sp-3) 0 var(--sp-2);
+  /* Mobile: kill scroll-chaining + pull-to-refresh mid-chat; momentum scroll. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .daydiv { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-2) var(--sp-5) var(--sp-3); }
@@ -586,7 +592,16 @@ body {
 /* ============================================================
    composer — 2-tier + reply-cue + soft halo
    ============================================================ */
-.composer { flex: 0 0 auto; padding: 2px var(--sp-5) var(--sp-4); background: var(--panel); }
+.composer {
+  flex: 0 0 auto;
+  padding: 2px var(--sp-5) var(--sp-4);
+  /* Clear the iPhone home indicator (viewport-fit=cover). The bottom inset is
+     ADDED to the existing --sp-4 so the composer never tucks under the bar. */
+  padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(var(--sp-5) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--sp-5) + env(safe-area-inset-right, 0px));
+  background: var(--panel);
+}
 .typefoot {
   height: 22px;
   display: flex; align-items: center; gap: var(--sp-2);
@@ -662,7 +677,9 @@ body {
   overflow-y: auto;
   align-self: center;
   padding: var(--sp-2) 2px;
-  font-size: var(--fs-base);
+  /* >=16px so iOS Safari does NOT zoom the viewport on focus (the global
+     --fs-base is 14px). The composer input is the one field a user types into. */
+  font-size: 16px;
   line-height: 1.45;
   color: var(--text);
   font-family: var(--font-sans);
@@ -810,8 +827,23 @@ body {
   .thread-panel { position: fixed; inset: 0; top: 0; width: auto; border-left: none; transform: none; }
   .thread-panel.open { transform: none; }
   .msg, .typing { padding-left: var(--sp-4); padding-right: var(--sp-4); }
-  .composer { padding-left: var(--sp-4); padding-right: var(--sp-4); }
+  .composer {
+    padding-left: calc(var(--sp-4) + env(safe-area-inset-left, 0px));
+    padding-right: calc(var(--sp-4) + env(safe-area-inset-right, 0px));
+  }
+  /* Touch targets: bump reaction pills + hover-pop actions to ~44px so they are
+     comfortably tappable (--tap-min). The pills stay visually compact but get a
+     larger hit area via min-height + padding. */
+  .react { min-height: 32px; padding: 0 12px; }
+  .react .e { font-size: 16px; }
+  .acts-pop b { width: 40px; height: 40px; }
+  .thread-open { min-height: 36px; }
 }
+
+/* The on-screen keyboard pushes the composer up: chat.js sets --kb-inset from
+   visualViewport so the composer + feed stay above the keyboard. 0 on desktop. */
+.chat-shell { --kb-inset: 0px; }
+.composer { margin-bottom: var(--kb-inset); transition: margin-bottom .12s var(--chat-ease); }
 
 /* ============================================================
    motion / a11y
