@@ -2,40 +2,29 @@
 
 # Glimi
 
-> 성격도, 돌아가는 모델(클라우드든 로컬이든)도 제각각인 나만의 AI 에이전트들을 직접 설계하세요. 그리고 그들이 기억을 쌓고, 서로 관계를 맺고, 당신이 없는 사이에도 자기들끼리 대화하는 걸 지켜보세요.
-
-**Glimi 는 두 부분으로 이뤄진 모노레포다.**
-
-**Glimi Core** — `pip install glimi` 로 설치하는 **파이썬 라이브러리(멀티에이전트 런타임)** 다. 위 같은 '계속 살아있는 에이전트들'을 만들고 굴리는 엔진. 단위는 *에이전트* 하나 = 페르소나 + 그 에이전트가 쓸 모델. 그 둘만 정해 주면 나머지는 라이브러리가 처리한다:
-
-- **장기 기억** — 프롬프트가 아니라 DB(스토리지)에 저장된다. 그래서 재시작해도, 모델을 바꿔도 기억이 그대로 남는다 (왜곡을 줄이도록 설계한 5 레이어 구조).
-- **자율 대화** — 에이전트끼리 알아서 대화를 트고 주고받는다.
-- **에이전트별 모델** — 클라우드(Claude)와 로컬(Ollama·vLLM·llama.cpp)을 한 무리 안에서 섞어 쓴다.
-- **웹 대시보드** — 에이전트·기억·관계를 실시간으로 들여다본다.
-
-특정 DB·플랫폼(디스코드 등)에 묶이지 않고, **설치 외 필수 의존성이 0** 이다. Claude 로도, 완전 로컬로도 그대로 돈다.
+Glimi 는 각자 성격·기억·관계를 가진 AI 캐릭터 한 무리를 굴리는 파이썬 라이브러리다. 캐릭터마다 정하는 건 페르소나와 모델, 둘뿐. 그러면 캐릭터들은 당신하고도 자기들끼리도 대화한다. 뒤에서 supervisor 가 주기적으로 대화를 트고 끊긴 걸 이어줘서, 자리를 비웠다 와도 그사이 나눈 얘기가 채널에 쌓여 있다.
 
 ```python
 from glimi import Glimi
 
-chat = Glimi(backend="echo")          # 오프라인: 의존성·API 키·네트워크 불필요
+chat = Glimi(backend="echo")          # 오프라인: API 키·네트워크·추가 패키지 불필요
 chat.add_agent("nova", persona="호기심 많은 친구")
 print(chat.reply("nova", "안녕!"))     # 실제 모델: backend="claude_cli" 또는 "ollama"
 ```
 
-**무엇을 만들지는 당신 몫이다.** Core 로 직접 만든 것들:
+캐릭터 두 줄이면 무리가 서는 건, 그 아래에서 엔진이 나머지를 다 떠안기 때문이다 — 이 엔진이 **Glimi Core** 다. 기억은 프롬프트가 아니라 저장소(기본 SQLite)에 쌓이기 때문에, 재시작해도 캐릭터의 모델을 Haiku 에서 로컬 Llama 로 갈아 끼워도 관계·사실·고정 기억이 그대로 따라온다. 들어가는 하드웨어의 컨텍스트 윈도우에 맞춰 기억을 잘라 넣어서 4GB 노트북에서도 24GB 워크스테이션에서도 성격이 잘려 나가지 않고, 모델은 캐릭터마다 클라우드(Claude)와 로컬(Ollama·vLLM·llama.cpp)을 섞어 써도 된다. 로컬로만 돌리면 비용은 0 이다.
 
-- **Glimi Community** — 디스코드에 사는 'AI 친구들' 커뮤니티(플래그십 앱). 자기들끼리 떠들고, 비밀을 지키고, 당신 뒷담도 까고, 그걸 다 기억한다.
-- **[`examples/research_desk`](examples/research_desk/)** — 공유 메모리를 가진 전문 에이전트 팀(에디터·리서처·스켑틱)이 한 질문을 여러 라운드로 파고든다. Core 를 ~100줄 라이브러리로 쓴 예시.
-- **[`examples/research_buddies`](examples/research_buddies/)** · **[`examples/dev_pair`](examples/dev_pair/)** — 더 가벼운 2-에이전트 스타터.
+그리고 그 무리가 돌아가는 걸 눈으로 본다. 캐릭터 관계 그래프, 캐릭터별 기억 인스펙터, 채널 뷰어, 도구 호출 타임라인이 엔진에 내장된 웹 대시보드에 실시간으로 뜬다.
 
-*HTML 페이지(프로젝트 페이지 · 온보딩)는 맨 위 raw.githack 링크로 렌더링된다. 레포가 비공개인 동안에는 링크가 안 열리니, 레포를 클론해서 `.html` 파일을 브라우저로 열면 된다 — 공개로 전환하면 링크가 자동으로 살아난다.*
+![웹 대시보드](docs/screenshots/01-dashboard.png)
 
-![Glimi Community — 당신이 없는 동안에도 살아가는 친구들](resources/Glimi-Community-banner.svg)
+이 Core 위에 앱을 올린다. 플래그십은 **Glimi Community** — 디스코드에 사는 'AI 친구들' 무리로, 자기들 채널에서 떠들고, 비밀을 지키고, 당신이 없을 땐 당신 얘기도 하고, 그걸 다 기억한다. 역할을 나눈 작업용 **Glimi Workspace** (Coordinator 가 Researcher·Builder·Critic 에게 일을 배분 — 초기 단계), 그리고 `examples/` 의 라이브러리 스타터들도 같은 Core 위에 선다.
 
-![웹 대시보드 오버뷰](docs/screenshots/01-dashboard.png)
+![Glimi Community](resources/Glimi-Community-banner.svg)
 
-> ✅ **현 상태 (2026년 6월)** — Glimi Core 커널이 최상위 `glimi/` 패키지로 **추출 완료** (runtime · memory · LLM 백엔드 · `<tools>` 프로토콜 · conversation · context budget). `KernelStore` ABC + `AgentProfile`/`OwnerContext`/`KernelObserver` protocol 뒤로 스토리지/플랫폼 중립 — 커널은 **Discord/DB 의존 0** 으로 단독 import 되며 의존성 없는 standalone wheel 로 빌드됨 (`pip install -e .`). Community 앱은 어댑터(`src/adapters/`)로 끼워 씀. **아직 PyPI 미배포** — 0.1.0 배포 대기 중. 그 전까지는 소스에서 설치 (아래 Quick Start).
+> 용어 한 줄: 여기서 "에이전트"는 Stanford *Generative Agents* 계보 — 기억하고 생각을 형성하고 서로 말을 거는 캐릭터 — 의 의미지, 일을 자동으로 끝내는 task-runner 가 아니다. 코드·구조 얘기엔 *agent*, 사용자가 보는 자리엔 *친구·캐릭터*.
+
+> **현황 (2026-06)** — Core 커널은 최상위 `glimi/` 패키지로 추출 완료(Discord/DB 의존 0, 단독 import). 아직 PyPI 전이라 소스에서 설치한다 (`pip install -e .`). 채팅 UI 는 디스코드에서 내장 웹챗으로 이전 중이라 디스코드는 점점 선택사항이 된다 — 지금 완성돼 돌아가는 쇼케이스는 디스코드 쪽이다.
 
 ```
 Glimi/                          (단일 git repo, 멀티 패키지 모노레포)

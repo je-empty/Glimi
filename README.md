@@ -2,24 +2,29 @@
 
 # Glimi
 
-> Design your own cast of AI agents, each with its own personality and its own model (cloud or local). Then watch them remember, build relationships, and talk to each other on their own — even while you're away.
+Glimi is a Python library for running a cast of AI characters — each with its own personality, memory, and relationships — that keeps going on its own even when you're away. You set two things per character: a persona, and the model it runs on. From there the characters talk to you and to each other, and a background supervisor periodically opens new conversations and revives idle ones, so when you step away and come back, what they said in the meantime is already sitting in the channels.
 
-Most agent frameworks spin up disposable task-runners and discard them when the job is done. Glimi is built for the opposite: **persistent agent populations you design yourself.** You define each agent — its persona, its character, the model it runs on — and Glimi gives them long-term memory that doesn't drift, autonomous agent-to-agent conversation, and a live web dashboard to watch it all happen, on cloud models or entirely on local hardware.
+```python
+from glimi import Glimi
 
-**One repository, two parts:**
+chat = Glimi(backend="echo")          # offline: no API key, no network, no extra packages
+chat.add_agent("nova", persona="a curious, upbeat friend")
+print(chat.reply("nova", "hi there!"))  # real models: backend="claude_cli" or "ollama"
+```
 
-- **Glimi Core** — the engine. `pip install glimi`. The harness that turns a stateless LLM into a persistent character: per-agent model and context management, five layers of long-term memory engineered against hallucination, autonomous agent-to-agent conversation, and real-time observability built in. Zero required dependencies; runs on Claude or fully local (Ollama / vLLM / llama.cpp).
-- **Glimi Community** — the app. A community of AI friends built entirely on Glimi Core: they chat in their own channels, keep secrets, gossip about you behind your back, and remember it.
+Two lines stand up a cast because the engine underneath carries the rest — that engine is **Glimi Core**. State lives in storage (SQLite by default), not the prompt, so a character keeps its relationships, facts, and pinned memories across a restart and even a model swap (Haiku → a local Llama). Glimi measures the model's context window and injects only as much memory as fits, so the same character runs on a 4 GB laptop or a 24 GB workstation without its personality getting silently truncated — and you can mix cloud (Claude) and local (Ollama / vLLM / llama.cpp) per character. Run it fully local and it costs nothing.
 
-Glimi Core is the reusable engine; Glimi Community is the app that proves it works.
+And you watch the whole thing run: an agent relationship graph, a per-character memory inspector, a channel viewer, and a tool-call timeline, live in a web dashboard built into the engine.
 
-*The HTML pages (project page · onboarding) render through the raw.githack links above. While the repo is private those links won't resolve — clone the repo and open the `.html` files in a browser; they go live automatically once the repo is public.*
+![Web dashboard](docs/screenshots/en/01-dashboard.png)
 
-![Glimi Community — AI friends who keep living their own lives](resources/Glimi-Community-banner.svg)
+You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends living on Discord: they chat in their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** (role-based work agents — a Coordinator delegates to a Researcher, Builder, and Critic; early) and the starters in `examples/` stand on the same Core.
 
-![Web Dashboard Overview](docs/screenshots/en/01-dashboard.png)
+![Glimi Community](resources/Glimi-Community-banner.svg)
 
-> ✅ **Status (Jun 2026)** — Glimi Core kernel is **extracted** to a top-level `glimi/` package (runtime · memory · LLM backends · `<tools>` protocol · conversation · context budget), storage/platform-neutral behind a `KernelStore` ABC + `AgentProfile`/`OwnerContext`/`KernelObserver` protocols — the kernel imports with **zero Discord/DB dependency** and builds as a standalone, dependency-free wheel (`pip install -e .`). The Community app plugs in via adapters (`src/adapters/`). **Not yet on PyPI** — 0.1.0 publish is pending; until then, install from source (Quick Start below).
+> One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
+
+> **Status (Jun 2026)** — the Core kernel is extracted into a top-level `glimi/` package and imports with zero Discord/DB dependency. It's not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e .`). The chat UI is mid-move from Discord to a built-in web chat, so Discord is becoming optional — the showcase that's finished and running today is the Discord one.
 
 ```
 Glimi/                          (single git repo, multi-package monorepo)
