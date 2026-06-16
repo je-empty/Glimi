@@ -115,6 +115,9 @@ async def community_dashboard(
             "community_name": target.get("name") or community_id,
             "community_description": target.get("description") or "",
             "language": _lang,
+            # 임베드된 채팅 탭 기본 채널/에이전트 — 오너↔mgr DM (standalone /chat 기본과 동일).
+            "chat_agent": "mgr",
+            "chat_channel": "dm-mgr",
         },
     )
 

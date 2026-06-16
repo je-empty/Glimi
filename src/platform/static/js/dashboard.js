@@ -7,6 +7,13 @@ let COMMUNITY = (typeof window !== 'undefined' && window.__GLIMI_COMMUNITY__) ||
 let THEME = localStorage.getItem('glimi-theme') || 'light';
 document.documentElement.setAttribute('data-theme', THEME);
 
+// Once-flag for the embedded chat tab (#view-chat). Chat is the default-active
+// tab, so it boots on load; thereafter re-entry only re-pins the feed. Unlike
+// the achievements tab (reloads every click), chat must boot exactly once or it
+// opens a duplicate WebSocket. chat.js's GlimiChat.init() is itself idempotent,
+// so this flag only drives the init-vs-refit choice in the tab handler.
+let _chatInited = false;
+
 // ==== i18n ====
 // LANG_OVERRIDE: 'ko' | 'en' | null (null = 서버 설정 따라감)
 // 번역 dict는 /api/i18n?lang=... 엔드포인트에서 로드 (i18n/dashboard.{ko,en}.json)
@@ -347,14 +354,14 @@ let SHOW_SUP = localStorage.getItem('glimi-show-supervisors') === 'true';
 function applySupVisibility() {
   document.body.classList.toggle('show-supervisors', SHOW_SUP);
   document.getElementById('supervisor-toggle').classList.toggle('active', SHOW_SUP);
-  // 비활성화 시 Supervisors 탭에 있었으면 overview로 돌리기
+  // 비활성화 시 Supervisors 탭에 있었으면 기본 탭(채팅)으로 돌리기
   if (!SHOW_SUP) {
     const supView = document.getElementById('view-supervisors');
     if (supView && supView.classList.contains('active')) {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
-      document.getElementById('view-overview').classList.add('active');
-      document.querySelector('nav.tabs button[data-tab="overview"]').classList.add('active');
+      document.getElementById('view-chat').classList.add('active');
+      document.querySelector('nav.tabs button[data-tab="chat"]').classList.add('active');
     }
   }
 }
@@ -479,7 +486,19 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     if (btn.dataset.tab === 'achievements') {
       loadAchievements();
     }
+    if (btn.dataset.tab === 'chat' && window.GlimiChat) {
+      // First entry boots the embedded chat (channels + history + WS); re-entry
+      // only re-pins the feed (the single WS survives tab switches untouched).
+      if (!_chatInited) { _chatInited = true; window.GlimiChat.init(); }
+      else { window.GlimiChat.refit(); }
+    }
   });
+});
+// Chat is the default-active tab → boot it once on load (the index.html load
+// listener also calls GlimiChat.init(); both are idempotent). Flip the once-flag
+// so subsequent Chat-tab entries refit instead of re-init.
+window.addEventListener('load', () => {
+  if (window.GlimiChat && !_chatInited) { _chatInited = true; window.GlimiChat.init(); }
 });
 
 // ==== Renderers ====
@@ -1342,10 +1361,18 @@ async function openChannel(name) {
   const parts = (d.participants || []).map(p => `<span class="pill neutral">${esc(p.name)}${p.type ? ' · ' + esc(p.type) : ''}</span>`).join(' ');
   const msgs = (d.messages || []).map(m => renderMessageWithActions(m, name)).join('');
   const protected_ch = name.startsWith('mgr-') || name.startsWith('dm-');
+  // JS mirror of core/channels.py is_user_postable: only dm-*/group-* accept
+  // human input (internal-*/mgr-* are read-only plumbing). The !internal- guard
+  // is belt-and-suspenders — internal channels carry the `internal-` prefix.
+  const postable = (name.startsWith('dm-') || name.startsWith('group-')) && !name.startsWith('internal-');
+  const openChatBtn = postable
+    ? `<button class="act-btn small primary" onclick="jumpToChat('${esc(name)}')">💬 채팅 열기</button>`
+    : '';
   const actions = `
     <div class="detail-section">
       <h4>Actions</h4>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${openChatBtn}
         <button class="act-btn danger small" onclick="doChannelClear('${esc(name)}')">🧹 메시지 전체 삭제 (DB만)</button>
         ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : ''}
       </div>
@@ -1362,6 +1389,21 @@ async function openChannel(name) {
       <div class="msg-list" id="ch-messages-${esc(name)}">${msgs || '<div class="empty">no messages</div>'}</div>
     </div>`;
   openModal(chIcon(name), '#' + name, body);
+}
+
+// Graph edge → live chat. Close the preview modal, leave graph fullscreen so the
+// chat isn't hidden under the overlay, switch to the Chat tab (the click runs the
+// lazy-init branch in the tab handler), then swap the channel on the single live
+// WS. The edge's channel id IS the chat channel id — no translation. Agent is
+// derived for dm-* (group-* passes undefined → server defaults agent→mgr).
+function jumpToChat(name) {
+  if (!name) return;
+  closeModal();
+  document.body.classList.remove('graph-fullscreen');
+  const chatTab = document.querySelector('nav.tabs button[data-tab="chat"]');
+  if (chatTab) chatTab.click();  // switch + lazy-init via the tab handler
+  const agent = name.indexOf('dm-') === 0 ? name.slice(3) : undefined;
+  if (window.GlimiChat) window.GlimiChat.selectChannelById(name, agent);
 }
 
 function renderMessageWithActions(m, channelName) {
