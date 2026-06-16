@@ -365,6 +365,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     backend = args.backend
 
+    # Glimi Workspace is English-default; tell the kernel's A2A scaffolding so
+    # agent-to-agent turns come back in English (Community stays ko by default).
+    os.environ.setdefault("GLIMI_LANG", "en")
+
     setup = resolve_setup(name_flag=args.name, goal_flag=args.goal)
     banner(backend, setup.owner_name, setup.goal)
 
