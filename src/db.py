@@ -329,6 +329,21 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_ach_user_state ON achievements(user_id, state);
 
+        -- ── 리액션 (메시지별 이모지 반응) ──
+        -- message_id → conversations(id). actor_id 는 플랫폼 중립 (오너 id 또는 agent-NNN,
+        -- conversations.speaker 와 동일 체계). created_at 은 UTC-aware ISO (now_utc_iso()),
+        -- CURRENT_TIMESTAMP 아님. UNIQUE 로 add 멱등 + toggle-off 가능.
+        -- ON DELETE CASCADE + PRAGMA foreign_keys=ON → 메시지 삭제 시 자동 정리.
+        CREATE TABLE IF NOT EXISTS reactions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id  INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            actor_id    TEXT NOT NULL,
+            emoji       TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            UNIQUE(message_id, actor_id, emoji)
+        );
+        CREATE INDEX IF NOT EXISTS idx_react_msg ON reactions(message_id);
+
         -- 참고: dev_requests / dev_runs 는 platform.db 글로벌 테이블 (data/platform.db).
         -- src/platform/db.py 의 SCHEMA 에 정의됨. 이전 community-local 테이블은 사용 안 함.
     """)
@@ -590,7 +605,12 @@ def add_message_hook(fn):
         _message_hooks.append(fn)
 
 
-def log_message(channel: str, speaker: str, message: str, emotion: str = None):
+def log_message(channel: str, speaker: str, message: str, emotion: str = None,
+                reply_to: int = None) -> Optional[int]:
+    """메시지 기록 후 생성된 row id 반환 (반환 무시하는 기존 호출부도 그대로 동작).
+
+    reply_to 가 주어지면 부모의 thread_root(없으면 부모 id)를 thread_root 로 denormalize.
+    30 초 turn-dedupe 에 걸리면 새 행을 만들지 않고 기존 행 id 를 반환."""
     conn = get_conn()
     # 중복 방지 — 같은 채널·스피커·메시지가 최근 30초 내 이미 있으면 skip.
     # 유나/하나가 tool chain 에서 여러 turn 에 걸쳐 같은 메시지를 재생성하는 케이스 (QA 회귀:
@@ -604,13 +624,36 @@ def log_message(channel: str, speaker: str, message: str, emotion: str = None):
         ).fetchone()
         if dup:
             conn.close()
-            return
+            # 기존 행 id 반환 (broadcast frame 이 잘못된/None id 를 싣지 않게).
+            return dup["id"]
     except Exception:
         pass
-    conn.execute(
-        "INSERT INTO conversations (channel, speaker, message, context_emotion) VALUES (?, ?, ?, ?)",
-        (channel, speaker, message, emotion)
-    )
+    # 답글이면 부모의 thread_root(없으면 부모 id)를 denormalize.
+    thread_root = None
+    if reply_to is not None:
+        try:
+            parent = conn.execute(
+                "SELECT id, thread_root FROM conversations WHERE id=?", (reply_to,)
+            ).fetchone()
+            if parent:
+                thread_root = parent["thread_root"] or parent["id"]
+        except Exception:
+            # reply_to/thread_root 컬럼 부재 (마이그레이션 전) 등 — 답글 메타만 누락, 로깅은 계속.
+            reply_to = None
+            thread_root = None
+    try:
+        cur = conn.execute(
+            "INSERT INTO conversations (channel, speaker, message, context_emotion, reply_to, thread_root) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (channel, speaker, message, emotion, reply_to, thread_root)
+        )
+    except sqlite3.OperationalError:
+        # 마이그레이션 전 DB (reply_to/thread_root 컬럼 없음) fallback.
+        cur = conn.execute(
+            "INSERT INTO conversations (channel, speaker, message, context_emotion) VALUES (?, ?, ?, ?)",
+            (channel, speaker, message, emotion)
+        )
+    new_id = cur.lastrowid
     # 에이전트 발화 시 last_active 갱신
     if speaker.startswith("agent-"):
         conn.execute(
@@ -625,6 +668,49 @@ def log_message(channel: str, speaker: str, message: str, emotion: str = None):
             _hook(channel, speaker, message)
         except Exception as _e:
             print(f"[db.log_message hook] {_hook.__name__}: {_e}")
+    return new_id
+
+
+def _summarize_reactions(rows: list[dict]) -> list[dict]:
+    """리액션 행들을 emoji 별로 묶음. ``[{emoji, count, actors:[...]}]`` (emoji 첫 등장 순)."""
+    by_emoji: dict[str, dict] = {}
+    order: list[str] = []
+    for r in rows:
+        e = r["emoji"]
+        slot = by_emoji.get(e)
+        if slot is None:
+            slot = {"emoji": e, "count": 0, "actors": []}
+            by_emoji[e] = slot
+            order.append(e)
+        slot["count"] += 1
+        slot["actors"].append(r["actor_id"])
+    return [by_emoji[e] for e in order]
+
+
+def _attach_reactions(conn, rows: list[dict]) -> list[dict]:
+    """대화 행 리스트에 ``reactions`` 요약을 한 번의 배치 쿼리로 폴드인 (N+1 방지).
+
+    각 행에 ``reactions: [{emoji, count, actors:[...]}]`` 추가 (없으면 빈 리스트).
+    reactions 테이블 부재 (마이그레이션 전) 시 빈 리스트로 graceful degrade."""
+    if not rows:
+        return rows
+    ids = [r["id"] for r in rows if r.get("id") is not None]
+    grouped: dict[int, list[dict]] = {}
+    if ids:
+        placeholders = ",".join("?" for _ in ids)
+        try:
+            react_rows = conn.execute(
+                f"SELECT message_id, emoji, actor_id, created_at FROM reactions "
+                f"WHERE message_id IN ({placeholders}) ORDER BY id ASC",
+                ids,
+            ).fetchall()
+            for rr in react_rows:
+                grouped.setdefault(rr["message_id"], []).append(dict(rr))
+        except sqlite3.OperationalError:
+            grouped = {}
+    for r in rows:
+        r["reactions"] = _summarize_reactions(grouped.get(r.get("id"), []))
+    return rows
 
 
 def get_recent_messages(channel: str, limit: int = 20) -> list[dict]:
@@ -633,8 +719,115 @@ def get_recent_messages(channel: str, limit: int = 20) -> list[dict]:
         "SELECT * FROM conversations WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
         (channel, limit)
     ).fetchall()
+    out = [dict(r) for r in reversed(rows)]
+    _attach_reactions(conn, out)
     conn.close()
-    return [dict(r) for r in reversed(rows)]
+    return out
+
+
+# === Reactions / Replies / Threads ===
+
+def add_reaction(message_id: int, actor_id: str, emoji: str) -> bool:
+    """리액션 추가 (멱등). 새로 추가됐으면 True, 이미 있거나 대상 메시지 부재면 False.
+
+    UNIQUE(message_id, actor_id, emoji) → INSERT OR IGNORE 로 중복 무시.
+    FK ON 이라 존재하지 않는 message_id 면 IntegrityError → False."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO reactions (message_id, actor_id, emoji, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (message_id, actor_id, emoji, now_utc_iso()),
+        )
+        conn.commit()
+        # rowcount==1 → 실제 INSERT, 0 → IGNORE (이미 존재).
+        return cur.rowcount > 0
+    except sqlite3.IntegrityError:
+        # 대상 메시지 부재 (FK 위반) — no-op.
+        return False
+    finally:
+        conn.close()
+
+
+def remove_reaction(message_id: int, actor_id: str, emoji: str) -> None:
+    """리액션 제거 (toggle-off). 없으면 no-op."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM reactions WHERE message_id=? AND actor_id=? AND emoji=?",
+            (message_id, actor_id, emoji),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_reactions(message_id: int) -> list[dict]:
+    """단일 메시지의 리액션. ``[{emoji, actor_id, created_at}]`` (created_at/id ASC)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT emoji, actor_id, created_at FROM reactions WHERE message_id=? ORDER BY id ASC",
+            (message_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_reactions_for(message_ids: list[int]) -> dict[int, list[dict]]:
+    """여러 메시지의 리액션 배치 조회. ``{message_id: [{emoji, actor_id, created_at}]}``.
+    리액션 없는 메시지는 키 없음."""
+    if not message_ids:
+        return {}
+    conn = get_conn()
+    try:
+        placeholders = ",".join("?" for _ in message_ids)
+        rows = conn.execute(
+            f"SELECT message_id, emoji, actor_id, created_at FROM reactions "
+            f"WHERE message_id IN ({placeholders}) ORDER BY id ASC",
+            list(message_ids),
+        ).fetchall()
+    finally:
+        conn.close()
+    out: dict[int, list[dict]] = {}
+    for r in rows:
+        out.setdefault(r["message_id"], []).append(
+            {"emoji": r["emoji"], "actor_id": r["actor_id"], "created_at": r["created_at"]}
+        )
+    return out
+
+
+def set_reply(message_id: int, reply_to: int) -> None:
+    """기존 메시지를 답글로 표시 — reply_to + thread_root(부모의 thread_root or 부모 id)."""
+    conn = get_conn()
+    try:
+        parent = conn.execute(
+            "SELECT id, thread_root FROM conversations WHERE id=?", (reply_to,)
+        ).fetchone()
+        thread_root = (parent["thread_root"] or parent["id"]) if parent else None
+        conn.execute(
+            "UPDATE conversations SET reply_to=?, thread_root=? WHERE id=?",
+            (reply_to, thread_root, message_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_thread(root_id: int, limit: int = 50) -> list[dict]:
+    """스레드 전체 (루트 + 답글), id ASC. reactions 도 폴드인. 없으면 빈 리스트."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM conversations WHERE thread_root=? OR id=? ORDER BY id ASC LIMIT ?",
+            (root_id, root_id, limit),
+        ).fetchall()
+        out = [dict(r) for r in rows]
+        _attach_reactions(conn, out)
+    finally:
+        conn.close()
+    return out
 
 
 def get_conversation_history(channel: str, speaker: Optional[str] = None, limit: int = 50) -> list[dict]:
@@ -1308,6 +1501,41 @@ def _migrate_schema():
     try:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_importance ON memories(agent_id, importance DESC, created_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_pinned ON memories(agent_id, is_pinned)")
+    except sqlite3.OperationalError:
+        pass
+
+    # conversations 테이블 신규 컬럼 — 답글/스레드 + (예약) 플랫폼 메시지 id.
+    # 백필 없음 (NULL = 비스레드, 기존 행 그대로 정상). reply_to/thread_root 는
+    # conversations(id) 를 가리키는 nullable INTEGER. platform_message_id 는 추후
+    # Discord 동기화용 예약 (web-only v1 에서는 항상 NULL).
+    conv_cols = [r["name"] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()]
+    conv_additions = {
+        "reply_to": "INTEGER",
+        "thread_root": "INTEGER",
+        "platform_message_id": "TEXT",
+    }
+    for col, col_type in conv_additions.items():
+        if col not in conv_cols:
+            conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {col_type}")
+            print(f"[DB] conversations.{col} 추가")
+
+    # reactions 테이블 — init_db 의 executescript 에서 IF NOT EXISTS 로 생성되지만,
+    # init_db 보다 _migrate_schema 가 먼저 부르는 경로(직접 호출 등)나 아주 오래된 DB 를
+    # 위해 여기서도 보장. created_at 은 TEXT (UTC-aware ISO).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reactions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id  INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            actor_id    TEXT NOT NULL,
+            emoji       TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            UNIQUE(message_id, actor_id, emoji)
+        )
+    """)
+    # 컬럼 의존 인덱스 — ADD COLUMN 이후에 생성 (idx_mem_* 와 동일 규율).
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_thread ON conversations(thread_root)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_react_msg ON reactions(message_id)")
     except sqlite3.OperationalError:
         pass
 

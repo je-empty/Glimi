@@ -52,12 +52,57 @@ class KernelStore(ABC):
     def get_agent_model_override(self, agent_id: str) -> Optional[str]: ...
 
     @abstractmethod
-    def log_message(self, channel: str, speaker: str, message: str, emotion: Optional[str] = None) -> None: ...
+    def log_message(self, channel: str, speaker: str, message: str,
+                    emotion: Optional[str] = None,
+                    reply_to: Optional[int] = None) -> Optional[int]:
+        """메시지를 기록하고 **생성된 row id 를 반환**.
+
+        반환값을 무시하는 기존 호출부도 그대로 동작 (backward-compatible).
+        ``reply_to`` 가 주어지면 부모 메시지의 ``thread_root`` (없으면 부모 id) 를
+        이 메시지의 thread_root 로 denormalize. 30 초 turn-dedupe 에 걸리면 새 행을
+        만들지 않고 **기존 행의 id** 를 반환 (None 이 아님)."""
+        ...
 
     @abstractmethod
     def add_message_hook(self, fn) -> None:
         """log_message 직후 호출될 콜백 등록. 시그니처: ``fn(channel, speaker, message)``.
         커널(memory)이 오너 메시지 트리거를 받는 옵저버 경로."""
+        ...
+
+    # ── reactions / replies / threads ─────────────────────────────────
+    @abstractmethod
+    def add_reaction(self, message_id: int, actor_id: str, emoji: str) -> bool:
+        """메시지에 리액션 추가. UNIQUE(message_id, actor_id, emoji) 로 멱등.
+
+        새로 추가됐으면 True, 이미 있어 무시됐으면 (또는 부모 메시지 부재로
+        FK 위반) False. 호출자는 True 일 때만 관계 신호 등 side-effect 적용."""
+        ...
+
+    @abstractmethod
+    def remove_reaction(self, message_id: int, actor_id: str, emoji: str) -> None:
+        """리액션 제거 (toggle-off). 없으면 no-op."""
+        ...
+
+    @abstractmethod
+    def get_reactions(self, message_id: int) -> list[dict]:
+        """단일 메시지의 리액션 목록. ``[{emoji, actor_id, created_at}]`` (created_at ASC)."""
+        ...
+
+    @abstractmethod
+    def get_reactions_for(self, message_ids: list[int]) -> dict[int, list[dict]]:
+        """여러 메시지의 리액션을 한 번에. ``{message_id: [{emoji, actor_id, created_at}]}``.
+        리액션 없는 메시지는 키 자체가 없음. N+1 방지용 배치 조회."""
+        ...
+
+    @abstractmethod
+    def set_reply(self, message_id: int, reply_to: int) -> None:
+        """기존 메시지를 답글로 표시 — reply_to + thread_root (부모의 thread_root or 부모 id) 설정."""
+        ...
+
+    @abstractmethod
+    def get_thread(self, root_id: int, limit: int = 50) -> list[dict]:
+        """스레드 전체 (루트 + 모든 답글), id ASC. ``WHERE thread_root=? OR id=?``.
+        hydrated dict 리스트 (없으면 빈 리스트)."""
         ...
 
     # ── runtime — higher-level (replace raw SQL previously inlined in runtime) ──
