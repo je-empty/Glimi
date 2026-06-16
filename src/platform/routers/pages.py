@@ -50,6 +50,39 @@ async def new_community(
     )
 
 
+@router.get("/community/{community_id}/chat", response_class=HTMLResponse)
+async def community_chat(
+    request: Request,
+    community_id: str,
+    user: dict = Depends(require_user),
+):
+    """웹 채팅 페이지 (Phase 1 — Outbox/Inbox seam + WS echo).
+    /community/{community_id} 보다 먼저 등록되어야 함 (path 충돌 방지)."""
+    if not accounts.user_can_access(user, community_id):
+        raise HTTPException(403, "no access to this community")
+
+    all_communities = list_communities()
+    target = next((c for c in all_communities if c["id"] == community_id), None)
+    if target is None:
+        raise HTTPException(404, "community not found")
+
+    # 채널/에이전트는 쿼리로 override 가능. 기본 = 오너↔mgr DM.
+    agent_id = request.query_params.get("agent") or "mgr"
+    channel = request.query_params.get("channel") or f"dm-{agent_id}"
+
+    return templates.env.TemplateResponse(
+        request,
+        "chat.html",
+        {
+            "user": user,
+            "community_id": community_id,
+            "community_name": target.get("name") or community_id,
+            "channel": channel,
+            "agent_id": agent_id,
+        },
+    )
+
+
 @router.get("/community/{community_id}", response_class=HTMLResponse)
 async def community_dashboard(
     request: Request,
