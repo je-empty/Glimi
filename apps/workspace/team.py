@@ -50,6 +50,44 @@ TEAM: list[tuple[str, str, str, str]] = [
 # The three specialists, in their contribution order each round.
 SPECIALISTS: list[str] = ["researcher", "builder", "critic"]
 
+# ── the interaction topology ────────────────────────────────────────────────
+# The team doesn't work in one round-robin room — it works the way a real team
+# does, across several channels with distinct interaction shapes. These constants
+# name those channels (and the pairs that collaborate), so run.py wires a genuine
+# interaction *web*: owner ↔ Coordinator, Coordinator ↔ each specialist, and
+# specialist ↔ specialist A2A — which the Core dashboard renders as a graph.
+
+# Owner ↔ Coordinator: the one DM where the owner gives the goal and the
+# Coordinator plans + delivers. (owner_id is supplied by the harness at runtime.)
+COORDINATOR_DM = "dm-coordinator"
+
+# Coordinator ↔ each specialist: a per-specialist DM where the Coordinator
+# delegates an angle. id → channel.
+DELEGATION_CHANNELS: dict[str, str] = {
+    "researcher": "dm-researcher",
+    "builder": "dm-builder",
+    "critic": "dm-critic",
+}
+
+# Specialist ↔ specialist A2A: the pairs that should genuinely collaborate, with
+# the channel they meet on and what they're working out together. Researcher ↔
+# Critic debate the findings; Builder ↔ Researcher ground the plan in the facts.
+# (a, b, channel, the brief that opens their exchange)
+COLLAB_PAIRS: list[tuple[str, str, str, str]] = [
+    ("researcher", "critic", "internal-researcher-critic",
+     "debate the findings: which facts actually hold up, and which are shaky?"),
+    ("builder", "researcher", "internal-builder-researcher",
+     "ground the plan in the facts: which steps are supported, which need evidence?"),
+]
+
+# How many back-and-forth turns each collaborating pair takes. Two turns per side
+# is enough to form a real exchange (and to grow the relationship) without
+# dragging the offline demo.
+COLLAB_TURNS = 4
+
+# The whole team converges here for one shared round.
+GROUP_CHANNEL = "group-team"
+
 # Display labels (id → name), plus the owner's seat.
 LABELS: dict[str, str] = {aid: name for aid, name, _, _ in TEAM}
 
