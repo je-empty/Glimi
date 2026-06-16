@@ -3,6 +3,7 @@ REM Project Glimi - Windows entry point (run.sh equivalent)
 REM
 REM Default (platform daemon, FastAPI + web UI):
 REM   run.bat                          -> http://localhost:8000
+REM   run.bat community                -> same as bare (explicit Platform mode)
 REM   run.bat --port 9000
 REM   run.bat --host 127.0.0.1
 REM
@@ -20,7 +21,18 @@ REM   run.bat --legacy ^<community^>     -> single bot (QA/debugging)
 REM   run.bat tui                      -> legacy TUI wizard
 REM   run.bat tui ^<community^>          -> legacy TUI dashboard
 REM
+REM Workspace app:
+REM   run.bat workspace [--serve]      -> Glimi Workspace (--serve = :8800 + browser)
+REM
+REM Uninstall:
+REM   run.bat uninstall                -> remove .venv (+ editable install). Keeps user data
+REM   run.bat uninstall --purge        -> also remove data\ and dev\ (local data)
+REM
 REM Stop: Ctrl+C
+REM
+REM NOTE: the community/workspace/uninstall subcommands and the winget prereq
+REM auto-install paths below are UNTESTED on Windows (maintainer on macOS) and
+REM may need a follow-up. They mirror run.sh semantics for easy later verification.
 
 setlocal EnableDelayedExpansion
 chcp 65001 >nul 2>nul
@@ -29,6 +41,58 @@ cd /d "%~dp0"
 REM === --help before any side effect (venv/deps/cleanup) ===
 if /i "%~1"=="--help" goto show_help
 if /i "%~1"=="-h" goto show_help
+
+REM === uninstall before any side effect (do NOT recreate venv before deleting it) ===
+if /i "%~1"=="uninstall" goto uninstall
+
+REM === winget prereq auto-install (idempotent, skip-if-present) ===
+REM Mirrors run.sh _ensure_prereqs. Runs after --help/uninstall intercepts, before venv.
+REM Windows caveat: a fresh winget install usually is NOT on THIS shell's PATH yet, so
+REM after attempting an install we re-check and, if still missing, tell the user to open a
+REM new terminal rather than failing obscurely. Never hard-fail if winget is absent.
+set "_HAVEPY=0"
+python -c "import sys; sys.exit(0 if sys.version_info[:2]>=(3,11) else 1)" >nul 2>nul && set "_HAVEPY=1"
+if "%_HAVEPY%"=="0" py -3.12 --version >nul 2>nul && set "_HAVEPY=1"
+if "%_HAVEPY%"=="0" py -3.11 --version >nul 2>nul && set "_HAVEPY=1"
+set "_LM=0"
+echo %* | findstr /C:"--local-models" >nul 2>nul && set "_LM=1"
+if "%GLIMI_LOCAL_MODELS%"=="1" set "_LM=1"
+if "%_HAVEPY%"=="0" (
+    where winget >nul 2>nul
+    if errorlevel 1 (
+        echo [setup] Python 3.11+ not found and winget unavailable.
+        echo   Install Python manually: https://www.python.org/downloads/
+        exit /b 1
+    )
+    echo [setup] Installing Python 3.12 ^(winget, one-time^)...
+    winget install -e --id Python.Python.3.12 --silent --accept-source-agreements --accept-package-agreements
+    set "_HAVEPY=0"
+    python -c "import sys; sys.exit(0 if sys.version_info[:2]>=(3,11) else 1)" >nul 2>nul && set "_HAVEPY=1"
+    if "!_HAVEPY!"=="0" py -3.12 --version >nul 2>nul && set "_HAVEPY=1"
+    if "!_HAVEPY!"=="0" (
+        echo [setup] Python installed - open a NEW terminal and re-run run.bat ^(PATH not yet updated^).
+        exit /b 1
+    )
+)
+REM Cloud mode (not --local-models): ensure Claude CLI for credential-free login.
+if "%_LM%"=="0" (
+    where claude >nul 2>nul
+    if errorlevel 1 (
+        where winget >nul 2>nul
+        if not errorlevel 1 (
+            where node >nul 2>nul
+            if errorlevel 1 (
+                echo [setup] Installing Node ^(winget, one-time^)...
+                winget install -e --id OpenJS.NodeJS --silent --accept-source-agreements --accept-package-agreements
+            )
+            echo [setup] Installing Claude CLI...
+            call npm install -g @anthropic-ai/claude-code >nul 2>nul
+            if errorlevel 1 (
+                echo [setup] Claude CLI install failed - set ANTHROPIC_API_KEY in .env or use --local-models.
+            )
+        )
+    )
+)
 
 REM === venv auto setup ===
 if not exist .venv (
@@ -167,7 +231,7 @@ if "%SETUP_ONLY%"=="1" (
 
 REM === cleanup existing processes ===
 REM Use PowerShell Get-CimInstance for commandline-based process matching (wmic deprecated).
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | Where-Object { $_.CommandLine -match 'src\.(platform|discord_bot|tui\.dashboard|tui\.wizard|tools\.dev_runner)' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" 2>nul
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | Where-Object { $_.CommandLine -match 'src\.(platform|discord_bot|tui\.dashboard|tui\.wizard|tools\.dev_runner)' -or $_.CommandLine -match 'apps[\\./]workspace[\\./]run' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" 2>nul
 del /q dev\.platform.pid 2>nul
 del /q dev\.bot*.pid 2>nul
 timeout /t 1 /nobreak >nul
@@ -233,7 +297,15 @@ if "%~1"=="--legacy" (
     goto legacy_loop
 )
 
+REM === Glimi Workspace app mode ===
+REM   run.bat workspace [--serve] [--name X] [--goal "..."] [--backend echo^|claude_cli^|ollama]
+REM   Same venv/kernel (glimi) as Community. --serve = dashboard (:8800) + browser auto-open.
+REM   Label-based body (jumps out of parens) so the arg-collection loop works cleanly.
+if /i "%~1"=="workspace" goto ws_mode
+
 REM === Platform mode (default) ===
+REM `run.bat community` (explicit) or `run.bat` (bare) both land here.
+if /i "%~1"=="community" shift
 set "HOST=0.0.0.0"
 set "PORT=8000"
 if defined GLIMI_HOST set "HOST=%GLIMI_HOST%"
@@ -289,3 +361,61 @@ if "%_FIRST_RUN%"=="1" if not defined GLIMI_NO_BROWSER (
 REM Account bootstrap no longer here - first run = web wizard (/setup);
 REM headless = platform lifespan via GLIMI_ADMIN_PASSWORD.
 python -m src.platform --host %HOST% --port %PORT%
+exit /b %errorlevel%
+
+REM === Glimi Workspace mode body (reached via goto ws_mode) ===
+:ws_mode
+set "WS_PORT=8800"
+if defined GLIMI_WS_PORT set "WS_PORT=%GLIMI_WS_PORT%"
+echo   Glimi Workspace
+REM Collect remaining args after consuming "workspace" (preserve --serve --name --goal --backend ...).
+set "WS_ARGS="
+set "_WANT_SERVE=0"
+shift
+:ws_collect
+if "%~1"=="" goto ws_run
+if /i "%~1"=="--serve" set "_WANT_SERVE=1"
+set "WS_ARGS=!WS_ARGS! %1"
+shift
+goto ws_collect
+:ws_run
+if "%_WANT_SERVE%"=="1" if not defined GLIMI_NO_BROWSER (
+    echo   Dashboard: http://127.0.0.1:%WS_PORT%
+    start "" /b powershell -NoProfile -Command "for($i=0;$i -lt 60;$i++){try{Invoke-WebRequest -UseBasicParsing http://127.0.0.1:%WS_PORT%/api/snapshot -TimeoutSec 1 ^| Out-Null; break}catch{Start-Sleep -Milliseconds 500}}; Start-Process 'http://127.0.0.1:%WS_PORT%'"
+)
+REM -m (module mode) -> repo root on sys.path so glimi kernel + apps package resolve (mirrors Community).
+python -m apps.workspace.run%WS_ARGS%
+exit /b %errorlevel%
+
+REM === uninstall (conservative) ===
+REM Default: remove .venv (the editable 'pip install -e .' + deps markers live inside it, so
+REM deleting .venv removes them). Keeps user data. --purge also removes data\ and dev\.
+REM Never auto-removes system tools - only prints manual winget/npm commands.
+:uninstall
+set "PURGE=0"
+echo %* | findstr /C:"--purge" >nul 2>nul && set "PURGE=1"
+echo   Glimi uninstall
+if exist .venv (
+    rmdir /s /q .venv
+    echo [uninstall] .venv removed ^(editable 'pip install -e .' + deps marker included^)
+) else (
+    echo [uninstall] no .venv ^(already removed^)
+)
+if "%PURGE%"=="1" (
+    if exist data rmdir /s /q data
+    if exist dev rmdir /s /q dev
+    echo [uninstall] --purge: removed data\ ^(platform.db, .setup_complete^) and dev\
+    echo   Remaining user data: communities\*\runtime, stray *.db - check/remove manually.
+) else (
+    echo [uninstall] kept user data: data\, dev\, communities\*\runtime, *.db
+    echo   To also wipe local data: run.bat uninstall --purge
+)
+echo.
+echo Manually remove any system tools the launcher may have auto-installed ^(not removed automatically^):
+echo   winget uninstall Ollama.Ollama
+echo   winget uninstall OpenJS.NodeJS
+echo   winget uninstall Python.Python.3.12
+echo   npm uninstall -g @anthropic-ai/claude-code
+echo.
+echo Glimi uninstalled ^(project files remain - delete this folder to fully remove^).
+exit /b 0
