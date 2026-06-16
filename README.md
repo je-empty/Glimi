@@ -427,6 +427,7 @@ run.bat
 
 **Useful commands**:
 ```bash
+./run.sh workspace --serve              # run the Glimi Workspace app + open its dashboard (→ http://127.0.0.1:8800)
 ./run.sh --port 9000                    # change dashboard port
 ./run.sh --local-models                 # local LLM mode (dev opt-in) — auto-installs Ollama + pulls default model, skips what exists. See docs/local_models.md
 ./run.sh --setup-only                   # run setup (venv/deps/ollama/model) then exit
