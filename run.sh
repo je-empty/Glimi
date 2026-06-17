@@ -20,6 +20,13 @@
 #   ./run.sh --legacy <community>    → 구 단일 봇 (QA/디버깅용)
 #   ./run.sh tui                     → 구 TUI wizard (deprecated)
 #   ./run.sh tui <community>         → 구 TUI dashboard
+#
+# Workspace 앱:
+#   ./run.sh workspace [--serve]     → Glimi Workspace (--serve 면 :8800 + 브라우저)
+#
+# 제거:
+#   ./run.sh uninstall               → .venv (+ editable install) 삭제. 사용자 데이터는 보존
+#   ./run.sh uninstall --purge       → data/, dev/ 등 로컬 데이터까지 삭제
 
 set -e
 cd "$(dirname "$0")"
@@ -33,9 +40,41 @@ NC='\033[0m'
 # ── --help 는 부작용(venv 생성·deps 설치·프로세스 정리) 전에 즉시 처리 ──
 case "${1:-}" in
     --help|-h)
-        grep '^#' "$0" | sed -n '2,23p' | sed 's/^# \?//'
+        grep '^#' "$0" | sed -n '2,29p' | sed 's/^# \?//'
         exit 0 ;;
 esac
+
+# ── uninstall — 부작용(prereq 설치·venv 생성) 전에 즉시 처리 ──
+# 기본: .venv 만 삭제 (editable install + deps 마커가 .venv 안에 있어 함께 사라짐). 사용자 데이터 보존.
+# --purge: data/ (platform.db·.setup_complete) + dev/ 도 삭제. 시스템 도구는 절대 자동 제거 안 함 (안내만).
+if [ "${1:-}" = "uninstall" ]; then
+    PURGE=0; case " $* " in *" --purge "*) PURGE=1;; esac
+    echo -e "${CYAN}◈ Glimi uninstall${NC}"
+    if [ -d .venv ]; then
+        rm -rf .venv
+        echo -e "${GREEN}[uninstall] .venv 삭제됨 (editable 'pip install -e .' + deps 마커 포함)${NC}"
+    else
+        echo -e "${YELLOW}[uninstall] .venv 없음 (이미 제거됨)${NC}"
+    fi
+    if [ "$PURGE" = "1" ]; then
+        rm -rf data dev
+        echo -e "${GREEN}[uninstall] --purge: data/ (platform.db·.setup_complete), dev/ 삭제됨${NC}"
+        echo -e "${YELLOW}  남은 사용자 데이터: communities/*/runtime, 흩어진 *.db 는 직접 확인/삭제${NC}"
+    else
+        echo -e "${YELLOW}[uninstall] 사용자 데이터 보존: data/, dev/, communities/*/runtime, *.db${NC}"
+        echo -e "  로컬 데이터까지 지우려면: ${CYAN}./run.sh uninstall --purge${NC}"
+    fi
+    echo ""
+    echo -e "${CYAN}런처가 자동 설치했을 수 있는 시스템 도구는 직접 제거하세요 (자동 제거 안 함):${NC}"
+    echo -e "  ${CYAN}brew uninstall ollama${NC}"
+    echo -e "  ${CYAN}brew uninstall node${NC}"
+    echo -e "  ${CYAN}brew uninstall python@3.12${NC}"
+    echo -e "  ${CYAN}npm uninstall -g @anthropic-ai/claude-code${NC}"
+    echo -e "  Homebrew 자체: 공식 uninstall 스크립트 참고 (https://brew.sh)"
+    echo ""
+    echo -e "${GREEN}Glimi 제거됨 (프로젝트 파일은 그대로 — 완전 삭제는 이 폴더를 지우세요).${NC}"
+    exit 0
+fi
 
 # ── (macOS) 부족한 prereq 자동 설치 — 별도 bootstrap 없이 ./run.sh 한 줄로 끝나게 ──
 # 이미 있으면 즉시 통과(빠름). Python 3.11+ 가 없을 때만 Homebrew→Python 설치, Claude CLI 는
