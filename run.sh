@@ -307,21 +307,34 @@ if [ "$1" = "--legacy" ]; then
 fi
 
 # ── Glimi Workspace 앱 모드 ───────────────────────────
-# ./run.sh workspace [--serve|--demo] [--name X] [--goal "..."] [--backend echo|claude_cli|ollama]
+# ./run.sh workspace [--server|--serve|--demo] [--name X] [--goal "..."] [--backend echo|claude_cli|ollama]
 # 같은 venv·커널(glimi)로 apps/workspace 를 실행.
-#   --serve : 작업을 한 번 돌린 뒤 그 팀을 대시보드(:8800)로 서빙 + 브라우저 자동 오픈.
-#   --demo  : 시드된 실시간 LIVE 데모(자동으로 계속 업데이트되는 런치 팀)를 서빙 (오프라인, 키 불필요).
+#   (기본)   : --server — 멀티 워크스페이스 호스트(홈 + N 워크스페이스 대시보드). 사람용 기본값.
+#   --server : 워크스페이스 목록(읽기전용 Demo + 생성분) + 워크스페이스별 대시보드 + 생성 폼.
+#   --serve  : 작업을 한 번 돌린 뒤 그 팀을 대시보드(:8800)로 서빙 + 브라우저 자동 오픈.
+#   --demo   : 시드된 실시간 LIVE 데모(자동으로 계속 업데이트되는 런치 팀)를 서빙 (오프라인, 키 불필요).
 if [ "$1" = "workspace" ]; then
     shift
     WS_PORT="${GLIMI_WS_PORT:-8800}"
     echo -e "${CYAN}◈ Glimi Workspace${NC}"
+    # 셸 런처(사람) 기본값: --serve/--demo/--server 가 하나도 없으면 멀티 워크스페이스 서버를
+    # 띄운다. (모듈 직접 실행 `python -m apps.workspace.run` 은 손대지 않음 — 테스트의 1회성
+    # CLI 디폴트 유지.)
     case " $* " in
-        *" --serve "*|*" --demo "*)
+        *" --serve "*|*" --demo "*|*" --server "*) : ;;
+        *) set -- --server "$@" ;;
+    esac
+    case " $* " in
+        *" --serve "*|*" --demo "*|*" --server "*)
             echo -e "  대시보드: ${GREEN}http://127.0.0.1:${WS_PORT}${NC}"
+            # --server 는 홈 API(/api/workspaces), --serve/--demo 는 단일 스토어
+            # 대시보드(/api/snapshot) 로 준비 상태를 확인.
+            _probe="/api/snapshot"
+            case " $* " in *" --server "*) _probe="/api/workspaces" ;; esac
             if [ -z "${GLIMI_NO_BROWSER:-}" ]; then
                 (
                     for _ in $(seq 1 60); do
-                        curl -s -o /dev/null "http://127.0.0.1:${WS_PORT}/api/snapshot" 2>/dev/null && break
+                        curl -s -o /dev/null "http://127.0.0.1:${WS_PORT}${_probe}" 2>/dev/null && break
                         sleep 0.5
                     done
                     _u="http://127.0.0.1:${WS_PORT}"
