@@ -324,6 +324,10 @@ You don't need Discord anymore. Community ships its own chat — a Discord-style
 
 Discord still works — it's now one adapter, not a requirement. The chat moves over a WebSocket through a platform-neutral outbox/inbox seam in Core, so the Telegram and other adapters on the roadmap plug into the same place.
 
+**A demo is already there.** On first setup, a read-only **demo community** is seeded into your list automatically — a populated mockup (no token, no bot) so you can see what Glimi does before wiring up anything. Because it's a look-only mockup, posting is disabled and a banner makes that explicit:
+
+<img src="docs/screenshots/en/16-community-demo-readonly.png" alt="Read-only demo community — look-only mockup" width="820"/>
+
 ### The defining UX move
 
 Each character has its own channels — DMs with you, **secret DMs with each other**, and group chats you can read but can't join — whether you reach them through the built-in web chat or Discord. Key property: **context leakage across channels** — what you tell Agent A in a DM can surface in A↔B's private channel, and B's later reply to you carries that without directly quoting it.
@@ -451,7 +455,7 @@ run.bat
 
 **Useful commands**:
 ```bash
-./run.sh workspace --serve              # run the Glimi Workspace app + open its dashboard (→ http://127.0.0.1:8800)
+./run.sh workspace                      # Glimi Workspace server (home + demo + create) → http://127.0.0.1:8800
 ./run.sh --port 9000                    # change dashboard port
 ./run.sh --local-models                 # local LLM mode (dev opt-in) — auto-installs Ollama + pulls default model, skips what exists. See docs/local_models.md
 ./run.sh --setup-only                   # run setup (venv/deps/ollama/model) then exit
@@ -483,17 +487,24 @@ Workspace and Community are deliberately different apps on the *same* Core — o
 
 The team doesn't work in one round-robin room. It interacts the way a real team does — the owner DMs the Coordinator, the Coordinator delegates an angle to each specialist, the specialists debate **each other** in agent-to-agent channels, and the whole team converges in a group round before the Coordinator delivers. Those interactions are recorded as working relationships, which become the edges of the **same** connection graph that renders Community — so your work team shows up as a real interaction web, each member with its own 5-layer memory.
 
-#### Watch it live — `./run.sh workspace --demo`
+#### One server, many workspaces
 
-A seeded, real-time demo (the Workspace twin of Community's showcase) loads a launch team into the store and keeps it moving on a background loop, so the dashboard updates as you watch — offline, no API key, **$0**. One screen shows the whole picture: the graph, each member's memory and facts, the channel viewer (owner DM, delegation DMs, the A2A debates, the group round, and an `mgr-approvals` HITL trail), and the observability panels — a tool-call timeline and an honest LLM-usage card (local/echo priced at $0, every count labeled *est.*).
+`./run.sh workspace` opens a home where one server hosts **many workspaces** (like the Community platform hosts many communities). A read-only **demo workspace** is already there to look at; create a new one with a name and a goal and a fresh team forms around it. Open any workspace to watch its team work.
+
+<img src="docs/screenshots/en/15-workspace-home.png" alt="Glimi Workspace — one server, many workspaces" width="820"/>
+
+#### Watch it live
+
+The demo workspace is a seeded, real-time showcase — a launch team loaded into the store and kept moving on a background loop, so the dashboard updates as you watch (offline, no API key, **$0**). One screen shows the whole picture: the graph, each member's memory and facts, the channel viewer (owner DM, delegation DMs, the A2A debates, the group round, and an `mgr-approvals` HITL trail), and the observability panels — a tool-call timeline and an honest LLM-usage card (local/echo priced at $0, every count labeled *est.*).
 
 | Live team dashboard | Agent detail — memory, facts, relationships |
 |---|---|
 | <img src="docs/screenshots/en/13-workspace-full.png" alt="Workspace live demo dashboard"/> | <img src="docs/screenshots/en/14-workspace-agent-detail.png" alt="Workspace agent detail"/> |
 
 ```bash
-./run.sh workspace --demo               # seeded live demo → http://127.0.0.1:8800
-./run.sh workspace --serve              # run a real goal, then serve the result
+./run.sh workspace                      # the workspace server (home + demo + create) → http://127.0.0.1:8800
+./run.sh workspace --demo               # serve just the seeded demo team
+./run.sh workspace --serve              # run a real goal once, then serve the result
 ./run.sh workspace --serve --approve final   # require owner sign-off on the deliverable
 ```
 
