@@ -20,6 +20,10 @@ router = APIRouter()
 # workspace.*). Default unset → no landing, the OSS default behavior is unchanged.
 _FRONT_HOST = os.environ.get("GLIMI_FRONT_HOST", "").strip().lower()
 _WORKSPACE_URL = os.environ.get("GLIMI_WORKSPACE_URL", "").strip()
+# Community demo lives on its own host (community.*) in deployment; the landing
+# links there directly so the showcase front never points at itself. Unset →
+# fall back to the same-host route (/community/demo).
+_COMMUNITY_URL = os.environ.get("GLIMI_COMMUNITY_URL", "").strip()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -32,8 +36,16 @@ async def home(request: Request):
     if _FRONT_HOST:
         host = (request.headers.get("host") or "").split(":")[0].strip().lower()
         if host == _FRONT_HOST:
+            # Language picker: ?lang=en → English demo (demo-en); default ko.
+            lang = "en" if request.query_params.get("lang") == "en" else "ko"
+            community_url = _COMMUNITY_URL or "/community/demo"
+            community_url_en = community_url.replace("/community/demo", "/community/demo-en")
             return templates.env.TemplateResponse(
-                request, "landing.html", {"workspace_url": _WORKSPACE_URL})
+                request, "landing.html",
+                {"workspace_url": _WORKSPACE_URL,
+                 "community_url": community_url,
+                 "community_url_en": community_url_en,
+                 "lang": lang})
     user = get_current_user(request)
     if not user:
         # 로그아웃 방문자: read-only(데모) 둘러보기로 보냄 (커뮤니티 리스트는 노출 X).
@@ -152,12 +164,13 @@ async def agent_detail_page(
     request: Request,
     agent_id: str,
     community: str,
-    user: dict = Depends(require_user),
 ):
     """에이전트 상세 전체 페이지 — 기존 모달을 풀 화면으로 확장.
-    모달은 요약 카드 + "전체 보기" 버튼만, 실제 밀도 있는 정보는 여기."""
-    if not accounts.user_can_access(user, community):
-        raise HTTPException(403, "no access to this community")
+    모달은 요약 카드 + "전체 보기" 버튼만, 실제 밀도 있는 정보는 여기.
+
+    READ 전용 → public_readonly_user 게이트: 로그인 멤버는 그대로, 익명은
+    read-only(데모) 커뮤니티에서만 둘러보기 허용 (대시보드 anon 뷰와 동일 규약)."""
+    user = public_readonly_user(request, community)  # anon ⟺ is_read_only(community)
 
     all_communities = list_communities()
     target = next((c for c in all_communities if c["id"] == community), None)

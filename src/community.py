@@ -31,7 +31,11 @@ except ImportError:
     import tomli as tomllib  # fallback
 
 PROJECT_ROOT = Path(__file__).parent.parent
-COMMUNITIES_DIR = PROJECT_ROOT / "communities"
+# Communities live in PROJECT_ROOT/communities by default. GLIMI_COMMUNITIES_DIR
+# overrides it so multiple platform instances can serve disjoint community sets
+# from one checkout — e.g. a public demo-only instance (communities-demo/) vs the
+# owner's private real-use instance (communities/). Registry derives from it.
+COMMUNITIES_DIR = Path(os.environ.get("GLIMI_COMMUNITIES_DIR") or (PROJECT_ROOT / "communities"))
 ASSETS_DIR = PROJECT_ROOT / "assets"
 REGISTRY_PATH = COMMUNITIES_DIR / "registry.toml"
 

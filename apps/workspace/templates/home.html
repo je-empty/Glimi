@@ -26,11 +26,12 @@
          color: var(--text-faint); margin: 0 0 12px; font-weight: 700; }
     .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
     a.card {
-      display: block; text-decoration: none; color: inherit;
+      display: block; text-decoration: none; color: inherit; position: relative;
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 16px 18px; box-shadow: var(--shadow); transition: box-shadow .15s, transform .15s;
+      padding: 16px 18px; box-shadow: var(--shadow); transition: box-shadow .15s, transform .15s, border-color .15s;
     }
-    a.card:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); }
+    a.card:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); border-color: var(--accent); }
+    a.card.is-demo { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
     .card .title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
     .card .title { font-size: 16px; font-weight: 600; }
     .badge {
@@ -40,7 +41,8 @@
     .badge.demo { background: var(--accent-soft); color: var(--accent); }
     .card .goal { color: var(--text-dim); font-size: 13px; margin: 2px 0 10px;
                   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .card .meta { color: var(--text-faint); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .card .meta { color: var(--text-faint); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .card .open { margin-left: auto; color: var(--accent); font-weight: 600; }
     section.create {
       margin-top: 34px; background: var(--panel-2); border: 1px solid var(--border);
       border-radius: 12px; padding: 18px 20px;
@@ -65,19 +67,22 @@
   <div class="wrap">
     <header class="top">
       <span class="brand-name">Glimi Workspace</span>
-      <span class="brand-sub">specialist teams on Glimi Core</span>
-      <p class="lede">Open a workspace to watch its team work — the connection graph,
-        each member's 5-layer memory, channels, and live usage. Create a new one with
-        a goal and a fresh team forms around it.</p>
+      <span class="brand-sub">specialist teams on one Glimi Core</span>
+      <p class="lede">Give a goal and a team forms around it — a Coordinator that delegates
+        to Researcher, Builder, and Critic, who talk to each other and report back.
+        Open the demo below to watch one in motion: the connection graph, each member's
+        5-layer memory, channels, and live usage. No login needed.</p>
     </header>
 
-    <h2>Workspaces</h2>
+    <h2>Open a demo</h2>
     <div class="cards" id="cards">
       <div class="empty">Loading workspaces…</div>
     </div>
 
     <section class="create">
-      <h2>Create a workspace</h2>
+      <h2>Or start your own</h2>
+      <p class="lede" style="margin:0 0 14px">Name yourself, give a goal, and a fresh
+        Coordinator-led team spins up around it.</p>
       <form method="post" action="/api/workspaces">
         <div class="field">
           <label for="name">Your name</label>
@@ -109,15 +114,16 @@
           return;
         }
         host.innerHTML = list.map((w) => {
-          const badge = w.kind === "demo"
-            ? '<span class="badge demo">Demo · read-only</span>' : "";
+          const isDemo = w.kind === "demo";
+          const badge = isDemo ? '<span class="badge demo">Demo · read-only</span>' : "";
           const goal = w.goal ? '<div class="goal">' + esc(w.goal) + "</div>" : "";
-          return '<a class="card" href="/w/' + encodeURIComponent(w.id) + '">'
+          return '<a class="card' + (isDemo ? " is-demo" : "") + '" href="/w/' + encodeURIComponent(w.id) + '">'
             + '<div class="title-row"><span class="title">' + esc(w.title || w.id)
             + "</span>" + badge + "</div>"
             + goal
             + '<div class="meta"><span>' + (w.agents || 0) + " agents</span>"
-            + "<span>" + (w.channels || 0) + " channels</span></div>"
+            + "<span>" + (w.channels || 0) + " channels</span>"
+            + '<span class="open">Open →</span></div>'
             + "</a>";
         }).join("");
       }
