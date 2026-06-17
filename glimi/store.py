@@ -276,9 +276,11 @@ class KernelStore(ABC):
                      cache_read_tokens: int = 0, cache_write_tokens: int = 0,
                      est_cost: float = 0.0, estimated: bool = False,
                      latency_ms: Optional[int] = None,
+                     was_blocked: bool = False,
                      ts: Optional[str] = None) -> int:
         """한 번의 LLM 호출 사용량/비용 1행 기록. 기본 구현 = no-op. 영속 store 는 override.
-        ``estimated`` = True 면 토큰이 추정치 (CLI 경로). 반환 = row id (no-op 은 0)."""
+        ``estimated`` = True 면 토큰이 추정치 (CLI 경로). ``was_blocked`` = True 면 예산
+        가드가 Claude 호출을 막은 행 (backend='capped', est_cost=0). 반환 = row id (no-op 은 0)."""
         return 0
 
     def usage_spend(self, *, since: Optional[str] = None, until: Optional[str] = None,

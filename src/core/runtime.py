@@ -6,6 +6,11 @@ ensures the memory module is wired too, and re-exports the public API so
 existing ``from src.core.runtime import runtime`` call sites keep working.
 """
 from glimi.runtime import *  # noqa: F401,F403  (re-export kernel runtime API)
+from glimi.runtime import (  # noqa: F401  (explicit — community/budget seam)
+    set_active_community,
+    community_id,
+    get_store,
+)
 from glimi import runtime as _kr
 from src.adapters.kernel_store import (
     kernel_store as _kernel_store,

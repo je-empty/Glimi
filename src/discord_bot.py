@@ -66,6 +66,12 @@ def _kill_existing_bot():
 def main():
     cid = community.get_community_id()
     community.set_community(cid)  # 언어 등 커뮤니티 컨텍스트 초기화
+    # budget guard 용 active community 전파 (이 봇 프로세스는 단일 커뮤니티).
+    try:
+        from src.core import runtime as _rt
+        _rt.set_active_community(cid)
+    except Exception:
+        pass
     log.info(f"커뮤니티: {cid} ({community.get_community_dir()})")
 
     _kill_existing_bot()

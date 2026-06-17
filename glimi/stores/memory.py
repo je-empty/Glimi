@@ -760,6 +760,7 @@ class InMemoryKernelStore(KernelStore):
                      cache_read_tokens: int = 0, cache_write_tokens: int = 0,
                      est_cost: float = 0.0, estimated: bool = False,
                      latency_ms: Optional[int] = None,
+                     was_blocked: bool = False,
                      ts: Optional[str] = None) -> int:
         with self._lock:
             self._usage_seq += 1
@@ -773,8 +774,16 @@ class InMemoryKernelStore(KernelStore):
                 "cache_write_tokens": int(cache_write_tokens or 0),
                 "est_cost": float(est_cost or 0.0),
                 "estimated": 1 if estimated else 0, "latency_ms": latency_ms,
+                "was_blocked": 1 if was_blocked else 0,
             })
-            return self._usage_seq
+            seq = self._usage_seq
+        # 예산 캐시 무효화 — 다음 가드 체크가 새 spend 를 반영 (특히 blocked 행).
+        try:
+            from .. import budget as _budget
+            _budget.invalidate(community)
+        except Exception:
+            pass
+        return seq
 
     def _usage_in_range(self, since: Optional[str], until: Optional[str],
                         community: Optional[str]) -> list[dict]:

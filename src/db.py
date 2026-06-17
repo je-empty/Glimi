@@ -386,7 +386,9 @@ def init_db():
             cache_write_tokens  INTEGER DEFAULT 0,
             est_cost            REAL DEFAULT 0,
             estimated           INTEGER DEFAULT 0,
-            latency_ms          INTEGER
+            latency_ms          INTEGER,
+            -- 예산 가드가 Claude 호출을 막은 행 (backend='capped', est_cost=0).
+            was_blocked         INTEGER DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_records(ts);
         CREATE INDEX IF NOT EXISTS idx_usage_community ON usage_records(community, ts);
@@ -1613,9 +1615,17 @@ def _migrate_schema():
             cache_write_tokens  INTEGER DEFAULT 0,
             est_cost            REAL DEFAULT 0,
             estimated           INTEGER DEFAULT 0,
-            latency_ms          INTEGER
+            latency_ms          INTEGER,
+            was_blocked         INTEGER DEFAULT 0
         )
     """)
+
+    # usage_records 추가 컬럼 (기존 라이브 DB) — additive, idempotent. budget guard 가
+    # 차단한 호출을 was_blocked=1 로 기록 (backend='capped', est_cost=0).
+    usage_cols = [r["name"] for r in conn.execute("PRAGMA table_info(usage_records)").fetchall()]
+    if "was_blocked" not in usage_cols:
+        conn.execute("ALTER TABLE usage_records ADD COLUMN was_blocked INTEGER DEFAULT 0")
+        print("[DB] usage_records.was_blocked 추가")
 
     # 컬럼 의존 인덱스 — ADD COLUMN 이후에 생성 (idx_mem_* 와 동일 규율).
     try:
