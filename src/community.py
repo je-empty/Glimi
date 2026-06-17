@@ -97,6 +97,18 @@ def get_language() -> str:
     return "en"
 
 
+def is_read_only(community_id: Optional[str] = None) -> bool:
+    """커뮤니티가 read-only(데모/목업 — 둘러보기 전용)인지 여부 (기본: False).
+    registry.toml `[community.<id>] read_only = true` 로 표시. 인자 없으면 현재 커뮤니티."""
+    cid = community_id or get_community_id()
+    if REGISTRY_PATH.exists():
+        with open(REGISTRY_PATH, "rb") as f:
+            registry = tomllib.load(f)
+        info = registry.get("community", {}).get(cid, {})
+        return bool(info.get("read_only", False))
+    return False
+
+
 # ── 경로 헬퍼 ────────────────────────────────────────────
 
 def get_community_dir() -> Path:
@@ -228,6 +240,7 @@ def list_communities() -> list[dict]:
             "name": info.get("name", d.name),
             "description": info.get("description", ""),
             "is_default": d.name == default_id,
+            "read_only": bool(info.get("read_only", False)),
             "has_db": (d / "community.db").exists(),
             "has_env": (d / ".env").exists(),
         })

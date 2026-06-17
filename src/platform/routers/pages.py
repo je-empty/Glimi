@@ -79,6 +79,8 @@ async def community_chat(
             "community_name": target.get("name") or community_id,
             "channel": channel,
             "agent_id": agent_id,
+            # read-only(데모 목업) → 컴포저 비활성 + 배너 (look-only 쇼케이스)
+            "read_only": bool(target.get("read_only")),
         },
     )
 
@@ -115,6 +117,8 @@ async def community_dashboard(
             "community_name": target.get("name") or community_id,
             "community_description": target.get("description") or "",
             "language": _lang,
+            # read-only(데모 목업) → 임베드 채팅 컴포저 비활성 + 배너
+            "read_only": bool(target.get("read_only")),
             # 임베드된 채팅 탭 기본 채널/에이전트 — 오너↔mgr DM (standalone /chat 기본과 동일).
             "chat_agent": "mgr",
             "chat_channel": "dm-mgr",

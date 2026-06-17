@@ -31,6 +31,22 @@ async def lifespan(app: FastAPI):
         else:
             print("[platform] 첫 실행 — http://<host>/setup 에서 초기 설정")
 
+    # 첫 실행 1회: demo(목업) 커뮤니티 자동 시딩 + registry 등록.
+    # 마커로 가드 → 사용자가 나중에 demo 를 지워도 재시드되지 않음.
+    from .config import DATA_DIR
+    _demo_marker = DATA_DIR / ".demo_seeded"
+    if not _demo_marker.exists():
+        try:
+            from .demo_seed import ensure_demo_seeded
+            ensure_demo_seeded()
+        except Exception as e:  # startup 보호 — demo 실패는 무시
+            print(f"[platform] demo seed skipped: {e}")
+        finally:
+            try:
+                _demo_marker.write_text("ok\n", encoding="utf-8")
+            except Exception:
+                pass
+
     # 구 web_dashboard 의 startup community 개념: 없으면 default 리졸브
     from src import community as _comm
     from .dashboard.context import set_startup_community

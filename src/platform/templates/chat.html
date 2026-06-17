@@ -25,6 +25,7 @@
     window.__GLIMI_CHANNEL__   = {{ channel|tojson }};
     window.__GLIMI_AGENT__     = {{ agent_id|tojson }};
     window.__GLIMI_USER__      = {{ (user.username if user else "나")|tojson }};
+    window.__GLIMI_READONLY__  = {{ 'true' if read_only else 'false' }};
   </script>
   <script src="/static/js/chat.js?v={{ asset_v }}"></script>
 {% endblock %}
