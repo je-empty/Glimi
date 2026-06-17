@@ -63,11 +63,19 @@ try:  # script / flat-dir on sys.path
         DELEGATION_CHANNELS, GROUP_CHANNEL, LABELS, SPECIALISTS, TEAM,
         resolve_setup,
     )
+    from approval import (
+        APPROVALS_CHANNEL, ApprovalAction, ApprovalPolicy, WebApprovalQueue,
+        first_line_elision, run_gate,
+    )
 except ImportError:  # imported as apps.workspace.run
     from .team import (
         COLLAB_PAIRS, COLLAB_TURNS, COORDINATOR_DM, DEFAULT_GOAL,
         DELEGATION_CHANNELS, GROUP_CHANNEL, LABELS, SPECIALISTS, TEAM,
         resolve_setup,
+    )
+    from .approval import (
+        APPROVALS_CHANNEL, ApprovalAction, ApprovalPolicy, WebApprovalQueue,
+        first_line_elision, run_gate,
     )
 
 DASHBOARD_HOST = "127.0.0.1"
@@ -80,13 +88,14 @@ INTIMACY_LEAD = 80      # owner ↔ Coordinator
 INTIMACY_MANAGES = 60   # Coordinator ↔ each specialist
 
 
-def banner(backend: str, owner_name: str, goal: str) -> None:
+def banner(backend: str, owner_name: str, goal: str, approve_mode: str) -> None:
     print("=" * 64)
     print("  Glimi Workspace — a specialist team on Glimi Core")
     print("=" * 64)
     print(f"  owner   : {owner_name}")
     print(f"  goal    : {goal}")
     print(f"  backend : {backend}")
+    print(f"  approval: {_approval_banner(approve_mode)}")
     print(f"  team    : " + ", ".join(name for _, name, _, _ in TEAM))
     print(
         "  shape   : owner↔Coordinator (DM), Coordinator↔each specialist (DMs),\n"
@@ -116,6 +125,82 @@ def dm(g: Glimi, agent_id: str, prompt: str, channel: str) -> str:
     reply = g.reply(agent_id, prompt, channel=channel)
     print(f"{LABELS[agent_id]}:\n{reply}\n")
     return reply
+
+
+def _trail_sink(g: Glimi):
+    """Build the injectable trail sink that writes each HITL line to BOTH the
+    kernel observer (console/app) AND the ``mgr-approvals`` store channel, so the
+    proposed→decision→outcome trail is inspectable in the SAME Core dashboard that
+    renders the team (an mgr-system-log-style channel, per CLAUDE.md)."""
+    def on_log(message: str) -> None:
+        g.observer.system(f"[HITL] {message}")
+        g.store.log_message(APPROVALS_CHANNEL, "coordinator", message)
+    return on_log
+
+
+def gated_deliver(
+    g: Glimi, policy: ApprovalPolicy, *, prompt: str, channel: str,
+    kind: str, summary: str, interactive: bool,
+    web_queue: WebApprovalQueue | None = None,
+) -> str:
+    """Generate a candidate deliverable, then run it through the HITL gate.
+
+    The CONSEQUENTIAL action: the Coordinator finalizes the deliverable. We (a)
+    generate the candidate via ``g.reply`` (so it is produced + logged like any
+    turn), (b) wrap it in an :class:`ApprovalAction`, (c) run the gate — AUTO /
+    non-interactive → auto-approve; REQUIRE_APPROVAL + interactive → owner
+    approve/edit/reject; reject → graceful fallback — and (d) return the approved /
+    edited / fallback text. The candidate is gated BEFORE it is returned as the
+    owner-facing deliverable, so approve/edit/reject can rewrite or withhold it.
+
+    A ``web_queue`` (``--serve`` stub) records the action as a PendingApproval and
+    auto-approves, so the seam is visible in the dashboard without a web UI.
+    """
+    candidate = g.reply("coordinator", prompt, channel=channel)
+    print(f"{LABELS['coordinator']}:\n{candidate}\n")
+
+    action = ApprovalAction(kind=kind, summary=summary, proposed_text=candidate,
+                            channel=channel, metadata={"agent": "coordinator"})
+    on_log = _trail_sink(g)
+
+    if web_queue is not None:
+        # --serve / headless: no live mid-run input channel → record + auto-approve.
+        outcome = web_queue.enqueue(action)
+    else:
+        outcome = run_gate(action, policy, interactive=interactive, on_log=on_log)
+
+    if outcome.decision != "AUTO_APPROVED" or web_queue is None:
+        # One-line console summary of the decision (the AUTO/web cases already
+        # log their trail above; this keeps the interactive console readable).
+        print(f"  [HITL] {kind}: {outcome.decision} — "
+              f"{first_line_elision(outcome.final_text)}\n")
+    return outcome.final_text
+
+
+# The action classes the HITL gate can require approval for. Today only the
+# Coordinator's finalization is gated; classifying by ``kind`` means adding more
+# gate points later (e.g. a side-effecting "tool_call") is config, not plumbing.
+APPROVE_FINAL_KINDS = {"final_deliverable"}
+
+
+def build_policy(approve_mode: str) -> ApprovalPolicy:
+    """Map the ``--approve`` flag to an :class:`~approval.ApprovalPolicy`.
+
+    - ``auto`` (default): auto-approve everything — CI / echo / demo, never blocks.
+    - ``final``: require owner approval for the final deliverable; AUTO for the rest.
+    - ``off``:  same as ``auto`` (no human gate) — explicit "no approval" alias.
+    """
+    if approve_mode == "final":
+        return ApprovalPolicy.require_for(APPROVE_FINAL_KINDS)
+    return ApprovalPolicy.auto_approve_all()
+
+
+def _approval_banner(approve_mode: str) -> str:
+    """One-line description of the approval mode for the startup banner."""
+    if approve_mode == "final":
+        return ("require owner approval for the final deliverable "
+                "(approve / edit / reject)")
+    return "auto-approve all (no human gate)"
 
 
 def a2a_exchange(g: Glimi, a: str, b: str, channel: str, brief: str,
@@ -183,9 +268,25 @@ def form_relationships(g: Glimi, collab_turns: dict[tuple[str, str], int]) -> No
                                           f"goal together over {n} exchange(s).")
 
 
-def run_workspace(g: Glimi, owner_name: str, goal: str) -> str:
+def run_workspace(
+    g: Glimi, owner_name: str, goal: str, *,
+    policy: ApprovalPolicy | None = None,
+    interactive: bool | None = None,
+    web_queue: WebApprovalQueue | None = None,
+) -> str:
     """Drive the full interaction topology on one shared store; return the
-    final deliverable. Records relationships as the interactions form them."""
+    final deliverable. Records relationships as the interactions form them.
+
+    The Coordinator's FINALIZATION of the deliverable is gated by the HITL
+    :class:`~approval.ApprovalPolicy` (approve / edit / reject + fallback).
+    Defaults keep existing callers behaviorally unchanged: ``policy=None`` →
+    auto-approve-all, ``interactive=None`` → ``sys.stdin.isatty()``, so a
+    non-interactive run never blocks and the deliverable is still produced.
+    """
+    if policy is None:
+        policy = ApprovalPolicy.auto_approve_all()
+    if interactive is None:
+        interactive = sys.stdin.isatty()
     owner_id = g.owner.id()
     print("--- The workspace opens ---\n")
 
@@ -257,15 +358,24 @@ def run_workspace(g: Glimi, owner_name: str, goal: str) -> str:
         )
         print(f"{LABELS[sid]}:\n{reply}\n")
 
-    # 5) Coordinator delivers the final synthesis — back in the owner DM.
+    # 5) Coordinator delivers the final synthesis — back in the owner DM. THIS is
+    #    the consequential action: it is gated by the HITL approval policy, so the
+    #    owner stays in the loop (approve / edit / reject) before it is committed
+    #    as the owner-facing deliverable.
     print("--- The Coordinator delivers ---\n")
-    final = dm(
-        g, "coordinator",
-        f"As {owner_name}'s Coordinator, you've heard from the whole team across "
-        f"the workspace. Deliver the final result for {owner_name}: a clear, "
-        f"organized synthesis toward the goal \"{goal}\" — the decision, the plan, "
-        f"and the top risk to watch. This is the deliverable.",
+    final = gated_deliver(
+        g, policy,
+        prompt=(
+            f"As {owner_name}'s Coordinator, you've heard from the whole team "
+            f"across the workspace. Deliver the final result for {owner_name}: a "
+            f"clear, organized synthesis toward the goal \"{goal}\" — the decision, "
+            f"the plan, and the top risk to watch. This is the deliverable."
+        ),
         channel=COORDINATOR_DM,
+        kind="final_deliverable",
+        summary=f"final deliverable for {owner_name} — goal: {goal}",
+        interactive=interactive,
+        web_queue=web_queue,
     )
 
     # Record the relationships these interactions formed → dashboard graph edges.
@@ -358,6 +468,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--serve", action="store_true",
         help="After the work, serve the team in the Core dashboard (default OFF).",
     )
+    ap.add_argument(
+        "--approve", choices=["auto", "final", "off"], default="auto",
+        help="HITL approval mode: 'auto' (default — auto-approve all, never "
+             "blocks; for CI/echo/demos), 'final' (require owner approval for the "
+             "final deliverable: approve/edit/reject), 'off' (alias for auto).",
+    )
     return ap.parse_args(argv)
 
 
@@ -370,14 +486,28 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("GLIMI_LANG", "en")
 
     setup = resolve_setup(name_flag=args.name, goal_flag=args.goal)
-    banner(backend, setup.owner_name, setup.goal)
+    banner(backend, setup.owner_name, setup.goal, args.approve)
 
     # One Glimi instance == one shared store for the whole team.
     g = Glimi(backend=backend, owner_name=setup.owner_name)
     for aid, name, agent_type, persona in TEAM:
         g.add_agent(aid, name=name, persona=persona, agent_type=agent_type)
 
-    final = run_workspace(g, setup.owner_name, setup.goal)
+    # HITL approval gate. The owner can interactively approve/edit/reject the
+    # consequential finalization only on a real TTY; non-TTY (CI, pipes, echo
+    # demo) auto-approves so the run never hangs — same isatty discipline as setup.
+    interactive = sys.stdin.isatty()
+    policy = build_policy(args.approve)
+    web_queue = None
+    if args.serve:
+        # --serve dashboard is read-only + post-run → no live mid-run input
+        # channel. Force auto-approve and record the seam via the queue stub.
+        policy = ApprovalPolicy.auto_approve_all()
+        web_queue = WebApprovalQueue(on_log=_trail_sink(g))
+
+    final = run_workspace(g, setup.owner_name, setup.goal,
+                          policy=policy, interactive=interactive,
+                          web_queue=web_queue)
     summary(g, setup.owner_name, setup.goal, final)
 
     if args.serve:

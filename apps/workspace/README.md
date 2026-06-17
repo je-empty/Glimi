@@ -72,6 +72,35 @@ GLIMI_LLM_BACKEND=claude_cli PYTHONPATH=. python apps/workspace/run.py \
 PYTHONPATH=. python apps/workspace/run.py --backend ollama   # local Ollama
 ```
 
+## Human-in-the-loop — the approval gate
+
+A real team can let routine work flow on its own, but a **consequential** action — the Coordinator *finalizing the deliverable* — is exactly where a human should stay in the loop. Workspace gates that one action behind an **approval policy** (`apps/workspace/approval.py`), so the owner judges what the agent can own versus where they must intervene.
+
+**`--approve` modes:**
+
+| Mode | Behavior |
+|---|---|
+| `auto` *(default)* | Auto-approve everything. Never blocks — the CI / echo / demo default. |
+| `final` | Require the owner to **approve / edit / reject** the final deliverable. AUTO for everything else. |
+| `off` | Alias for `auto` (an explicit "no human gate"). |
+
+```bash
+# Require approval before the Coordinator commits the deliverable:
+PYTHONPATH=. python apps/workspace/run.py --name Owner --goal "Plan our launch" --approve final
+```
+
+On a real terminal with `--approve final`, after the Coordinator drafts the synthesis the owner is prompted:
+
+- **approve** → the proposal is delivered as-is.
+- **edit** → the owner types a replacement deliverable (multi-line until a blank line); the edited text is delivered.
+- **reject** → a graceful **fallback** runs (the default is a deterministic, clearly-labeled *"[Deliverable withheld — owner rejected …]"* placeholder, so the run still returns a non-empty deliverable and the summary / relationship graph stay intact). A `REVISE`-style fallback (ask the Coordinator to revise once with the reject reason) is a documented hook in `approval.py`.
+
+**Never hangs.** The gate reuses the exact same `sys.stdin.isatty()` discipline as first-run setup: a non-TTY run (CI, pipes, the echo demo) **auto-approves even under `--approve final`**, so it can't block. The `ApprovalPolicy` is configurable three ways — `auto_approve_all()`, `require_for({kinds})` for a *class* of actions, or a per-action `callback` — and actions are classified by a `kind`, so adding more gate points later (e.g. a side-effecting `tool_call`) is configuration, not new plumbing.
+
+**The HITL trail is observable.** Each gated action logs three lines — *PROPOSED → DECISION → OUTCOME* — to **both** the kernel observer (console) **and** an `mgr-approvals` store channel, so the decision history is inspectable in the **same Core dashboard** that renders the team (an mgr-system-log-style channel, never a conversation channel).
+
+**`--serve` (headless).** The dashboard is read-only and runs *after* the team finishes — there is no live mid-run input channel — so `--serve` forces auto-approve and records each gated action via a documented `WebApprovalQueue` **stub** (a `PendingApproval` line into the `mgr-approvals` channel, with a `TODO(serve)` naming the future dashboard approve/reject endpoint). No half-built web UI.
+
 ### View it in the Core dashboard — `--serve`
 
 `--serve` is **off by default** (so a plain run completes, prints the deliverable, and is CI-safe). With it, after the work the app serves the finished team in the **same store-driven Core dashboard that serves Community** — the **connection graph** (owner + Coordinator hubs, the specialists, and the collaboration edges between them) plus each member's 5-layer memory:
@@ -143,8 +172,9 @@ things first — readiness stage, target audience, and the definition of success
 
 ## Files
 
-- `run.py` — entry point: argument parsing, the interaction topology (`run_workspace`: the owner DM, delegation DMs, the A2A exchanges, the group round, the delivery, and `form_relationships`), the summary, and the `--serve` dashboard hand-off.
+- `run.py` — entry point: argument parsing, the interaction topology (`run_workspace`: the owner DM, delegation DMs, the A2A exchanges, the group round, the **HITL-gated** delivery via `gated_deliver`, and `form_relationships`), the summary, and the `--serve` dashboard hand-off.
 - `team.py` — the team personas, the interaction topology constants (channels + collaborating pairs), and first-run setup (`resolve_setup`). Pure config + I/O; imports nothing from `glimi`/`src`/`discord`.
+- `approval.py` — the **human-in-the-loop approval gate**: `ApprovalPolicy` (REQUIRE_APPROVAL vs AUTO), `run_gate` (approve / edit / reject + fallback), the observable trail, and the `WebApprovalQueue` `--serve` stub. Kernel-neutral — imports nothing from `glimi`/`src`/`discord`.
 - `README.md` — this file.
 
-Tests live in `tests/unit/test_glimi_workspace.py` (setup resolution, the multi-channel topology, the relationship web, dashboard population, the **snapshot-relationships graph assertion**, and a kernel-only import guard).
+Tests live in `tests/unit/test_glimi_workspace.py` (setup resolution, the multi-channel topology, the relationship web, dashboard population, the **snapshot-relationships graph assertion**, and a kernel-only import guard) and `tests/unit/test_workspace_approval.py` (policy decisions, gate routing for approve/edit/reject, the auto + non-interactive never-prompt safety, fallback-on-reject keeping `final` non-empty, and the observable trail).
