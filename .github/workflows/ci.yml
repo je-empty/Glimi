@@ -15,9 +15,15 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: Syntax check
-        run: python -m compileall -q glimi src tests
+        run: python -m compileall -q glimi eval src tests
       - name: Unit tests (kernel + formatting)
         run: |
           pip install -e . pytest
           python -m pytest tests/unit/ -q --ignore=tests/unit/test_community_isolation.py
       # 격리 테스트(test_community_isolation)는 별도 DB 셋업 후 추가 (#5)
+      - name: Eval harness structure check (echo, no LLM cost)
+        # echo backend = deterministic, no Claude CLI, no API key. Loads + schema-
+        # validates every golden case, runs each through the real runtime, runs the
+        # deterministic checks, and SKIPS the LLM judge. Scored regression
+        # (`python -m eval run --backend claude_cli` + `eval gate`) is opt-in/manual.
+        run: python -m eval run --backend echo

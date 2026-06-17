@@ -42,6 +42,9 @@ CLAUDE.local.md
 # QA 테스트 결과 (대화 발췌가 있어 개인정보 포함 가능)
 tests/e2e/results/
 
+# Eval 런 리포트 (생성물 — 매 실행마다 갱신, 커밋 대상 아님)
+eval/reports/
+
 # 백업 (개인 데이터)
 backups/
 
