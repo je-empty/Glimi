@@ -9,7 +9,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from src.community import (
@@ -20,7 +20,7 @@ from src.community import (
 )
 
 from .. import accounts
-from ..auth import require_user
+from ..auth import public_readonly_user, require_user
 from ..community_ctx import run_in_community
 from ..discord_verify import verify_token_sync, wipe_glimi_channels_sync
 from ..supervisor import supervisor
@@ -479,13 +479,14 @@ avatar_router = APIRouter()
 
 @avatar_router.get("/api/avatar")
 async def serve_avatar(
+    request: Request,
     community: str,
     id: str,
     variant: str = "",
-    user: dict = Depends(require_user),
 ):
-    if not accounts.user_can_access(user, community):
-        raise HTTPException(403, "no access")
+    # 공개 둘러보기: read-only(데모) 커뮤니티의 아바타는 익명도 로드 가능 (read
+    # 전용 이미지). 그 외엔 require_user — predicate 는 community 에 바인딩.
+    public_readonly_user(request, community)
 
     def _resolve_path():
         from src import community as _comm
