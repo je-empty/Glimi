@@ -26,21 +26,27 @@
     <section class="step" data-step="1">
       <h2>기본 대화 모델</h2>
       <p class="step-sub">새로 만드는 커뮤니티가 이 설정을 <b>기본값으로 상속</b>해요. 커뮤니티별로 나중에 다르게 바꿀 수 있어요.</p>
+      <p class="step-sub"><b>무료 런타임 = 로컬 모델(Ollama).</b> Claude 백엔드 에이전트는 사용량만큼 과금되는 API 크레딧을 씁니다 — 아래에서 월 상한을 정하세요.</p>
       <div class="choice-grid">
-        <button type="button" class="choice" data-backend="cloud" id="ch-cloud">
+        <button type="button" class="choice" data-backend="hybrid" id="ch-hybrid">
+          <span class="choice-emoji">⚖️</span>
+          <span class="choice-title">하이브리드 <span class="opt">권장</span></span>
+          <span class="choice-desc">페르소나는 로컬(무료), mgr/creator/dev 만 Claude. Glimi 느낌을 살리는 가장 저렴한 구성.</span>
+        </button>
+        <button type="button" class="choice" data-backend="claude" id="ch-claude">
           <span class="choice-emoji">☁️</span>
-          <span class="choice-title">클라우드 (Claude)</span>
-          <span class="choice-desc">가장 똑똑하고 간편. API 키만 있으면 됨.</span>
+          <span class="choice-title">Claude 전용</span>
+          <span class="choice-desc">전부 Claude. 가장 똑똑하지만 모든 턴이 과금됨(metered).</span>
         </button>
         <button type="button" class="choice" data-backend="local" id="ch-local">
           <span class="choice-emoji">🖥️</span>
-          <span class="choice-title">로컬 (Ollama)</span>
-          <span class="choice-desc">내 컴퓨터에서 무료로. 다운로드 필요, 사양 탐.</span>
+          <span class="choice-title">로컬 전용 (Ollama)</span>
+          <span class="choice-desc">전부 내 컴퓨터에서 — 진짜 무료($0). 다운로드 필요, 사양 탐.</span>
         </button>
       </div>
 
-      <!-- cloud detail -->
-      <div class="detail" id="detail-cloud" hidden>
+      <!-- claude creds (claude-only + hybrid) -->
+      <div class="detail" id="detail-claude" hidden>
         <label class="field">
           <span class="field-label">Anthropic API 키</span>
           <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
@@ -48,13 +54,22 @@
         </label>
         <label class="check">
           <input type="checkbox" id="use-cli">
-          <span>키 없이 <code>claude</code> CLI 로그인을 쓸게요 (Claude Code 사용자)</span>
+          <span>키 대신 <code>claude</code> CLI 로그인을 쓸게요 (Claude Code 사용자 — headless <code>claude -p</code> 도 사용량만큼 과금됩니다, 구독 무료 아님)</span>
         </label>
       </div>
 
-      <!-- local detail -->
-      <div class="detail" id="detail-local" hidden>
-        <p class="field-label">사양 티어</p>
+      <!-- monthly cap (claude-only + hybrid) -->
+      <div class="detail" id="detail-cap" hidden>
+        <label class="field">
+          <span class="field-label">월 상한 (USD)</span>
+          <input type="number" id="monthly-cap" min="0" step="1" value="20">
+          <span class="field-hint">Claude 백엔드 에이전트가 쓰는 metered 크레딧의 월 한도. 기본 $20.</span>
+        </label>
+      </div>
+
+      <!-- tier (hybrid + local) -->
+      <div class="detail" id="detail-tier" hidden>
+        <p class="field-label">로컬 사양 티어 <span class="field-hint">(하이브리드는 페르소나용 로컬 모델에 필요)</span></p>
         <div class="tier-list">
           <label class="tier"><input type="radio" name="tier" value="lite"><span><b>Lite</b> · e2b · ~16GB RAM · 최속, 품질↓</span></label>
           <label class="tier"><input type="radio" name="tier" value="standard" checked><span><b>Standard</b> · e4b · 16GB+ RAM · 균형 (권장)</span></label>
@@ -105,12 +120,23 @@
 {% block bottom_scripts %}
 <script>
 (function () {
-  const state = { step: 1, backend: null };
+  // Hybrid 가 권장 기본값 — 미리 선택됨.
+  const state = { step: 1, backend: 'hybrid' };
   const errEl = document.getElementById('setup-err');
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
 
   function showErr(msg) { errEl.textContent = msg; errEl.hidden = !msg; }
+
+  // 모드 → 어떤 detail 패널을 보일지.
+  function syncDetails() {
+    const usesClaude = state.backend === 'claude' || state.backend === 'hybrid';
+    const usesLocal = state.backend === 'local' || state.backend === 'hybrid';
+    $('#detail-claude').hidden = !usesClaude;
+    $('#detail-cap').hidden = !usesClaude;     // 월 상한 = Claude 쓸 때만
+    $('#detail-tier').hidden = !usesLocal;     // 티어 = 로컬 쓸 때만
+    $$('.choice').forEach(b => b.classList.toggle('selected', b.dataset.backend === state.backend));
+  }
 
   function render() {
     $$('.step').forEach(el => { el.hidden = +el.dataset.step !== state.step; });
@@ -128,16 +154,14 @@
   // backend choice
   $$('.choice').forEach(btn => btn.addEventListener('click', () => {
     state.backend = btn.dataset.backend;
-    $$('.choice').forEach(b => b.classList.toggle('selected', b === btn));
-    $('#detail-cloud').hidden = state.backend !== 'cloud';
-    $('#detail-local').hidden = state.backend !== 'local';
+    syncDetails();
     showErr('');
   }));
 
   function validateStep() {
     if (state.step === 1) {
-      if (!state.backend) return '모델 백엔드를 선택하세요.';
-      if (state.backend === 'cloud') {
+      if (!state.backend) return '모델 모드를 선택하세요.';
+      if (state.backend === 'claude' || state.backend === 'hybrid') {
         const key = $('#api-key').value.trim();
         const cli = $('#use-cli').checked;
         if (!key && !cli) return 'API 키를 입력하거나 CLI 사용을 체크하세요.';
@@ -166,6 +190,7 @@
   $('#btn-finish').addEventListener('click', async () => {
     const e = validateStep();
     if (e) return showErr(e);
+    const capVal = parseInt($('#monthly-cap').value, 10);
     const body = {
       backend: state.backend,
       admin_password: $('#admin-pw').value.trim(),
@@ -173,6 +198,7 @@
       use_cli: $('#use-cli').checked,
       tier: (document.querySelector('input[name="tier"]:checked') || {}).value || 'standard',
       discord_token: $('#discord-token').value.trim(),
+      monthly_cap_usd: Number.isFinite(capVal) ? capVal : 20,
     };
     const fin = $('#btn-finish');
     fin.disabled = true; fin.textContent = '설정 중...';
@@ -184,6 +210,12 @@
       });
       const data = await res.json();
       if (!res.ok) { showErr(data.error || '설정에 실패했습니다.'); fin.disabled = false; fin.textContent = '설정 완료'; return; }
+      if (data.warnings && data.warnings.length) {
+        // 설정은 됐지만 자격증명 누락 등 — 경고를 보여주고 잠시 후 진행.
+        showErr('⚠ ' + data.warnings.join(' '));
+        setTimeout(() => { window.location.href = data.redirect || '/login'; }, 3500);
+        return;
+      }
       window.location.href = data.redirect || '/login';
     } catch (err) {
       showErr('네트워크 오류: ' + err);
@@ -191,6 +223,7 @@
     }
   });
 
+  syncDetails();  // Hybrid 미리 선택 상태 반영
   render();
 })();
 </script>

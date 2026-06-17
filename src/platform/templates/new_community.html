@@ -127,15 +127,21 @@
         <label>대화 모델 <span class="hint">(기본값 = 전역 설정 상속, 나중에 변경 가능)</span></label>
         <select id="f-model-mode" onchange="onModelMode()">
           <option value="inherit" selected>기본값 사용 (전역 설정 상속)</option>
-          <option value="cloud">클라우드 — 이 커뮤니티 전용 Claude 키</option>
-          <option value="local">로컬 (Ollama)</option>
+          <option value="hybrid">하이브리드 — 페르소나=로컬(무료), 나머지=Claude (권장·저비용)</option>
+          <option value="claude">Claude 전용 — 이 커뮤니티 전용 Claude 키 (전부 과금)</option>
+          <option value="local">로컬 전용 (Ollama) — 진짜 무료 $0</option>
         </select>
+        <div class="hint" style="margin-top:4px;font-size:12px">무료 런타임 = 로컬 모델. Claude 백엔드는 사용량만큼 과금됩니다(metered).</div>
         <div id="model-cloud" class="wiz-field" style="display:none;margin-top:8px">
           <label>Anthropic API 키 <span class="hint">(이 커뮤니티 전용)</span></label>
           <input id="f-model-key" type="password" placeholder="sk-ant-..." autocomplete="off">
         </div>
+        <div id="model-cap" class="wiz-field" style="display:none;margin-top:8px">
+          <label>월 상한 (USD) <span class="hint">(Claude 크레딧 한도 · 선택, 기본 $20)</span></label>
+          <input id="f-model-cap" type="number" min="0" step="1" placeholder="20">
+        </div>
         <div id="model-local" class="wiz-field" style="display:none;margin-top:8px">
-          <label>로컬 사양 티어</label>
+          <label>로컬 사양 티어 <span class="hint">(하이브리드는 페르소나용 로컬 모델에 필요)</span></label>
           <select id="f-model-tier">
             <option value="lite">Lite · e2b · 16GB RAM</option>
             <option value="standard" selected>Standard · e4b · 16GB+ (권장)</option>
@@ -239,8 +245,11 @@ let wizState = {
 
 function onModelMode() {
   const m = document.getElementById('f-model-mode').value;
-  document.getElementById('model-cloud').style.display = m === 'cloud' ? '' : 'none';
-  document.getElementById('model-local').style.display = m === 'local' ? '' : 'none';
+  const usesClaude = m === 'claude' || m === 'hybrid';
+  const usesLocal = m === 'local' || m === 'hybrid';
+  document.getElementById('model-cloud').style.display = usesClaude ? '' : 'none';
+  document.getElementById('model-cap').style.display = usesClaude ? '' : 'none';
+  document.getElementById('model-local').style.display = usesLocal ? '' : 'none';
 }
 
 function wizGoto(step) {
@@ -414,6 +423,8 @@ async function wizCreate() {
   const modelMode = document.getElementById('f-model-mode').value;
   const modelKey = document.getElementById('f-model-key').value.trim();
   const modelTier = document.getElementById('f-model-tier').value;
+  const capRaw = document.getElementById('f-model-cap').value.trim();
+  const modelCap = capRaw === '' ? null : parseInt(capRaw, 10);
 
   const errBox = document.getElementById('create-err');
   const loading = document.getElementById('create-loading');
@@ -438,6 +449,7 @@ async function wizCreate() {
         model_mode: modelMode,
         model_api_key: modelKey,
         model_tier: modelTier,
+        model_monthly_cap_usd: modelCap,
       })
     });
     const res = await r.json();
