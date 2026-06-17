@@ -14,17 +14,17 @@ print(chat.reply("nova", "hi there!"))  # real models: backend="claude_cli" or "
 
 Two lines stand up a cast because the engine underneath carries the rest — that engine is **Glimi Core**. State lives in storage (SQLite by default), not the prompt, so a character keeps its relationships, facts, and pinned memories across a restart and even a model swap (Haiku → a local Llama). Glimi measures the model's context window and injects only as much memory as fits, so the same character runs on a 4 GB laptop or a 24 GB workstation without its personality getting silently truncated — and you can mix cloud (Claude) and local (Ollama / vLLM / llama.cpp) per character. Run it fully local and it costs nothing.
 
-And you watch the whole thing run: an agent relationship graph, a per-character memory inspector, a channel viewer, and a tool-call timeline, live in a web dashboard built into the engine.
+And you watch the whole thing run: an agent relationship graph, a per-character memory inspector, a channel viewer, a tool-call timeline, and an LLM cost/usage card, live in a web dashboard built into the engine.
 
-![Web dashboard](docs/screenshots/en/01-dashboard.png)
+![Web dashboard](docs/screenshots/en/11-community-dashboard.png)
 
-You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends living on Discord: they chat in their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** (role-based work agents — a Coordinator delegates to a Researcher, Builder, and Critic; early) and the starters in `examples/` stand on the same Core.
+You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends you chat with in a built-in web UI (or Discord): they keep their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** — role-based work agents (a Coordinator delegates to a Researcher, Builder, and Critic), with a live real-time demo — and the starters in `examples/` stand on the same Core.
 
 ![Glimi Community](resources/Glimi-Community-banner.svg)
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
-> **Status (Jun 2026)** — the Core kernel is extracted into a top-level `glimi/` package and imports with zero Discord/DB dependency. It's not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e .`). The chat UI is mid-move from Discord to a built-in web chat, so Discord is becoming optional — the showcase that's finished and running today is the Discord one.
+> **Status (Jun 2026)** — the Core kernel is extracted into a top-level `glimi/` package and imports with zero Discord/DB dependency. It's not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e .`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also recently landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), **tool-call and cost/latency observability** in the dashboard, and a **human-in-the-loop approval gate** in Workspace.
 
 ```
 Glimi/                          (single git repo, multi-package monorepo)
@@ -37,10 +37,12 @@ Glimi/                          (single git repo, multi-package monorepo)
 │   ├── supervisor/             · proactive 8th layer
 │   └── observability/          · live dashboard (graph + memory + tool log)
 ├── apps/
-│   └── community/                ⭐ Glimi Community       (the flagship app)
+│   ├── community/                ⭐ Glimi Community       (the flagship app)
+│   └── workspace/                · Glimi Workspace        (role-based work team + --demo)
 ├── examples/                   · lightweight starters
 │   ├── research_buddies/       · two agents collaborate on a topic
-│   └── dev_pair/               · planner + executor
+│   ├── dev_pair/               · planner + executor
+│   └── dashboard_demo/         · view any population in the Core dashboard
 ├── docs/
 ├── tests/
 ├── LICENSE                     · Apache-2.0
@@ -98,7 +100,10 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 | **5-layer persistent memory** | L0 raw → L1-L3 episodic rollup → L3 semantic facts (subject·predicate·object with `valid_from`/`valid_to` supersession) → L4 relationship → L5 pinned. Async Haiku extraction off the response path. |
 | **Autonomous A2A conversation** | 1:1 and multi-agent channels. Turn-limited, closure-detected. Agents start conversations with each other via the tool protocol. |
 | **Proactive supervisor layer** | The one layer that ticks without input. Pair scanner opens new agent-to-agent channels; chat watcher revives idle ones; scene watcher progresses stuck workflows. |
-| **Live observability dashboard** | Cytoscape.js agent graph, per-agent 5-layer memory inspector, real-time channel viewer, tool call timeline, model swap UI, runtime state badges. |
+| **Live observability dashboard** | Cytoscape.js agent graph, per-agent 5-layer memory inspector, real-time channel viewer, tool-call timeline, LLM usage/cost card, model swap UI, runtime state badges. |
+| **Evaluation harness** | A golden set across persona / tool-use / memory / fallback / supervisor capabilities; deterministic checks + an LLM-as-judge (reused, not reinvented); a backend-tagged **regression gate** (fails CI on a pass-rate or judge-score drop); a production-feedback loop that promotes a flagged bad turn into a golden case. Runs free on the offline `echo` backend. |
+| **Cost & latency accounting** | Every LLM call records tokens, estimated cost, and latency at one choke-point; every tool call records args/result/latency/ok at another. Honest by construction — local/echo priced at $0, CLI/estimate rows labeled *est.*, dollars shown only for real priced spend. |
+| **Human-in-the-loop gate** | An approval policy (`approve / edit / reject` + fallback + decision trail) around a consequential action, used by Workspace; never hangs (non-interactive auto-approves). |
 | **Self-healing (optional)** | Agent emits `dev_request` tool call → Opus subprocess patches source → auto-restart with patch summary in next turn's context. |
 
 ### The 8 layers
@@ -309,9 +314,19 @@ The friends in Community remember you. No re-introducing yourself each time, the
 
 ![Connection Graph — Live](docs/screenshots/en/04-graph-live.webp)
 
+### Talk to them — the built-in web chat
+
+You don't need Discord anymore. Community ships its own chat — a Discord-style layout with a per-character sidebar, grouped message rows, replies, reactions, and threads — in a light or dark theme, and it works on a phone. The same room you read in the dashboard is the room you type into; the connection graph and the chat are two views of one store (click an edge in the graph and it drops you into that conversation).
+
+| Web chat (light) | Web chat (dark) | On mobile |
+|---|---|---|
+| <img src="docs/screenshots/en/08-web-chat.png" alt="Web chat — light theme"/> | <img src="docs/screenshots/en/09-web-chat-dark.png" alt="Web chat — dark theme"/> | <img src="docs/screenshots/en/10-web-chat-mobile.png" height="420" alt="Web chat on mobile"/> |
+
+Discord still works — it's now one adapter, not a requirement. The chat moves over a WebSocket through a platform-neutral outbox/inbox seam in Core, so the Telegram and other adapters on the roadmap plug into the same place.
+
 ### The defining UX move
 
-Agents live inside a Discord server as real members. They have DMs with you, **secret DMs with each other**, and group chats you can't participate in but can read. Key property: **context leakage across channels** — what you tell Agent A in a DM can surface in A↔B's private channel, and B's later reply to you carries that without directly quoting it.
+Each character has its own channels — DMs with you, **secret DMs with each other**, and group chats you can read but can't join — whether you reach them through the built-in web chat or Discord. Key property: **context leakage across channels** — what you tell Agent A in a DM can surface in A↔B's private channel, and B's later reply to you carries that without directly quoting it.
 
 ```
 14:02 — you DM A in #dm-A
@@ -464,18 +479,39 @@ python -m src.community list            # list communities (CLI)
 
 A one-person company still has a team here. The agents in Glimi Workspace are a Coordinator that runs point and role-split colleagues (Researcher, Builder, Critic). You set the project context once — what you're building, why the last decision went the way it did, how you like to work — and each of them keeps it in its own store, so you don't re-explain from scratch every time you open a session. Switch a model from Haiku to Sonnet, or from cloud to local, and the team keeps working off the same context. It's less a tool you re-hire per task than permanent staff that follows you and builds up the context as it goes.
 
-Run it with `./run.sh workspace --serve` (→ http://127.0.0.1:8800).
+Workspace and Community are deliberately different apps on the *same* Core — one is a standing work team, the other is friends who remember you — and that's the point: a second, distinctly different app on one kernel is the proof that Core is reusable, not a monolith. Workspace imports only the `glimi` package: zero `discord`, zero Community code.
+
+The team doesn't work in one round-robin room. It interacts the way a real team does — the owner DMs the Coordinator, the Coordinator delegates an angle to each specialist, the specialists debate **each other** in agent-to-agent channels, and the whole team converges in a group round before the Coordinator delivers. Those interactions are recorded as working relationships, which become the edges of the **same** connection graph that renders Community — so your work team shows up as a real interaction web, each member with its own 5-layer memory.
+
+#### Watch it live — `./run.sh workspace --demo`
+
+A seeded, real-time demo (the Workspace twin of Community's showcase) loads a launch team into the store and keeps it moving on a background loop, so the dashboard updates as you watch — offline, no API key, **$0**. One screen shows the whole picture: the graph, each member's memory and facts, the channel viewer (owner DM, delegation DMs, the A2A debates, the group round, and an `mgr-approvals` HITL trail), and the observability panels — a tool-call timeline and an honest LLM-usage card (local/echo priced at $0, every count labeled *est.*).
+
+| Live team dashboard | Agent detail — memory, facts, relationships |
+|---|---|
+| <img src="docs/screenshots/en/13-workspace-full.png" alt="Workspace live demo dashboard"/> | <img src="docs/screenshots/en/14-workspace-agent-detail.png" alt="Workspace agent detail"/> |
+
+```bash
+./run.sh workspace --demo               # seeded live demo → http://127.0.0.1:8800
+./run.sh workspace --serve              # run a real goal, then serve the result
+./run.sh workspace --serve --approve final   # require owner sign-off on the deliverable
+```
+
+#### Human-in-the-loop — the approval gate
+
+Before the Coordinator commits the one consequential action — delivering the final synthesis — Workspace can route it through an **approval gate**: the owner approves, edits, or rejects it, with a deterministic fallback on reject and a decision trail written to `mgr-approvals` (visible in the dashboard). Policy is config (`--approve auto|final|off`), and it never hangs — non-interactive runs (CI, pipes, the demo) auto-approve. It's the HITL seam an evaluator looks for: a checkpoint on the action that matters, observable after the fact.
 
 ---
 
 ## Examples
 
-Lightweight starters that demonstrate Glimi Core directly, without Community's social-sim scaffolding. (Planned.)
+Lightweight starters that demonstrate Glimi Core directly, without Community's social-sim scaffolding.
 
 | Example | What it shows |
 |---|---|
 | `examples/research_buddies/` | Two agents collaborate on a research topic, take turns reading and summarizing, build up shared notes |
 | `examples/dev_pair/` | Planner + executor pattern — one agent breaks the task into steps, the other carries them out, both share a memory store |
+| `examples/dashboard_demo/` | Seed a small population on an in-memory store and serve it in the read-only Core dashboard (`glimi[dashboard]`) |
 
 ---
 
