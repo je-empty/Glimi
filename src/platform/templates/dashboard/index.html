@@ -259,6 +259,7 @@
   window.__GLIMI_AGENT__    = {{ chat_agent|tojson }};
   window.__GLIMI_USER__     = {{ (user.username if user else "나")|tojson }};
   window.__GLIMI_EMBEDDED__ = true;
+  window.__GLIMI_READONLY__ = {{ 'true' if read_only else 'false' }};
 </script>
 <script src="/static/js/chat.js?v={{ asset_v }}"></script>
 <script>
