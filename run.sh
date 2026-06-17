@@ -307,14 +307,16 @@ if [ "$1" = "--legacy" ]; then
 fi
 
 # ── Glimi Workspace 앱 모드 ───────────────────────────
-# ./run.sh workspace [--serve] [--name X] [--goal "..."] [--backend echo|claude_cli|ollama]
-# 같은 venv·커널(glimi)로 apps/workspace 를 실행. --serve 면 대시보드(:8800) + 브라우저 자동 오픈.
+# ./run.sh workspace [--serve|--demo] [--name X] [--goal "..."] [--backend echo|claude_cli|ollama]
+# 같은 venv·커널(glimi)로 apps/workspace 를 실행.
+#   --serve : 작업을 한 번 돌린 뒤 그 팀을 대시보드(:8800)로 서빙 + 브라우저 자동 오픈.
+#   --demo  : 시드된 실시간 LIVE 데모(자동으로 계속 업데이트되는 런치 팀)를 서빙 (오프라인, 키 불필요).
 if [ "$1" = "workspace" ]; then
     shift
     WS_PORT="${GLIMI_WS_PORT:-8800}"
     echo -e "${CYAN}◈ Glimi Workspace${NC}"
     case " $* " in
-        *" --serve "*)
+        *" --serve "*|*" --demo "*)
             echo -e "  대시보드: ${GREEN}http://127.0.0.1:${WS_PORT}${NC}"
             if [ -z "${GLIMI_NO_BROWSER:-}" ]; then
                 (

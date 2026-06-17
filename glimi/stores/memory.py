@@ -71,6 +71,13 @@ class InMemoryKernelStore(KernelStore):
         # reactions: list of rows {id, message_id, actor_id, emoji, created_at}.
         self._reactions: list[dict] = []
         self._react_seq = 0
+        # observability: tool calls + usage records (mirror SqliteKernelStore so
+        # the dashboard's tool-timeline / usage panels work on the in-memory store
+        # too — used by examples/dashboard_demo and the Workspace demo).
+        self._tool_calls: list[dict] = []
+        self._toolcall_seq = 0
+        self._usage: list[dict] = []
+        self._usage_seq = 0
 
     # ── helpers for the convenience facade (not part of the ABC) ──────
     def upsert_agent(self, agent_id: str, *, name: str, agent_type: str = "persona",
@@ -713,3 +720,113 @@ class InMemoryKernelStore(KernelStore):
                 "impact": impact, "timestamp": _now_iso(),
             })
             return self._event_seq
+
+    # ── observability (tool calls + usage) — mirror SqliteKernelStore ─────
+    def record_tool_call(self, *, community: Optional[str] = None,
+                         agent_id: Optional[str] = None,
+                         agent_type: Optional[str] = None,
+                         channel: Optional[str] = None,
+                         tool_name: str = "", args_json: Optional[str] = None,
+                         result_preview: Optional[str] = None,
+                         ok: bool = False, latency_ms: Optional[int] = None,
+                         created_at: Optional[str] = None) -> int:
+        with self._lock:
+            self._toolcall_seq += 1
+            self._tool_calls.append({
+                "id": self._toolcall_seq, "community": community,
+                "agent_id": agent_id, "agent_type": agent_type, "channel": channel,
+                "tool_name": tool_name, "args_json": args_json,
+                "result_preview": result_preview, "ok": 1 if ok else 0,
+                "latency_ms": latency_ms, "created_at": created_at or _now_iso(),
+            })
+            return self._toolcall_seq
+
+    def recent_tool_calls(self, *, limit: int = 50, agent_id: Optional[str] = None,
+                          community: Optional[str] = None) -> list[dict]:
+        with self._lock:
+            rows = [
+                dict(r) for r in self._tool_calls
+                if (agent_id is None or r.get("agent_id") == agent_id)
+                and (community is None or r.get("community") == community)
+            ]
+        rows.sort(key=lambda r: r.get("id", 0), reverse=True)
+        return rows[: max(1, min(500, int(limit)))]
+
+    def record_usage(self, *, community: Optional[str] = None,
+                     agent_id: Optional[str] = None,
+                     agent_type: Optional[str] = None,
+                     model: Optional[str] = None, backend: Optional[str] = None,
+                     input_tokens: int = 0, output_tokens: int = 0,
+                     cache_read_tokens: int = 0, cache_write_tokens: int = 0,
+                     est_cost: float = 0.0, estimated: bool = False,
+                     latency_ms: Optional[int] = None,
+                     ts: Optional[str] = None) -> int:
+        with self._lock:
+            self._usage_seq += 1
+            self._usage.append({
+                "id": self._usage_seq, "ts": ts or _now_iso(),
+                "community": community, "agent_id": agent_id,
+                "agent_type": agent_type, "model": model, "backend": backend,
+                "input_tokens": int(input_tokens or 0),
+                "output_tokens": int(output_tokens or 0),
+                "cache_read_tokens": int(cache_read_tokens or 0),
+                "cache_write_tokens": int(cache_write_tokens or 0),
+                "est_cost": float(est_cost or 0.0),
+                "estimated": 1 if estimated else 0, "latency_ms": latency_ms,
+            })
+            return self._usage_seq
+
+    def _usage_in_range(self, since: Optional[str], until: Optional[str],
+                        community: Optional[str]) -> list[dict]:
+        s = _parse_iso(since)
+        u = _parse_iso(until)
+        out = []
+        with self._lock:
+            rows = list(self._usage)
+        for r in rows:
+            if community is not None and r.get("community") != community:
+                continue
+            ts = _parse_iso(r.get("ts"))
+            if s and (ts is None or ts < s):
+                continue
+            if u and (ts is None or ts >= u):
+                continue
+            out.append(r)
+        return out
+
+    def usage_spend(self, *, since: Optional[str] = None, until: Optional[str] = None,
+                    community: Optional[str] = None) -> dict:
+        rows = self._usage_in_range(since, until, community)
+        lat = [r["latency_ms"] for r in rows if r.get("latency_ms") is not None]
+        return {
+            "total_cost": float(sum(r["est_cost"] for r in rows)),
+            "input_tokens": int(sum(r["input_tokens"] for r in rows)),
+            "output_tokens": int(sum(r["output_tokens"] for r in rows)),
+            "cache_read_tokens": int(sum(r["cache_read_tokens"] for r in rows)),
+            "cache_write_tokens": int(sum(r["cache_write_tokens"] for r in rows)),
+            "call_count": len(rows),
+            "estimated_count": int(sum(r["estimated"] for r in rows)),
+            "avg_latency_ms": int(sum(lat) / len(lat)) if lat else 0,
+        }
+
+    def usage_by_agent(self, *, since: Optional[str] = None, until: Optional[str] = None,
+                       community: Optional[str] = None) -> list[dict]:
+        rows = self._usage_in_range(since, until, community)
+        groups: dict[tuple, dict] = {}
+        for r in rows:
+            key = (r.get("agent_id"), r.get("agent_type"), r.get("model"),
+                   r.get("backend"))
+            g = groups.setdefault(key, {
+                "agent_id": r.get("agent_id"), "agent_type": r.get("agent_type"),
+                "model": r.get("model"), "backend": r.get("backend"),
+                "total_cost": 0.0, "call_count": 0, "input_tokens": 0,
+                "output_tokens": 0, "estimated_count": 0,
+            })
+            g["total_cost"] += r["est_cost"]
+            g["call_count"] += 1
+            g["input_tokens"] += r["input_tokens"]
+            g["output_tokens"] += r["output_tokens"]
+            g["estimated_count"] += r["estimated"]
+        out = list(groups.values())
+        out.sort(key=lambda x: (x["total_cost"], x["call_count"]), reverse=True)
+        return out
