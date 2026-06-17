@@ -16,6 +16,7 @@ import subprocess
 import shutil
 import os
 import logging
+import contextvars
 from typing import Optional, Callable
 from .memory import check_and_summarize, get_memory_context, RAW_WINDOW
 from .tools import parse_response as parse_tools_in_output, ToolCall
@@ -52,6 +53,31 @@ def set_store(store):
     """KernelStore 구현 주입 (미호출 시 기본 SQLite 어댑터)."""
     global _store
     _store = store
+
+
+def get_store():
+    """현재 주입된 KernelStore (없으면 None). 커널 내부 모듈(budget 등)이 동일 store 접근."""
+    return _store
+
+
+# ── active community contextvar ────────────────────────────────────────
+# 플랫폼은 한 프로세스에서 N 커뮤니티를 서빙하며 요청마다 active community 를 전환한다.
+# budget guard 가 "이 호출이 어느 커뮤니티 예산인지" 알 수 있도록 contextvar 로 노출.
+# 기본 None — 단일 커뮤니티/standalone 은 per-community DB 가 이미 spend 를 격리하므로
+# None 이어도 안전. 플랫폼 edge (community 전환 지점) 가 set_active_community 로 채운다.
+_active_community: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "glimi_active_community", default=None
+)
+
+
+def set_active_community(cid: Optional[str]) -> None:
+    """현재 active community id 설정 (플랫폼 per-request 전환 edge 에서 호출)."""
+    _active_community.set(cid)
+
+
+def community_id() -> Optional[str]:
+    """현재 active community id (미설정 시 None)."""
+    return _active_community.get()
 
 
 def set_profiles(provider):
@@ -159,7 +185,42 @@ def _provider_for(agent_type: str, model: str) -> str:
 
     반환값 규약: 'claude' 면 직접 CLI 경로. 그 외(ollama/echo/…)는 모두
     src.llm.generate(backend=<반환값>) 의 비-claude 경로로 라우팅된다.
+
+    Budget guard (billing): 결정이 'claude' 인데 월 예산 초과 시 → 로컬(ollama)
+    가용하면 'ollama', 아니면 sentinel '__capped__' 반환 (호출자가 placeholder +
+    was_blocked 기록). 예산 미설정/측정불가는 그대로 'claude' (degrade open).
     """
+    resolved = _resolve_provider(agent_type, model)
+    if resolved == "claude":
+        return _apply_budget_guard()
+    return resolved
+
+
+# Sentinel: budget cap exceeded and no local backend available. Callers must
+# treat this like an unavailable backend → emit placeholder + record was_blocked.
+CAPPED = "__capped__"
+
+
+def _apply_budget_guard() -> str:
+    """A 'claude' decision passed through the monthly cap. Returns 'claude' when
+    allowed, else 'ollama' if a local backend is usable, else CAPPED."""
+    try:
+        from . import budget
+        if budget.allow_claude(community_id()):
+            return "claude"
+    except Exception:
+        return "claude"  # guard failure must never block (degrade open)
+    # over cap → prefer local, else sentinel
+    try:
+        if _backend_available("ollama"):
+            return "ollama"
+    except Exception:
+        pass
+    return CAPPED
+
+
+def _resolve_provider(agent_type: str, model: str) -> str:
+    """Backend selection without the budget guard (pure routing)."""
     # 1) agent_type 별 매핑
     raw = os.environ.get("GLIMI_LLM_AGENT_MAP", "").strip()
     if raw:
@@ -297,8 +358,30 @@ def _ollama_display_model(model: str, agent_type: str = "") -> str:
 _OLLAMA_OK = {"v": False}
 
 
+def _record_blocked_usage(agent_id: str, agent_type: str, model: str) -> None:
+    """Budget cap 으로 Claude 호출을 막은 1건을 회계에 남김 (was_blocked=True,
+    backend='capped', est_cost=0). store 미주입이면 no-op. 회계가 흐름을 깨지 않게 try/except."""
+    try:
+        if _store is None:
+            return
+        _store.record_usage(
+            community=community_id(),
+            agent_id=agent_id or None,
+            agent_type=agent_type or None,
+            model=model or None,
+            backend="capped",
+            est_cost=0.0,
+            estimated=True,
+            was_blocked=True,
+        )
+    except Exception:
+        pass
+
+
 def _backend_available(provider: str) -> bool:
     """해당 provider 백엔드가 호출 가능한지. False 면 placeholder 로 폴백."""
+    if provider == CAPPED:
+        return False  # budget cap + no local fallback → placeholder 경로
     if provider == "claude":
         return CLAUDE_AVAILABLE
     if provider == "ollama":
@@ -837,7 +920,10 @@ class AgentRuntime:
         )
         provider = _provider_for("persona", "claude-haiku-4-5")
         try:
-            if provider == "ollama":
+            if provider == CAPPED:
+                # 월 예산 초과 + 로컬 폴백 없음 → LLM 요약 skip, 아래 비-LLM 폴백 사용.
+                _record_blocked_usage(agent_id, "persona", "claude-haiku-4-5")
+            elif provider == "ollama":
                 from . import llm
                 _r = llm.generate(
                     system="", user=summary_prompt,
@@ -1138,6 +1224,12 @@ class AgentRuntime:
             model = _resolve_agent_model(agent_id, atype)
             provider = _provider_for(atype, model)
 
+            if provider == CAPPED:
+                # 월 예산 초과 + 로컬 폴백 없음 → 강제지시는 백그라운드 nudge 라
+                # placeholder 도 안 내보내고 조용히 skip (메타 누출 방지). 차단만 기록.
+                _record_blocked_usage(agent_id, atype, model)
+                _observer.system(f"[budget] 강제지시 capped ({name} @ {channel}) — skip")
+                return []
             if provider == "ollama":
                 _bt = {"persona": 200, "mgr": 320, "creator": 360, "dev": 320}.get(atype, 200)
                 responses = self._ollama_blocking(
@@ -1253,9 +1345,14 @@ class AgentRuntime:
         _wd_timer.start()
 
         atype = profile.get("type", "persona")
-        provider = _provider_for(atype, _resolve_agent_model(agent_id, atype))
+        _model = _resolve_agent_model(agent_id, atype)
+        provider = _provider_for(atype, _model)
         try:
-            if _backend_available(provider):
+            if provider == CAPPED:
+                # 월 예산 초과 + 로컬 폴백 없음 → 차단 기록 후 placeholder.
+                _record_blocked_usage(agent_id, atype, _model)
+                responses = self._placeholder_response(profile, user_message)
+            elif _backend_available(provider):
                 responses = self._call_claude_code(agent_info, channel, recent, user_message, provider=provider)
             else:
                 responses = self._placeholder_response(profile, user_message)
@@ -1633,7 +1730,11 @@ class AgentRuntime:
         _observer.agent_thinking(agent_id, f"응답 생성 시작 [{channel}]")
 
         atype = profile.get("type", "persona")
-        provider = _provider_for(atype, _resolve_agent_model(agent_id, atype))
+        _model = _resolve_agent_model(agent_id, atype)
+        provider = _provider_for(atype, _model)
+        if provider == CAPPED:
+            # 월 예산 초과 + 로컬 폴백 없음 → 차단 기록 후 placeholder 스트림.
+            _record_blocked_usage(agent_id, atype, _model)
         if not _backend_available(provider):
             _observer.mark_done(agent_id)
             msgs = self._placeholder_response(profile, user_message)
@@ -2030,6 +2131,10 @@ class AgentRuntime:
         speaker_type = speaker_info["profile"].get("type", "persona")
         model = _resolve_agent_model(speaker_id, speaker_type)
         provider = _provider_for(speaker_type, model)
+        if provider == CAPPED:
+            # 월 예산 초과 + 로컬 폴백 없음 → 차단 기록 (아래 _backend_available False
+            # 분기가 빈 list 반환 → 채널 누출 없음).
+            _record_blocked_usage(speaker_id, speaker_type, model)
 
         _observer.mark_thinking(speaker_id, channel)
         try:

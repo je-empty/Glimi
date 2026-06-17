@@ -48,6 +48,12 @@ def _apply_community(cid: Optional[str]) -> None:
     from src import community as _comm
     if cid:
         _comm.set_community(cid)
+    # budget guard 가 "이 요청이 어느 커뮤니티 예산인지" 알도록 active community 전파.
+    try:
+        from src.core import runtime as _rt
+        _rt.set_active_community(cid)
+    except Exception:
+        pass
     try:
         import src.db as _db
         _db.DB_PATH = None
