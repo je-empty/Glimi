@@ -573,6 +573,86 @@
     openModal("#" + name, body);
   }
 
+  // ── LLM usage ────────────────────────────────────────
+  // $ is only meaningful when there is real (SDK/API-key) spend. When every
+  // counted call is estimated (CLI subscription path) or all are local ($0),
+  // we surface tokens + latency instead of a misleading dollar figure.
+  function fmtUsd(v) {
+    const n = Number(v) || 0;
+    if (n <= 0) return "$0.00";
+    if (n < 0.01) return "<$0.01";
+    return "$" + n.toFixed(2);
+  }
+  function renderUsage(u) {
+    const set = (id, v) => {
+      const el = $(id);
+      if (el) el.textContent = v;
+    };
+    if (!u || u.call_count_month == null) {
+      set("usage-today", "—"); set("usage-month", "—");
+      set("usage-calls", "—"); set("usage-latency", "—");
+      return;
+    }
+    const callsMonth = u.call_count_month || 0;
+    const estMonth = u.estimated_count_month || 0;
+    const allEstimated = callsMonth > 0 && estMonth >= callsMonth;
+    const hasDollars = (u.spend_month || 0) > 0 || (u.spend_today || 0) > 0;
+
+    // Spend cards: show $ only when there is real (non-estimated) priced spend.
+    if (hasDollars && !allEstimated) {
+      set("usage-today", fmtUsd(u.spend_today));
+      set("usage-month", fmtUsd(u.spend_month));
+    } else if (hasDollars && allEstimated) {
+      set("usage-today", fmtUsd(u.spend_today) + " est.");
+      set("usage-month", fmtUsd(u.spend_month) + " est.");
+    } else {
+      // No priced spend (local / CLI no-key) — show tokens instead of $0.
+      const tk = (u.input_tokens_month || 0) + (u.output_tokens_month || 0);
+      set("usage-today", "—");
+      set("usage-month", tk.toLocaleString() + " tok");
+    }
+    set("usage-calls", callsMonth.toLocaleString());
+    set("usage-latency", (u.avg_latency_ms || 0).toLocaleString() + " ms");
+
+    const note = $("usage-note");
+    if (note) {
+      const bits = ["month-to-date"];
+      if (estMonth > 0) bits.push(estMonth + " est. (CLI)");
+      if (u.pricing_as_of) bits.push("prices " + u.pricing_as_of);
+      note.textContent = bits.join(" · ");
+    }
+  }
+
+  // ── tool-call timeline ───────────────────────────────
+  function renderTimeline(rows) {
+    const list = $("tool-timeline");
+    if (!list) return;
+    rows = rows || [];
+    if (!rows.length) {
+      list.innerHTML = '<div class="empty">No tool calls recorded yet.</div>';
+      return;
+    }
+    list.innerHTML = rows
+      .map((r) => {
+        const ok = Number(r.ok) === 1;
+        const mark = ok ? "✓" : "✗";
+        const cls = ok ? "tc-ok" : "tc-err";
+        const args = r.args_json ? String(r.args_json) : "";
+        const argsShort = args.length > 80 ? args.slice(0, 80) + "…" : args;
+        const prev = r.result_preview ? String(r.result_preview) : "";
+        const lat = r.latency_ms != null ? r.latency_ms + " ms" : "";
+        return `<div class="tool-row ${cls}">
+          <span class="tc-mark">${mark}</span>
+          <span class="tc-name">${esc(r.tool_name)}</span>
+          <span class="tc-args" title="${esc(args)}">${esc(argsShort)}</span>
+          <span class="tc-prev" title="${esc(prev)}">${esc(prev)}</span>
+          <span class="tc-lat">${esc(lat)}</span>
+          <span class="tc-time" title="${esc(fmtTime(r.created_at))}">${esc(r.agent_id || "")}</span>
+        </div>`;
+      })
+      .join("");
+  }
+
   // ── boot ─────────────────────────────────────────────
   async function load() {
     const snap = await fetchJson("/api/snapshot");
@@ -586,6 +666,9 @@
     renderAgents(snap);
     renderChannels(snap);
     mountGraph(snap);
+    // Observability panels — store-backed, best-effort (degrade to empty).
+    renderUsage(await fetchJson("/api/usage"));
+    renderTimeline(await fetchJson("/api/tool_timeline"));
   }
 
   document.addEventListener("DOMContentLoaded", () => {

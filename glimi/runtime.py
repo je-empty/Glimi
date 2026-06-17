@@ -193,6 +193,64 @@ def _provider_for(agent_type: str, model: str) -> str:
     return "claude"
 
 
+def _estimate_cli_tokens(model: str, system: str, output: str) -> tuple[int, int]:
+    """Path A (claude CLI) 토큰 추정. CLI 는 --output-format text 라 토큰 0 반환 → 추정.
+
+    우선순위: ANTHROPIC_API_KEY 있으면 anthropic client.messages.count_tokens (정확,
+    모델별, 서버 호출). 없으면 chars/4 휴리스틱 (대략치). 어느 쪽이든 호출자가
+    estimated=1 로 기록한다 (정직성 — 조작 금지). tiktoken 절대 금지.
+    """
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            import anthropic
+            from .llm.anthropic_sdk import _resolve_model
+            client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+            api_model = _resolve_model(model)
+            sys_param = [{"type": "text", "text": system}] if system else []
+            in_tok = client.messages.count_tokens(
+                model=api_model, system=sys_param,
+                messages=[{"role": "user", "content": " "}],
+            ).input_tokens
+            out_tok = client.messages.count_tokens(
+                model=api_model,
+                messages=[{"role": "user", "content": output or " "}],
+            ).input_tokens
+            return int(in_tok or 0), int(out_tok or 0)
+        except Exception:
+            pass
+    # 키 없음 / count_tokens 실패 → chars/4 휴리스틱
+    from .llm.pricing import estimate_tokens_from_chars
+    return estimate_tokens_from_chars(system), estimate_tokens_from_chars(output)
+
+
+def _record_cli_usage(*, agent_id: str, agent_type: str, model: str,
+                      system: str, output: str, latency_ms: int) -> None:
+    """Path A (claude CLI subprocess) 1회 호출 사용량 기록 — **추정 토큰** (estimated=1).
+
+    store 미주입 (standalone) 이면 no-op. 회계가 생성을 절대 깨지 않게 try/except.
+    빈 출력 (실패/타임아웃) 은 기록하지 않는다 — 호출자가 성공 출력에 대해서만 호출.
+    """
+    try:
+        if _store is None or not output:
+            return
+        from .llm.pricing import estimate_cost
+        in_tok, out_tok = _estimate_cli_tokens(model, system, output)
+        est = estimate_cost(model, in_tok, out_tok)
+        _store.record_usage(
+            agent_id=agent_id or None,
+            agent_type=agent_type or None,
+            model=model or None,
+            backend="claude_cli",
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            est_cost=est,
+            estimated=True,  # CLI 토큰은 항상 추정 (정직성)
+            latency_ms=latency_ms,
+        )
+    except Exception:
+        pass
+
+
 def _ollama_model_map() -> dict:
     """GLIMI_OLLAMA_MODEL_MAP (JSON) — agent_type 별 ollama 모델 태그 매핑.
     예: {"mgr": "gemma4:26b-a4b-it-q4_K_M", "persona": "gemma4:e4b-it-q4_K_M"}
@@ -789,6 +847,8 @@ class AgentRuntime:
                 if not _r.error and (_r.text or "").strip():
                     return f"[이전 대화 요약] {_r.text.strip()}"
             else:
+                import time as _t
+                _hs0 = _t.monotonic()
                 result = subprocess.run(
                     ["claude", "-p", summary_prompt,
                      "--output-format", "text", "--model", "claude-haiku-4-5"],
@@ -797,7 +857,13 @@ class AgentRuntime:
                     cwd=_CLI_CWD,
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    return f"[이전 대화 요약] {result.stdout.strip()}"
+                    _out = result.stdout.strip()
+                    _record_cli_usage(
+                        agent_id=agent_id, agent_type="persona",
+                        model="claude-haiku-4-5", system="", output=_out,
+                        latency_ms=int((_t.monotonic() - _hs0) * 1000),
+                    )
+                    return f"[이전 대화 요약] {_out}"
         except Exception:
             pass
 
@@ -1089,6 +1155,8 @@ class AgentRuntime:
             else:
                 # Timeout 120s — force 경로는 prompt 크기 큼 (메모리 + cross-channel + recent).
                 # 60s 로는 Haiku + CLI overhead 까지 감안 빈번히 초과 → 매번 실패하던 버그.
+                import time as _t
+                _fc0 = _t.monotonic()
                 result = subprocess.run(
                     [
                         "claude",
@@ -1111,6 +1179,12 @@ class AgentRuntime:
                 if not raw:
                     _observer.system(f"⚠ 강제지시 빈 응답 ({name} @ {channel})")
                     return []
+
+                _record_cli_usage(
+                    agent_id=agent_id, agent_type=atype, model=model,
+                    system=force_system, output=raw,
+                    latency_ms=int((_t.monotonic() - _fc0) * 1000),
+                )
 
                 if _looks_like_claude_error(raw):
                     _report_claude_error(name, raw, source="force")
@@ -1274,9 +1348,12 @@ class AgentRuntime:
         ]
         cli_env = {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL": "1"}
 
+        _cc_atype = profile.get("type", "persona")
         last_err = None
         for attempt in range(2):
             try:
+                import time as _t
+                _cc0 = _t.monotonic()
                 result = subprocess.run(
                     cli_args,
                     capture_output=True, text=True, timeout=60,
@@ -1297,6 +1374,14 @@ class AgentRuntime:
                 raw = result.stdout.strip()
                 if not raw:
                     return ["..."]
+
+                # 성공한 attempt 에 대해서만 1회 기록 (실패 후 재시도는 위에서 continue/return
+                # 하므로 여기 도달 = 이번 attempt 성공 → 재시도 더블카운트 없음).
+                _record_cli_usage(
+                    agent_id=agent_id, agent_type=_cc_atype, model=model,
+                    system=system_prompt, output=raw,
+                    latency_ms=int((_t.monotonic() - _cc0) * 1000),
+                )
 
                 # Claude CLI 에러 메시지 감지 — 응답 전체가 에러면 placeholder
                 if _looks_like_claude_error(raw):
@@ -1640,6 +1725,8 @@ class AgentRuntime:
                 _observer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
             return messages
 
+        import time as _t
+        _st0 = _t.monotonic()
         try:
             process = subprocess.Popen(
                 [
@@ -1750,6 +1837,14 @@ class AgentRuntime:
                 pass
             _observer.mark_done(agent_id)
             _observer.agent_thinking(agent_id, f"응답 완료 {len(messages)}건")
+
+        # Path A 사용량 기록 (추정 토큰). 스트림 출력 = 발화 메시지 + <tools> 버퍼 합산.
+        _stream_out = "\n".join(list(messages) + list(tool_buffer))
+        _record_cli_usage(
+            agent_id=agent_id, agent_type=agent_type, model=model,
+            system=system_prompt, output=_stream_out,
+            latency_ms=int((_t.monotonic() - _st0) * 1000),
+        )
 
         # DB 로깅은 handlers에서 디스코드 전송 후 처리
         # (대시보드에 디스코드보다 먼저 보이는 문제 방지)
@@ -1974,8 +2069,10 @@ class AgentRuntime:
                     # 주범인지 확인 가능.
                     _prompt_len = len(full_prompt)
                     _sys_len = len(speaker_info.get("system_prompt", ""))
+                    import time as _t
                     for attempt in (1, 2):
                         try:
+                            _a2a0 = _t.monotonic()
                             result = subprocess.run(
                                 [
                                     "claude",
@@ -1989,6 +2086,13 @@ class AgentRuntime:
                                 cwd=_CLI_CWD,
                             )
                             if result.returncode == 0 and result.stdout.strip():
+                                # 성공한 attempt 1건만 기록 (retry 더블카운트 방지).
+                                _record_cli_usage(
+                                    agent_id=speaker_id, agent_type=speaker_type,
+                                    model=model, system=speaker_info["system_prompt"],
+                                    output=result.stdout.strip(),
+                                    latency_ms=int((_t.monotonic() - _a2a0) * 1000),
+                                )
                                 break  # 성공
                             # 실패 원인 상세화 — stderr, returncode 포함 (empty stdout 의 진짜 원인 추적)
                             _err_head = (result.stderr or "").strip()[:200]
