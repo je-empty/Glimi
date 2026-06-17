@@ -111,6 +111,17 @@ PYTHONPATH=. python apps/workspace/run.py --serve   # → http://127.0.0.1:8800
 
 Needs the optional web deps: `pip install glimi[dashboard]`. This is the payoff — the dashboard behind the social sim now renders *your work team as a real interaction web*, not a list of isolated agents.
 
+### Watch it live — `--demo`
+
+`--demo` serves a **seeded, real-time-viewable showcase** — the Workspace analogue of the Community demo. A hand-authored launch team (Coordinator + Researcher + Builder + Critic working *"plan the public launch of our open-source project"*) is loaded straight into the store, and a background activity loop keeps the dashboard **genuinely live**: it unfolds the team's launch-prep one turn at a time, then keeps emotions and usage ticking — so the auto-refreshing dashboard updates without a reload. Offline (`echo`), no API key, **$0**.
+
+```bash
+./run.sh workspace --demo                 # → http://127.0.0.1:8800 (opens a browser)
+./run.sh workspace --demo --host 0.0.0.0  # expose it
+```
+
+You get the full picture in one screen: the **connection graph** (owner + Coordinator hubs, specialists, collaboration edges), each member's **5-layer memory** + facts, the **channel viewer** (owner DM, delegation DMs, the A2A debates, the group round, and the `mgr-approvals` HITL trail), and the **observability** panels — the tool-call timeline and an honest LLM-usage card (echo/local priced at $0, all counts labeled *est.*). It's the same dashboard that serves Community, now showing a work team that moves in real time.
+
 ## Sample output (real backend)
 
 Captured from a genuine `GLIMI_LLM_BACKEND=claude_cli` run (`--name Mia --goal "Plan the public launch of our open-source CLI tool"`), **trimmed**. This is real model output, not a mock — note the **agent-to-agent** turns on the internal channels (specialists answering *each other*, not the owner) and the kernel's `[Memory] L1 추출 … rels=N` extraction firing during the run (relationships also grow organically on a real backend):
@@ -175,6 +186,7 @@ things first — readiness stage, target audience, and the definition of success
 - `run.py` — entry point: argument parsing, the interaction topology (`run_workspace`: the owner DM, delegation DMs, the A2A exchanges, the group round, the **HITL-gated** delivery via `gated_deliver`, and `form_relationships`), the summary, and the `--serve` dashboard hand-off.
 - `team.py` — the team personas, the interaction topology constants (channels + collaborating pairs), and first-run setup (`resolve_setup`). Pure config + I/O; imports nothing from `glimi`/`src`/`discord`.
 - `approval.py` — the **human-in-the-loop approval gate**: `ApprovalPolicy` (REQUIRE_APPROVAL vs AUTO), `run_gate` (approve / edit / reject + fallback), the observable trail, and the `WebApprovalQueue` `--serve` stub. Kernel-neutral — imports nothing from `glimi`/`src`/`discord`.
+- `demo.py` — the **live demo** (`--demo`): a hand-authored launch-team population (transcript, relationships, 5-layer memory, facts, observability rows) seeded into the store, plus the background `activity_loop` that keeps the dashboard updating in real time. Offline, `$0`. Kernel-only.
 - `README.md` — this file.
 
-Tests live in `tests/unit/test_glimi_workspace.py` (setup resolution, the multi-channel topology, the relationship web, dashboard population, the **snapshot-relationships graph assertion**, and a kernel-only import guard) and `tests/unit/test_workspace_approval.py` (policy decisions, gate routing for approve/edit/reject, the auto + non-interactive never-prompt safety, fallback-on-reject keeping `final` non-empty, and the observable trail).
+Tests live in `tests/unit/test_glimi_workspace.py` (setup resolution, the multi-channel topology, the relationship web, dashboard population, the **snapshot-relationships graph assertion**, and a kernel-only import guard), `tests/unit/test_workspace_approval.py` (policy decisions, gate routing for approve/edit/reject, the auto + non-interactive never-prompt safety, fallback-on-reject keeping `final` non-empty, and the observable trail), and `tests/unit/test_workspace_demo.py` (the seeded population, honest usage/tool panels, the live activity loop, and the in-memory store's observability methods).
