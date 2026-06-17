@@ -499,6 +499,16 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
       if (!_chatInited) { _chatInited = true; window.GlimiChat.init(); }
       else { window.GlimiChat.refit(); }
     }
+    if (btn.dataset.tab === 'overview' && typeof cyInstance !== 'undefined' && cyInstance) {
+      // The graph mounts while #view-overview is hidden (0-size) → its initial
+      // fit pins nodes top-left. Re-measure + re-fit once the view is visible.
+      requestAnimationFrame(() => {
+        try {
+          cyInstance.resize();
+          cyInstance.fit(undefined, window.matchMedia('(max-width: 720px)').matches ? 6 : 25);
+        } catch (e) {}
+      });
+    }
   });
 });
 // Chat is the default-active tab → boot it once on load (the index.html load
@@ -2814,16 +2824,33 @@ function mountCytoscapeGraph(snap) {
   }
 }
 
+// Re-measure + re-center the graph (owner node ends up dead-center via fit).
+// Used after any stage-size change (fullscreen toggle, tab entry) where cytoscape's
+// initial fit ran against stale/zero container dimensions.
+function _recenterGraph() {
+  if (typeof cyInstance === 'undefined' || !cyInstance) return;
+  try {
+    cyInstance.resize();
+    const fs = document.body.classList.contains('graph-fullscreen');
+    cyInstance.fit(undefined, fs ? 140 : (window.matchMedia('(max-width: 720px)').matches ? 6 : 25));
+  } catch (e) {}
+}
 function toggleGraphFullscreen() {
   document.body.classList.toggle('graph-fullscreen');
   lastGraphSig = null;  // 재렌더 강제
   tick();
+  // The fullscreen CSS resizes the graph stage; re-center after it (and any async
+  // re-render) settles — rAF for the immediate case, timeout for the CSS transition.
+  requestAnimationFrame(_recenterGraph);
+  setTimeout(_recenterGraph, 180);
 }
 // ESC로 fullscreen 빠져나오기
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && document.body.classList.contains('graph-fullscreen')) {
     document.body.classList.remove('graph-fullscreen');
     tick();
+    requestAnimationFrame(_recenterGraph);
+    setTimeout(_recenterGraph, 180);
   }
 });
 

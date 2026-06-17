@@ -11,14 +11,14 @@
    우측 피드 + 2-tier 컴포저 + 스레드 패널. 좁은 화면은 사이드바를 드로어로 collapse. #}
 <div class="chat-shell" id="chat-shell">
 
-  <aside class="side" id="chat-sidebar" aria-label="채널 목록">
+  <aside class="side" id="chat-sidebar" aria-label="Channels">
     <div class="side-top">
       <span class="mark" aria-hidden="true"><i class="ti ti-sparkles"></i></span>
       <span class="col">
         <span class="nm">{{ community_name }}</span>
         <span class="sub" id="chat-side-sub"></span>
       </span>
-      <button type="button" class="new" aria-label="목록 새로고침" id="chat-side-refresh">
+      <button type="button" class="new" aria-label="Refresh" id="chat-side-refresh">
         <i class="ti ti-pencil-plus" aria-hidden="true"></i>
       </button>
     </div>
@@ -26,8 +26,8 @@
     <div class="search">
       <label class="box" for="chat-search">
         <i class="ti ti-search" aria-hidden="true"></i>
-        <input type="text" id="chat-search" placeholder="대화 검색" autocomplete="off"
-               aria-label="대화 검색">
+        <input type="text" id="chat-search" placeholder="Search" autocomplete="off"
+               aria-label="Search conversations">
         <span class="k" aria-hidden="true">⌘K</span>
       </label>
     </div>
@@ -38,13 +38,13 @@
 
     <div class="me">
       <span class="ava" aria-hidden="true" id="chat-me-ava"
-            style="background:var(--chat-av-3)">{{ (user.username[0] if user and user.username else "나")|upper }}<span class="pres online"></span></span>
+            style="background:var(--chat-av-3)">{{ (user.username[0] if user and user.username else "Me")|upper }}<span class="pres online"></span></span>
       <span class="meta">
-        <span class="t">{{ user.username if user else "나" }}</span>
-        <span class="p"><span class="d"></span>온라인</span>
+        <span class="t">{{ user.username if user else "Me" }}</span>
+        <span class="p"><span class="d"></span>Online</span>
       </span>
       <span class="chat-status" id="chat-status" data-state="connecting"
-            role="status" aria-live="polite">연결 중…</span>
+            role="status" aria-live="polite">Connecting…</span>
     </div>
   </aside>
 
@@ -54,19 +54,19 @@
   <section class="main">
     <header class="head">
       <button type="button" class="chat-sidebar-toggle" id="chat-sidebar-toggle"
-              aria-label="채널 목록 열기" aria-expanded="false">
+              aria-label="Open channels" aria-expanded="false">
         <i class="ti ti-menu-2" aria-hidden="true"></i>
       </button>
       <i class="ti ti-at hash" id="chat-head-icon" aria-hidden="true"></i>
       <span class="ttl" id="chat-channel-label"># {{ channel }}</span>
       <span class="topic" id="chat-head-topic" hidden></span>
       <div class="acts">
-        <button type="button" class="ib" id="chat-thread-toggle" aria-label="스레드"
+        <button type="button" class="ib" id="chat-thread-toggle" aria-label="Thread"
                 hidden><i class="ti ti-messages" aria-hidden="true"></i></button>
       </div>
     </header>
 
-    <div class="feed" id="chat-feed" aria-live="polite" aria-label="메시지">
+    <div class="feed" id="chat-feed" aria-live="polite" aria-label="Messages">
       <div id="chat-stream"></div>
     </div>
 
@@ -75,48 +75,48 @@
            디자인 토큰만 사용 (raw hex 금지). 둘러보기 전용임을 명확히 알림. -->
       <div class="chat-readonly-banner" id="chat-readonly-banner" role="status" hidden>
         <i class="ti ti-lock" aria-hidden="true"></i>
-        <span>데모(목업) — 둘러보기 전용. 메시지 전송은 비활성화돼 있어요.</span>
+        <span>Demo — read-only. Sending messages is disabled here.</span>
       </div>
       <div class="typefoot" id="chat-typefoot" aria-hidden="true">
         <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span><b id="chat-typefoot-who"></b> 님이 입력 중…</span>
+        <span><b id="chat-typefoot-who"></b> is typing…</span>
       </div>
       <div class="cbox" id="chat-cbox">
         <div class="reply-cue" id="chat-reply-cue" hidden>
           <i class="ti ti-arrow-back-up" aria-hidden="true"></i>
           <span class="rc-txt" id="chat-reply-cue-text"></span>
-          <button type="button" class="x" id="chat-reply-cue-clear" aria-label="답장 취소">
+          <button type="button" class="x" id="chat-reply-cue-clear" aria-label="Cancel reply">
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>
         </div>
         <div class="ctop">
           <span class="plus" aria-hidden="true"><i class="ti ti-plus"></i></span>
           <div class="ta" id="chat-input" contenteditable="true" role="textbox"
-               aria-multiline="true" aria-label="메시지 보내기"
-               data-ph="메시지를 입력하세요…"></div>
+               aria-multiline="true" aria-label="Send a message"
+               data-ph="Message…"></div>
           <div class="ctail">
-            <button type="button" class="send" id="chat-send" aria-label="보내기" disabled>
+            <button type="button" class="send" id="chat-send" aria-label="Send" disabled>
               <i class="ti ti-arrow-up" aria-hidden="true"></i>
             </button>
           </div>
         </div>
         <div class="cfoot">
-          <span class="seg"><i class="ti ti-paperclip" aria-hidden="true"></i>파일·사진 드래그</span>
+          <span class="seg"><i class="ti ti-paperclip" aria-hidden="true"></i>Drag files or photos</span>
           <span class="grow"></span>
           <span class="cnt" id="chat-cnt" hidden>0</span>
-          <span class="seg"><span class="kbd">Shift</span><span class="plus-sign">+</span><span class="kbd">Enter</span>줄바꿈</span>
+          <span class="seg"><span class="kbd">Shift</span><span class="plus-sign">+</span><span class="kbd">Enter</span>new line</span>
         </div>
       </div>
     </div>
 
     <!-- 스레드 패널 (root + 답글) — 데스크탑 우측 슬라이드, 좁은 화면 풀스크린 -->
     <aside class="thread-panel" id="chat-thread-panel" role="dialog"
-           aria-label="스레드" aria-modal="false" hidden>
+           aria-label="Thread" aria-modal="false" hidden>
       <header class="tp-head">
-        <button type="button" class="tp-back" id="chat-thread-close" aria-label="스레드 닫기">
+        <button type="button" class="tp-back" id="chat-thread-close" aria-label="Close thread">
           <i class="ti ti-chevron-left" aria-hidden="true"></i>
         </button>
-        <span class="tp-title">스레드</span>
+        <span class="tp-title">Thread</span>
         <span class="tp-sub" id="chat-thread-sub"></span>
       </header>
       <div class="tp-body" id="chat-thread-body"></div>

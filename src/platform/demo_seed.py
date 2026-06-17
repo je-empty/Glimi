@@ -14,8 +14,8 @@ import re
 from src.community import COMMUNITIES_DIR, REGISTRY_PATH, _ensure_registry
 
 DEMO_ID = "demo"
-_DEMO_NAME = "데모 커뮤니티"
-_DEMO_DESC = "Glimi 가 뭘 하는지 둘러보는 목업 — 메시지 전송은 비활성화된 읽기 전용 쇼케이스예요."
+_DEMO_NAME = "내 커뮤니티"
+_DEMO_DESC = "일상 수다 · 게임 · 맛집 · 주제 없는 아지트"
 
 
 def _toml_escape(s: str) -> str:

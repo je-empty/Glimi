@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ community_name }} · Glimi{% endblock %}
 
-{# capture-mode 디폴트 ON — html/body 양쪽에 클래스 필요. html 에 안 붙이면
-   viewport 클리핑이 살아있어서 document 스크롤 자체가 안 됨. #}
-{% block html_class %}capture-mode{% endblock %}
-{% block body_class %}capture-mode{% endblock %}
+{# capture-mode = full-page 스크린샷 전용 (모든 view 를 콘텐츠 높이로 펼침).
+   기본 OFF — 평소엔 뷰포트 고정(.app 100vh)이라 채팅 피드가 내부 스크롤되고
+   그래프도 제대로 fit 된다. 스크린샷 도구는 URL 에 ?capture=1 만 붙이면 됨
+   (html/body 양쪽에 클래스 필요 — html 에 안 붙이면 document 스크롤이 안 됨). #}
+{% block html_class %}{% if request.query_params.get('capture') %}capture-mode{% endif %}{% endblock %}
+{% block body_class %}{% if request.query_params.get('capture') %}capture-mode{% endif %}{% endblock %}
 
 {% block head %}
 <!-- 대시보드 고유 스타일 -->
@@ -98,7 +100,7 @@
   </header>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="chat" class="active"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">채팅</span></button>
+    <button data-tab="chat" class="active"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">Chat</span></button>
     <button data-tab="overview"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
     <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">Agents</span> <span class="count" id="tc-agents">0</span></button>
     <button data-tab="channels"><i class="ti ti-message-circle tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>

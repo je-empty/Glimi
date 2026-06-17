@@ -29,7 +29,7 @@
   var COMMUNITY = window.__GLIMI_COMMUNITY__ || params.get('community') || '';
   var CHANNEL = window.__GLIMI_CHANNEL__ || params.get('channel') || '';
   var AGENT = window.__GLIMI_AGENT__ || params.get('agent') || 'mgr';
-  var OWNER_NAME = window.__GLIMI_USER__ || '나';
+  var OWNER_NAME = window.__GLIMI_USER__ || 'Me';
   // Look-only mockup (demo): composer stays disabled + a banner shows. The WS
   // backend also rejects writes ('demo_readonly') — this is the UI half.
   var READONLY = window.__GLIMI_READONLY__ === true;
@@ -170,11 +170,11 @@
   }
   function relTime(ms) {
     var diff = Date.now() - ms;
-    if (diff < 60000) return '방금';
-    if (diff < 3600000) return Math.floor(diff / 60000) + '분';
-    if (diff < 86400000) return Math.floor(diff / 3600000) + '시간';
-    if (diff < 172800000) return '어제';
-    return Math.floor(diff / 86400000) + '일';
+    if (diff < 60000) return 'now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
+    if (diff < 172800000) return 'yesterday';
+    return Math.floor(diff / 86400000) + 'd';
   }
 
   // Role tag for the active channel's type (DM) / owner.
@@ -183,10 +183,10 @@
     return c ? (c.type || '') : '';
   }
   function tagFor(isUser, speakerId) {
-    if (isUser) return { cls: 'self', label: '나' };
+    if (isUser) return { cls: 'self', label: 'You' };
     // For DM channels the responding agent's type drives the tag.
     if (CHANNEL.indexOf('dm-') === 0 && speakerId === AGENT) {
-      if (activeChannelType() === 'mgr') return { cls: 'mgr', label: '매니저' };
+      if (activeChannelType() === 'mgr') return { cls: 'mgr', label: 'Manager' };
     }
     return null;
   }
@@ -260,7 +260,7 @@
       // We know there IS a parent (pointer present) but can't resolve it — still
       // render a minimal "replying" quote so the affordance is honest.
       return '<button type="button" class="quote" data-jump="' + escAttr(String(rt)) + '">' +
-        '<span class="qn">답장</span><span class="qt"></span></button>';
+        '<span class="qn">Reply</span><span class="qt"></span></button>';
     }
     var qa = src.isUser
       ? '<span class="qa" style="background:' + avBg(OWNER_NAME) + '">' + esc(initialOf(OWNER_NAME)) + '</span>'
@@ -308,7 +308,7 @@
     if (!isServerId(rootId)) return '';
     if (!hasReplies(rootId)) return '';
     return '<button type="button" class="thread-open" data-thread="' + escAttr(String(rootId)) + '">' +
-      '<i class="ti ti-messages" aria-hidden="true"></i>스레드 보기</button>';
+      '<i class="ti ti-messages" aria-hidden="true"></i>View thread</button>';
   }
 
   // Reaction pills. ``reactions`` is [{emoji, count, actors:[ids]}]. A pill is
@@ -345,13 +345,13 @@
     var canReact = isServerId(m.id);
     return '<div class="acts-pop">' +
       (canReact
-        ? '<b class="react-btn" data-react="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="공감">' +
+        ? '<b class="react-btn" data-react="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="React">' +
             '<i class="ti ti-heart" aria-hidden="true"></i></b><span class="sep"></span>'
         : '') +
-      '<b class="reply-btn" data-reply="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="답장">' +
+      '<b class="reply-btn" data-reply="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Reply">' +
         '<i class="ti ti-arrow-back-up" aria-hidden="true"></i></b>' +
       '<span class="sep"></span>' +
-      '<b class="thread-btn" data-thread="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="스레드">' +
+      '<b class="thread-btn" data-thread="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Thread">' +
         '<i class="ti ti-messages" aria-hidden="true"></i></b>' +
       '</div>';
   }
@@ -467,7 +467,7 @@
       btn.type = 'button';
       btn.className = 'thread-open';
       btn.dataset.thread = rootId;
-      btn.innerHTML = '<i class="ti ti-messages" aria-hidden="true"></i>스레드 보기';
+      btn.innerHTML = '<i class="ti ti-messages" aria-hidden="true"></i>View thread';
       body.appendChild(btn);
     }
   }
@@ -488,7 +488,7 @@
   function showTypeFoot(on, who) {
     if (!$typefoot) return;
     if (on) {
-      if ($typefootWho) $typefootWho.textContent = who || '상대';
+      if ($typefootWho) $typefootWho.textContent = who || 'Someone';
       $typefoot.classList.add('show');
       $typefoot.setAttribute('aria-hidden', 'false');
     } else {
@@ -585,12 +585,12 @@
         break;
       case 'interrupted':
         showTyping(false);
-        appendMessage(frameToMsg('', '', false, (frame.speaker || '상대') + '의 응답이 중단되었습니다.', Date.now(), { kind: 'sys' }));
+        appendMessage(frameToMsg('', '', false, (frame.speaker || 'Someone') + "'s reply was interrupted.", Date.now(), { kind: 'sys' }));
         break;
       case 'error':
         showTyping(false);
         // Prefer the human-friendly `message` (e.g. demo_readonly) over the code.
-        appendMessage(frameToMsg('', '', false, frame.message || frame.error || '오류가 발생했습니다.', Date.now(), { kind: 'err' }));
+        appendMessage(frameToMsg('', '', false, frame.message || frame.error || 'Something went wrong.', Date.now(), { kind: 'err' }));
         break;
       case 'pong':
         break;
@@ -803,11 +803,11 @@
 
     $channelList.innerHTML = '';
     if (dms.length) {
-      $channelList.appendChild(groupLabel('다이렉트', dms.length));
+      $channelList.appendChild(groupLabel('Direct', dms.length));
       dms.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
     if (grps.length) {
-      $channelList.appendChild(groupLabel('채널', grps.length));
+      $channelList.appendChild(groupLabel('Channels', grps.length));
       grps.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
 
@@ -815,7 +815,7 @@
     // presence API → online == DM count as a neutral default).
     if ($sideSub) {
       var n = dms.length;
-      $sideSub.textContent = '친구 ' + n + ' · 온라인 ' + n;
+      $sideSub.textContent = n + ' friends · ' + n + ' online';
     }
   }
 
@@ -824,6 +824,16 @@
       .then(function (r) { return r.ok ? r.json() : { channels: [] }; })
       .then(function (data) {
         channels = (data && data.channels) || [];
+        // Seed each row's last-message preview/time from the server so recent
+        // activity is visible WITHOUT opening every channel first.
+        channels.forEach(function (c) {
+          var last = c.last;
+          if (last && last.text) {
+            c._preview = (last.is_user ? (OWNER_NAME + ': ')
+                          : ((last.display_name || '') + ': ')) + last.text;
+            c._ts = parseTs(last.timestamp);
+          }
+        });
         renderChannels();
         syncHead();
       })
@@ -838,9 +848,9 @@
         $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash' : 'ti ti-hash hash');
       }
       if ($input) {
-        var ph = (c.name || c.channel) + '에게 메시지 보내기…';
+        var ph = 'Message ' + (c.name || c.channel) + '…';
         $input.setAttribute('data-ph', ph);
-        $input.setAttribute('aria-label', (c.name || c.channel) + '에게 메시지 보내기');
+        $input.setAttribute('aria-label', 'Message ' + (c.name || c.channel));
       }
     } else {
       setChannelLabel('# ' + CHANNEL);
@@ -904,7 +914,7 @@
     if (reconnectTimer) return;
     var delay = Math.min(RECONNECT_MAX, 500 * Math.pow(2, reconnectAttempts));
     reconnectAttempts++;
-    setStatus('connecting', '재연결 중…');
+    setStatus('connecting', 'Reconnecting…');
     reconnectTimer = setTimeout(function () {
       reconnectTimer = null;
       connect();
@@ -912,17 +922,17 @@
   }
   function connect() {
     intentionalClose = false;
-    setStatus('connecting', '연결 중…');
+    setStatus('connecting', 'Connecting…');
     try {
       ws = new WebSocket(wsUrl());
     } catch (e) {
-      setStatus('closed', '연결 실패');
+      setStatus('closed', 'Connection failed');
       scheduleReconnect();
       return;
     }
     ws.onopen = function () {
       reconnectAttempts = 0;
-      setStatus('open', '연결됨');
+      setStatus('open', 'Connected');
       syncSendDisabled();
       try { ws.send(JSON.stringify({ type: 'ping', channel: CHANNEL, agent: AGENT })); } catch (e2) {}
     };
@@ -932,13 +942,13 @@
       handleFrame(frame);
     };
     ws.onclose = function () {
-      setStatus('closed', '연결 끊김');
+      setStatus('closed', 'Disconnected');
       syncSendDisabled();
       showTyping(false);
       scheduleReconnect();
     };
     ws.onerror = function () {
-      setStatus('closed', '연결 오류');
+      setStatus('closed', 'Connection error');
       // onclose fires after onerror → reconnect is scheduled there.
     };
   }
@@ -1126,7 +1136,7 @@
       text: (src.lines && src.lines.join(' ')) || ''
     };
     $replyCue.hidden = false;
-    $replyCueText.innerHTML = '<b>' + esc(src.name) + '</b> 님에게 답장 — ' + esc(replyTo.text.slice(0, 40));
+    $replyCueText.innerHTML = 'Replying to <b>' + esc(src.name) + '</b> — ' + esc(replyTo.text.slice(0, 40));
     $input.focus();
   }
   function clearReplyCue() {
@@ -1203,14 +1213,14 @@
     var root = models[0] || msgIndex[rootId];
     var replyCount = Math.max(0, models.length - 1);
     if ($threadSub) {
-      $threadSub.textContent = (root ? (root.name + ' · ') : '') + '답글 ' + replyCount + '개';
+      $threadSub.textContent = (root ? (root.name + ' · ') : '') + replyCount + (replyCount === 1 ? ' reply' : ' replies');
     }
     $threadBody.innerHTML = '';
     models.forEach(function (r) { $threadBody.appendChild(threadRow(r, true)); });
     if (!models.length) {
       var empty = document.createElement('div');
       empty.className = 'msg sys in';
-      empty.innerHTML = '<div class="body"><div class="txt">스레드를 찾을 수 없습니다.</div></div>';
+      empty.innerHTML = '<div class="body"><div class="txt">Thread not found.</div></div>';
       $threadBody.appendChild(empty);
     }
 
@@ -1220,8 +1230,8 @@
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'tp-reply';
-      btn.innerHTML = '<i class="ti ti-arrow-back-up" aria-hidden="true"></i><span>' +
-        esc(root.name) + ' 님에게 답장</span>';
+      btn.innerHTML = '<i class="ti ti-arrow-back-up" aria-hidden="true"></i><span>Reply to ' +
+        esc(root.name) + '</span>';
       btn.addEventListener('click', function () {
         // Seed the reply-cue from the (possibly panel-only) root model.
         replyTo = {
@@ -1230,7 +1240,7 @@
         };
         if ($replyCue) {
           $replyCue.hidden = false;
-          $replyCueText.innerHTML = '<b>' + esc(root.name) + '</b> 님에게 답장 — ' +
+          $replyCueText.innerHTML = 'Replying to <b>' + esc(root.name) + '</b> — ' +
             esc(replyTo.text.slice(0, 40));
         }
         closeThreadPanel();
@@ -1257,7 +1267,7 @@
     openThreadRootId = actualRoot;
     lastFocused = document.activeElement;
     // Show a loading shell, then fetch the real thread over the socket.
-    if ($threadSub) $threadSub.textContent = '불러오는 중…';
+    if ($threadSub) $threadSub.textContent = 'Loading…';
     $threadBody.innerHTML = '';
     $threadFoot.innerHTML = '';
     $threadPanel.hidden = false;

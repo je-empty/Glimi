@@ -373,8 +373,12 @@ body {
   opacity: 0; transform: translateY(5px);
 }
 .msg.in { opacity: 1; transform: none; transition: opacity .24s var(--chat-ease), transform .24s var(--chat-ease); }
-.msg.lead { margin-top: var(--sp-3); }
+.msg.lead { margin-top: var(--sp-5); }
 .msg.cont { padding-top: 1px; padding-bottom: 1px; }
+/* The dashboard 'Messages' ledger styles a global `.msg` with a per-row
+   border-bottom; it bleeds into the chat feed and reads as a list, not a chat.
+   The feed must stay borderless — group spacing carries the rhythm instead. */
+.feed .msg { border-top: 0; border-bottom: 0; }
 .msg:hover { background: var(--chat-row-hover); }
 .msg .gut { display: flex; flex-direction: column; align-items: center; padding-top: 2px; }
 .msg .av {
@@ -619,7 +623,16 @@ body {
 .chat-readonly-banner i { font-size: 1.05em; flex: 0 0 auto; }
 /* read-only: 컴포저를 흐리게 + 클릭 차단 (배너는 또렷하게 유지). */
 .composer.readonly .cbox { opacity: .55; pointer-events: none; }
-.typefoot.show { opacity: 1; }
+/* Typing indicator — hidden until someone is ACTUALLY typing (JS toggles .show).
+   Without this base rule the empty dots-pill + "is typing…" stub renders by
+   default and reads as a broken bar above the composer. */
+.typefoot {
+  display: none;
+  align-items: center; gap: var(--sp-2);
+  padding: 2px var(--sp-5) var(--sp-2);
+  font-size: var(--fs-sm); color: var(--text-faint);
+}
+.typefoot.show { display: flex; opacity: 1; }
 .typefoot .dots {
   display: flex; align-items: center; gap: 4px;
   height: 18px; padding: 0 9px;

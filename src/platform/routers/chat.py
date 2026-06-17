@@ -281,6 +281,26 @@ def _list_postable_channels(community_id: str) -> list[dict]:
     """
     def _query() -> list[dict]:
         from src import db
+        from src.core import monitor
+
+        def _last(channel_key: str):
+            """The channel's most recent message, display-ready, for a sidebar
+            preview — so recent activity shows WITHOUT opening each channel
+            (mirrors the per-row shape ``updateChannelPreviewFromHistory`` reads)."""
+            try:
+                recent = monitor.get_recent_messages(limit=1, channel=channel_key)
+            except Exception:
+                return None
+            if not recent:
+                return None
+            r = recent[-1]
+            return {
+                "display_name": r.get("speaker") or "",
+                "is_user": bool(r.get("is_user")),
+                "text": (r.get("message") or "")[:120],
+                "timestamp": r.get("timestamp") or "",
+            }
+
         out: list[dict] = []
         # DM-per-agent. Order: mgr → creator → dev → persona, then by id.
         try:
@@ -300,11 +320,11 @@ def _list_postable_channels(community_id: str) -> list[dict]:
                 "name": a.get("name") or aid,
                 "type": a.get("type", ""),
                 "avatar_url": f"/api/avatar?community={community_id}&id={aid}",
+                "last": _last(f"dm-{aid}"),
             })
         # Registered group channels (user-postable, multi-agent). Exclude
         # mgr-/internal-/dm- via is_user_postable + explicit group prefix.
         try:
-            from src.core import monitor
             channels = monitor.get_channels()
         except Exception:
             channels = []
@@ -321,6 +341,7 @@ def _list_postable_channels(community_id: str) -> list[dict]:
                 "name": name,
                 "type": "group",
                 "avatar_url": None,
+                "last": _last(name),
             })
         return out
 

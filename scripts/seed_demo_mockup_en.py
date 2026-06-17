@@ -200,9 +200,9 @@ def seed(community_id: str = "demo-en") -> None:
             "emotion": "focused", "intensity": 7,
             "traits": ["organized", "a natural leader", "insightful", "honest"],
             "likes": ["coffee", "pilates", "reading", "camping"],
-            "dislikes": ["unprepared meetings", "all talk no action"],
+            "dislikes": ["unprepared meetups", "all talk no action"],
             "rel_owner": "friend", "duration": "2 years", "pet_name": "You",
-            "occupation": "Project manager",
+            "occupation": "Pilates instructor",
             "routine": "6am pilates → evening reading / planning camping trips",
         },
         {
@@ -214,8 +214,8 @@ def seed(community_id: str = "demo-en") -> None:
             "likes": ["cooking", "flowers", "reading", "brunch"],
             "dislikes": ["rushed decisions"],
             "rel_owner": "friend", "duration": "1 year", "pet_name": "You",
-            "occupation": "UX designer",
-            "routine": "work → lunch with friends → evening self-improvement",
+            "occupation": "Runs a neighborhood bakery",
+            "routine": "early-morning baking → afternoon at the shop → evenings with friends",
         },
     ]
 
@@ -287,16 +287,18 @@ def seed(community_id: str = "demo-en") -> None:
                       status, max_turns, datetime.now().isoformat()))
 
 
-    # DM (owner ↔ persona)
+    # DM (owner ↔ agent). Keyed by agent_id — the web chat (_list_postable_channels)
+    # synthesizes dm-<agent_id> and the WS write path stores under the same key, so
+    # the DM channel key MUST be dm-<agent_id> for history to resolve.
     for p in personas:
-        add_channel(f"dm-{p['name']}", [p["id"]])
-    # Manager / Creator
-    add_channel("mgr-dashboard", ["agent-mgr-001"])
-    add_channel("mgr-creator", ["agent-creator-001"])
+        add_channel(f"dm-{p['id']}", [p["id"]])
+    # Manager / Creator DMs (these surface in the web chat as DMs too).
+    add_channel("dm-agent-mgr-001", ["agent-mgr-001"])
+    add_channel("dm-agent-creator-001", ["agent-creator-001"])
     add_channel("mgr-system-log", ["agent-mgr-001"])
     # Group (owner included)
     add_channel("group-friends", ["agent-persona-001", "agent-persona-002", "agent-persona-004"])
-    add_channel("group-work", ["agent-persona-006", "agent-persona-007"])
+    add_channel("group-brunch", ["agent-persona-006", "agent-persona-007"])
     # Internal (between agents, owner read-only)
     add_channel("internal-dm-Mia-Sophie", ["agent-persona-001", "agent-persona-004"])
     add_channel("internal-dm-Emma-Lily", ["agent-persona-003", "agent-persona-005"])
@@ -314,23 +316,25 @@ def seed(community_id: str = "demo-en") -> None:
                      (channel, speaker, content, ts, emotion or 'calm'))
 
 
-    # DM — Mia (girlfriend-close friend, steady · lately worried You is busy)
+    # DM — channel key is dm-<agent_id> (web chat looks up dm-<agent_id> → must match).
     DM_SCRIPTS = {
-        "dm-Mia": [
-            ("agent-persona-001", "how's work today?"),
-            ("owner", "honestly... it's the final stretch of the project so it's chaos lol"),
-            ("agent-persona-001", "is the thing you mentioned last time still not fixed?"),
-            ("owner", "nah I finally squashed the core bug yesterday"),
+        # Mia (partner, steady · lately worried You is busy)
+        "dm-agent-persona-001": [
+            ("agent-persona-001", "how was your day?"),
+            ("owner", "honestly... kinda hectic lol"),
+            ("agent-persona-001", "is the thing you mentioned last time still not sorted?"),
+            ("owner", "nah I finally got it sorted yesterday"),
             ("agent-persona-001", "oh thank god haha"),
             ("agent-persona-001", "you coming over tonight?"),
             ("owner", "yeah probably around 8"),
             ("agent-persona-001", "I'll make pasta. I've got the white wine out too"),
             ("owner", "perfect ♥"),
             ("agent-persona-001", "don't push yourself too hard these days"),
-            ("owner", "yeah just gotta survive this week"),
+            ("owner", "yeah just gotta get through this week"),
             ("agent-persona-001", "next week we rest, properly. promise"),
         ],
-        "dm-Chloe": [
+        # Chloe (20-year childhood friend)
+        "dm-agent-persona-002": [
             ("agent-persona-002", "what are you up to this weekend"),
             ("owner", "why"),
             ("agent-persona-002", "the old crew's getting drinks"),
@@ -338,14 +342,15 @@ def seed(community_id: str = "demo-en") -> None:
             ("owner", "I've got dinner plans with Mia though..."),
             ("agent-persona-002", "lol go ask Mia for permission"),
             ("owner", "alright I'll ask"),
-            ("agent-persona-002", "oh and I'm thinking about switching jobs, what do you think?"),
-            ("owner", "where to?"),
-            ("agent-persona-002", "got a startup offer. more pay but there's risk obviously"),
-            ("owner", "hmm walk me through it properly"),
-            ("agent-persona-002", "I'll call you tonight, it's a long convo"),
-            ("owner", "ok after 9"),
+            ("agent-persona-002", "oh and I started running lately, you should come with me"),
+            ("owner", "oh out of nowhere?"),
+            ("agent-persona-002", "the river course is so good. morning runs are amazing, you feel so fresh"),
+            ("owner", "hmm I could do a weekend morning"),
+            ("agent-persona-002", "deal, I'll come pick you up sunday morning"),
+            ("owner", "ok haha"),
         ],
-        "dm-Emma": [
+        # Emma (college junior)
+        "dm-agent-persona-003": [
             ("agent-persona-003", "heyyy lol"),
             ("owner", "what's up"),
             ("agent-persona-003", "you're coming to the club homecoming next week right?"),
@@ -359,7 +364,8 @@ def seed(community_id: str = "demo-en") -> None:
             ("agent-persona-003", "btw Lily and I have been hitting up malatang spots lately, wanna come?"),
             ("owner", "haha maybe sometime"),
         ],
-        "dm-Sophie": [
+        # Sophie (friend, illustrator)
+        "dm-agent-persona-004": [
             ("owner", "Sophie how's the exhibition coming along?"),
             ("agent-persona-004", "hey! it's basically done haha"),
             ("agent-persona-004", "opening's the 15th next month"),
@@ -368,7 +374,8 @@ def seed(community_id: str = "demo-en") -> None:
             ("owner", "haha what, don't spoil it"),
             ("agent-persona-004", "it's a secret, just look forward to it"),
         ],
-        "dm-Lily": [
+        # Lily (younger friend, composition)
+        "dm-agent-persona-005": [
             ("agent-persona-005", "hi!"),
             ("owner", "hey Lily, doing okay?"),
             ("agent-persona-005", "yeah I've got a ton of composition assignments lately so I'm swamped haha"),
@@ -379,46 +386,55 @@ def seed(community_id: str = "demo-en") -> None:
             ("agent-persona-005", "come by the club room sometime. Emma wants to see you too"),
             ("owner", "I'll make time next week"),
         ],
-        "dm-Grace": [
-            ("agent-persona-006", "hey, can you review the client meeting deck for tomorrow?"),
-            ("owner", "sure, I'll share it before I leave today"),
-            ("agent-persona-006", "go through the risk section especially carefully. can't have a repeat of last time"),
-            ("owner", "got it, I'll keep that in mind"),
-            ("agent-persona-006", "also the workshop dates for next month are out. check your email"),
-            ("owner", "checked it"),
-            ("agent-persona-006", "and coordinate well with Zoe too"),
-            ("owner", "will do"),
+        # Grace (older pilates-group friend, demanding but looks out for you)
+        "dm-agent-persona-006": [
+            ("agent-persona-006", "hey, you haven't been working out lately have you"),
+            ("owner", "lol how did you know"),
+            ("agent-persona-006", "I can just tell. come to a class this weekend"),
+            ("owner", "saturday's tough... how about sunday?"),
+            ("agent-persona-006", "sunday morning's open. 11, let's go"),
+            ("owner", "okay I'll be there"),
+            ("agent-persona-006", "and your posture's not great. that text neck is bad"),
+            ("owner", "ugh my neck really has been hurting lately"),
+            ("agent-persona-006", "that's why you need to come. I'll start you on some stretches"),
+            ("owner", "honestly don't know what I'd do without you haha"),
+            ("agent-persona-006", "we're going camping next week too, wanna come? Zoe's coming"),
+            ("owner", "oh nice"),
         ],
-        "dm-Zoe": [
-            ("agent-persona-007", "want to grab lunch?"),
-            ("owner", "I'm out of the office today... how about tomorrow"),
-            ("agent-persona-007", "sure, sounds good. Grace will probably come too"),
-            ("owner", "ok, 11:30"),
-            ("agent-persona-007", "oh we decided to go with the second design draft"),
-            ("owner", "good call, that one's better"),
-            ("agent-persona-007", "let's hash out the details tomorrow"),
+        # Zoe (brunch-group friend, runs a neighborhood bakery)
+        "dm-agent-persona-007": [
+            ("agent-persona-007", "I baked scones today, want me to bring you some?"),
+            ("owner", "omg yes please"),
+            ("agent-persona-007", "swing by the shop later. I'll give them to you while they're warm"),
+            ("owner", "ok I'll come by around 7"),
+            ("agent-persona-007", "oh and I booked that pasta place I mentioned"),
+            ("owner", "oh I've been wanting to go there"),
+            ("agent-persona-007", "saturday at 1? Grace is coming too"),
+            ("owner", "sounds great haha"),
+            ("agent-persona-007", "you'll love it, that place is the real deal"),
         ],
     }
     for ch, lines in DM_SCRIPTS.items():
         for i, (sp, content) in enumerate(lines):
             msg(ch, sp, content, ago_min=(len(lines) - i) * 4)
 
-    # Manager channel
+    # Manager DM (Yuna) — friend-news briefing
     MGR_LINES = [
         (90, "agent-mgr-001", "Hi! I'm Yuna, your manager :)"),
         (88, "owner", "hello!"),
-        (85, "agent-mgr-001", "Over in #dm-Emma, Emma brought up the homecoming next week. Let me know once you decide whether you're going~"),
+        (85, "agent-mgr-001", "Emma brought up the homecoming next week. Let me know once you decide whether you're going~"),
         (82, "agent-mgr-001", "Also, Mia's been really worried about your health (based on your recent chats)"),
         (75, "owner", "haha thanks"),
-        (30, "agent-mgr-001", "fyi, over in #internal-dm-Mia-Sophie the two of them are discussing your birthday gift right now 🤫"),
-        (15, "agent-mgr-001", "If you need to edit a profile or make a new friend, come to #mgr-creator!"),
+        (30, "agent-mgr-001", "fyi, Mia and Sophie are discussing your birthday gift right now 🤫"),
+        (15, "agent-mgr-001", "If you need to edit a profile or make a new friend, just tell Hana!"),
     ]
     for ago, sp, content in MGR_LINES:
-        msg("mgr-dashboard", sp, content, ago_min=ago)
+        msg("dm-agent-mgr-001", sp, content, ago_min=ago)
 
-    msg("mgr-creator", "agent-creator-001", "Hi! What brings you by today?", 200)
-    msg("mgr-creator", "owner", "I think the friends I have now are plenty for the moment", 195)
-    msg("mgr-creator", "agent-creator-001", "Sounds good! Just call on me whenever you need 🌸", 190)
+    # Creator DM (Hana)
+    msg("dm-agent-creator-001", "agent-creator-001", "Hi! What brings you by today?", 200)
+    msg("dm-agent-creator-001", "owner", "I think the friends I have now are plenty for the moment", 195)
+    msg("dm-agent-creator-001", "agent-creator-001", "Sounds good! Just call on me whenever you need 🌸", 190)
 
     # group channels
     msg("group-friends", "owner", "yo, drinks this weekend?", 60, "fun")
@@ -432,11 +448,43 @@ def seed(community_id: str = "demo-en") -> None:
     msg("group-friends", "agent-persona-002", "I'll book it", 52, "motivated")
     msg("group-friends", "owner", "nice lol", 50, "fun")
 
-    msg("group-work", "agent-persona-006", "deck for tomorrow is reviewed", 20, "focused")
-    msg("group-work", "agent-persona-007", "I've folded in the edits too", 18, "serene")
-    msg("group-work", "agent-persona-006", "great, let's do the 3pm meeting then", 17, "focused")
-    msg("group-work", "owner", "got it, I'll get ready", 15, "focused")
-    msg("group-work", "agent-persona-007", "want to do lunch all together?", 10, "serene")
+    msg("group-brunch", "agent-persona-007", "where should we do brunch this weekend?", 20, "serene")
+    msg("group-brunch", "agent-persona-006", "how about that place in Yeonnam-dong. their salad's great", 18, "calm")
+    msg("group-brunch", "agent-persona-007", "oh nice! should we invite You too?", 17, "serene")
+    msg("group-brunch", "owner", "haha if you're inviting me I'm there", 15, "fun")
+    msg("group-brunch", "agent-persona-006", "deal. sunday at 12, let's go", 10, "calm")
+
+    # Dummy thread + reactions (to demo the chat UI's thread/reaction affordances)
+    def _msg_id(channel, speaker, content, ago_min=0, emotion=None):
+        ts = (datetime.now() - timedelta(minutes=ago_min)).isoformat()
+        cur = conn.execute("""INSERT INTO conversations
+                        (channel, speaker, message, timestamp, context_emotion)
+                        VALUES (?, ?, ?, ?, ?)""",
+                     (channel, speaker, content, ts, emotion or 'calm'))
+        return cur.lastrowid
+
+    def _reply(channel, speaker, content, root_id, ago_min=0, emotion=None):
+        ts = (datetime.now() - timedelta(minutes=ago_min)).isoformat()
+        conn.execute("""INSERT INTO conversations
+                        (channel, speaker, message, timestamp, context_emotion, reply_to, thread_root)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                     (channel, speaker, content, ts, emotion or 'calm', root_id, root_id))
+
+    def _react(message_id, actor_id, emoji):
+        ts = datetime.now().isoformat()
+        conn.execute("""INSERT OR IGNORE INTO reactions (message_id, actor_id, emoji, created_at)
+                        VALUES (?, ?, ?, ?)""", (message_id, actor_id, emoji, ts))
+
+    _root = _msg_id("group-friends", "agent-persona-002", "yesterday's run 📸 6k along the river", 40, "excited")
+    _reply("group-friends", "agent-persona-001", "oh nice ㅋㅋ", _root, 39, "calm")
+    _reply("group-friends", "owner", "let's go together next time", _root, 38, "fun")
+    _reply("group-friends", "agent-persona-004", "great shot ㅎㅎ", _root, 37, "happy")
+    _react(_root, "owner", "❤️")
+    _react(_root, "agent-persona-001", "🔥")
+    _react(_root, "agent-persona-004", "👍")
+    # A reaction in a DM too (Mia's DM)
+    _dm_msg = _msg_id("dm-agent-persona-001", "agent-persona-001", "wanna hit the bookshop tomorrow?", 30, "serene")
+    _react(_dm_msg, "owner", "👍")
 
     # Internal — Mia·Sophie (worried about You + birthday prep)
     INTERNAL_JIWOO_YERIN = [
@@ -487,21 +535,21 @@ def seed(community_id: str = "demo-en") -> None:
         msg("internal-dm-Emma-Lily", sp, content, ago_min=ago,
             emotion="excited" if sp == "agent-persona-003" else "calm")
 
-    # Internal — Grace·Zoe (office politics)
+    # Internal — Grace·Zoe (looking after You + birthday prep)
     INTERNAL_JIHO_SUJIN = [
-        ("agent-persona-006", "Zoe, You's doing well on this project right?", 30),
-        ("agent-persona-007", "yeah, careful and diligent", 28),
-        ("agent-persona-006", "I just wish there were a bit more leadership"),
-        ("agent-persona-007", "well he's still pretty junior"),
-        ("agent-persona-006", "I'm thinking of letting him lead a project next year"),
-        ("agent-persona-007", "good idea. a chance to grow"),
-        ("agent-persona-006", "right? let's bring it up at the next 1:1"),
-        ("agent-persona-007", "sounds good"),
+        ("agent-persona-006", "Zoe, doesn't You look kind of tired lately?", 30),
+        ("agent-persona-007", "yeah, he's looking really run down..."),
+        ("agent-persona-006", "it's because he doesn't work out. I'm gonna drag him out this weekend"),
+        ("agent-persona-007", "haha I'll at least bring him some bread"),
+        ("agent-persona-006", "yeah let's look after him a bit"),
+        ("agent-persona-007", "oh and You's birthday is coming up. thinking about what to get him", 18),
+        ("agent-persona-006", "oh right. should we do something together?"),
+        ("agent-persona-007", "yes let's!"),
     ]
     for i, entry in enumerate(INTERNAL_JIHO_SUJIN):
         sp, content = entry[0], entry[1]
         ago = entry[2] if len(entry) > 2 else (len(INTERNAL_JIHO_SUJIN) - i) * 4
-        msg("internal-dm-Grace-Zoe", sp, content, ago_min=ago, emotion="focused")
+        msg("internal-dm-Grace-Zoe", sp, content, ago_min=ago, emotion="calm")
 
     # Internal group — the girls (Mia, Emma, Sophie, Lily)
     INTERNAL_GIRLS = [
@@ -567,15 +615,15 @@ def seed(community_id: str = "demo-en") -> None:
                       ents, knows=["Mia", "owner"] if "You" in ents else None,
                       is_pinned=pinned, ago_days=ago, level=lvl)
 
-    # Chloe — memory about the job-change dilemma
+    # Chloe — running / meetup memories
     insert_memory("agent-persona-002", "dm-You",
-                  "- opened up to You about thinking of switching jobs\n- startup offer is +25% pay but carries risk\n- phone call tonight at 9",
-                  "event", 7, ["You"], ["Chloe", "owner"], ago_days=0)
+                  "- talked You into running together\n- sunday morning river course (Chloe picks him up)\n- teased him for never working out",
+                  "event", 6, ["You"], ["Chloe", "owner"], ago_days=0)
     insert_memory("agent-persona-002", "dm-You",
-                  "- You is buried in his project (only free on weekends)\n- old crew meetup saturday 7pm — confirming whether You will join\n- joked he needs Mia's permission",
+                  "- You only has time on weekends lately (so busy)\n- old crew meetup saturday 7pm — confirming whether You will join\n- joked he needs Mia's permission",
                   "event", 5, ["You"], ["Chloe", "owner"], ago_days=1)
     insert_memory("agent-persona-002", "dm-You",
-                  "- 20-year friends who trade opinions on every big life decision\n- the relationship where we tell each other the bluntest truths\n- I was the first to give advice when You started dating, and when he changed jobs",
+                  "- 20-year friends who trade opinions on every big life decision\n- the relationship where we tell each other the bluntest truths\n- I was the first to give advice when You started dating",
                   "relationship", 9, ["You"], ["Chloe", "owner"], ago_days=14)
 
     # Emma — has feelings for You (internal only)
@@ -604,18 +652,18 @@ def seed(community_id: str = "demo-en") -> None:
                   "- used the Rachmaninoff playlist as inspiration for composing\n- invited him to drop by the club room next week",
                   "fact", 5, ["You"], ["Lily", "owner"], ago_days=0)
 
-    # Grace — work context
+    # Grace — working out / looking after You
     insert_memory("agent-persona-006", "dm-You",
-                  "- requested a review of tomorrow's client meeting deck\n- emphasized the risk section (avoid repeating last time's mistake)\n- announced next month's workshop dates",
+                  "- called out You's text neck / bad posture\n- told him to come to sunday morning pilates class\n- also going camping together next week",
                   "event", 6, ["You"], ["Grace", "owner"], ago_days=0)
     insert_memory("agent-persona-006", "internal-dm-Grace-Zoe",
-                  "- assessment of You: careful and diligent but lacks leadership\n- considering having him lead a project next year\n- Zoe agrees",
-                  "fact", 7, ["You", "Zoe"], ["Grace", "Zoe"],  # owner doesn't know
+                  "- You's been looking tired → decided to look after him with Zoe\n- planning to drag him out to exercise this weekend\n- preparing a birthday gift together too",
+                  "fact", 6, ["You", "Zoe"], ["Grace", "Zoe"],  # owner doesn't know
                   ago_days=0)
 
-    # Zoe — lunch + design decision
+    # Zoe — baking + plans
     insert_memory("agent-persona-007", "dm-You",
-                  "- lunch tomorrow with manager Grace\n- decided to go with the second design draft (You agreed)",
+                  "- baked scones to share at the shop\n- booked the pasta place for saturday (Grace coming too)",
                   "event", 5, ["You", "Grace"], ["Zoe", "owner"], ago_days=0)
 
 
@@ -642,7 +690,7 @@ def seed(community_id: str = "demo-en") -> None:
     add_fact("agent-persona-001", "Sophie", "role", "close friend · college classmate", 6)
 
     # what Chloe knows about You
-    add_fact("agent-persona-002", "You", "occupation", "IT project manager", 6)
+    add_fact("agent-persona-002", "You", "exercise", "recently started running (with Chloe)", 5)
     add_fact("agent-persona-002", "You", "disposition", "INTJ, analytical", 5)
     add_fact("agent-persona-002", "You", "drink_preference", "whisky > beer", 7)
     add_fact("agent-persona-002", "You", "relationship", "5 years with Mia", 8)
@@ -662,15 +710,15 @@ def seed(community_id: str = "demo-en") -> None:
     add_fact("agent-persona-004", "You", "gift_preference", "practical + a drink he likes", 7)
 
     # what Grace knows about You/Zoe
-    add_fact("agent-persona-006", "You", "role", "team PM", 6)
-    add_fact("agent-persona-006", "You", "strength", "thoroughness, diligence", 8)
-    add_fact("agent-persona-006", "You", "weakness", "limited leadership experience", 8)
-    add_fact("agent-persona-006", "Zoe", "strength", "UX instinct, attentiveness", 7)
-    add_fact("agent-persona-006", "Zoe", "role", "UX designer", 6)
+    add_fact("agent-persona-006", "You", "exercise", "barely works out (target of her nagging)", 6)
+    add_fact("agent-persona-006", "You", "health", "text neck · lack of sleep", 7)
+    add_fact("agent-persona-006", "You", "personality", "follows along when you look out for him", 5)
+    add_fact("agent-persona-006", "Zoe", "specialty", "baking · restaurant hunting", 6)
+    add_fact("agent-persona-006", "Zoe", "occupation", "runs a neighborhood bakery", 6)
 
     # what Zoe knows about Grace/You
-    add_fact("agent-persona-007", "Grace", "strength", "leadership, insight", 8)
-    add_fact("agent-persona-007", "You", "role", "PM colleague", 5)
+    add_fact("agent-persona-007", "Grace", "occupation", "pilates instructor", 6)
+    add_fact("agent-persona-007", "You", "taste", "light, simple food · warm desserts", 5)
     add_fact("agent-persona-007", "You", "personality", "a careful INTJ", 5)
 
 
@@ -686,7 +734,7 @@ def seed(community_id: str = "demo-en") -> None:
     add_rel_delta("agent-persona-001", "agent-persona-004", "intimacy", "90", "95",
                   "Sophie prepared a piece for Mia's solo show with Mia in mind", 5)
     add_rel_delta("agent-persona-002", "agent-persona-006", "dynamics",
-                  "formal", "comfortable peers", "got close working well together on a project", 14)
+                  "formal", "comfortable peers", "got close going to the running/pilates groups together", 14)
     add_rel_delta("agent-persona-003", "agent-persona-005", "intimacy", "88", "92",
                   "talking daily lately + hunting malatang spots together", 7)
     add_rel_delta("agent-persona-001", "agent-persona-003", "dynamics",
@@ -699,7 +747,7 @@ def seed(community_id: str = "demo-en") -> None:
 
 
     # ── 11. live channels status='running' ───────────────────
-    for ch in ("group-friends", "internal-dm-Emma-Lily", "dm-Emma"):
+    for ch in ("group-friends", "internal-dm-Emma-Lily", "dm-agent-persona-003"):
         conn.execute("UPDATE channels SET status='running' WHERE channel=?", (ch,))
 
 
@@ -711,8 +759,8 @@ def seed(community_id: str = "demo-en") -> None:
          "Mia starting to feel a little wary of Emma and You's closeness", "caution"),
         ("anniversary_approaching", ["owner", "agent-persona-001"],
          "You's birthday next month — Mia & Sophie preparing a joint gift", "positive"),
-        ("work_event", ["agent-persona-006", "owner"],
-         "team workshop next month. considering a leadership chance for You (Grace & Zoe discussing)", "positive"),
+        ("weekend_plan", ["agent-persona-006", "agent-persona-007", "owner"],
+         "brunch + a river picnic with Grace & Zoe next week", "positive"),
         ("work_milestone", ["agent-persona-004"],
          "Sophie's solo show is ready. opening the 15th next month", "positive"),
     ]
