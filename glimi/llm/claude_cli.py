@@ -2,7 +2,10 @@
 Claude Code CLI 백엔드 — `claude -p` subprocess 호출 래퍼.
 
 특징:
-  - 기존 Claude Code 구독 OAuth 재사용 (별도 API key 불필요)
+  - Claude Code 로그인을 재사용해 별도 API key 입력은 불필요하지만,
+    headless `claude -p` 는 **구독 무료가 아니라 metered** — 사용량만큼 API 크레딧
+    풀에서 차감된다. 또 `--output-format text` 라 per-call usage(토큰)를 반환하지
+    않아 호출량은 추정(estimated)으로만 기록한다. 진짜 무료 런타임은 로컬(Ollama).
   - prompt caching 미지원 (SDK 전용)
   - keychain 언락 필수 (qa.sh / start_dashboard.sh 에서 선 처리)
 """
