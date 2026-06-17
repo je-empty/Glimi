@@ -30,6 +30,9 @@
   var CHANNEL = window.__GLIMI_CHANNEL__ || params.get('channel') || '';
   var AGENT = window.__GLIMI_AGENT__ || params.get('agent') || 'mgr';
   var OWNER_NAME = window.__GLIMI_USER__ || '나';
+  // Look-only mockup (demo): composer stays disabled + a banner shows. The WS
+  // backend also rejects writes ('demo_readonly') — this is the UI half.
+  var READONLY = window.__GLIMI_READONLY__ === true;
   // Embedded (dashboard #view-chat) vs standalone (/chat). Embedded does NOT
   // auto-boot at load — the dashboard lazy-inits on first Chat-tab entry so the
   // WS isn't opened until the tab is actually shown. Standalone auto-boots.
@@ -62,6 +65,7 @@
   var $input = document.getElementById('chat-input');
   var $send = document.getElementById('chat-send');
   var $cnt = document.getElementById('chat-cnt');
+  var $readonlyBanner = document.getElementById('chat-readonly-banner');
   var $replyCue = document.getElementById('chat-reply-cue');
   var $replyCueText = document.getElementById('chat-reply-cue-text');
   var $replyCueClear = document.getElementById('chat-reply-cue-clear');
@@ -585,7 +589,8 @@
         break;
       case 'error':
         showTyping(false);
-        appendMessage(frameToMsg('', '', false, frame.error || '오류가 발생했습니다.', Date.now(), { kind: 'err' }));
+        // Prefer the human-friendly `message` (e.g. demo_readonly) over the code.
+        appendMessage(frameToMsg('', '', false, frame.message || frame.error || '오류가 발생했습니다.', Date.now(), { kind: 'err' }));
         break;
       case 'pong':
         break;
@@ -1009,9 +1014,26 @@
   function clearField() { $input.innerHTML = ''; syncComposer(); }
 
   function syncSendDisabled() {
+    if (READONLY) { if ($send) $send.disabled = true; return; }
     var open = ws && ws.readyState === WebSocket.OPEN;
     var has = fieldText().trim().length > 0;
     if ($send) $send.disabled = !(open && has);
+  }
+
+  // Look-only mockup: lock the composer (no edits/sends) + reveal the banner.
+  // Idempotent — safe to call once on init.
+  function applyReadonly() {
+    if (!READONLY) return;
+    if ($input) {
+      $input.setAttribute('contenteditable', 'false');
+      $input.setAttribute('aria-disabled', 'true');
+    }
+    if ($send) $send.disabled = true;
+    if ($cbox) $cbox.classList.add('readonly');
+    // mark the composer wrapper so CSS can dim it
+    var composer = $cbox ? $cbox.closest('.composer') : null;
+    if (composer) composer.classList.add('readonly');
+    if ($readonlyBanner) $readonlyBanner.hidden = false;
   }
   function syncComposer() {
     var raw = fieldText();
@@ -1062,7 +1084,11 @@
   }
   if ($send) $send.addEventListener('click', submitComposer);
 
+  // Lock the composer immediately at load for read-only (demo) communities.
+  applyReadonly();
+
   function submitComposer() {
+    if (READONLY) return;  // look-only mockup — never send
     var text = fieldText().trim();
     if (!text) return;
     var rt = replyTo ? replyTo.id : null;
