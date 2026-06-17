@@ -15,6 +15,12 @@
 (function () {
   "use strict";
 
+  // API base — empty by default so every single-store dashboard (Community Core,
+  // the standalone workspace --serve/--demo) keeps using absolute /api/* paths
+  // UNCHANGED. A multi-workspace host sets <body data-api-base="/w/{id}"> so the
+  // SAME page drives that workspace's per-id endpoints (/w/{id}/api/*).
+  const API_BASE = document.body.getAttribute("data-api-base") || "";
+
   // ── small helpers ────────────────────────────────────
   const $ = (id) => document.getElementById(id);
   const esc = (s) =>
@@ -444,7 +450,7 @@
   async function openAgent(id) {
     if (!id) return;
     openModal("Loading…", '<div class="empty">Loading agent…</div>');
-    const d = await fetchJson(`/api/agent_detail?id=${encodeURIComponent(id)}`);
+    const d = await fetchJson(`${API_BASE}/api/agent_detail?id=${encodeURIComponent(id)}`);
     if (!d || d.error) {
       openModal("Error", `<div class="empty">${esc((d && d.error) || "failed to load")}</div>`);
       return;
@@ -543,7 +549,7 @@
   async function openChannel(name) {
     if (!name) return;
     openModal("Loading…", '<div class="empty">Loading channel…</div>');
-    const d = await fetchJson(`/api/channel?name=${encodeURIComponent(name)}`);
+    const d = await fetchJson(`${API_BASE}/api/channel?name=${encodeURIComponent(name)}`);
     if (!d || d.error) {
       openModal("Error", `<div class="empty">${esc((d && d.error) || "failed to load")}</div>`);
       return;
@@ -682,12 +688,12 @@
       lastTopoKey = key;
     }
     // Observability panels — store-backed, best-effort (degrade to empty).
-    renderUsage(await fetchJson("/api/usage"));
-    renderTimeline(await fetchJson("/api/tool_timeline"));
+    renderUsage(await fetchJson(API_BASE + "/api/usage"));
+    renderTimeline(await fetchJson(API_BASE + "/api/tool_timeline"));
   }
 
   async function load() {
-    const snap = await fetchJson("/api/snapshot");
+    const snap = await fetchJson(API_BASE + "/api/snapshot");
     if (!snap) {
       const err = $("load-error");
       if (err) err.style.display = "block";
@@ -699,7 +705,7 @@
   async function refresh() {
     // Don't disturb an open modal (agent / channel detail) mid-read.
     if (document.body.classList.contains("modal-open")) return;
-    const snap = await fetchJson("/api/snapshot");
+    const snap = await fetchJson(API_BASE + "/api/snapshot");
     if (snap) await paint(snap);
   }
 
