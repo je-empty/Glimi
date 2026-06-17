@@ -475,6 +475,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "team that keeps updating) in the Core dashboard. Offline, no API key.",
     )
     ap.add_argument(
+        "--server", action="store_true",
+        help="Run the multi-workspace SERVER: a home page listing workspaces (a "
+             "read-only Demo + any you create) and a per-workspace Core dashboard. "
+             "Create new workspaces from a name + goal. Offline default, no API key.",
+    )
+    ap.add_argument(
         "--host", default=DASHBOARD_HOST,
         help=f"Dashboard bind host for --serve/--demo (default {DASHBOARD_HOST}; "
              f"use 0.0.0.0 to expose).",
@@ -499,6 +505,16 @@ def main(argv: list[str] | None = None) -> int:
     # Glimi Workspace is English-default; tell the kernel's A2A scaffolding so
     # agent-to-agent turns come back in English (Community stays ko by default).
     os.environ.setdefault("GLIMI_LANG", "en")
+
+    # --server: the multi-workspace host — a home page + per-workspace dashboards
+    # (a read-only Demo always present + workspaces you create). Self-contained;
+    # bypasses first-run setup + the single-team work run.
+    if args.server:
+        try:
+            from server import serve as serve_server
+        except ImportError:
+            from .server import serve as serve_server
+        return serve_server(host=args.host, port=args.port)
 
     # --demo: a seeded, real-time-viewable showcase (its own population + live
     # activity loop). Self-contained — bypasses first-run setup + the work run.
