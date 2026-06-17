@@ -428,7 +428,8 @@ def _relationship_lines(g: Glimi) -> list[str]:
     return lines
 
 
-def serve_dashboard(g: Glimi) -> int:
+def serve_dashboard(g: Glimi, host: str = DASHBOARD_HOST,
+                    port: int = DASHBOARD_PORT) -> int:
     """Serve the finished workspace in the Core dashboard (blocking).
 
     This is the payoff: the *same* store-driven dashboard that serves Community
@@ -438,11 +439,11 @@ def serve_dashboard(g: Glimi) -> int:
     """
     import glimi.dashboard
 
-    url = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}"
+    url = f"http://{host}:{port}"
     print(f"--- Serving the workspace in the Core dashboard at {url} ---")
     print("    (the same dashboard that serves Community — Ctrl-C to stop)\n")
     try:
-        glimi.dashboard.serve(g.store, host=DASHBOARD_HOST, port=DASHBOARD_PORT)
+        glimi.dashboard.serve(g.store, host=host, port=port)
     except ImportError as exc:
         print(f"Dashboard deps not installed: {exc}", file=sys.stderr)
         print("Install with:  pip install glimi[dashboard]", file=sys.stderr)
@@ -469,6 +470,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="After the work, serve the team in the Core dashboard (default OFF).",
     )
     ap.add_argument(
+        "--demo", action="store_true",
+        help="Serve a seeded, real-time-viewable LIVE demo (a hand-authored launch "
+             "team that keeps updating) in the Core dashboard. Offline, no API key.",
+    )
+    ap.add_argument(
+        "--host", default=DASHBOARD_HOST,
+        help=f"Dashboard bind host for --serve/--demo (default {DASHBOARD_HOST}; "
+             f"use 0.0.0.0 to expose).",
+    )
+    ap.add_argument(
+        "--port", type=int, default=DASHBOARD_PORT,
+        help=f"Dashboard port for --serve/--demo (default {DASHBOARD_PORT}).",
+    )
+    ap.add_argument(
         "--approve", choices=["auto", "final", "off"], default="auto",
         help="HITL approval mode: 'auto' (default — auto-approve all, never "
              "blocks; for CI/echo/demos), 'final' (require owner approval for the "
@@ -484,6 +499,15 @@ def main(argv: list[str] | None = None) -> int:
     # Glimi Workspace is English-default; tell the kernel's A2A scaffolding so
     # agent-to-agent turns come back in English (Community stays ko by default).
     os.environ.setdefault("GLIMI_LANG", "en")
+
+    # --demo: a seeded, real-time-viewable showcase (its own population + live
+    # activity loop). Self-contained — bypasses first-run setup + the work run.
+    if args.demo:
+        try:
+            from demo import run_demo
+        except ImportError:
+            from .demo import run_demo
+        return run_demo(host=args.host, port=args.port, backend=backend)
 
     setup = resolve_setup(name_flag=args.name, goal_flag=args.goal)
     banner(backend, setup.owner_name, setup.goal, args.approve)
@@ -511,7 +535,7 @@ def main(argv: list[str] | None = None) -> int:
     summary(g, setup.owner_name, setup.goal, final)
 
     if args.serve:
-        return serve_dashboard(g)
+        return serve_dashboard(g, host=args.host, port=args.port)
 
     print("Done — Coordinator + three specialists, one shared store, a real "
           "interaction web, kernel-only.")
