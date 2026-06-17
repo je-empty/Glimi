@@ -14,6 +14,8 @@ Flow:
     results = await run_tools(parsed.tool_calls, ctx)
     # results를 format_results_block(results)로 감싸 다음 턴 prompt에 주입
 """
+import json
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -34,7 +36,21 @@ class ToolContext:
 
 
 async def run_single(call: ToolCall, ctx: ToolContext) -> ToolResult:
-    """하나의 tool call 실행.
+    """하나의 tool call 실행 + 관측 1행 기록 (choke-point).
+
+    모든 어댑터(Discord 오늘, 웹챗/플랫폼 미래)의 도구 실행이 정확히 이 함수를
+    한 번 통과한다. 실행을 _run() 으로 감싸고 그 둘레에서 latency 측정 + tool_calls
+    기록 (store 미주입/standalone 이면 no-op). 기록은 절대 실행을 깨지 않는다.
+    """
+    start = time.monotonic()
+    result = await _run(call, ctx)
+    latency_ms = int((time.monotonic() - start) * 1000)
+    _record_tool_call(call, ctx, result, latency_ms)
+    return result
+
+
+async def _run(call: ToolCall, ctx: ToolContext) -> ToolResult:
+    """실제 실행 로직.
 
     1. 스펙 존재 확인
     2. 권한 확인 (agent_type이 applies_to에 있는지)
@@ -80,6 +96,41 @@ async def run_single(call: ToolCall, ctx: ToolContext) -> ToolResult:
         import traceback
         traceback.print_exc()
         return fail(call.id, call.name, f"{type(e).__name__}: {str(e)[:200]}")
+
+
+def _record_tool_call(call: ToolCall, ctx: ToolContext,
+                      result: ToolResult, latency_ms: int) -> None:
+    """tool_calls 테이블에 1행 기록 (store-driven, platform-neutral).
+
+    store 는 runtime 모듈 전역 (set_store() 로 재대입되므로 모듈을 import 해서 매번
+    현재 값을 읽는다). store 미주입 (standalone/harness) → no-op. 전체를 try/except 로
+    감싸 관측이 도구 실행을 절대 깨지 않게 한다 (db.log_message 훅 루프와 동일 방어).
+    """
+    try:
+        from glimi import runtime as _rt
+        store = getattr(_rt, "_store", None)
+        if store is None:
+            return
+        try:
+            args_json = json.dumps(call.args, ensure_ascii=False, default=str)
+        except Exception:
+            args_json = None
+        if result.ok:
+            preview = str(result.data)[:200] if result.data is not None else ""
+        else:
+            preview = (result.error or "")[:200]
+        store.record_tool_call(
+            agent_id=ctx.caller_agent_id,
+            agent_type=ctx.caller_agent_type,
+            channel=ctx.channel_name,
+            tool_name=call.name,
+            args_json=args_json,
+            result_preview=preview,
+            ok=result.ok,
+            latency_ms=latency_ms,
+        )
+    except Exception:
+        pass
 
 
 def _is_coro_callable(fn: Callable) -> bool:

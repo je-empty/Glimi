@@ -20,6 +20,14 @@ _kr.set_profiles(_profile_provider)
 _kr.set_owner(_owner_context)
 _kr.set_observer(_observer_impl)
 
+# LLM 사용량 회계 sink 주입 — facade(glimi.llm.generate) Path B 가 실측 토큰/비용을
+# usage_records 에 적립. 미등록이면 no-op (standalone). 같은 store 사용.
+try:
+    from glimi import llm as _kllm
+    _kllm.set_usage_sink(_kernel_store)
+except Exception:
+    pass
+
 # memory 도 같이 주입 보장 (runtime → memory 호출 경로)
 import src.core.memory  # noqa: F401,E402
 

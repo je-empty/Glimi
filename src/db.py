@@ -344,6 +344,54 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_react_msg ON reactions(message_id);
 
+        -- ── 도구 호출 관측 (tool-call timeline) ──
+        -- 모든 <tools> 실행이 glimi/tools/dispatcher.py::run_single 한 군데를 통과 → 거기서 1행 기록.
+        -- 플랫폼 중립: agent_id/agent_type/channel 는 conversations.speaker 와 동일 체계.
+        -- args_json / result_preview 는 절단된 미리보기 (전체 페이로드 저장 X). ok=1 성공.
+        -- created_at 은 UTC-aware ISO (now_utc_iso()), CURRENT_TIMESTAMP 아님.
+        -- community 는 pooled-DB/Workspace 케이스용 (단일 커뮤니티는 NULL — 파일 단위로 이미 격리).
+        CREATE TABLE IF NOT EXISTS tool_calls (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            community       TEXT,
+            agent_id        TEXT,
+            agent_type      TEXT,
+            channel         TEXT,
+            tool_name       TEXT NOT NULL,
+            args_json       TEXT,
+            result_preview  TEXT,
+            ok              INTEGER NOT NULL DEFAULT 0,
+            latency_ms      INTEGER,
+            created_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_toolcall_created ON tool_calls(created_at);
+        CREATE INDEX IF NOT EXISTS idx_toolcall_agent ON tool_calls(agent_id, created_at);
+
+        -- ── LLM 사용량/비용 회계 (usage_records) ──
+        -- 모든 Claude 토큰 소비가 두 choke-point 중 하나를 통과:
+        --   Path B (SDK/facade, glimi/llm.generate) → 실측 토큰 (estimated=0, 정확한 $),
+        --   Path A (claude CLI subprocess, runtime) → --output-format text 라 토큰 0 → 추정 (estimated=1).
+        -- local (ollama/echo) 는 price table 부재 → est_cost=0.0 (무료). 백필 없음 — 신규 테이블.
+        -- ts 는 UTC-aware ISO (now_utc_iso()). community 는 pooled-DB 케이스용 (단일은 NULL).
+        CREATE TABLE IF NOT EXISTS usage_records (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts                  TEXT NOT NULL,
+            community           TEXT,
+            agent_id            TEXT,
+            agent_type          TEXT,
+            model               TEXT,
+            backend             TEXT,
+            input_tokens        INTEGER DEFAULT 0,
+            output_tokens       INTEGER DEFAULT 0,
+            cache_read_tokens   INTEGER DEFAULT 0,
+            cache_write_tokens  INTEGER DEFAULT 0,
+            est_cost            REAL DEFAULT 0,
+            estimated           INTEGER DEFAULT 0,
+            latency_ms          INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_records(ts);
+        CREATE INDEX IF NOT EXISTS idx_usage_community ON usage_records(community, ts);
+        CREATE INDEX IF NOT EXISTS idx_usage_agent ON usage_records(agent_id, ts);
+
         -- 참고: dev_requests / dev_runs 는 platform.db 글로벌 테이블 (data/platform.db).
         -- src/platform/db.py 의 SCHEMA 에 정의됨. 이전 community-local 테이블은 사용 안 함.
     """)
@@ -1532,10 +1580,52 @@ def _migrate_schema():
             UNIQUE(message_id, actor_id, emoji)
         )
     """)
+    # tool_calls / usage_records 테이블 — init_db 의 executescript 에서 IF NOT EXISTS 로 생성되지만,
+    # reactions 와 동일한 이유 (직접 _migrate_schema 호출 / 오래된 라이브 DB) 로 여기서도 보장.
+    # 신규 테이블이라 ADD COLUMN 불필요 — CREATE TABLE IF NOT EXISTS 재선언 (백필 없음).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tool_calls (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            community       TEXT,
+            agent_id        TEXT,
+            agent_type      TEXT,
+            channel         TEXT,
+            tool_name       TEXT NOT NULL,
+            args_json       TEXT,
+            result_preview  TEXT,
+            ok              INTEGER NOT NULL DEFAULT 0,
+            latency_ms      INTEGER,
+            created_at      TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS usage_records (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts                  TEXT NOT NULL,
+            community           TEXT,
+            agent_id            TEXT,
+            agent_type          TEXT,
+            model               TEXT,
+            backend             TEXT,
+            input_tokens        INTEGER DEFAULT 0,
+            output_tokens       INTEGER DEFAULT 0,
+            cache_read_tokens   INTEGER DEFAULT 0,
+            cache_write_tokens  INTEGER DEFAULT 0,
+            est_cost            REAL DEFAULT 0,
+            estimated           INTEGER DEFAULT 0,
+            latency_ms          INTEGER
+        )
+    """)
+
     # 컬럼 의존 인덱스 — ADD COLUMN 이후에 생성 (idx_mem_* 와 동일 규율).
     try:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_thread ON conversations(thread_root)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_react_msg ON reactions(message_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_toolcall_created ON tool_calls(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_toolcall_agent ON tool_calls(agent_id, created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_records(ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_community ON usage_records(community, ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_agent ON usage_records(agent_id, ts)")
     except sqlite3.OperationalError:
         pass
 

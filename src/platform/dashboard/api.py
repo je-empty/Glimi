@@ -86,9 +86,33 @@ def api_dev(path: str) -> dict:
 
 
 def api_usage(path: str) -> dict:
+    """LLM 사용량/비용 — store 기반 per-agent/per-community usage_records 집계.
+
+    공유 DashboardReader 에 위임 (glimi/dashboard) — Core 대시보드와 동일 데이터.
+    기존 monitor.get_usage_stats() (~/.claude/telemetry 계정 전역 스크랩, CLI 전용,
+    개발자 본인 Claude Code 사용량까지 포함) 는 account_telemetry 교차 확인용으로 보존.
+    """
     def _run():
-        from src.core import monitor
-        return monitor.get_usage_stats()
+        from src.adapters.kernel_store import kernel_store
+        from glimi.dashboard import DashboardReader
+        data = DashboardReader(kernel_store).usage()
+        try:
+            from src.core import monitor
+            data["account_telemetry"] = monitor.get_usage_stats()
+        except Exception:
+            pass
+        return data
+    return with_community(path, _run)
+
+
+def api_tool_timeline(path: str) -> dict:
+    """도구 호출 타임라인 — store 기반 (tool_calls). README 의 'tool-call timeline' 백엔드."""
+    def _run():
+        from src.adapters.kernel_store import kernel_store
+        from glimi.dashboard import DashboardReader
+        limit = int(read_query(path, "limit", "50") or 50)
+        aid = read_query(path, "id", "") or None
+        return {"tool_calls": DashboardReader(kernel_store).tool_timeline(limit=limit, agent_id=aid)}
     return with_community(path, _run)
 
 
