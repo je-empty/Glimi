@@ -15,11 +15,16 @@ Scope — **read-only**. The app exposes exactly three data endpoints backed by
 - ``GET /api/agent_detail?id=``  → one agent's profile + 5-layer memory + facts +
   relationships.
 - ``GET /api/channel?name=``     → a channel's participants + messages.
+- ``GET /api/tool_timeline``     → recent tool-call invocations (name / args /
+  result / latency / ok).
+- ``GET /api/usage``             → LLM usage/cost view (today + month-to-date spend,
+  call count, avg latency; CLI rows flagged estimated).
 
 There are **no** mutation endpoints, **no** Discord / sync / scan, **no**
 supervisor or server start/stop, **no** community switcher, **no** auth. Panels
-the kernel store cannot back (health / usage / logs / achievements / dev-requests
-/ model catalog) are simply not present in this read-only slice.
+the kernel store cannot back (health / logs / achievements / dev-requests / model
+catalog) are simply not present in this read-only slice. Tool-call and usage
+panels *are* store-backed and therefore present.
 
 Design constraints (mirrors the reader): domain-neutral (no ``dm-`` / ``mgr-``
 channel-name special-casing, no hardcoded community content), and best-effort —
@@ -92,6 +97,16 @@ def create_app(reader: DashboardReader) -> FastAPI:
         and shapes them like the agent's channel viewer expects.
         """
         return JSONResponse(_channel_detail(reader, name))
+
+    @app.get("/api/tool_timeline")
+    def api_tool_timeline(limit: int = 50) -> JSONResponse:
+        """Recent tool-call invocations (newest first), store-backed."""
+        return JSONResponse(reader.tool_timeline(limit=limit))
+
+    @app.get("/api/usage")
+    def api_usage() -> JSONResponse:
+        """LLM usage/cost view (today + month-to-date), store-backed."""
+        return JSONResponse(reader.usage())
 
     return app
 

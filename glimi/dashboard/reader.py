@@ -22,6 +22,7 @@ minimal change — but the reader itself only ever reads through the store.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from ..store import KernelStore
@@ -250,6 +251,55 @@ class DashboardReader:
             out.append(entry)
         return out
 
+    # ── observability — tool-call timeline + LLM usage ──────────────────
+    def tool_timeline(self, *, limit: int = 50,
+                      agent_id: Optional[str] = None) -> list[dict]:
+        """Recent tool-call invocations (newest first), from the store.
+
+        Each entry: ``created_at``, ``agent_id``, ``agent_type``, ``channel``,
+        ``tool_name``, ``args_json``, ``result_preview``, ``ok`` (0/1),
+        ``latency_ms``. A store without the observability method degrades to ``[]``
+        (the base ``recent_tool_calls`` returns ``[]``; ``_safe`` guards anyway).
+        """
+        return _safe(
+            lambda: self.store.recent_tool_calls(limit=limit, agent_id=agent_id),
+            [],
+        ) or []
+
+    def usage(self, *, community: Optional[str] = None) -> dict:
+        """LLM usage/cost view (today + this-month-to-date), from the store.
+
+        Boundary math (first-of-month / start-of-today, UTC) lives here so the
+        route stays thin. ``$`` figures are only meaningful on the API-key/SDK
+        path — CLI rows are recorded with ``estimated=1`` and ``estimated_count``
+        surfaces how many of the counted calls are estimates, so the UI can label
+        them "est." A store without usage methods degrades to zeroed dicts.
+        """
+        since_month = _first_of_month_utc()
+        since_today = _start_of_today_utc()
+        spend_month = _safe(
+            lambda: self.store.usage_spend(since=since_month, community=community), {}
+        ) or {}
+        spend_today = _safe(
+            lambda: self.store.usage_spend(since=since_today, community=community), {}
+        ) or {}
+        by_agent = _safe(
+            lambda: self.store.usage_by_agent(since=since_month, community=community), []
+        ) or []
+        return {
+            "as_of": _now_utc_iso(),
+            "pricing_as_of": _pricing_as_of(),
+            "spend_today": float(spend_today.get("total_cost", 0.0) or 0.0),
+            "spend_month": float(spend_month.get("total_cost", 0.0) or 0.0),
+            "call_count_today": int(spend_today.get("call_count", 0) or 0),
+            "call_count_month": int(spend_month.get("call_count", 0) or 0),
+            "estimated_count_month": int(spend_month.get("estimated_count", 0) or 0),
+            "input_tokens_month": int(spend_month.get("input_tokens", 0) or 0),
+            "output_tokens_month": int(spend_month.get("output_tokens", 0) or 0),
+            "avg_latency_ms": int(spend_month.get("avg_latency_ms", 0) or 0),
+            "by_agent": by_agent,
+        }
+
     # ── connection graph ───────────────────────────────────────────────
     def snapshot(self) -> dict:
         """A single-call snapshot for the connection graph.
@@ -299,3 +349,32 @@ class DashboardReader:
                 })
         edges.sort(key=lambda e: e.get("intimacy", 0), reverse=True)
         return edges
+
+
+# ── usage view helpers (UTC boundary math + pricing metadata) ───────────
+
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _first_of_month_utc() -> str:
+    now = datetime.now(timezone.utc)
+    return now.replace(day=1, hour=0, minute=0, second=0,
+                       microsecond=0).isoformat()
+
+
+def _start_of_today_utc() -> str:
+    now = datetime.now(timezone.utc)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+def _pricing_as_of() -> str:
+    """The pricing table's as-of date, surfaced so stale rates are visible.
+
+    Best-effort: the pricing module is kernel-side and dependency-free, but the
+    reader keeps its zero-dep promise by tolerating its absence."""
+    try:
+        from ..llm.pricing import PRICING_AS_OF
+        return PRICING_AS_OF
+    except Exception:
+        return ""

@@ -241,6 +241,50 @@ header.status .spacer { flex: 1; }
 .channel-row .ch-stat { font-size: var(--fs-xs); color: var(--text-faint); }
 .channel-row .ch-stat.count { margin-left: auto; font-variant-numeric: tabular-nums; }
 
+/* ── tool-call timeline ─────────────────────────────── */
+.tool-timeline { display: flex; flex-direction: column; gap: 2px; }
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
+}
+.tool-row:hover { background: var(--panel-2); }
+.tool-row .tc-mark { width: 1em; text-align: center; font-weight: 700; }
+.tool-row.tc-ok .tc-mark { color: var(--ok); }
+.tool-row.tc-err .tc-mark { color: var(--err); }
+.tool-row .tc-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  white-space: nowrap;
+}
+.tool-row .tc-args {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 24ch;
+}
+.tool-row .tc-prev {
+  color: var(--text-faint);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-row .tc-lat {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.tool-row .tc-time { color: var(--text-faint); white-space: nowrap; }
+
 /* ── modal ──────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;
