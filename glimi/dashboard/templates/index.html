@@ -75,6 +75,31 @@
         <div class="empty">Loading…</div>
       </div>
     </section>
+
+    <!-- LLM usage -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>LLM Usage</h2>
+        <span class="note" id="usage-note">month-to-date</span>
+      </div>
+      <div class="kpis" id="usage-kpis">
+        <div class="kpi"><div class="label">Spend today</div><div class="value" id="usage-today">—</div></div>
+        <div class="kpi"><div class="label">Spend this month</div><div class="value" id="usage-month">—</div></div>
+        <div class="kpi"><div class="label">Calls this month</div><div class="value" id="usage-calls">—</div></div>
+        <div class="kpi"><div class="label">Avg latency</div><div class="value" id="usage-latency">—</div></div>
+      </div>
+    </section>
+
+    <!-- Tool-call timeline -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Tool-call Timeline</h2>
+        <span class="note">most recent tool invocations</span>
+      </div>
+      <div class="tool-timeline" id="tool-timeline">
+        <div class="empty">Loading…</div>
+      </div>
+    </section>
   </div>
 
   <script src="static/js/dashboard.js"></script>

@@ -379,6 +379,153 @@ class SqliteKernelStore(KernelStore):
             "messages_summarized": covered,
         }
 
+    # ── observability — tool calls + LLM usage (override base no-ops) ──
+    def record_tool_call(self, *, community: Optional[str] = None,
+                         agent_id: Optional[str] = None,
+                         agent_type: Optional[str] = None,
+                         channel: Optional[str] = None,
+                         tool_name: str = "", args_json: Optional[str] = None,
+                         result_preview: Optional[str] = None,
+                         ok: bool = False, latency_ms: Optional[int] = None,
+                         created_at: Optional[str] = None) -> int:
+        from src.core.timeutil import now_utc_iso
+        conn = db.get_conn()
+        try:
+            cur = conn.execute(
+                "INSERT INTO tool_calls (community, agent_id, agent_type, channel, "
+                "tool_name, args_json, result_preview, ok, latency_ms, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (community, agent_id, agent_type, channel, tool_name, args_json,
+                 result_preview, 1 if ok else 0, latency_ms, created_at or now_utc_iso()),
+            )
+            conn.commit()
+            return cur.lastrowid or 0
+        finally:
+            conn.close()
+
+    def recent_tool_calls(self, *, limit: int = 50, agent_id: Optional[str] = None,
+                          community: Optional[str] = None) -> list[dict]:
+        sql = "SELECT * FROM tool_calls"
+        clauses: list[str] = []
+        args: list = []
+        if agent_id is not None:
+            clauses.append("agent_id=?")
+            args.append(agent_id)
+        if community is not None:
+            clauses.append("community=?")
+            args.append(community)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY id DESC LIMIT ?"
+        args.append(max(1, min(500, int(limit))))
+        conn = db.get_conn()
+        try:
+            rows = conn.execute(sql, args).fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
+    def record_usage(self, *, community: Optional[str] = None,
+                     agent_id: Optional[str] = None,
+                     agent_type: Optional[str] = None,
+                     model: Optional[str] = None, backend: Optional[str] = None,
+                     input_tokens: int = 0, output_tokens: int = 0,
+                     cache_read_tokens: int = 0, cache_write_tokens: int = 0,
+                     est_cost: float = 0.0, estimated: bool = False,
+                     latency_ms: Optional[int] = None,
+                     ts: Optional[str] = None) -> int:
+        from src.core.timeutil import now_utc_iso
+        conn = db.get_conn()
+        try:
+            cur = conn.execute(
+                "INSERT INTO usage_records (ts, community, agent_id, agent_type, model, "
+                "backend, input_tokens, output_tokens, cache_read_tokens, "
+                "cache_write_tokens, est_cost, estimated, latency_ms) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ts or now_utc_iso(), community, agent_id, agent_type, model, backend,
+                 int(input_tokens or 0), int(output_tokens or 0),
+                 int(cache_read_tokens or 0), int(cache_write_tokens or 0),
+                 float(est_cost or 0.0), 1 if estimated else 0, latency_ms),
+            )
+            conn.commit()
+            return cur.lastrowid or 0
+        finally:
+            conn.close()
+
+    def usage_spend(self, *, since: Optional[str] = None, until: Optional[str] = None,
+                    community: Optional[str] = None) -> dict:
+        clauses: list[str] = []
+        args: list = []
+        if since is not None:
+            clauses.append("ts >= ?")
+            args.append(since)
+        if until is not None:
+            clauses.append("ts < ?")
+            args.append(until)
+        if community is not None:
+            clauses.append("community = ?")
+            args.append(community)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        conn = db.get_conn()
+        try:
+            row = conn.execute(
+                "SELECT "
+                "COALESCE(SUM(est_cost),0) AS total_cost, "
+                "COALESCE(SUM(input_tokens),0) AS input_tokens, "
+                "COALESCE(SUM(output_tokens),0) AS output_tokens, "
+                "COALESCE(SUM(cache_read_tokens),0) AS cache_read_tokens, "
+                "COALESCE(SUM(cache_write_tokens),0) AS cache_write_tokens, "
+                "COUNT(*) AS call_count, "
+                "COALESCE(SUM(estimated),0) AS estimated_count, "
+                "COALESCE(AVG(latency_ms),0) AS avg_latency_ms "
+                "FROM usage_records" + where,
+                args,
+            ).fetchone()
+        finally:
+            conn.close()
+        return {
+            "total_cost": float(row["total_cost"] or 0.0),
+            "input_tokens": int(row["input_tokens"] or 0),
+            "output_tokens": int(row["output_tokens"] or 0),
+            "cache_read_tokens": int(row["cache_read_tokens"] or 0),
+            "cache_write_tokens": int(row["cache_write_tokens"] or 0),
+            "call_count": int(row["call_count"] or 0),
+            "estimated_count": int(row["estimated_count"] or 0),
+            "avg_latency_ms": int(row["avg_latency_ms"] or 0),
+        }
+
+    def usage_by_agent(self, *, since: Optional[str] = None, until: Optional[str] = None,
+                       community: Optional[str] = None) -> list[dict]:
+        clauses: list[str] = []
+        args: list = []
+        if since is not None:
+            clauses.append("ts >= ?")
+            args.append(since)
+        if until is not None:
+            clauses.append("ts < ?")
+            args.append(until)
+        if community is not None:
+            clauses.append("community = ?")
+            args.append(community)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        conn = db.get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT agent_id, agent_type, model, backend, "
+                "COALESCE(SUM(est_cost),0) AS total_cost, "
+                "COUNT(*) AS call_count, "
+                "COALESCE(SUM(input_tokens),0) AS input_tokens, "
+                "COALESCE(SUM(output_tokens),0) AS output_tokens, "
+                "COALESCE(SUM(estimated),0) AS estimated_count "
+                "FROM usage_records" + where +
+                " GROUP BY agent_id, agent_type, model, backend "
+                "ORDER BY total_cost DESC, call_count DESC",
+                args,
+            ).fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
 
 class ProfileOwnerContext:
     """:class:`~glimi.profiles.OwnerContext` over ``src.core.profile``."""

@@ -490,6 +490,9 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     if (btn.dataset.tab === 'achievements') {
       loadAchievements();
     }
+    if (btn.dataset.tab === 'tools') {
+      loadToolTimeline();
+    }
     if (btn.dataset.tab === 'chat' && window.GlimiChat) {
       // First entry boots the embedded chat (channels + history + WS); re-entry
       // only re-pins the feed (the single WS survives tab switches untouched).
@@ -3472,91 +3475,12 @@ async function tick() {
 
   // (legacy "Dev" tab 제거됨 — 새 글로벌 admin 페이지 /admin/dev-requests 로 이전)
 
-  // Usage — telemetry parsed
-  if (usage) {
-    if (usage.source !== 'telemetry') {
-      document.getElementById('usage-full').innerHTML = `
-        <div class="detail-section">
-          <h4>Usage</h4>
-          <div style="color:var(--text-dim);font-size:13px">
-            telemetry 데이터 없음 — ~/.claude/telemetry 파일 찾지 못함.<br>
-            로그 기반 근사치: sonnet ${usage.sonnet_calls || 0} · haiku ${usage.haiku_calls || 0} · opus ${usage.opus_calls || 0}
-          </div>
-        </div>`;
-    } else {
-      const dayBars = (usage.recent_days || []).slice().reverse();
-      const maxDay = Math.max(...dayBars.map(d => d.cost), 0.01);
-      const totalTokens = usage.tokens_input + usage.tokens_output + usage.tokens_cache_write + usage.tokens_cache_read;
-      const apiMin = (usage.api_duration_ms / 1000 / 60).toFixed(1);
-      const modelRows = Object.entries(usage.by_model || {})
-        .sort((a,b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([m, c]) => {
-          const provider = m.startsWith('claude-') ? 'claude' : (m.includes('gpt') ? 'openai' : 'other');
-          return `<div class="rel-row"><span class="rname">${esc(m)}</span><span class="model-tag ${provider}">${c} events</span></div>`;
-        }).join('');
+  // Usage — store-backed (usage_records), honest est. labeling
+  if (usage) renderUsage(usage);
 
-      document.getElementById('usage-full').innerHTML = `
-        <div class="overview-grid">
-          <div class="kpi">
-            <div class="label">Total Cost</div>
-            <div class="value">$${usage.cost_total_usd.toFixed(2)}<small>${usage.sessions_total} sessions</small></div>
-          </div>
-          <div class="kpi">
-            <div class="label">Today</div>
-            <div class="value">$${usage.cost_today_usd.toFixed(2)}</div>
-          </div>
-          <div class="kpi">
-            <div class="label">7-day</div>
-            <div class="value">$${usage.cost_week_usd.toFixed(2)}</div>
-          </div>
-          <div class="kpi">
-            <div class="label">30-day</div>
-            <div class="value">$${usage.cost_month_usd.toFixed(2)}</div>
-          </div>
-          <div class="kpi">
-            <div class="label">Subscription</div>
-            <div class="value" style="font-size:15px">${esc(usage.subscription_type)}</div>
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <h4>Recent 7 Days</h4>
-          <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:10px 0">
-            ${dayBars.map(d => {
-              const h = maxDay ? Math.max(3, (d.cost / maxDay * 100)) : 3;
-              return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                <div style="font-size:10px;color:var(--text-dim)">${d.cost > 0 ? '$' + d.cost.toFixed(2) : ''}</div>
-                <div style="width:100%;height:${h}%;background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:4px 4px 0 0;min-height:2px"></div>
-                <div style="font-size:10px;color:var(--text-faint)">${d.date.slice(5)}</div>
-                <div style="font-size:9px;color:var(--text-faint)">${d.sessions}s</div>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <h4>Token Usage (All Time)</h4>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:6px">
-            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Input</div><div style="font-size:16px;font-weight:700">${usage.tokens_input.toLocaleString()}</div></div>
-            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Output</div><div style="font-size:16px;font-weight:700">${usage.tokens_output.toLocaleString()}</div></div>
-            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Cache Write</div><div style="font-size:16px;font-weight:700">${usage.tokens_cache_write.toLocaleString()}</div></div>
-            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Cache Read</div><div style="font-size:16px;font-weight:700">${usage.tokens_cache_read.toLocaleString()}</div></div>
-            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Total</div><div style="font-size:16px;font-weight:700">${totalTokens.toLocaleString()}</div></div>
-            <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">API Time</div><div style="font-size:16px;font-weight:700">${apiMin} min</div></div>
-          </div>
-        </div>
-
-        ${modelRows ? `<div class="detail-section"><h4>Models</h4>${modelRows}</div>` : ''}
-
-        <div class="detail-section">
-          <h4>Source</h4>
-          <div style="color:var(--text-dim);font-size:12px">
-            ~/.claude/telemetry/ tengu_exit 이벤트 기반 실시간 집계. Claude Code 세션이 종료될 때마다 업데이트됨.
-          </div>
-        </div>
-      `;
-    }
+  // Tool-call timeline — refresh while its tab is active (live without re-click)
+  if (document.getElementById('view-tools')?.classList.contains('active')) {
+    loadToolTimeline();
   }
 
   // Logs
@@ -3566,6 +3490,147 @@ async function tick() {
     logEl.innerHTML = logs.lines.map(l => `<div class="log-line ${classifyLog(l)}">${esc(l)}</div>`).join('') || '<div class="empty">(log empty)</div>';
     if (keepLog) logEl.scrollTop = logEl.scrollHeight;
   }
+}
+
+// ── LLM usage / cost (store-backed usage_records) ──────────────────────
+// $ is only meaningful when there is real (SDK/API-key) priced spend. When
+// every counted call is estimated (CLI subscription path) or all are local
+// ($0), surface tokens + latency instead of a misleading dollar figure.
+// Honesty logic mirrors glimi/dashboard/static/js/dashboard.js renderUsage.
+function fmtUsd(v) {
+  const n = Number(v) || 0;
+  if (n <= 0) return '$0.00';
+  if (n < 0.01) return '<$0.01';
+  return '$' + n.toFixed(2);
+}
+function renderUsage(u) {
+  const host = document.getElementById('usage-full');
+  if (!host) return;
+  if (!u || u.call_count_month == null) {
+    host.innerHTML = `<div class="detail-section"><h4>Usage</h4>
+      <div style="color:var(--text-dim);font-size:13px">No usage recorded yet.</div></div>`;
+    return;
+  }
+  const callsMonth = u.call_count_month || 0;
+  const estMonth = u.estimated_count_month || 0;
+  const allEstimated = callsMonth > 0 && estMonth >= callsMonth;
+  const hasDollars = (u.spend_month || 0) > 0 || (u.spend_today || 0) > 0;
+
+  // Spend cards: show $ only when there is real (non-estimated) priced spend.
+  let todayVal, monthVal;
+  if (hasDollars && !allEstimated) {
+    todayVal = fmtUsd(u.spend_today); monthVal = fmtUsd(u.spend_month);
+  } else if (hasDollars && allEstimated) {
+    todayVal = fmtUsd(u.spend_today) + ' est.'; monthVal = fmtUsd(u.spend_month) + ' est.';
+  } else {
+    // No priced spend (local / CLI no-key) — show tokens instead of $0.
+    const tk = (u.input_tokens_month || 0) + (u.output_tokens_month || 0);
+    todayVal = '—'; monthVal = tk.toLocaleString() + ' tok';
+  }
+
+  const noteBits = ['month-to-date'];
+  if (estMonth > 0) noteBits.push(estMonth + ' est. (CLI)');
+  if (u.pricing_as_of) noteBits.push('prices ' + esc(u.pricing_as_of));
+
+  const byAgent = (u.by_agent || []).slice()
+    .sort((a, b) => (b.total_cost || 0) - (a.total_cost || 0) || (b.call_count || 0) - (a.call_count || 0));
+  const agentRows = byAgent.length
+    ? byAgent.map(a => {
+        const aEst = (a.estimated_count || 0) >= (a.call_count || 0) && (a.call_count || 0) > 0;
+        const aTk = (a.input_tokens || 0) + (a.output_tokens || 0);
+        const spend = (a.total_cost || 0) > 0
+          ? fmtUsd(a.total_cost) + (aEst ? ' est.' : '')
+          : aTk.toLocaleString() + ' tok';
+        const label = a.agent_id || a.agent_type || '—';
+        const modelTag = a.model ? `<span class="model-tag" style="font-size:10px">${esc(a.model)}</span>` : '';
+        return `<div class="rel-row">
+          <span class="rname">${esc(label)} ${modelTag}</span>
+          <span style="color:var(--text-dim);font-size:12px">${(a.call_count || 0).toLocaleString()} calls · ${spend}</span>
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--text-faint);font-size:12px">No per-agent usage yet.</div>';
+
+  host.innerHTML = `
+    <div class="overview-grid">
+      <div class="kpi"><div class="label">Spend today</div><div class="value">${todayVal}</div></div>
+      <div class="kpi"><div class="label">Spend this month</div><div class="value">${monthVal}</div></div>
+      <div class="kpi"><div class="label">Calls this month</div><div class="value">${callsMonth.toLocaleString()}</div></div>
+      <div class="kpi"><div class="label">Avg latency</div><div class="value">${(u.avg_latency_ms || 0).toLocaleString()} ms</div></div>
+    </div>
+
+    <div class="detail-section">
+      <h4>Tokens (month-to-date)</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:6px">
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Input</div><div style="font-size:16px;font-weight:700">${(u.input_tokens_month || 0).toLocaleString()}</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Output</div><div style="font-size:16px;font-weight:700">${(u.output_tokens_month || 0).toLocaleString()}</div></div>
+        <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Total</div><div style="font-size:16px;font-weight:700">${((u.input_tokens_month || 0) + (u.output_tokens_month || 0)).toLocaleString()}</div></div>
+      </div>
+      <div style="color:var(--text-faint);font-size:11px;margin-top:8px">${noteBits.join(' · ')}</div>
+    </div>
+
+    <div class="detail-section"><h4>By agent</h4>${agentRows}</div>
+
+    ${renderAccountTelemetry(u.account_telemetry)}
+  `;
+}
+
+// Optional cross-check: the per-account ~/.claude/telemetry scrape (CLI only,
+// includes the developer's own Claude Code usage) preserved under
+// account_telemetry. Guarded — only shown when the scrape actually parsed.
+function renderAccountTelemetry(t) {
+  if (!t || t.source !== 'telemetry') return '';
+  const cost = Number(t.cost_total_usd) || 0;
+  return `<div class="detail-section">
+    <h4>Account telemetry (cross-check)</h4>
+    <div style="color:var(--text-dim);font-size:12px;margin-bottom:6px">
+      ~/.claude/telemetry account-wide scrape (CLI, includes all of this machine's Claude Code usage — not just this community).
+    </div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap">
+      <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Total</div><div style="font-size:15px;font-weight:700">$${cost.toFixed(2)}</div></div>
+      <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Today</div><div style="font-size:15px;font-weight:700">$${(Number(t.cost_today_usd) || 0).toFixed(2)}</div></div>
+      <div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Sessions</div><div style="font-size:15px;font-weight:700">${(t.sessions_total || 0).toLocaleString()}</div></div>
+    </div>
+  </div>`;
+}
+
+// ── tool-call timeline (observability) — store-backed (tool_calls) ──────
+// Ported from glimi/dashboard/static/js/dashboard.js renderTimeline, using the
+// platform helpers (esc / fmtLocal / j / q) and the same .tool-row markup.
+async function loadToolTimeline() {
+  const d = await j(q('/api/tool_timeline?limit=80'));
+  renderToolTimeline((d && d.tool_calls) || []);
+}
+function renderToolTimeline(rows) {
+  const host = document.getElementById('tools-full');
+  if (!host) return;
+  rows = rows || [];
+  const body = rows.length
+    ? `<div class="tool-timeline">${rows.map(r => {
+        const ok = Number(r.ok) === 1;
+        const mark = ok ? '✓' : '✗';
+        const cls = ok ? 'tc-ok' : 'tc-err';
+        const args = r.args_json ? String(r.args_json) : '';
+        const argsShort = args.length > 80 ? args.slice(0, 80) + '…' : args;
+        const prev = r.result_preview ? String(r.result_preview) : '';
+        const lat = r.latency_ms != null ? r.latency_ms + ' ms' : '';
+        return `<div class="tool-row ${cls}">
+          <span class="tc-mark">${mark}</span>
+          <span class="tc-name">${esc(r.tool_name)}</span>
+          <span class="tc-args" title="${esc(args)}">${esc(argsShort)}</span>
+          <span class="tc-prev" title="${esc(prev)}">${esc(prev)}</span>
+          <span class="tc-lat">${esc(lat)}</span>
+          <span class="tc-time" title="${esc(fmtLocal(r.created_at))}">${esc(r.agent_id || '')}</span>
+        </div>`;
+      }).join('')}</div>`
+    : '<div style="color:var(--text-faint);font-size:13px;padding:8px">No tool calls recorded yet.</div>';
+  host.innerHTML = `
+    <div class="detail-section">
+      <h4>Tool-call timeline</h4>
+      <div style="color:var(--text-dim);font-size:12px;margin-bottom:8px">
+        Recent <code>&lt;tools&gt;</code> invocations — name · args · result · latency · ok. Store-backed (tool_calls), newest first.
+      </div>
+      ${body}
+    </div>`;
 }
 
 async function loadCommunities() {
