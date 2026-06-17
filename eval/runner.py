@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -86,8 +87,10 @@ def _run_agent_case(case: GoldenCase, backend: str) -> dict[str, Any]:
         agent_id, channel, user_message=case.input
     )
 
-    # Run the turn.
+    # Run the turn (timed for per-case latency metrics).
+    _t0 = time.perf_counter()
     out_lines = g.send(agent_id, case.input)
+    latency_ms = int((time.perf_counter() - _t0) * 1000)
     output = "\n".join(out_lines)
     calls = g.runtime.pop_tool_calls(agent_id)
     call_names = _tool_names(calls)
@@ -161,6 +164,7 @@ def _run_agent_case(case: GoldenCase, backend: str) -> dict[str, Any]:
             for c in calls
         ],
         "memory_context_present": bool(mem_context.strip()),
+        "latency_ms": latency_ms,
         "deterministic": det,
         "det_pass": all(d["pass"] for d in det) if det else True,
     }
@@ -282,6 +286,25 @@ def aggregate(results: list[dict]) -> dict[str, Any]:
         }
     total = len(results)
     passed = sum(1 for r in results if r.get("passed"))
+
+    # Latency percentiles over agent-turn cases (supervisor cases are judge-only,
+    # no agent turn → no latency). Nearest-rank percentile.
+    lat = sorted(r["latency_ms"] for r in results
+                 if isinstance(r.get("latency_ms"), (int, float)))
+
+    def _pct(p: int):
+        if not lat:
+            return None
+        i = min(len(lat) - 1, int(round((p / 100) * (len(lat) - 1))))
+        return lat[i]
+
+    latency = {
+        "count": len(lat),
+        "avg_ms": int(sum(lat) / len(lat)) if lat else None,
+        "p50_ms": _pct(50),
+        "p95_ms": _pct(95),
+        "max_ms": (lat[-1] if lat else None),
+    }
     return {
         "overall": {
             "total": total,
@@ -289,6 +312,7 @@ def aggregate(results: list[dict]) -> dict[str, Any]:
             "pass_rate": round(passed / total, 4) if total else 0.0,
         },
         "per_capability": caps,
+        "latency": latency,
     }
 
 
