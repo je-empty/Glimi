@@ -3529,7 +3529,7 @@ function renderUsage(u) {
   }
 
   const noteBits = ['month-to-date'];
-  if (estMonth > 0) noteBits.push(estMonth + ' est. (CLI)');
+  if (estMonth > 0) noteBits.push(estMonth + ' est. (CLI / local)');
   if (u.pricing_as_of) noteBits.push('prices ' + esc(u.pricing_as_of));
 
   const byAgent = (u.by_agent || []).slice()
