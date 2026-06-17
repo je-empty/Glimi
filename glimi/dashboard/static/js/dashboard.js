@@ -653,7 +653,39 @@
       .join("");
   }
 
-  // ── boot ─────────────────────────────────────────────
+  // ── boot + live refresh ──────────────────────────────
+  // The dashboard auto-refreshes so a live store (e.g. the Workspace demo's
+  // background activity) shows up without a manual reload. The graph is the
+  // expensive, layout-resetting render, so it is only re-mounted when the
+  // topology actually changes (node/edge counts); KPIs, the agent grid,
+  // channels, usage and the tool timeline refresh every tick (cheap, and they
+  // reflect in-place changes like message counts, emotions and new spend).
+  let lastTopoKey = null;
+
+  function topoKey(snap) {
+    return [
+      (snap.agents || []).length,
+      (snap.channels || []).length,
+      (snap.relationships || []).length,
+    ].join(":");
+  }
+
+  async function paint(snap, opts) {
+    const force = opts && opts.force;
+    window.__GLIMI_SNAP__ = snap;
+    renderKpis(snap);
+    renderAgents(snap);
+    renderChannels(snap);
+    const key = topoKey(snap);
+    if (force || key !== lastTopoKey) {
+      mountGraph(snap);
+      lastTopoKey = key;
+    }
+    // Observability panels — store-backed, best-effort (degrade to empty).
+    renderUsage(await fetchJson("/api/usage"));
+    renderTimeline(await fetchJson("/api/tool_timeline"));
+  }
+
   async function load() {
     const snap = await fetchJson("/api/snapshot");
     if (!snap) {
@@ -661,18 +693,22 @@
       if (err) err.style.display = "block";
       return;
     }
-    window.__GLIMI_SNAP__ = snap;
-    renderKpis(snap);
-    renderAgents(snap);
-    renderChannels(snap);
-    mountGraph(snap);
-    // Observability panels — store-backed, best-effort (degrade to empty).
-    renderUsage(await fetchJson("/api/usage"));
-    renderTimeline(await fetchJson("/api/tool_timeline"));
+    await paint(snap, { force: true });
+  }
+
+  async function refresh() {
+    // Don't disturb an open modal (agent / channel detail) mid-read.
+    if (document.body.classList.contains("modal-open")) return;
+    const snap = await fetchJson("/api/snapshot");
+    if (snap) await paint(snap);
   }
 
   document.addEventListener("DOMContentLoaded", () => {
     initTheme();
     load();
+    // Poll for live updates. 5s keeps the demo feeling live without churn;
+    // a static store just re-paints identical data (the graph stays put).
+    const ms = Number(document.body.getAttribute("data-refresh-ms")) || 5000;
+    if (ms > 0) setInterval(refresh, ms);
   });
 })();
