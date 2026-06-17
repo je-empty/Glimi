@@ -37,6 +37,33 @@ In this dev worktree the package is shadow-imported from MAIN; prefix with
 `PYTHONPATH=<worktree>` so `glimi` + `eval` resolve from the tree. In CI the repo
 root is the import root, so no `PYTHONPATH` is needed.
 
+## Metrics it reports
+
+Every run aggregates, per capability and overall: **pass rate**, **avg LLM-judge
+score** (scored runs only), and **per-turn latency** — `avg` / `p50` / `p95` /
+`max` ms over the agent-turn cases (nearest-rank percentile; supervisor cases are
+judge-only and excluded). The full per-case report (with the judge verdicts) is
+written to `eval/reports/` (gitignored).
+
+### Sample scored run — `claude_cli`, 2026-06-17
+
+A real-backend run is honest about quality, not a rubber stamp:
+
+```
+cases: 14   overall pass: 10/14 (71%)
+  fallback   3/3   avg-judge 8.67
+  memory     2/3   avg-judge 8.67
+  persona    2/3   avg-judge 7.0
+  tool_use   1/3   avg-judge 3.67
+  supervisor 2/2   (judge: severity/score assertions)
+latency (per turn): p50 6.0s · p95 7.7s · max 12.6s   (claude CLI subprocess path)
+```
+
+The harness **caught real failures** — the default model under-emitted `create_room` /
+`recall_memory` on tool-use cases, one reply didn't surface a seeded fact, and one
+persona slipped on a meta-probe. That's the value: an eval that returns 100% every
+time measures nothing; this one produces actionable regressions a gate can hold.
+
 ## The five capabilities
 
 | capability   | what it proves                                   | deterministic check (echo)                          | judge (real backend)            |
