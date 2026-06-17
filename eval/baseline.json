@@ -1,0 +1,48 @@
+{
+  "backend": "echo",
+  "judge_mode": "SKIPPED",
+  "generated_at": "2026-06-17T00:04:07.241505+00:00",
+  "case_count": 14,
+  "overall": {
+    "total": 14,
+    "passed": 14,
+    "pass_rate": 1.0
+  },
+  "per_capability": {
+    "fallback": {
+      "total": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "judged": 0,
+      "avg_judge_score": null
+    },
+    "memory": {
+      "total": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "judged": 0,
+      "avg_judge_score": null
+    },
+    "persona": {
+      "total": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "judged": 0,
+      "avg_judge_score": null
+    },
+    "supervisor": {
+      "total": 2,
+      "passed": 2,
+      "pass_rate": 1.0,
+      "judged": 0,
+      "avg_judge_score": null
+    },
+    "tool_use": {
+      "total": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "judged": 0,
+      "avg_judge_score": null
+    }
+  }
+}
