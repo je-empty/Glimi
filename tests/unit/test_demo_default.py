@@ -117,18 +117,23 @@ def test_seed_module_is_import_safe_and_callable(modname, default_id, tmp_path, 
 
 # ── (c) ensure_demo_seeded idempotency ────────────────────────────────────────
 
-def test_ensure_demo_seeded_noops_when_demo_exists(monkeypatch, tmp_path):
+def test_ensure_demo_seeded_sets_readonly_on_existing_demo(monkeypatch, tmp_path):
     """If communities/demo/ already exists, ensure_demo_seeded must NOT re-seed
-    (returns False) and must not invoke the seed function."""
+    (returns False, seed() never called) but MUST still ensure the registry marks
+    demo read_only — so an existing demo (e.g. a live server's) becomes read-only
+    on deploy."""
     from src import community as comm
     from src.platform import demo_seed
 
     cdir = tmp_path / "communities"
     (cdir / "demo").mkdir(parents=True)
+    registry = cdir / "registry.toml"
     monkeypatch.setattr(comm, "COMMUNITIES_DIR", cdir)
+    monkeypatch.setattr(comm, "REGISTRY_PATH", registry)
     monkeypatch.setattr(demo_seed, "COMMUNITIES_DIR", cdir)
+    monkeypatch.setattr(demo_seed, "REGISTRY_PATH", registry)
 
-    # Tripwire: the real seed must never be called on the no-op path.
+    # Tripwire: the real seed must never be called when demo/ already exists.
     called = {"seed": False}
 
     def _boom(_id):  # pragma: no cover - should not run
@@ -137,8 +142,11 @@ def test_ensure_demo_seeded_noops_when_demo_exists(monkeypatch, tmp_path):
 
     monkeypatch.setattr("scripts.seed_demo_mockup.seed", _boom)
 
+    # Not newly seeded …
     assert demo_seed.ensure_demo_seeded() is False
     assert called["seed"] is False
+    # … but the existing demo is now flagged read-only in the registry.
+    assert comm.is_read_only("demo") is True
 
 
 def test_ensure_demo_seeded_seeds_then_registers(monkeypatch, tmp_path):

@@ -68,20 +68,23 @@ def ensure_demo_seeded() -> bool:
     """
     try:
         demo_dir = COMMUNITIES_DIR / DEMO_ID
-        if demo_dir.exists():
-            return False  # 이미 존재 — 멱등 no-op
+        newly = False
+        # 1) demo 디렉터리가 없을 때만 데이터 시딩 (import-safe 한 seed 함수).
+        #    이미 있으면 DB 는 건드리지 않는다 (기존 데모 보존).
+        if not demo_dir.exists():
+            from scripts.seed_demo_mockup import seed as _seed
+            _seed(DEMO_ID)
+            newly = True
 
-        # 1) 데이터 시딩 (import-safe 한 seed 함수 호출)
-        from scripts.seed_demo_mockup import seed as _seed
-        _seed(DEMO_ID)
-
-        # 2) registry 기본 블록 보장 후 한글 메타 + read_only 로 갱신
+        # 2) registry 의 read_only 목업 메타를 항상 보장한다 — 새로 시딩했든,
+        #    이미 존재하든(예: 라이브 서버의 기존 demo). 그래야 배포 후 기존 데모도
+        #    읽기 전용으로 전환된다. (_write_registry_block 은 멱등.)
         _ensure_registry(DEMO_ID)
         _write_registry_block(
             DEMO_ID, _DEMO_NAME, _DEMO_DESC, language="ko", read_only=True,
         )
-        print(f"[demo_seed] '{DEMO_ID}' 커뮤니티 시딩 완료 (read_only 목업)")
-        return True
+        print(f"[demo_seed] '{DEMO_ID}' 커뮤니티 {'시딩' if newly else 'read_only 메타'} 완료 (목업)")
+        return newly
     except Exception as e:  # noqa: BLE001 — startup 을 절대 깨지 않는다
         import traceback
         print(f"[demo_seed] ⚠ demo 시딩 실패 (무시하고 계속): {e}")
