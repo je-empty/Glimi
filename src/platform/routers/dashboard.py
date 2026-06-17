@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from .. import accounts
-from ..auth import require_user
+from ..auth import public_readonly_user, require_user
 from ..dashboard import api as dash_api, actions as dash_actions
 
 
@@ -20,16 +20,27 @@ def _full_path(req: Request) -> str:
     return f"{req.url.path}?{q}" if q else req.url.path
 
 
-def _ensure_community_access(req: Request, user: dict) -> None:
+def _ensure_community_access(req: Request, user: dict, public_readonly: bool = False) -> None:
+    """커뮤니티 접근 검사. public_readonly=True 인 GET read 엔드포인트는 익명도
+    read-only(데모) 커뮤니티에 한해 허용 — predicate 는 auth.public_readonly_user
+    (단일 진실의 원천) 가 강제. 그 외(write·비-read_only)는 전부 require_user 유지.
+
+    공개 허용 엔드포인트도 항상 query 의 specific community 에 바인딩하고, 익명은
+    절대 비-read_only 커뮤니티에 닿지 못한다 (predicate 가 401/redirect 발생)."""
     cid = req.query_params.get("community")
-    if cid:
-        if not accounts.user_can_access(user, cid):
-            raise HTTPException(403, "no access")
-        # 삭제된 커뮤니티에 대한 stale 폴링 차단 — 디렉토리 없으면 하위 코드가 자동 생성해서
-        # 빈 커뮤니티 부활시킴. 존재 안 하면 여기서 끊어냄.
-        from src.community import COMMUNITIES_DIR
-        if not (COMMUNITIES_DIR / cid).exists():
-            raise HTTPException(404, f"community not found: {cid}")
+    if not cid:
+        return
+    if public_readonly:
+        # predicate: anon 허용 ⟺ is_read_only(cid). 로그인 비멤버는 403.
+        # 익명 read-only 면 None 반환(통과), 아니면 require_user 와 동일 실패.
+        public_readonly_user(req, cid)
+    elif not accounts.user_can_access(user, cid):
+        raise HTTPException(403, "no access")
+    # 삭제된 커뮤니티에 대한 stale 폴링 차단 — 디렉토리 없으면 하위 코드가 자동 생성해서
+    # 빈 커뮤니티 부활시킴. 존재 안 하면 여기서 끊어냄.
+    from src.community import COMMUNITIES_DIR
+    if not (COMMUNITIES_DIR / cid).exists():
+        raise HTTPException(404, f"community not found: {cid}")
 
 
 # 한세나 (dev agent) 가시성 — 모든 커뮤니티에서 동일.
@@ -38,39 +49,64 @@ def _ensure_community_access(req: Request, user: dict) -> None:
 # admin 페이지 (/admin/dev-requests) 는 require_admin 으로 별도 보호.
 
 
-def _json_endpoint(fn):
+def _json_endpoint(fn, public_readonly: bool = False):
+    """GET JSON 엔드포인트 팩토리.
+
+    public_readonly=True 면 익명도 read-only(데모) 커뮤니티에 한해 허용한다
+    (데모 대시보드가 렌더되도록). 이때 인증 강제는 _ensure_community_access 의
+    public_readonly_user predicate 가 담당하므로, 라우트 레벨 Depends(require_user)
+    는 떼고(익명 통과) 안에서 predicate 로 게이트한다. 기본(False)은 종전대로
+    require_user 의존성으로 전 요청을 로그인 게이트한다."""
+    if public_readonly:
+        from ..auth import get_current_user
+        async def _handler(request: Request, user: dict = Depends(get_current_user)):
+            _ensure_community_access(request, user, public_readonly=True)
+            return await _emit(fn, request)
+        return _handler
+
     async def _handler(request: Request, user: dict = Depends(require_user)):
         _ensure_community_access(request, user)
-        try:
-            data = fn(_full_path(request))
-            cid = request.query_params.get("community") or (data.get("community_id") if isinstance(data, dict) else None)
-            # community pending dev_request 카운트 — 헤더 배지용 (frontend 가 토글 기준 표시)
-            if isinstance(data, dict) and cid and "dev_pending_count" not in data:
-                try:
-                    from src.core.dev_agent import count_pending_for_community
-                    data["dev_pending_count"] = count_pending_for_community(cid)
-                    data["dev_visible"] = True
-                except Exception:
-                    pass
-            return JSONResponse(data)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return JSONResponse({"error": str(e)}, status_code=500)
+        return await _emit(fn, request)
     return _handler
 
 
+async def _emit(fn, request: Request) -> JSONResponse:
+    """공통 본문 — community 컨텍스트 검사 통과 후 핸들러 실행 + dev 배지 주입."""
+    try:
+        data = fn(_full_path(request))
+        cid = request.query_params.get("community") or (data.get("community_id") if isinstance(data, dict) else None)
+        # community pending dev_request 카운트 — 헤더 배지용 (frontend 가 토글 기준 표시)
+        if isinstance(data, dict) and cid and "dev_pending_count" not in data:
+            try:
+                from src.core.dev_agent import count_pending_for_community
+                data["dev_pending_count"] = count_pending_for_community(cid)
+                data["dev_visible"] = True
+            except Exception:
+                pass
+        return JSONResponse(data)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ── GET JSON 엔드포인트 ───────────────────────
-router.get("/api/snapshot")(_json_endpoint(dash_api.api_snapshot))
+# public_readonly=True = 익명도 read-only(데모) 커뮤니티에 한해 허용 (데모
+# 대시보드가 렌더되는 데 필요한 read 들). 그 외(logs/agent_activity/dev/
+# achievements)는 require_user 유지 — 데모 대시보드는 j() 가 null 을 관용하므로
+# 이것들이 401 이어도 깨지지 않는다 (불필요 노출 회피). 익명은 어떤 경우에도
+# 비-read_only 커뮤니티에 닿지 못한다 (predicate 가 401/redirect).
+_PUBLIC_READ = dict(public_readonly=True)
+router.get("/api/snapshot")(_json_endpoint(dash_api.api_snapshot, **_PUBLIC_READ))
 router.get("/api/logs")(_json_endpoint(dash_api.api_logs))
 router.get("/api/agent_activity")(_json_endpoint(dash_api.api_agent_activity))
-router.get("/api/agent")(_json_endpoint(dash_api.api_agent_detail))
-router.get("/api/channel")(_json_endpoint(dash_api.api_channel_detail))
-router.get("/api/health")(_json_endpoint(dash_api.api_health))
+router.get("/api/agent")(_json_endpoint(dash_api.api_agent_detail, **_PUBLIC_READ))
+router.get("/api/channel")(_json_endpoint(dash_api.api_channel_detail, **_PUBLIC_READ))
+router.get("/api/health")(_json_endpoint(dash_api.api_health, **_PUBLIC_READ))
 router.get("/api/dev")(_json_endpoint(dash_api.api_dev))
-router.get("/api/usage")(_json_endpoint(dash_api.api_usage))
-router.get("/api/tool_timeline")(_json_endpoint(dash_api.api_tool_timeline))
-router.get("/api/i18n")(_json_endpoint(dash_api.api_i18n))
+router.get("/api/usage")(_json_endpoint(dash_api.api_usage, **_PUBLIC_READ))
+router.get("/api/tool_timeline")(_json_endpoint(dash_api.api_tool_timeline, **_PUBLIC_READ))
+router.get("/api/i18n")(_json_endpoint(dash_api.api_i18n, **_PUBLIC_READ))
 router.get("/api/achievements")(_json_endpoint(dash_api.api_achievements))
 router.get("/api/achievement_detail")(_json_endpoint(dash_api.api_achievement_detail))
 

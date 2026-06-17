@@ -2,10 +2,10 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from src.community import list_communities
+from src.community import is_read_only, list_communities
 
 from .. import accounts, setup as setup_mod, templates
-from ..auth import get_current_user, require_admin, require_user
+from ..auth import get_current_user, public_readonly_user, require_admin, require_user
 from ..supervisor import supervisor
 
 from .communities import _fetch_members, _visible_communities
@@ -20,6 +20,10 @@ async def home(request: Request):
         return RedirectResponse(url="/setup", status_code=303)
     user = get_current_user(request)
     if not user:
+        # 로그아웃 방문자: read-only(데모) 둘러보기로 보냄 (커뮤니티 리스트는 노출 X).
+        # demo 가 존재 + read_only 일 때만. 아니면 기존대로 /login.
+        if any(c["id"] == "demo" for c in list_communities()) and is_read_only("demo"):
+            return RedirectResponse(url="/community/demo", status_code=303)
         return RedirectResponse(url="/login", status_code=303)
 
     visible = _visible_communities(user)
@@ -54,12 +58,13 @@ async def new_community(
 async def community_chat(
     request: Request,
     community_id: str,
-    user: dict = Depends(require_user),
 ):
     """웹 채팅 페이지 (Phase 1 — Outbox/Inbox seam + WS echo).
-    /community/{community_id} 보다 먼저 등록되어야 함 (path 충돌 방지)."""
-    if not accounts.user_can_access(user, community_id):
-        raise HTTPException(403, "no access to this community")
+    /community/{community_id} 보다 먼저 등록되어야 함 (path 충돌 방지).
+
+    공개 둘러보기: read-only(데모) 커뮤니티는 익명도 열람 가능 (read 전용).
+    read_only 를 템플릿에 전달 → 컴포저 비활성 + 배너 (전원 동일)."""
+    user = public_readonly_user(request, community_id)
 
     all_communities = list_communities()
     target = next((c for c in all_communities if c["id"] == community_id), None)
@@ -89,10 +94,10 @@ async def community_chat(
 async def community_dashboard(
     request: Request,
     community_id: str,
-    user: dict = Depends(require_user),
 ):
-    if not accounts.user_can_access(user, community_id):
-        raise HTTPException(403, "no access to this community")
+    # 공개 둘러보기: read-only(데모)는 익명 열람 가능 (read 전용). read_only 를
+    # 템플릿에 전달 → 임베드 채팅 컴포저 비활성 + 배너 (전원 동일).
+    user = public_readonly_user(request, community_id)
 
     all_communities = list_communities()
     target = next((c for c in all_communities if c["id"] == community_id), None)
