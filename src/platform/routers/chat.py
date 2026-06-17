@@ -752,9 +752,18 @@ async def chat_ws(websocket: WebSocket, cid: str):
         await websocket.close(code=1008)
         return
 
+    # Look-only mockup gate: a read-only community (demo) accepts read frames
+    # (ping/typing/fetch_thread) but rejects every WRITE (text/reactions) with a
+    # clear 'demo_readonly' error so the front-end can show the banner. Computed
+    # ONCE per socket from the registry (cheap, no per-frame I/O).
+    from src import community as _community_mod
+    read_only = _community_mod.is_read_only(cid)
+
     await websocket.accept()
     outbox = WebOutbox(cid)
     joined: set[str] = set()  # channels this socket is registered for
+
+    _READONLY_MSG = "이 커뮤니티는 데모(목업)예요 — 둘러보기 전용입니다."
 
     from src.platform.community_ctx import run_in_community
 
@@ -776,6 +785,18 @@ async def chat_ws(websocket: WebSocket, cid: str):
 
             if ftype == "ping":
                 await websocket.send_json({"type": "pong"})
+                continue
+
+            # Read-only (demo/mockup) gate — block WRITES before any handling /
+            # persistence. Reads (ping above, typing, fetch_thread) stay allowed
+            # so the demo is still fully browsable.
+            if read_only and ftype in ("text", "add_reaction", "remove_reaction"):
+                await websocket.send_json({
+                    "type": "error",
+                    "channel": channel_id,
+                    "error": "demo_readonly",
+                    "message": _READONLY_MSG,
+                })
                 continue
 
             # All non-text frames (reactions / threads) require a user-postable

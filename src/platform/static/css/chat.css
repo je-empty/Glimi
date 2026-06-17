@@ -604,15 +604,21 @@ body {
   padding-right: calc(var(--sp-5) + env(safe-area-inset-right, 0px));
   background: var(--panel);
 }
-.typefoot {
-  height: 22px;
+/* 데모(목업) 배너 — read-only 커뮤니티에서만 노출. amber(주의) 톤, 토큰만 사용. */
+.chat-readonly-banner {
   display: flex; align-items: center; gap: var(--sp-2);
-  padding: 0 var(--sp-1) var(--sp-1);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   font-size: var(--fs-sm);
-  color: var(--text-dim);
-  opacity: 0;
-  transition: opacity .2s var(--chat-ease);
+  color: var(--chat-accent-deep);
+  background: var(--chat-accent-soft);
+  border: 1px solid var(--chat-accent-line);
+  border-radius: var(--r-md);
 }
+.chat-readonly-banner[hidden] { display: none; }
+.chat-readonly-banner i { font-size: 1.05em; flex: 0 0 auto; }
+/* read-only: 컴포저를 흐리게 + 클릭 차단 (배너는 또렷하게 유지). */
+.composer.readonly .cbox { opacity: .55; pointer-events: none; }
 .typefoot.show { opacity: 1; }
 .typefoot .dots {
   display: flex; align-items: center; gap: 4px;

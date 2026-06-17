@@ -71,6 +71,12 @@
     </div>
 
     <div class="composer">
+      <!-- 데모(목업) 배너 — read-only 커뮤니티에서만 노출 (chat.js 가 hidden 토글).
+           디자인 토큰만 사용 (raw hex 금지). 둘러보기 전용임을 명확히 알림. -->
+      <div class="chat-readonly-banner" id="chat-readonly-banner" role="status" hidden>
+        <i class="ti ti-lock" aria-hidden="true"></i>
+        <span>데모(목업) — 둘러보기 전용. 메시지 전송은 비활성화돼 있어요.</span>
+      </div>
       <div class="typefoot" id="chat-typefoot" aria-hidden="true">
         <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
         <span><b id="chat-typefoot-who"></b> 님이 입력 중…</span>
