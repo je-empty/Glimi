@@ -215,8 +215,8 @@ print(chat.reply("nova", "좋네 — 재밌는 얘기 하나 해줘."))
 백엔드만 바꾸면 실제 모델로 전환된다 (나머지 코드는 그대로):
 
 ```python
-chat = Glimi(backend="claude_cli")    # Claude CLI 구독 사용 (SDK 불필요)
-chat = Glimi(backend="ollama")        # Ollama 로 완전 로컬 (GLIMI_OLLAMA_MODEL 설정)
+chat = Glimi(backend="claude_cli")    # Claude CLI 로그인 사용 (SDK 불필요) — 구독 무료가 아니라 사용량만큼 과금(metered)
+chat = Glimi(backend="ollama")        # Ollama 로 완전 로컬 — 무료 옵션 (GLIMI_OLLAMA_MODEL 설정)
 ```
 
 `Glimi` 가 구성요소를 알아서 배선해 준다 — 인메모리 `KernelStore`, 간단한
@@ -389,7 +389,7 @@ flowchart LR
 - Python 3.12+
 - Node.js (Claude Code CLI 의존)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
-- Anthropic API key 또는 Claude Code Max 플랜 (페르소나가 Claude 로 응답 — *로컬 모델 지원은 첫 contributor task, 아래 참조*)
+- Claude 백엔드 에이전트용: Anthropic API key *또는* Claude CLI 로그인. 어느 쪽이든 Claude 턴은 **사용량만큼 과금되는 API 크레딧**을 쓴다(headless `claude -p` 는 구독 무료가 아님) — setup 에서 월 상한을 정하라. **무료** 옵션은 **로컬 전용**(전 에이전트 Ollama, $0) 또는 **하이브리드**(페르소나는 로컬/무료, mgr/creator/dev 만 Claude — Glimi 느낌을 유지하는 가장 저렴한 구성).
 - Discord 봇 토큰 (Community 풀-스택 가동 시만)
 
 **아무것도 안 깔린 맥** — 한 줄이면 위 사전 요구(Homebrew·Python·Node·Claude CLI)를

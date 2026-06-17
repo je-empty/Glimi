@@ -33,6 +33,7 @@ async def api_setup(request: Request):
             use_cli=bool(payload.get("use_cli", False)),
             tier=payload.get("tier", "standard"),
             discord_token=payload.get("discord_token", ""),
+            monthly_cap_usd=payload.get("monthly_cap_usd", setup_mod.DEFAULT_MONTHLY_CAP_USD),
         )
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
