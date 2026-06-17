@@ -617,7 +617,7 @@
     const note = $("usage-note");
     if (note) {
       const bits = ["month-to-date"];
-      if (estMonth > 0) bits.push(estMonth + " est. (CLI)");
+      if (estMonth > 0) bits.push(estMonth + " est. (CLI / local)");
       if (u.pricing_as_of) bits.push("prices " + u.pricing_as_of);
       note.textContent = bits.join(" · ");
     }
