@@ -151,17 +151,28 @@ def _authenticate(websocket: WebSocket, community_id: str) -> Optional[dict]:
     return user
 
 
-def _api_user(request: Request, community_id: str) -> dict:
+def _api_user(request: Request, community_id: str) -> Optional[dict]:
     """API-style auth for the REST chat endpoints: JSON 401/403, never an HTML
     redirect. These return JSON, so a browser ``fetch`` must get a clean status
     code (``require_user`` 307-redirects browser requests to /login, which a
-    fetch would receive as HTML)."""
+    fetch would receive as HTML).
+
+    Public viewing: a read-only (demo) community allows ANON reads — the
+    predicate is ``anon allowed ⟺ is_read_only(community_id)``, always bound to
+    the SPECIFIC target community. Returns the user dict, or None for an allowed
+    anon viewer (read endpoints only — these REST routes are read-only). Anon on
+    a non-read_only community still 401s; a logged-in non-member still 403s."""
     user = get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="login required")
-    if not accounts.user_can_access(user, community_id):
-        raise HTTPException(status_code=403, detail="no access to this community")
-    return user
+    if user:
+        if not accounts.user_can_access(user, community_id):
+            raise HTTPException(status_code=403, detail="no access to this community")
+        return user
+    # Anon: allowed iff the target community is read-only (demo). Force JSON 401
+    # (never an HTML redirect) for a non-read_only community — these return JSON.
+    from src import community as _community_mod
+    if _community_mod.is_read_only(community_id):
+        return None
+    raise HTTPException(status_code=401, detail="login required")
 
 
 def _resolve_speaker(agent_id: str) -> Speaker:
@@ -746,18 +757,24 @@ async def chat_ws(websocket: WebSocket, cid: str):
     """Web-chat WebSocket. Inbound text frame shape:
     ``{type:'text', channel, agent, text}``. Server emits 'text'/'typing'/
     'image'/'interrupted'/'error' frames."""
-    user = _authenticate(websocket, cid)
-    if user is None:
-        # Reject BEFORE accept — 1008 = policy violation.
-        await websocket.close(code=1008)
-        return
-
     # Look-only mockup gate: a read-only community (demo) accepts read frames
     # (ping/typing/fetch_thread) but rejects every WRITE (text/reactions) with a
     # clear 'demo_readonly' error so the front-end can show the banner. Computed
-    # ONCE per socket from the registry (cheap, no per-frame I/O).
+    # ONCE per socket from the registry (cheap, no per-frame I/O). Computed BEFORE
+    # the auth gate so an anonymous viewer can be admitted to a read-only demo.
     from src import community as _community_mod
     read_only = _community_mod.is_read_only(cid)
+
+    user = _authenticate(websocket, cid)
+    if user is None and not read_only:
+        # Anon on a non-read_only community (or a logged-in non-member) → reject
+        # BEFORE accept. 1008 = policy violation. A read-only (demo) community
+        # admits an anonymous READ-ONLY viewer: it can receive history/broadcasts
+        # but every WRITE is blocked below ('demo_readonly'), so the anon viewer
+        # is NEVER used as a write actor (the actor is always the community owner,
+        # resolved only inside the — for read_only, unreachable — write path).
+        await websocket.close(code=1008)
+        return
 
     await websocket.accept()
     outbox = WebOutbox(cid)
