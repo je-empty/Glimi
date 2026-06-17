@@ -121,6 +121,62 @@ def _agent_type_backend(agent_type: str) -> Optional[str]:
     return None
 
 
+# Claude (paid) backend names — the budget guard only diverts these.
+_CLAUDE_BACKENDS = ("claude_cli", "anthropic_sdk")
+
+
+def _budget_diverted_backend(b: LLMBackend, agent_type: str) -> Optional[LLMBackend]:
+    """Guard point 2 (background facade). If ``b`` is a Claude backend and the
+    monthly cap is exceeded, return a non-Claude replacement: ollama when usable,
+    else None (caller emits a capped empty LLMResponse + records was_blocked).
+    Returns ``b`` unchanged (the same instance) when within budget / not Claude.
+
+    Degrade open: any guard error → keep ``b`` (never block on a guard hiccup)."""
+    if b is None or b.name not in _CLAUDE_BACKENDS:
+        return b
+    try:
+        from .. import budget
+        from ..runtime import community_id
+        if budget.allow_claude(community_id()):
+            return b
+    except Exception:
+        return b  # guard failure must never block
+    # over cap — prefer local ollama, else signal "no fallback" with None
+    try:
+        oll = _get_backend_instance("ollama")
+        if oll and oll.available():
+            return oll
+    except Exception:
+        pass
+    return None
+
+
+def _record_facade_blocked(*, model: str, agent_type: str) -> None:
+    """Record a budget-blocked facade call (was_blocked=True, backend='capped',
+    est_cost=0). no-op when no usage sink. Never raises."""
+    try:
+        if _usage_sink is None:
+            return
+        from ..runtime import community_id
+        _usage_sink.record_usage(
+            community=community_id(),
+            agent_type=agent_type or None,
+            model=model or None,
+            backend="capped",
+            est_cost=0.0,
+            estimated=True,
+            was_blocked=True,
+        )
+    except Exception:
+        pass
+
+
+def _capped_response(model: str) -> LLMResponse:
+    """Empty LLMResponse for a budget-capped facade call with no local fallback.
+    Empty text — memory._call_claude already treats empty as a no-op drop."""
+    return LLMResponse(text="", model=model or "", error="budget_capped")
+
+
 def _select_backend(agent_type: str = "", override: str = "") -> LLMBackend:
     """백엔드 선택 — 우선순위에 따라 결정."""
     # 1) 명시적 override
@@ -171,6 +227,12 @@ def generate(
 ) -> LLMResponse:
     """단일 완성 생성. LLMResponse 반환 (text / usage / error)."""
     b = _select_backend(agent_type=agent_type, override=backend)
+    # Budget guard (point 2): Claude 백엔드 + 월 예산 초과 → ollama 강제, 없으면 capped.
+    diverted = _budget_diverted_backend(b, agent_type)
+    if diverted is None:
+        _record_facade_blocked(model=model, agent_type=agent_type)
+        return _capped_response(model)
+    b = diverted
     _t0 = time.monotonic()
     resp = b.generate(
         system=system, user=user, model=model,
@@ -196,6 +258,12 @@ def stream_lines(
 ):
     """라인 단위 스트림. CLI 는 stdout 실시간 read, SDK 는 완성 후 라인 split."""
     b = _select_backend(agent_type=agent_type, override=backend)
+    # Budget guard (point 2): Claude 백엔드 + 월 예산 초과 → ollama 강제, 없으면 무출력.
+    diverted = _budget_diverted_backend(b, agent_type)
+    if diverted is None:
+        _record_facade_blocked(model=model, agent_type=agent_type)
+        return  # capped + no local fallback → empty stream
+    b = diverted
     yield from b.stream_lines(
         system=system, user=user, model=model,
         max_tokens=max_tokens, timeout=timeout,
