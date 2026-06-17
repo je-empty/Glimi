@@ -43,9 +43,9 @@ def _get_client():
 # 실패 시 원본 그대로 넘김 (API 가 alias 지원하면 OK).
 _MODEL_ALIAS = {
     "claude-sonnet-4-6": "claude-sonnet-4-5",  # alias 통용, API 가 latest 매핑
-    "claude-opus-4-7": "claude-opus-4-5",
+    "claude-opus-4-8": "claude-opus-4-8",      # runtime 이 실제 쓰는 opus (AVAILABLE_MODELS) — passthrough
     "claude-haiku-4-5": "claude-haiku-4-5",
-    # 이미 정식 id 인 경우 통과
+    # 이미 정식 id 인 경우 통과 (alias 없으면 _resolve_model 이 원본 그대로 반환)
 }
 
 

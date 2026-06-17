@@ -224,3 +224,79 @@ def test_dashboard_import_has_no_web_deps():
     out = proc.stdout.strip()
     assert proc.returncode == 0, f"import failed: {proc.stderr}"
     assert out == "CLEAN", f"glimi.dashboard pulled in web deps: {out}"
+
+
+# ────────────────────────────────────────────────────
+# observability — tool_timeline() / usage()
+# (DashboardReader 가 store 의 신규 관측 메서드를 surface)
+# ────────────────────────────────────────────────────
+
+@pytest.fixture()
+def obs_store(tmp_path):
+    """SqliteKernelStore over a fresh temp DB — implements the observability
+    methods (the in-memory population store keeps the base no-ops, which the
+    degrade tests below exercise separately)."""
+    from src import db
+    from src.adapters.kernel_store import SqliteKernelStore
+    saved = db.DB_PATH
+    db.DB_PATH = str(tmp_path / "obs.db")
+    db.init_db()
+    try:
+        yield SqliteKernelStore()
+    finally:
+        db.DB_PATH = saved
+
+
+def test_tool_timeline_returns_recorded_calls(obs_store):
+    obs_store.record_tool_call(agent_id="alice", agent_type="mgr",
+                               channel="mgr-log", tool_name="create_room",
+                               args_json='{"name":"x"}', result_preview="ok",
+                               ok=True, latency_ms=12)
+    r = DashboardReader(obs_store)
+    rows = r.tool_timeline(limit=10)
+    assert len(rows) == 1
+    assert rows[0]["tool_name"] == "create_room"
+    assert rows[0]["latency_ms"] == 12
+    assert rows[0]["ok"] == 1
+
+
+def test_tool_timeline_filters_by_agent(obs_store):
+    obs_store.record_tool_call(agent_id="alice", tool_name="x", ok=True)
+    obs_store.record_tool_call(agent_id="bob", tool_name="y", ok=True)
+    r = DashboardReader(obs_store)
+    rows = r.tool_timeline(agent_id="bob")
+    assert len(rows) == 1 and rows[0]["tool_name"] == "y"
+
+
+def test_usage_returns_spend_view(obs_store):
+    obs_store.record_usage(agent_id="alice", agent_type="memory_extract",
+                           model="claude-haiku-4-5", backend="anthropic_sdk",
+                           input_tokens=1000, output_tokens=200,
+                           est_cost=0.002, estimated=False, latency_ms=300)
+    obs_store.record_usage(agent_id="bob", agent_type="persona",
+                           model="claude-haiku-4-5", backend="claude_cli",
+                           input_tokens=500, output_tokens=100,
+                           est_cost=0.001, estimated=True, latency_ms=900)
+    r = DashboardReader(obs_store)
+    u = r.usage()
+    # shape
+    for key in ("as_of", "pricing_as_of", "spend_today", "spend_month",
+                "call_count_month", "estimated_count_month", "avg_latency_ms",
+                "by_agent"):
+        assert key in u, f"missing usage key: {key}"
+    assert u["call_count_month"] == 2
+    assert u["estimated_count_month"] == 1  # only the CLI row is estimated
+    assert abs(u["spend_month"] - 0.003) < 1e-9
+    assert len(u["by_agent"]) == 2
+    assert u["pricing_as_of"]  # surfaced so stale rates are visible
+
+
+def test_reader_degrades_on_store_without_observability(population):
+    """The in-memory population store keeps the base no-op observability methods —
+    the reader must surface empty/zeroed data, never raise."""
+    r = DashboardReader(population.store)
+    assert r.tool_timeline() == []
+    u = r.usage()
+    assert u["call_count_month"] == 0
+    assert u["spend_month"] == 0.0
+    assert u["by_agent"] == []

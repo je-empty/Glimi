@@ -240,3 +240,64 @@ class KernelStore(ABC):
         """채널/에이전트 메모리 통계 — ``{total_messages, l1, l2, l3, pinned,
         facts_active, messages_summarized}`` (집계 카운트 묶음)."""
         ...
+
+    # ── observability — tool calls + LLM usage (concrete, not abstract) ──
+    # 이 두 묶음은 **추상이 아니라 구체 no-op/빈 기본값** 으로 둔다. 이유:
+    #   - 신규 추상 메서드를 추가하면 InMemoryKernelStore + 테스트 더블이 전부 깨진다
+    #     (기존 테스트 green 유지가 최우선). 관측은 부가 기능 — 없는 store 는 그냥 안 적고
+    #     빈 결과를 돌려주면 된다 (DashboardReader 의 never-raise 계약과도 맞음).
+    #   - 영속화하는 store (SqliteKernelStore) 는 아래를 override 한다.
+    #   - 인메모리 store 도 필요하면 override 가능 (harness 레벨 테스트용).
+
+    def record_tool_call(self, *, community: Optional[str] = None,
+                         agent_id: Optional[str] = None,
+                         agent_type: Optional[str] = None,
+                         channel: Optional[str] = None,
+                         tool_name: str = "", args_json: Optional[str] = None,
+                         result_preview: Optional[str] = None,
+                         ok: bool = False, latency_ms: Optional[int] = None,
+                         created_at: Optional[str] = None) -> int:
+        """도구 호출 1건 기록. 기본 구현 = no-op (관측 미지원 store). 영속 store 는 override.
+        반환 = 생성된 row id (no-op 은 0)."""
+        return 0
+
+    def recent_tool_calls(self, *, limit: int = 50, agent_id: Optional[str] = None,
+                          community: Optional[str] = None) -> list[dict]:
+        """최근 도구 호출 목록 (최신 우선). 기본 구현 = 빈 리스트. 영속 store 는 override.
+        각 dict: ``{id, community, agent_id, agent_type, channel, tool_name,
+        args_json, result_preview, ok, latency_ms, created_at}``."""
+        return []
+
+    def record_usage(self, *, community: Optional[str] = None,
+                     agent_id: Optional[str] = None,
+                     agent_type: Optional[str] = None,
+                     model: Optional[str] = None, backend: Optional[str] = None,
+                     input_tokens: int = 0, output_tokens: int = 0,
+                     cache_read_tokens: int = 0, cache_write_tokens: int = 0,
+                     est_cost: float = 0.0, estimated: bool = False,
+                     latency_ms: Optional[int] = None,
+                     ts: Optional[str] = None) -> int:
+        """한 번의 LLM 호출 사용량/비용 1행 기록. 기본 구현 = no-op. 영속 store 는 override.
+        ``estimated`` = True 면 토큰이 추정치 (CLI 경로). 반환 = row id (no-op 은 0)."""
+        return 0
+
+    def usage_spend(self, *, since: Optional[str] = None, until: Optional[str] = None,
+                    community: Optional[str] = None) -> dict:
+        """기간 사용량 집계. 기본 구현 = 0 채운 dict. 영속 store 는 override.
+        ``{total_cost, input_tokens, output_tokens, cache_read_tokens,
+        cache_write_tokens, call_count, estimated_count, avg_latency_ms}``."""
+        return {
+            "total_cost": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "call_count": 0,
+            "estimated_count": 0,
+            "avg_latency_ms": 0,
+        }
+
+    def usage_by_agent(self, *, since: Optional[str] = None, until: Optional[str] = None,
+                       community: Optional[str] = None) -> list[dict]:
+        """agent_id 별 사용량 GROUP BY. 기본 구현 = 빈 리스트. 영속 store 는 override."""
+        return []
