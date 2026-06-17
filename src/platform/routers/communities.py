@@ -44,10 +44,12 @@ class CreateCommunityIn(BaseModel):
     owner: OwnerProfileIn
     clean_existing_channels: bool = False
     grant_to_user: str | None = None
-    # 모델 설정 — inherit(전역 기본값 상속) | cloud(전용 Claude 키) | local(Ollama)
+    # 모델 설정 — inherit(전역 기본값 상속) | cloud/claude(전용 Claude 키) |
+    #            hybrid(페르소나=로컬, 나머지=Claude) | local(Ollama)
     model_mode: str = "inherit"
     model_api_key: str = ""
     model_tier: str = "standard"
+    model_monthly_cap_usd: int | None = None  # hybrid/claude 일 때 커뮤니티별 월 상한(선택)
 
 
 class VerifyTokenIn(BaseModel):
@@ -243,32 +245,46 @@ async def new_defaults(id: str = "", user: dict = Depends(require_user)):
     return data.get(id, {})
 
 
-_VALID_MODEL_MODES = ("inherit", "cloud", "local")
+# cloud = claude 의 레거시 별칭. hybrid = 페르소나 로컬 + 나머지 Claude.
+_VALID_MODEL_MODES = ("inherit", "cloud", "claude", "hybrid", "local")
 _VALID_TIERS = ("lite", "standard", "quality")
 
 
-def _write_community_model(env_path: str, mode: str, api_key: str, tier: str) -> None:
+def _write_community_model(
+    env_path: str,
+    mode: str,
+    api_key: str,
+    tier: str,
+    monthly_cap_usd: int | None = None,
+) -> None:
     """커뮤니티 .env 에 모델 override 기록.
-    inherit → 아무것도 안 씀 (전역 기본값 상속).
-    cloud   → 전용 ANTHROPIC_API_KEY (있으면) + 로컬 백엔드 해제.
-    local   → GLIMI_LLM_BACKEND=ollama + GLIMI_LOCAL_TIER.
-    엔진은 커뮤니티 .env 를 override=True 로 로드하므로 이 키들이 전역값을 덮어쓴다."""
+    inherit       → 아무것도 안 씀 (전역 기본값 상속).
+    cloud/claude  → 전용 ANTHROPIC_API_KEY (있으면) + 로컬 백엔드 해제 + (선택) 월 상한.
+    hybrid        → GLIMI_LLM_AGENT_MAP(페르소나=ollama) + GLIMI_LOCAL_TIER + 키 + (선택) 월 상한.
+    local         → GLIMI_LLM_BACKEND=ollama + GLIMI_LOCAL_TIER.
+    엔진은 커뮤니티 .env 를 override=True 로 로드하므로 이 키들이 전역값을 덮어쓴다.
+
+    hybrid/claude 의 env 키 산출은 코어 setup 의 backend_mode_to_env 를 재사용
+    (위저드 드리프트 방지)."""
     from dotenv import set_key
+    from .. import setup as setup_mod
 
     mode = (mode or "inherit").strip().lower()
     if mode not in _VALID_MODEL_MODES:
         mode = "inherit"
     if mode == "cloud":
-        if api_key.strip():
-            set_key(env_path, "ANTHROPIC_API_KEY", api_key.strip())
-        set_key(env_path, "GLIMI_LLM_BACKEND", "")  # 클라우드 = 로컬 백엔드 강제 해제
-    elif mode == "local":
-        t = (tier or "standard").strip().lower()
-        if t not in _VALID_TIERS:
-            t = "standard"
-        set_key(env_path, "GLIMI_LLM_BACKEND", "ollama")
-        set_key(env_path, "GLIMI_LOCAL_TIER", t)
-    # inherit → no-op
+        mode = "claude"
+    if mode == "inherit":
+        return  # no-op
+
+    if api_key.strip() and mode in ("claude", "hybrid"):
+        set_key(env_path, "ANTHROPIC_API_KEY", api_key.strip())
+
+    cap = monthly_cap_usd if monthly_cap_usd is not None else setup_mod.DEFAULT_MONTHLY_CAP_USD
+    env_keys = setup_mod.backend_mode_to_env(mode, tier, cap, has_key=bool(api_key.strip()))
+    for k, v in env_keys.items():
+        # 빈 값(claude 의 GLIMI_LLM_BACKEND="")도 명시적으로 기록해 전역값을 덮어쓴다.
+        set_key(env_path, k, v)
 
 
 @router.post("")
@@ -311,7 +327,13 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     set_key(str(env_path), "DISCORD_BOT_TOKEN", data.token.strip())
 
     # ── 3b. 모델 override (inherit 면 아무것도 안 씀 → 전역 기본값 상속) ──
-    _write_community_model(str(env_path), data.model_mode, data.model_api_key, data.model_tier)
+    _write_community_model(
+        str(env_path),
+        data.model_mode,
+        data.model_api_key,
+        data.model_tier,
+        data.model_monthly_cap_usd,
+    )
 
     # ── 4. 오너 프로필 저장 ──
     _save_owner_profile(

@@ -234,8 +234,8 @@ print(chat.reply("nova", "Nice — tell me something fun."))
 Switch to a real model by changing the backend (everything else stays the same):
 
 ```python
-chat = Glimi(backend="claude_cli")    # uses your Claude CLI subscription (no SDK)
-chat = Glimi(backend="ollama")        # fully local via Ollama (set GLIMI_OLLAMA_MODEL)
+chat = Glimi(backend="claude_cli")    # Claude via the Claude CLI login (no SDK); metered API credits, not a free subscription
+chat = Glimi(backend="ollama")        # fully local via Ollama — the free option (set GLIMI_OLLAMA_MODEL)
 ```
 
 `Glimi` wires the building blocks for you — an in-memory `KernelStore`, a simple
@@ -425,7 +425,7 @@ Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `dis
 - Python 3.12+
 - Node.js (Claude Code CLI dependency)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
-- Anthropic API key or Claude Code Max plan (personas reply via Claude — *until the local-model contributor task lands, see below*)
+- For Claude-backed agents: an Anthropic API key *or* a Claude CLI login. Either way Claude turns cost **metered API credits** (headless `claude -p` is not a free subscription) — set a monthly cap at setup. The **free** option is **Local-only** (all agents on Ollama, $0) or **Hybrid** (personas local/free, only mgr/creator/dev on Claude — the cheapest config that still feels like Glimi).
 - Discord bot token (only if running the full Community stack)
 
 **Fresh Mac (nothing installed)** — one command installs the prerequisites above
