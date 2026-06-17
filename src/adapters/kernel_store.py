@@ -433,6 +433,7 @@ class SqliteKernelStore(KernelStore):
                      cache_read_tokens: int = 0, cache_write_tokens: int = 0,
                      est_cost: float = 0.0, estimated: bool = False,
                      latency_ms: Optional[int] = None,
+                     was_blocked: bool = False,
                      ts: Optional[str] = None) -> int:
         from src.core.timeutil import now_utc_iso
         conn = db.get_conn()
@@ -440,17 +441,25 @@ class SqliteKernelStore(KernelStore):
             cur = conn.execute(
                 "INSERT INTO usage_records (ts, community, agent_id, agent_type, model, "
                 "backend, input_tokens, output_tokens, cache_read_tokens, "
-                "cache_write_tokens, est_cost, estimated, latency_ms) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "cache_write_tokens, est_cost, estimated, latency_ms, was_blocked) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ts or now_utc_iso(), community, agent_id, agent_type, model, backend,
                  int(input_tokens or 0), int(output_tokens or 0),
                  int(cache_read_tokens or 0), int(cache_write_tokens or 0),
-                 float(est_cost or 0.0), 1 if estimated else 0, latency_ms),
+                 float(est_cost or 0.0), 1 if estimated else 0, latency_ms,
+                 1 if was_blocked else 0),
             )
             conn.commit()
-            return cur.lastrowid or 0
+            row_id = cur.lastrowid or 0
         finally:
             conn.close()
+        # 예산 캐시 무효화 — 다음 가드 체크가 새 spend 를 반영 (특히 blocked 행).
+        try:
+            from glimi import budget as _budget
+            _budget.invalidate(community)
+        except Exception:
+            pass
+        return row_id
 
     def usage_spend(self, *, since: Optional[str] = None, until: Optional[str] = None,
                     community: Optional[str] = None) -> dict:
