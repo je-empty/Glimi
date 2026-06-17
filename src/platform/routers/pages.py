@@ -1,4 +1,6 @@
 """HTML 페이지 라우터 — 로그인 / 홈 (커뮤니티 리스트) / 커뮤니티 대시보드."""
+import os
+
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -12,12 +14,26 @@ from .communities import _fetch_members, _visible_communities
 
 router = APIRouter()
 
+# Public showcase front (optional, deployment-driven). When the platform is
+# reached on GLIMI_FRONT_HOST, the root serves a no-login landing that links to
+# the live demos; the apps themselves live on other hosts (e.g. community.* /
+# workspace.*). Default unset → no landing, the OSS default behavior is unchanged.
+_FRONT_HOST = os.environ.get("GLIMI_FRONT_HOST", "").strip().lower()
+_WORKSPACE_URL = os.environ.get("GLIMI_WORKSPACE_URL", "").strip()
+
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     # 첫 실행이면 setup wizard 로.
     if not setup_mod.is_configured():
         return RedirectResponse(url="/setup", status_code=303)
+    # 공개 쇼케이스 프론트: GLIMI_FRONT_HOST 로 들어오면 로그인 없이 랜딩(데모 링크).
+    # 실제 앱은 다른 호스트(community.* / workspace.*)에서 동작.
+    if _FRONT_HOST:
+        host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+        if host == _FRONT_HOST:
+            return templates.env.TemplateResponse(
+                request, "landing.html", {"workspace_url": _WORKSPACE_URL})
     user = get_current_user(request)
     if not user:
         # 로그아웃 방문자: read-only(데모) 둘러보기로 보냄 (커뮤니티 리스트는 노출 X).
