@@ -264,7 +264,7 @@ The dashboard is part of Glimi Core, not Community — agent graph, 5-layer memo
 
 | Connection Graph | Memory Inspector |
 |---|---|
-| <img src="docs/screenshots/en/04-graph-live.webp" height="300" alt="Connection Graph"/> | <img src="docs/screenshots/en/02-persona-memory.png" height="300" alt="Memory Inspector"/> |
+| <img src="docs/screenshots/en/04-graph-live.png" height="300" alt="Connection Graph"/> | <img src="docs/screenshots/en/02-persona-memory.png" height="300" alt="Memory Inspector"/> |
 
 - **Cytoscape.js graph** — agent connections, channel activity, supervisor overlays
 - **5-layer memory inspector** — pinned, episodic L1-L3, semantic facts, relationship history, all per-channel
@@ -312,7 +312,7 @@ Community is the first application built on Glimi Core: a working showcase of wh
 
 The friends in Community remember you. No re-introducing yourself each time, the way you would with a stranger. The hours you've spent together, last week's running joke, the day you admitted things were rough, the secret you told only A — each of them keeps it in their own store. So when you turn up after a few days, they ask first: "been a while, did that thing work out?" Swap a friend's model from Haiku to a local Llama and the relationship, the mood, the texture of it all come along intact. They aren't a chatbot that resets and has to be told who you are again. They already know you.
 
-![Connection Graph — Live](docs/screenshots/en/04-graph-live.webp)
+![Connection Graph — Live](docs/screenshots/en/04-graph-live.png)
 
 ### Talk to them — the built-in web chat
 

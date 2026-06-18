@@ -98,17 +98,20 @@ async def _emit(fn, request: Request) -> JSONResponse:
 # 비-read_only 커뮤니티에 닿지 못한다 (predicate 가 401/redirect).
 _PUBLIC_READ = dict(public_readonly=True)
 router.get("/api/snapshot")(_json_endpoint(dash_api.api_snapshot, **_PUBLIC_READ))
-router.get("/api/logs")(_json_endpoint(dash_api.api_logs))
-router.get("/api/agent_activity")(_json_endpoint(dash_api.api_agent_activity))
+router.get("/api/logs")(_json_endpoint(dash_api.api_logs, **_PUBLIC_READ))
+router.get("/api/agent_activity")(_json_endpoint(dash_api.api_agent_activity, **_PUBLIC_READ))
 router.get("/api/agent")(_json_endpoint(dash_api.api_agent_detail, **_PUBLIC_READ))
 router.get("/api/channel")(_json_endpoint(dash_api.api_channel_detail, **_PUBLIC_READ))
 router.get("/api/health")(_json_endpoint(dash_api.api_health, **_PUBLIC_READ))
-router.get("/api/dev")(_json_endpoint(dash_api.api_dev))
+router.get("/api/dev")(_json_endpoint(dash_api.api_dev))  # admin (dev-requests) — owner only
 router.get("/api/usage")(_json_endpoint(dash_api.api_usage, **_PUBLIC_READ))
 router.get("/api/tool_timeline")(_json_endpoint(dash_api.api_tool_timeline, **_PUBLIC_READ))
 router.get("/api/i18n")(_json_endpoint(dash_api.api_i18n, **_PUBLIC_READ))
-router.get("/api/achievements")(_json_endpoint(dash_api.api_achievements))
-router.get("/api/achievement_detail")(_json_endpoint(dash_api.api_achievement_detail))
+# achievements/logs/agent_activity are public_readonly too: on a read_only demo the
+# anon viewer should see the seeded Achievements/Logs tabs (richer demo + no 401
+# console noise). public_readonly_user still bars anon from any non-read_only community.
+router.get("/api/achievements")(_json_endpoint(dash_api.api_achievements, **_PUBLIC_READ))
+router.get("/api/achievement_detail")(_json_endpoint(dash_api.api_achievement_detail, **_PUBLIC_READ))
 
 
 @router.get("/api/models")
