@@ -2137,10 +2137,14 @@ class AgentRuntime:
             _record_blocked_usage(speaker_id, speaker_type, model)
 
         _observer.mark_thinking(speaker_id, channel)
+        # Bind before the availability check so the unavailable-backend path (which
+        # falls through to the failure log referencing last_exc) can't raise
+        # UnboundLocalError — it returns [] cleanly. Matters when the kernel runs
+        # with no claude CLI (e.g. CI / the standalone glimi repo).
+        result = None
+        last_exc = None
         try:
             if _backend_available(provider):
-                result = None
-                last_exc = None
                 if provider != "claude":
                     # 비-claude 백엔드 (ollama/echo/…) 출력을 기존 claude 다운스트림
                     # (역할 leak/독백 필터)에 그대로 흘리기 위해 result 를 CompletedProcess

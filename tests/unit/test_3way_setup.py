@@ -11,6 +11,7 @@ modes against an isolated .env, and that the community-create path accepts hybri
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -74,7 +75,15 @@ def test_default_cap_is_20():
 
 @pytest.fixture()
 def isolated_setup(tmp_path, monkeypatch):
-    """Point apply_setup at a temp .env + marker and stub admin bootstrap."""
+    """Point apply_setup at a temp .env + marker and stub admin bootstrap.
+
+    ``apply_setup`` reflects the resolved .env into ``os.environ`` directly
+    (setup.py — "실행 중 프로세스에도 즉시 반영"), which bypasses monkeypatch and
+    would LEAK GLIMI_LLM_AGENT_MAP / GLIMI_LLM_BACKEND into the process env,
+    contaminating later tests' backend resolution (they'd resolve to claude and
+    fail in a no-claude env like CI). Snapshot + restore os.environ around the
+    test so the suite stays order-independent.
+    """
     env_file = tmp_path / ".env"
     marker = tmp_path / ".setup_complete"
     monkeypatch.setattr(setup_mod, "ENV_PATH", env_file)
@@ -84,7 +93,12 @@ def isolated_setup(tmp_path, monkeypatch):
     monkeypatch.setattr(setup_mod.accounts, "bootstrap", lambda: None)
     # claude creds present so the steering warning doesn't fire for claude/hybrid
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    return env_file
+    _saved_env = os.environ.copy()
+    try:
+        yield env_file
+    finally:
+        os.environ.clear()
+        os.environ.update(_saved_env)
 
 
 def _env_dict(path: Path) -> dict[str, str]:
