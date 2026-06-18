@@ -6,6 +6,13 @@ demos); on any other host the root keeps the normal app behavior. Default (unset
 """
 from __future__ import annotations
 
+import pytest
+
+# CI installs the kernel only; the web stack (fastapi/httpx, needed by TestClient)
+# may be absent → skip this whole module gracefully, matching the other web tests.
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
+
 from starlette.testclient import TestClient
 
 from src.platform import app as app_mod

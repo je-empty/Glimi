@@ -23,6 +23,11 @@ import re
 import sys
 
 import pytest
+
+# CI installs the kernel only; fastapi/httpx (TestClient) may be absent → skip
+# this whole module gracefully, matching the other web tests.
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 
 # Make the flat-dir app modules (server, demo, run, team) importable like run.py.
