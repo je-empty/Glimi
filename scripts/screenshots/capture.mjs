@@ -33,7 +33,9 @@
 // ---------------------------------------------------------------------------
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 
@@ -51,10 +53,12 @@ const DEFAULT_W = 1440;
 const DEFAULT_H = 900;
 const SETTLE_MS = 1500; // baseline settle after networkidle2, every shot
 
-// Live demo hosts (source of truth — current UI, no auth needed).
-const LANDING = 'https://glimi.iruyo.com';
-const COMMUNITY = 'https://glimi-community.iruyo.com';
-const WORKSPACE = 'https://glimi-workspace.iruyo.com';
+// Live demo hosts (source of truth — current UI, no auth needed). Each is
+// env-overridable so the same script can target a local server for a one-off
+// regenerate (e.g. GLIMI_COMMUNITY_HOST=http://127.0.0.1:8911) without editing.
+const LANDING = process.env.GLIMI_LANDING_HOST || 'https://glimi.iruyo.com';
+const COMMUNITY = process.env.GLIMI_COMMUNITY_HOST || 'https://glimi-community.iruyo.com';
+const WORKSPACE = process.env.GLIMI_WORKSPACE_HOST || 'https://glimi-workspace.iruyo.com';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -95,15 +99,11 @@ const openOverviewGraph = async (page) => {
 // --- the single source of truth -------------------------------------------
 
 const SHOTS = [
-  // === community connection graph (replaces the janky animated webp) ========
-  // 04: element-clip of just the graph card → crisp STATIC PNG.
-  {
-    name: '04-graph-live',
-    url: `${COMMUNITY}/community/demo`,
-    settle: 800,
-    prep: openOverviewGraph,
-    element: '#graph-panel',
-  },
+  // === community connection graph =========================================
+  // 04 (04-graph-live.webp) is an ANIMATED clip, not a still — it's produced by
+  // captureAnimatedGraph() after this SHOTS loop (it drives the ?graphdemo live
+  // choreography and encodes frames → webp). It is intentionally NOT in SHOTS.
+  //
   // 05: same graph, maximized fullscreen via the graph's own maximize button.
   {
     name: '05-connection-graph',
@@ -343,6 +343,92 @@ async function capture(browser, shot) {
   return { outPath, health, width, height };
 }
 
+// --- animated connection-graph clip ----------------------------------------
+// 04-graph-live.webp — a LOOPING animated WebP of the connection graph alive:
+// several nodes haloing (thinking/speaking) and several edges streaming at once.
+// The public demo seed is static, so we drive the in-app showcase choreography
+// (?graphdemo → window.startGraphDemo()) and record the canvas over time, then
+// encode the frames to an animated WebP with libwebp's img2webp.
+//
+// Why a script-driven clip and not a screen recording: same region, same motion,
+// same length every run — reproducible, like every other shot here.
+const GRAPH_WEBP = {
+  url: `${COMMUNITY}/community/demo?graphdemo`,
+  width: 1200,
+  height: 720,
+  scale: 2, // retina-crisp; README displays it small so size stays modest
+  frames: 44, // ~ a couple of full wave cycles (beat = 640ms)
+  interval: 55, // ms between frame grabs (grab is itself ~80–150ms headless)
+  quality: 66, // img2webp lossy quality (graph = flat colours → compresses well)
+};
+async function captureAnimatedGraph(browser) {
+  const page = await browser.newPage();
+  const health = { consoleErrors: [], requestFailures: [] };
+  attachHealth(page, health);
+
+  await page.setViewport({
+    width: GRAPH_WEBP.width,
+    height: GRAPH_WEBP.height,
+    deviceScaleFactor: GRAPH_WEBP.scale,
+  });
+  // Force light theme both ways (see capture() for the rationale).
+  await page.emulateMediaFeatures([
+    { name: 'prefers-color-scheme', value: 'light' },
+  ]);
+  await page.evaluateOnNewDocument((p) => {
+    try {
+      for (const [k, v] of Object.entries(p)) localStorage.setItem(k, v);
+    } catch (e) {}
+  }, { 'glimi-theme': 'light', 'glimi-show-supervisors': 'false' });
+
+  await page.goto(GRAPH_WEBP.url, { waitUntil: 'networkidle2', timeout: 60000 });
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+  await sleep(SETTLE_MS);
+
+  // Land on Overview, fit/center the graph, then let avatars (node background
+  // images, loaded async by cytoscape) settle before we start recording.
+  await openOverviewGraph(page);
+  await sleep(2500);
+  await page.evaluate(() => {
+    if (typeof window.cyFitGraph === 'function') window.cyFitGraph();
+    if (typeof window.startGraphDemo === 'function') window.startGraphDemo();
+  });
+  await sleep(1200); // first beats run + last avatars paint
+
+  const el = await page.$('#graph-panel');
+  if (!el) throw new Error('graph panel not found (#graph-panel)');
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'glimi-graph-'));
+  const frameFiles = [];
+  const t0 = Date.now();
+  for (let i = 0; i < GRAPH_WEBP.frames; i++) {
+    const f = path.join(tmp, `f${String(i).padStart(3, '0')}.png`);
+    await el.screenshot({ path: f, type: 'png' });
+    frameFiles.push(f);
+    await sleep(GRAPH_WEBP.interval);
+  }
+  const elapsed = Date.now() - t0;
+  await page.close();
+
+  // Per-frame duration = real elapsed / frames → playback matches capture speed.
+  const d = Math.max(50, Math.round(elapsed / GRAPH_WEBP.frames));
+  const out = path.join(OUT_DIR, '04-graph-live.webp');
+  // frame options (-lossy -q -m -d) persist for all subsequent input frames.
+  const args = [
+    '-loop', '0',
+    '-lossy', '-q', String(GRAPH_WEBP.quality), '-m', '6', '-d', String(d),
+    ...frameFiles,
+    '-o', out,
+  ];
+  execFileSync('img2webp', args, { stdio: ['ignore', 'ignore', 'inherit'] });
+
+  for (const f of frameFiles) { try { fs.unlinkSync(f); } catch (e) {} }
+  try { fs.rmdirSync(tmp); } catch (e) {}
+
+  const { size } = fs.statSync(out);
+  return { outPath: out, bytes: size, frames: GRAPH_WEBP.frames, frameMs: d, health };
+}
+
 // --- run all ---------------------------------------------------------------
 async function main() {
   if (!fs.existsSync(CHROME)) {
@@ -360,7 +446,9 @@ async function main() {
   const results = [];
   const healthByUrl = {}; // url → {consoleErrors:Set, requestFailures:Set}
 
-  for (const shot of SHOTS) {
+  // ONLY_GRAPH_WEBP=1 → skip the still SHOTS, regenerate just 04-graph-live.webp.
+  const onlyGraph = !!process.env.ONLY_GRAPH_WEBP;
+  for (const shot of (onlyGraph ? [] : SHOTS)) {
     if (shot.skip) {
       console.log(`SKIP  ${shot.name}  — ${shot.note || 'skipped'}`);
       results.push({ name: shot.name, skipped: true, note: shot.note });
@@ -383,6 +471,28 @@ async function main() {
     } catch (err) {
       console.log(`FAIL  ${err.message}`);
       results.push({ name: shot.name, error: err.message });
+    }
+  }
+
+  // --- animated connection-graph clip (04-graph-live.webp) ----------------
+  if (!process.env.SKIP_GRAPH_WEBP) {
+    process.stdout.write('clip  04-graph-live.webp … ');
+    try {
+      const { outPath, bytes, frames, frameMs, health } =
+        await captureAnimatedGraph(browser);
+      console.log(
+        `ok  ${frames} frames @ ${frameMs}ms  ${(bytes / 1024).toFixed(0)} KB`
+      );
+      results.push({ name: '04-graph-live', path: outPath, bytes });
+      const bucket = (healthByUrl[GRAPH_WEBP.url] ||= {
+        consoleErrors: new Set(),
+        requestFailures: new Set(),
+      });
+      health.consoleErrors.forEach((e) => bucket.consoleErrors.add(e));
+      health.requestFailures.forEach((e) => bucket.requestFailures.add(e));
+    } catch (err) {
+      console.log(`FAIL  ${err.message}`);
+      results.push({ name: '04-graph-live', error: err.message });
     }
   }
 

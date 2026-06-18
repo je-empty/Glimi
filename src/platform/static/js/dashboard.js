@@ -2102,9 +2102,70 @@ function startLiveEdgeAnimation() {
   }, 50);
 }
 
+// ── Graph "live demo" choreography (showcase / README capture) ─────────────
+// Real dashboards animate the graph from live snapshots (updateGraphLiveState).
+// The public demo is a STATIC seed, so no node is thinking/speaking → nothing
+// pulses and the graph looks dead (the old 04-graph-live capture froze on this).
+// This drives a deterministic *wave* of thinking↔speaking activity that flows
+// around the network so a captured clip looks alive — several nodes haloing and
+// several edges streaming at all times. Opt-in only: started via ?graphdemo or
+// window.startGraphDemo(); it never kicks in on a real dashboard on its own.
+let _graphDemoTimer = null;
+function stopGraphDemo() {
+  if (_graphDemoTimer) { clearInterval(_graphDemoTimer); _graphDemoTimer = null; }
+}
+function startGraphDemo() {
+  if (!cyInstance) return;
+  stopGraphDemo();
+  // Node/edge pulses are suppressed while body.offline (stale snapshot). The
+  // demo seed is static → clear it so the showcase animates.
+  document.body.classList.remove('offline');
+
+  const agents = cyInstance.nodes('.agent');                  // avatar nodes (haloable)
+  const edges  = cyInstance.edges().filter(e => !e.hasClass('sup-edge'));
+  const E = edges.length;
+  if (agents.length === 0 || E === 0) return;
+
+  // A sliding window of "live" conversations flows around the graph: a handful
+  // of edges are live at any instant, their endpoints alternating thinking /
+  // speaking. Advancing the window by 1 per beat keeps the motion continuous
+  // (most live edges persist beat-to-beat → a travelling wave, not a flicker).
+  const WIN = Math.min(5, Math.max(3, Math.ceil(E / 2)));
+  let beat = 0;
+  const step = () => {
+    cyInstance.batch(() => {
+      // Clean baseline: drop live/think/speak + any leftover inline anim styles.
+      edges.forEach(e => {
+        e.removeClass('live');
+        e.removeStyle('width'); e.removeStyle('line-dash-offset');
+        e.removeStyle('overlay-opacity'); e.removeStyle('opacity');
+      });
+      agents.forEach(n => { n.removeClass('thinking'); n.removeClass('speaking'); });
+      // Light up this beat's window.
+      for (let k = 0; k < WIN; k++) {
+        const e = edges[(beat + k) % E];
+        e.addClass('live');
+        const s = e.source(), t = e.target();
+        const speakSrc = ((beat + k) % 2) === 0;   // alternate roles → both halo colours
+        if (s.hasClass('agent')) s.addClass(speakSrc ? 'speaking' : 'thinking');
+        if (t.hasClass('agent')) t.addClass(speakSrc ? 'thinking' : 'speaking');
+      }
+    });
+    startNodePulseAnimation();   // (re)bind the halo pulse to the new live nodes
+    startLiveEdgeAnimation();    // (re)bind the dashed flow to the new live edges
+    beat = (beat + 1) % E;
+  };
+  step();
+  _graphDemoTimer = setInterval(step, 640);
+}
+
 // 구조 동일 → 노드 live 상태(thinking/speaking, sup active/intervening) cy 클래스 토글
 function updateGraphLiveState(snap) {
   if (!cyInstance) return;
+  // The showcase choreography owns the live state while running — don't let the
+  // per-tick snapshot sync overwrite it (the static demo snapshot has no live
+  // nodes, so this would clear every halo/flow between beats).
+  if (_graphDemoTimer) return;
   const agentMap = {};
   for (const a of snap.agents) agentMap[a.id] = a;
   // 채널별 활성 상태 재계산 (recent OR party thinking/speaking)
@@ -2810,6 +2871,12 @@ function mountCytoscapeGraph(snap) {
   // ===== 라이브 엣지 + 노드 펄스 애니메이션 시작 =====
   startLiveEdgeAnimation();
   startNodePulseAnimation();
+
+  // ?graphdemo → run the showcase choreography (README capture / live demo).
+  // Deferred so the initial fit/center lands first.
+  if (params.get('graphdemo') !== null) {
+    setTimeout(() => { try { startGraphDemo(); } catch (e) {} }, 400);
+  }
 
   // ===== Note (n connections · m nodes · k supervisors) =====
   const noteEl = document.getElementById('graph-note');

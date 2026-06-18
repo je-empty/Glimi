@@ -12,8 +12,18 @@ npm i
 node capture.mjs
 ```
 
-PNGs are written to `docs/screenshots/en/`. Re-run anytime; output is
-deterministic (same regions, same waits, retina `deviceScaleFactor:2`).
+PNGs (and one animated WebP) are written to `docs/screenshots/en/` — the single
+canonical screenshot dir (README.md, README.ko.md and the root `index.html` all
+reference it). Re-run anytime; output is deterministic (same regions, same waits,
+retina `deviceScaleFactor:2`).
+
+Regenerate **just** the animated graph clip without re-shooting the stills:
+
+```bash
+ONLY_GRAPH_WEBP=1 node capture.mjs
+# or against a local server instead of the live demo:
+ONLY_GRAPH_WEBP=1 GLIMI_COMMUNITY_HOST=http://127.0.0.1:8911 node capture.mjs
+```
 
 ## How it works
 
@@ -23,9 +33,14 @@ deterministic (same regions, same waits, retina `deviceScaleFactor:2`).
 - Dark shots force dark two ways: the `prefers-color-scheme` media feature **and**
   the app's own `localStorage['glimi-theme']='dark'` (set before first paint).
 - Mobile shots use 390x844 with `isMobile`/touch.
-- The connection-graph shot opens the community **Overview** tab, lets cytoscape
-  fit/center, then element-clips the graph card → a crisp **static** PNG
-  (`04-graph-live.png`, replacing the old animated webp).
+- **`04-graph-live.webp`** is an *animated* clip, not a still. After the `SHOTS`
+  loop, `captureAnimatedGraph()` opens the community **Overview**, drives the
+  in-app showcase choreography (`?graphdemo` → `window.startGraphDemo()`, which
+  flows a wave of thinking/speaking activity across the graph so it looks alive),
+  records the canvas frame-by-frame, and encodes them to a looping WebP with
+  libwebp's `img2webp`. Set `SKIP_GRAPH_WEBP=1` to skip it.
+- The other graph stills (`05-connection-graph`, `06-graph-supervisor`) are
+  normal element-clipped PNGs from the `SHOTS` array.
 
 While capturing it also reports, per URL, any browser **console errors** and
 **failed requests** — a built-in live-demo health check.

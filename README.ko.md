@@ -244,7 +244,7 @@ from glimi import (
 
 | 연결 그래프 | 메모리 인스펙터 |
 |---|---|
-| <img src="docs/screenshots/04-graph-live.webp" height="300" alt="연결 그래프"/> | <img src="docs/screenshots/02-persona-memory.png" height="300" alt="메모리 인스펙터"/> |
+| <img src="docs/screenshots/en/04-graph-live.webp" height="300" alt="연결 그래프"/> | <img src="docs/screenshots/en/02-persona-memory.png" height="300" alt="메모리 인스펙터"/> |
 
 - **Cytoscape.js 그래프** — 에이전트 연결, 채널 활동, supervisor overlay
 - **5 레이어 메모리 인스펙터** — Pinned, 에피소드 L1-L3, 의미 사실, 관계 변곡점 (전부 채널별)
@@ -436,11 +436,11 @@ python -m src.community list            # 커뮤니티 목록
 
 | DM 채널 뷰 | 도전과제 |
 |---|---|
-| <img src="docs/screenshots/07-dm-channels.png" width="600" height="382" alt="DM 채널"/> | <img src="docs/screenshots/03-achievements.png" width="600" height="382" alt="도전과제"/> |
+| <img src="docs/screenshots/en/07-dm-channels.png" width="600" height="382" alt="DM 채널"/> | <img src="docs/screenshots/en/03-achievements.png" width="600" height="382" alt="도전과제"/> |
 
 | 연결 그래프 | 그래프 + supervisor 오버레이 |
 |---|---|
-| <img src="docs/screenshots/05-connection-graph.png" width="600" height="434" alt="연결 그래프"/> | <img src="docs/screenshots/06-graph-supervisor.png" width="600" height="434" alt="supervisor 오버레이"/> |
+| <img src="docs/screenshots/en/05-connection-graph.png" width="600" height="434" alt="연결 그래프"/> | <img src="docs/screenshots/en/06-graph-supervisor.png" width="600" height="434" alt="supervisor 오버레이"/> |
 
 ---
 
