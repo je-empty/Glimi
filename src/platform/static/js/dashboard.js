@@ -4,6 +4,17 @@
 // community 는 서버에서 `window.__GLIMI_COMMUNITY__` 로 주입됨. URL 쿼리 fallback.
 const params = new URLSearchParams(location.search);
 let COMMUNITY = (typeof window !== 'undefined' && window.__GLIMI_COMMUNITY__) || params.get('community') || null;
+// API base prefix. Community = "" (endpoints are /api/…, community resolved server-side
+// from ?community=). A host app (Glimi Workspace) sets <body data-api-base="/w/{id}">
+// so the SAME dashboard hits per-instance /w/{id}/api/… endpoints. q() prepends it.
+const API_BASE = (typeof document !== 'undefined' && document.body &&
+  document.body.getAttribute('data-api-base')) || '';
+// Capability flags — which feature tabs this app exposes. Community = all on
+// (data-caps absent → CAPS null → capOn() true). Workspace injects data-caps to
+// hide sim-only tabs (scenes/achievements/supervisors/sync/events/health/logs).
+let CAPS = null;
+try { CAPS = JSON.parse((document.body && document.body.getAttribute('data-caps')) || 'null'); } catch (e) { CAPS = null; }
+function capOn(name) { return !CAPS || CAPS[name] !== false; }
 let THEME = localStorage.getItem('glimi-theme') || 'light';
 document.documentElement.setAttribute('data-theme', THEME);
 
@@ -24,7 +35,7 @@ let I18N_CACHE = {};  // lang → dict
 async function loadLang(lang) {
   if (I18N_CACHE[lang]) return I18N_CACHE[lang];
   try {
-    const r = await fetch(`/api/i18n?lang=${encodeURIComponent(lang)}`);
+    const r = await fetch(`${API_BASE}/api/i18n?lang=${encodeURIComponent(lang)}`);
     I18N_CACHE[lang] = await r.json();
   } catch {
     I18N_CACHE[lang] = {};
@@ -248,7 +259,7 @@ function renderModelChips(d, compact) {
   return `<span class="model-chip-row">${chips}</span>${suffix}`;
 }
 async function j(u) { try { const r = await fetch(u); return await r.json(); } catch { return null; } }
-function q(u) { return COMMUNITY ? `${u}${u.includes('?') ? '&' : '?'}community=${encodeURIComponent(COMMUNITY)}` : u; }
+function q(u) { const b = API_BASE + u; return COMMUNITY ? `${b}${b.includes('?') ? '&' : '?'}community=${encodeURIComponent(COMMUNITY)}` : b; }
 function atBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 80; }
 function classifyLog(line) {
   if (/❌|FATAL|Exception|failed|오류/.test(line) || /\berror\b/i.test(line)) return 'err';
@@ -368,6 +379,31 @@ function applySupVisibility() {
   }
 }
 applySupVisibility();
+
+// ==== Capability gating (host apps hide sim-only tabs) ====
+// Community: CAPS null → every tab shown (unchanged). A host like Workspace
+// injects data-caps to hide tabs it has no backend for (scenes/achievements/
+// supervisors/sync/events/health/logs); we hide their nav + toggles so the rich
+// dashboard degrades to the workspace-relevant surface.
+function applyCaps() {
+  if (!CAPS) return;
+  document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
+    if (!capOn(btn.dataset.tab)) btn.style.display = 'none';
+  });
+  if (!capOn('supervisors')) {
+    const st = document.getElementById('supervisor-toggle');
+    if (st) st.style.display = 'none';
+  }
+  // If the (server-)default-active view is one we just hid, fall back to chat.
+  const active = document.querySelector('nav.tabs button.active[data-tab]');
+  if (active && !capOn(active.dataset.tab)) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+    document.getElementById('view-chat')?.classList.add('active');
+    document.querySelector('nav.tabs button[data-tab="chat"]')?.classList.add('active');
+  }
+}
+applyCaps();
 document.getElementById('supervisor-toggle').addEventListener('click', () => {
   SHOW_SUP = !SHOW_SUP;
   localStorage.setItem('glimi-show-supervisors', SHOW_SUP ? 'true' : 'false');
@@ -526,7 +562,7 @@ function avatarHtml(a, size='', opts={}) {
   else if (a.intensity >= 9) cls.push('ring-9');
   else if (a.intensity >= 7) cls.push('ring-7');
   else if (a.intensity >= 5) cls.push('ring-5');
-  const src = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+  const src = `${API_BASE}/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
   // 평온 + 낮은 강도면 emoji badge 숨김
   const hideBadge = a.emotion === '평온' || opts.hideBadge;
   const clickOpen = opts.clickOpen !== false;
@@ -542,7 +578,7 @@ function miniAvatarHtml(speakerId, isUser, speakerName) {
     const initial = (speakerName || '?').slice(0, 1);
     return `<div class="msg-avatar user" title="${esc(speakerName)}">${esc(initial)}</div>`;
   }
-  const src = `/api/avatar?id=${encodeURIComponent(speakerId)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+  const src = `${API_BASE}/api/avatar?id=${encodeURIComponent(speakerId)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
   return `<div class="msg-avatar" title="${esc(speakerName)}" onclick="openFullAvatar('${esc(speakerId)}', '${esc(speakerName)}')">
     <img src="${src}" alt="${esc(speakerName)}" decoding="async" onerror="this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:11px;color:var(--text-faint)&quot;>?</div>'">
   </div>`;
@@ -680,7 +716,7 @@ function openImgLightbox(src, caption) {
 }
 
 function openFullAvatar(agentId, name) {
-  const src = `/api/avatar?id=${encodeURIComponent(agentId)}&variant=full${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+  const src = `${API_BASE}/api/avatar?id=${encodeURIComponent(agentId)}&variant=full${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
   openImgLightbox(src, name || agentId);
 }
 
@@ -870,7 +906,7 @@ document.getElementById('detail-backdrop').addEventListener('click', (e) => {
 });
 
 async function openModelPicker(agentId, agentName, currentModel) {
-  const catalog = await j('/api/models');
+  const catalog = await j(API_BASE + '/api/models');
   const models = (catalog && catalog.items) || [];
   if (!models.length) {
     alert('모델 목록을 가져올 수 없어.');
@@ -1039,7 +1075,7 @@ async function emApply(useRecommended) {
     if (!picked) { toast('값 선택 필요', 'err'); return; }
     body.num_ctx = parseInt(picked.value, 10);
   }
-  const r = await postJson('/api/elastic-memory/set', body);
+  const r = await postJson(API_BASE + '/api/elastic-memory/set', body);
   if (r && r.ok) {
     toast(`컨텍스트 ${r.saved_num_ctx.toLocaleString()} tok 저장 — 봇 재기동 시 반영`, 'ok');
     document.getElementById('d-body').innerHTML = _emRender(r);
@@ -1488,7 +1524,7 @@ async function waitFor(cond, msEach=500, maxTries=60) {
 }
 
 async function isBotRunning() {
-  const d = await j('/api/communities');
+  const d = await j(API_BASE + '/api/communities');
   if (!d) return false;
   const item = (d.items || []).find(c => c.id === (COMMUNITY || d.active));
   return !!(item && item.running);
@@ -2315,7 +2351,7 @@ function buildGraphElements(snap) {
     // status 'inactive' 면 dim 처리 — dev agent (한세나) 가 큐 비어있을 때.
     // thinking/speaking 중이면 inactive 무시 (live 가 우선).
     const inactiveCls = (a.status === 'inactive' && !liveCls) ? 'inactive' : '';
-    const avatar = `/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
+    const avatar = `${API_BASE}/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}`;
     nodes.push({
       data: { id: a.id, label: a.name, kind: 'agent', agentType: a.type, avatar },
       classes: ('agent ' + a.type + ' ' + liveCls + ' ' + inactiveCls).trim(),
@@ -3271,9 +3307,9 @@ async function tick() {
   // 4개 엔드포인트 병렬 fetch (/api/dev 는 글로벌 admin 으로 이전 — community 단위 fetch 제거)
   const [snap, logs, health, usage] = await Promise.all([
     j(q('/api/snapshot')),
-    j(q('/api/logs?tail=200')),
-    j(q('/api/health')),
-    j(q('/api/usage')),
+    capOn('logs') ? j(q('/api/logs?tail=200')) : Promise.resolve(null),
+    capOn('health') ? j(q('/api/health')) : Promise.resolve(null),
+    capOn('usage') ? j(q('/api/usage')) : Promise.resolve(null),
   ]);
   if (!snap) return;
   // 전역에 snap 캐시 — renderEvent 등 다른 헬퍼가 user_name/agents 조회 시 사용.
@@ -3728,7 +3764,7 @@ function renderToolTimeline(rows) {
 }
 
 async function loadCommunities() {
-  const d = await j('/api/communities');
+  const d = await j(API_BASE + '/api/communities');
   if (!d) return;
   // 플랫폼 API 는 list 직접 반환 (계정별 접근 가능한 커뮤니티만).
   // 레거시 {items, active} envelope 도 호환.
