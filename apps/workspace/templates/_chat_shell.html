@@ -1,0 +1,130 @@
+<!-- Chat body partial — apps/workspace copy of src/platform/templates/_chat_shell.html.
+     Single source of the chat surface markup; every chat-* id is preserved
+     VERBATIM (chat.js binds to these ids and is id-scoped).
+
+     The Community original is a Jinja partial consuming {{ community_name }},
+     {{ user.username }}, {{ channel }}. The Workspace server does NOT run Jinja
+     (it serves templates via str.replace), so those vars are replaced here by
+     literal placeholders the server fills at serve time:
+       {{ws_name}}     → workspace title (sidebar header)
+       {{owner_name}}  → owner display name (me-row + avatar initial)
+       {{channel}}     → seeded default channel label (chat.js overwrites at runtime)
+
+     Discord paradigm: author-grouped full-width rows (left-aligned), a left
+     channel/people rail, a feed + 2-tier composer + thread panel. Narrow screens
+     collapse the sidebar into a drawer. -->
+<div class="chat-shell" id="chat-shell">
+
+  <aside class="side" id="chat-sidebar" aria-label="Channels">
+    <div class="side-top">
+      <span class="mark" aria-hidden="true"><i class="ti ti-sparkles"></i></span>
+      <span class="col">
+        <span class="nm">{{ws_name}}</span>
+        <span class="sub" id="chat-side-sub"></span>
+      </span>
+      <button type="button" class="new" aria-label="Refresh" id="chat-side-refresh">
+        <i class="ti ti-pencil-plus" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    <div class="search">
+      <label class="box" for="chat-search">
+        <i class="ti ti-search" aria-hidden="true"></i>
+        <input type="text" id="chat-search" placeholder="Search" autocomplete="off"
+               aria-label="Search conversations">
+        <span class="k" aria-hidden="true">⌘K</span>
+      </label>
+    </div>
+
+    <div class="scroll" id="chat-channel-scroll">
+      <ul class="chan-list" id="chat-channel-list" role="list"></ul>
+    </div>
+
+    <div class="me">
+      <span class="ava" aria-hidden="true" id="chat-me-ava"
+            style="background:var(--chat-av-3)">{{owner_initial}}<span class="pres online"></span></span>
+      <span class="meta">
+        <span class="t">{{owner_name}}</span>
+        <span class="p"><span class="d"></span>Online</span>
+      </span>
+      <span class="chat-status" id="chat-status" data-state="connecting"
+            role="status" aria-live="polite">Connecting…</span>
+    </div>
+  </aside>
+
+  <!-- drawer backdrop (narrow screens) -->
+  <div class="chat-scrim" id="chat-scrim" hidden></div>
+
+  <section class="main">
+    <header class="head">
+      <button type="button" class="chat-sidebar-toggle" id="chat-sidebar-toggle"
+              aria-label="Open channels" aria-expanded="false">
+        <i class="ti ti-menu-2" aria-hidden="true"></i>
+      </button>
+      <i class="ti ti-at hash" id="chat-head-icon" aria-hidden="true"></i>
+      <span class="ttl" id="chat-channel-label"># {{channel}}</span>
+      <span class="topic" id="chat-head-topic" hidden></span>
+      <div class="acts">
+        <button type="button" class="ib" id="chat-thread-toggle" aria-label="Thread"
+                hidden><i class="ti ti-messages" aria-hidden="true"></i></button>
+      </div>
+    </header>
+
+    <div class="feed" id="chat-feed" aria-live="polite" aria-label="Messages">
+      <div id="chat-stream"></div>
+    </div>
+
+    <div class="composer">
+      <!-- demo (mockup) banner — read-only only (chat.js toggles hidden).
+           Design tokens only (no raw hex). Makes clear this is browse-only. -->
+      <div class="chat-readonly-banner" id="chat-readonly-banner" role="status" hidden>
+        <i class="ti ti-lock" aria-hidden="true"></i>
+        <span>Demo — read-only. Sending messages is disabled here.</span>
+      </div>
+      <div class="typefoot" id="chat-typefoot" aria-hidden="true">
+        <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><b id="chat-typefoot-who"></b> is typing…</span>
+      </div>
+      <div class="cbox" id="chat-cbox">
+        <div class="reply-cue" id="chat-reply-cue" hidden>
+          <i class="ti ti-arrow-back-up" aria-hidden="true"></i>
+          <span class="rc-txt" id="chat-reply-cue-text"></span>
+          <button type="button" class="x" id="chat-reply-cue-clear" aria-label="Cancel reply">
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="ctop">
+          <span class="plus" aria-hidden="true"><i class="ti ti-plus"></i></span>
+          <div class="ta" id="chat-input" contenteditable="true" role="textbox"
+               aria-multiline="true" aria-label="Send a message"
+               data-ph="Message…"></div>
+          <div class="ctail">
+            <button type="button" class="send" id="chat-send" aria-label="Send" disabled>
+              <i class="ti ti-arrow-up" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <div class="cfoot">
+          <span class="seg"><i class="ti ti-paperclip" aria-hidden="true"></i>Drag files or photos</span>
+          <span class="grow"></span>
+          <span class="cnt" id="chat-cnt" hidden>0</span>
+          <span class="seg"><span class="kbd">Shift</span><span class="plus-sign">+</span><span class="kbd">Enter</span>new line</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- thread panel (root + replies) — desktop right slide-in, narrow fullscreen -->
+    <aside class="thread-panel" id="chat-thread-panel" role="dialog"
+           aria-label="Thread" aria-modal="false" hidden>
+      <header class="tp-head">
+        <button type="button" class="tp-back" id="chat-thread-close" aria-label="Close thread">
+          <i class="ti ti-chevron-left" aria-hidden="true"></i>
+        </button>
+        <span class="tp-title">Thread</span>
+        <span class="tp-sub" id="chat-thread-sub"></span>
+      </header>
+      <div class="tp-body" id="chat-thread-body"></div>
+      <div class="tp-foot" id="chat-thread-foot"></div>
+    </aside>
+  </section>
+</div>
