@@ -25,11 +25,20 @@
   'use strict';
 
   // ==== State (injected by template, URL fallback) ====
+  // Canonical chat client shared by every Glimi app (Community + Workspace),
+  // shipped from glimi/dashboard. The app it runs in is detected from WS_BASE:
+  //   • Community  → WS_BASE === ''   → APIs at /community/{cid}/...
+  //   • Workspace  → WS_BASE === '/w/{id}' (window.__GLIMI_WS_BASE__ / [data-ws-base])
+  // Only apiBase()/avatarUrl() + a couple of owner-label defaults branch on it;
+  // everything else is identical, so the two apps can never drift again.
   var params = new URLSearchParams(location.search);
+  var WS_BASE = (window.__GLIMI_WS_BASE__ ||
+    (document.body && document.body.getAttribute('data-ws-base')) || '')
+    .replace(/\/+$/, '');
   var COMMUNITY = window.__GLIMI_COMMUNITY__ || params.get('community') || '';
   var CHANNEL = window.__GLIMI_CHANNEL__ || params.get('channel') || '';
   var AGENT = window.__GLIMI_AGENT__ || params.get('agent') || 'mgr';
-  var OWNER_NAME = window.__GLIMI_USER__ || 'Me';
+  var OWNER_NAME = window.__GLIMI_USER__ || (WS_BASE ? 'You' : 'Me');
   // Look-only mockup (demo): composer stays disabled + a banner shows. The WS
   // backend also rejects writes ('demo_readonly') — this is the UI half.
   var READONLY = window.__GLIMI_READONLY__ === true;
@@ -132,11 +141,17 @@
   }
 
   function apiBase() {
-    return '/community/' + encodeURIComponent(COMMUNITY) + '/chat';
+    // Workspace: per-workspace prefix (/w/{id}/chat). Community: /community/{cid}/chat.
+    return WS_BASE
+      ? WS_BASE + '/chat'
+      : '/community/' + encodeURIComponent(COMMUNITY) + '/chat';
   }
   function avatarUrl(agentId) {
-    return '/api/avatar?id=' + encodeURIComponent(agentId) +
-      (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '');
+    // Workspace serves avatars per-workspace; Community keys them by community.
+    return WS_BASE
+      ? WS_BASE + '/api/avatar?id=' + encodeURIComponent(agentId)
+      : '/api/avatar?id=' + encodeURIComponent(agentId) +
+        (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '');
   }
 
   function initialOf(name) {
@@ -817,7 +832,8 @@
     // presence API → online == DM count as a neutral default).
     if ($sideSub) {
       var n = dms.length;
-      $sideSub.textContent = n + ' friends · ' + n + ' online';
+      var noun = WS_BASE ? 'members' : 'friends';
+      $sideSub.textContent = n + ' ' + noun + ' · ' + n + ' online';
     }
   }
 

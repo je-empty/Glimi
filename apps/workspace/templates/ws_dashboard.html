@@ -28,10 +28,11 @@
       } catch (e) {}
     })();
   </script>
-  <!-- Design tokens (copied from the platform so all --chat-* vars resolve) +
-       the chat surface styling. Tabler icon webfont renders the ti ti-* glyphs. -->
+  <!-- tokens.css stays workspace-local (carries the --chat-* vars). chat.css +
+       chat.js are the CANONICAL shared client from glimi/dashboard, mounted at
+       /static — both apps load one source so they can't drift again. -->
   <link rel="stylesheet" href="/wstatic/css/tokens.css">
-  <link rel="stylesheet" href="/wstatic/css/chat.css">
+  <link rel="stylesheet" href="/static/css/chat.css">
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
   <style>
@@ -113,6 +114,6 @@
     </main>
   </div>
 
-  <script src="/wstatic/js/chat.js"></script>
+  <script src="/static/js/chat.js"></script>
 </body>
 </html>

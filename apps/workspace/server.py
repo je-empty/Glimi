@@ -91,13 +91,18 @@ _WS_STATIC = _APP_DIR / "static"
 
 
 def _asset_ver() -> str:
-    """Cache-busting token = short hash of the newest /wstatic asset mtime.
-    Appended to the chat JS/CSS URLs so browsers re-fetch after an asset change
-    (no more stale chat.js/avatars on a returning visitor) while still caching
-    within a release. Recomputed at import, so it changes only when assets do."""
+    """Cache-busting token = short hash of the newest chat-asset mtime across BOTH
+    the workspace-local static (tokens.css) and the canonical kernel dashboard
+    static (chat.js/chat.css live there now). Appended to the chat URLs so a
+    returning visitor never gets a stale copy, while still caching within a
+    release. Recomputed at import, so it changes only when assets do."""
     try:
-        latest = max((p.stat().st_mtime for p in _WS_STATIC.rglob("*") if p.is_file()),
-                     default=0.0)
+        latest = max(
+            (p.stat().st_mtime
+             for d in (_WS_STATIC, _DASH_STATIC)
+             for p in d.rglob("*") if p.is_file()),
+            default=0.0,
+        )
     except Exception:
         latest = 0.0
     return hashlib.sha1(f"{latest}".encode("utf-8")).hexdigest()[:8]
@@ -459,7 +464,9 @@ def _ws_dashboard_html_for(ws: "Workspace") -> str:
             .replace("{{owner_name}}", _esc(owner_name))
             .replace("{{readonly}}", readonly))
     # Cache-bust the chat JS/CSS so a returning visitor never gets a stale copy.
-    for _a in ("/wstatic/js/chat.js", "/wstatic/css/chat.css", "/wstatic/css/tokens.css"):
+    # chat.js/chat.css are the canonical /static (kernel) assets; tokens.css is
+    # the workspace-local /wstatic one.
+    for _a in ("/static/js/chat.js", "/static/css/chat.css", "/wstatic/css/tokens.css"):
         html = html.replace(_a, f"{_a}?v={_ASSET_VER}")
     return html
 

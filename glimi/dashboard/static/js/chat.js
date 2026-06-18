@@ -25,21 +25,20 @@
   'use strict';
 
   // ==== State (injected by template, URL fallback) ====
-  // WORKSPACE ADAPTATION: this is the apps/workspace copy of the Community chat
-  // client. The ONLY behavioral changes from the original are apiBase() and
-  // avatarUrl(), which point at the per-workspace prefix /w/{id} (read from
-  // <body data-ws-base> or window.__GLIMI_WS_BASE__) instead of /community/{cid}.
-  // Everything else (render layer, frame handling, WS reconnect) is verbatim.
+  // Canonical chat client shared by every Glimi app (Community + Workspace),
+  // shipped from glimi/dashboard. The app it runs in is detected from WS_BASE:
+  //   • Community  → WS_BASE === ''   → APIs at /community/{cid}/...
+  //   • Workspace  → WS_BASE === '/w/{id}' (window.__GLIMI_WS_BASE__ / [data-ws-base])
+  // Only apiBase()/avatarUrl() + a couple of owner-label defaults branch on it;
+  // everything else is identical, so the two apps can never drift again.
   var params = new URLSearchParams(location.search);
-  // The per-workspace base, e.g. "/w/demo". Trailing slash trimmed so we can
-  // append "/chat" / "/api/avatar" cleanly.
   var WS_BASE = (window.__GLIMI_WS_BASE__ ||
     (document.body && document.body.getAttribute('data-ws-base')) || '')
     .replace(/\/+$/, '');
   var COMMUNITY = window.__GLIMI_COMMUNITY__ || params.get('community') || '';
   var CHANNEL = window.__GLIMI_CHANNEL__ || params.get('channel') || '';
   var AGENT = window.__GLIMI_AGENT__ || params.get('agent') || 'mgr';
-  var OWNER_NAME = window.__GLIMI_USER__ || 'You';
+  var OWNER_NAME = window.__GLIMI_USER__ || (WS_BASE ? 'You' : 'Me');
   // Look-only mockup (demo): composer stays disabled + a banner shows. The WS
   // backend also rejects writes ('demo_readonly') — this is the UI half.
   var READONLY = window.__GLIMI_READONLY__ === true;
@@ -142,12 +141,17 @@
   }
 
   function apiBase() {
-    // WORKSPACE: per-workspace chat prefix (e.g. "/w/demo/chat").
-    return WS_BASE + '/chat';
+    // Workspace: per-workspace prefix (/w/{id}/chat). Community: /community/{cid}/chat.
+    return WS_BASE
+      ? WS_BASE + '/chat'
+      : '/community/' + encodeURIComponent(COMMUNITY) + '/chat';
   }
   function avatarUrl(agentId) {
-    // WORKSPACE: avatars are served per-workspace (deterministic id→PNG map).
-    return WS_BASE + '/api/avatar?id=' + encodeURIComponent(agentId);
+    // Workspace serves avatars per-workspace; Community keys them by community.
+    return WS_BASE
+      ? WS_BASE + '/api/avatar?id=' + encodeURIComponent(agentId)
+      : '/api/avatar?id=' + encodeURIComponent(agentId) +
+        (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '');
   }
 
   function initialOf(name) {
@@ -828,7 +832,8 @@
     // presence API → online == DM count as a neutral default).
     if ($sideSub) {
       var n = dms.length;
-      $sideSub.textContent = n + ' members · ' + n + ' online';
+      var noun = WS_BASE ? 'members' : 'friends';
+      $sideSub.textContent = n + ' ' + noun + ' · ' + n + ' online';
     }
   }
 
