@@ -568,8 +568,8 @@ function avatarHtml(a, size='', opts={}) {
   else if (a.intensity >= 7) cls.push('ring-7');
   else if (a.intensity >= 5) cls.push('ring-5');
   const src = `${API_BASE}/api/avatar?id=${encodeURIComponent(a.id)}${COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : ''}${_AVER}`;
-  // 평온 + 낮은 강도면 emoji badge 숨김
-  const hideBadge = a.emotion === '평온' || opts.hideBadge;
+  // 평온 + 낮은 강도면 emoji badge 숨김; emoji 없으면(워크스페이스 역할 에이전트) 빈 뱃지 숨김
+  const hideBadge = a.emotion === '평온' || opts.hideBadge || !a.emoji;
   const clickOpen = opts.clickOpen !== false;
   const onclick = clickOpen ? `onclick="event.stopPropagation(); openFullAvatar('${esc(a.id)}', '${esc(a.name)}')"` : '';
   return `<div class="${cls.filter(Boolean).join(' ')}" title="${esc(a.name)}" ${onclick}>
