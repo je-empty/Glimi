@@ -160,12 +160,14 @@
   }
   function clockOf(ms) {
     try {
-      return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      // 'en-US' (not the browser default) so chat chrome stays English even in a
+      // Korean-locale browser — matches the rest of the English UI chrome.
+      return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     } catch (e) { return ''; }
   }
   function dayLabelOf(ms) {
     try {
-      return new Date(ms).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+      return new Date(ms).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
     } catch (e) { return ''; }
   }
   function relTime(ms) {

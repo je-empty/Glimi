@@ -61,6 +61,13 @@
     }
     button.primary:hover { filter: brightness(1.06); }
     .empty { color: var(--text-faint); font-size: 14px; }
+    section.features { margin-top: 34px; }
+    .feat-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+    .feat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 16px 18px; }
+    .feat .ic { width: 28px; height: 28px; color: var(--accent); margin-bottom: 10px; }
+    .feat .ic svg { width: 100%; height: 100%; display: block; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .feat h3 { margin: 0 0 4px; font-size: 14px; font-weight: 650; }
+    .feat p { margin: 0; font-size: 13px; color: var(--text-dim); line-height: 1.45; }
   </style>
 </head>
 <body>
@@ -78,6 +85,32 @@
     <div class="cards" id="cards">
       <div class="empty">Loading workspaces…</div>
     </div>
+
+    <section class="features">
+      <h2>What's inside</h2>
+      <div class="feat-grid">
+        <div class="feat">
+          <div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="18" r="2.4"/><circle cx="19" cy="18" r="2.4"/><path d="M12 7.4 6.6 15.8M12 7.4l5.4 8.4M7.4 18h9.2"/></svg></div>
+          <h3>Connection graph</h3>
+          <p>Watch the Coordinator delegate — agents talk to each other and report back, live.</p>
+        </div>
+        <div class="feat">
+          <div class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/><path d="M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/></svg></div>
+          <h3>5-layer memory</h3>
+          <p>Every member remembers — pinned facts, episodes, semantic facts, relationships.</p>
+        </div>
+        <div class="feat">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v10H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg></div>
+          <h3>Channels</h3>
+          <p>Owner DMs, a shared team channel, and agent-to-agent internal threads.</p>
+        </div>
+        <div class="feat">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.2-2.9 7.4-7 8.6C7.9 18.4 5 15.2 5 11V6z"/><path d="M9 11.5l2 2 4-4.2"/></svg></div>
+          <h3>Human-in-the-loop</h3>
+          <p>The team pauses on big calls — approve or redirect before it acts.</p>
+        </div>
+      </div>
+    </section>
 
     <section class="create">
       <h2>Or start your own</h2>

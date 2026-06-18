@@ -89,52 +89,59 @@ _WS_DASH_HTML = _APP_DIR / "templates" / "ws_dashboard.html"
 _CHAT_SHELL_HTML = _APP_DIR / "templates" / "_chat_shell.html"
 _WS_STATIC = _APP_DIR / "static"
 
-# Sample profile PNGs (repo root /assets) mapped deterministically to agent ids
-# for chat avatars. Non-``-full`` variants only (the square crops). Resolved at
-# import; if the dir is missing/empty the avatar route falls back to an SVG.
-_REPO_ROOT = _APP_DIR.parent.parent
-_AVATAR_DIR = _REPO_ROOT / "assets" / "sample_profile_images"
 
-
-def _avatar_pool() -> list[Path]:
-    """The deterministic avatar candidate pool: the non-``-full`` PNGs in
-    ``assets/sample_profile_images`` (sorted for a stable hash→file mapping)."""
+def _asset_ver() -> str:
+    """Cache-busting token = short hash of the newest /wstatic asset mtime.
+    Appended to the chat JS/CSS URLs so browsers re-fetch after an asset change
+    (no more stale chat.js/avatars on a returning visitor) while still caching
+    within a release. Recomputed at import, so it changes only when assets do."""
     try:
-        pngs = [
-            p for p in _AVATAR_DIR.glob("*.png")
-            if not p.stem.endswith("-full")
-        ]
+        latest = max((p.stat().st_mtime for p in _WS_STATIC.rglob("*") if p.is_file()),
+                     default=0.0)
     except Exception:
-        pngs = []
-    return sorted(pngs, key=lambda p: p.name)
+        latest = 0.0
+    return hashlib.sha1(f"{latest}".encode("utf-8")).hexdigest()[:8]
 
 
-# Resolved once at import (the asset set is static).
-_AVATAR_POOL = _avatar_pool()
+_ASSET_VER = _asset_ver()
+
+# Workspace chat avatars are role-based MONOGRAMS, not persona/anime faces. The
+# workspace team is functional (Coordinator / Researcher / Builder / Critic), so
+# a clean initial-on-tinted-disc reads better than a stock portrait — and keeps
+# the avatar route dependency-free (no asset pool, always 200).
+_ROLE_MONOGRAM = {
+    "coordinator": "Co", "researcher": "Re", "builder": "Bu", "critic": "Cr",
+}
 
 
-def _avatar_path_for(agent_id: str) -> Optional[Path]:
-    """Map an agent id deterministically (stable hash) to one PNG in the pool, so
-    the same agent always shows the same face. None when the pool is empty."""
-    if not _AVATAR_POOL:
-        return None
-    h = hashlib.sha1((agent_id or "").encode("utf-8")).hexdigest()
-    return _AVATAR_POOL[int(h, 16) % len(_AVATAR_POOL)]
+def _monogram(agent_id: str) -> str:
+    """A 1–2 char monogram for an agent id — role-aware and collision-free
+    (Coordinator→Co, Critic→Cr, so the two C-roles never clash)."""
+    s = (agent_id or "").strip()
+    if not s:
+        return "·"
+    if s.lower() in _ROLE_MONOGRAM:
+        return _ROLE_MONOGRAM[s.lower()]
+    parts = [p for p in s.replace("_", " ").replace("-", " ").split() if p]
+    if len(parts) >= 2:
+        return (parts[0][:1] + parts[1][:1]).upper()
+    return (s[:1].upper() + s[1:2].lower()) if len(s) >= 2 else s[:1].upper()
 
 
-def _avatar_placeholder_svg(agent_id: str) -> str:
-    """A small inline SVG fallback (the agent's initial on a tinted disc) for
-    when no PNG pool is available — keeps the avatar route always-200."""
-    initial = (agent_id or "·").strip()[:1].upper() or "·"
+def _avatar_svg(agent_id: str) -> str:
+    """Inline SVG avatar: the agent's monogram on a deterministic tinted disc.
+    Always renders — no external asset, so the avatar route is always 200."""
+    mono = _monogram(agent_id)
     # Deterministic hue from the id so distinct agents read apart.
     hue = int(hashlib.sha1((agent_id or "").encode("utf-8")).hexdigest(), 16) % 360
+    fs = 40 if len(mono) >= 2 else 46
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" '
         'viewBox="0 0 96 96" role="img">'
-        f'<rect width="96" height="96" rx="48" fill="hsl({hue},45%,82%)"/>'
-        f'<text x="48" y="48" font-family="-apple-system,Segoe UI,Roboto,sans-serif" '
-        f'font-size="44" font-weight="600" fill="hsl({hue},45%,32%)" '
-        f'text-anchor="middle" dominant-baseline="central">{_esc(initial)}</text>'
+        f'<rect width="96" height="96" rx="48" fill="hsl({hue},42%,84%)"/>'
+        f'<text x="48" y="50" font-family="-apple-system,Segoe UI,Roboto,sans-serif" '
+        f'font-size="{fs}" font-weight="600" fill="hsl({hue},48%,30%)" '
+        f'text-anchor="middle" dominant-baseline="central">{_esc(mono)}</text>'
         '</svg>'
     )
 
@@ -451,6 +458,9 @@ def _ws_dashboard_html_for(ws: "Workspace") -> str:
             .replace("{{ws_base}}", base)
             .replace("{{owner_name}}", _esc(owner_name))
             .replace("{{readonly}}", readonly))
+    # Cache-bust the chat JS/CSS so a returning visitor never gets a stale copy.
+    for _a in ("/wstatic/js/chat.js", "/wstatic/css/chat.css", "/wstatic/css/tokens.css"):
+        html = html.replace(_a, f"{_a}?v={_ASSET_VER}")
     return html
 
 
@@ -586,14 +596,12 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     # ── per-workspace chat avatars (workspace layer; no kernel image field) ──
     @app.get("/w/{ws_id}/api/avatar")
     def w_avatar(ws_id: str, id: str = "") -> Response:
-        """Deterministic agent_id → sample PNG (FileResponse), else an inline SVG
-        placeholder with the agent's initial. Always 200."""
+        """Role-based monogram avatar (inline SVG). The workspace team is
+        functional (Coordinator/Researcher/Builder/Critic) — no persona/anime
+        portraits here. Always 200."""
         _require(ws_id)
-        path = _avatar_path_for(id)
-        if path is not None and path.exists():
-            return FileResponse(str(path), media_type="image/png")
-        return Response(content=_avatar_placeholder_svg(id),
-                        media_type="image/svg+xml")
+        return Response(content=_avatar_svg(id), media_type="image/svg+xml",
+                        headers={"Cache-Control": "no-cache"})
 
     @app.get("/w/{ws_id}/api/snapshot")
     def w_snapshot(ws_id: str) -> JSONResponse:
