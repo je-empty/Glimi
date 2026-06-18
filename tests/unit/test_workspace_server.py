@@ -140,9 +140,11 @@ def test_demo_other_endpoints(client):
 
 
 def test_dashboard_html_injects_api_base(client):
-    h = client.get("/w/demo")
+    # The Core dashboard (graph/overview) now lives at /w/{id}/graph; /w/{id}
+    # itself is the community-style chat view. The graph view is the one served
+    # from the shared Core index, retargeted to this workspace's endpoints.
+    h = client.get("/w/demo/graph")
     assert h.status_code == 200
-    # The Core dashboard index, retargeted to this workspace's endpoints.
     assert 'data-api-base="/w/demo"' in h.text
     assert 'data-refresh-ms="6000"' in h.text
 
