@@ -45,6 +45,14 @@ def _find_claude() -> Optional[str]:
     return None
 
 
+# Public API alias — apps depend on the published `glimi` package and must not
+# reach into underscore-private internals. `_find_claude` stays for kernel-internal
+# callers; `find_claude` is the supported surface (re-exported from glimi.llm).
+def find_claude() -> Optional[str]:
+    """Locate the Claude CLI binary (PATH + common install dirs), or None."""
+    return _find_claude()
+
+
 class ClaudeCLIBackend(LLMBackend):
     name = "claude_cli"
 

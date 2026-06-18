@@ -1,0 +1,21 @@
+# Staged pyproject for the `glimi-workspace` repo (dropped in by split/split.sh).
+# Flat layout after the split: apps/workspace/* is hoisted to repo root, run via
+# `python run.py`, tests do `import server`. fastapi/uvicorn[standard]/jinja2 come
+# from glimi[dashboard]; after SPLIT_PLAN Phase 2 the dashboard assets are served
+# from the glimi wheel (no vendored copies).
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glimi-workspace"
+version = "0.1.0"
+description = "Glimi Workspace — a persistent specialist team for real work, on Glimi Core."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Jaebin Sim" }]
+dependencies = [
+    "glimi[dashboard]>=0.1.0",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",               # server + tests (starlette TestClient)
+]

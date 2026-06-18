@@ -378,3 +378,42 @@ def _pricing_as_of() -> str:
         return PRICING_AS_OF
     except Exception:
         return ""
+
+
+# ── Public reader-derived helpers (apps consume these from glimi.dashboard) ────
+# Pure (store reads only, no web deps), so they live in the zero-dep reader and
+# can be imported without pulling the FastAPI layer. Apps that build their own
+# chat/snapshot payloads (e.g. Glimi Workspace) use these instead of reaching
+# into the private dashboard.app internals.
+def owner_info(reader: "DashboardReader") -> tuple[str, list[str]]:
+    """(display name, list of user ids) for the registered owner(s). Best-effort:
+    returns ``("Owner", [])`` when the store exposes no users."""
+    try:
+        users = reader.store.list_users() or []
+    except Exception:
+        users = []
+    ids = [u.get("id") for u in users if u.get("id")]
+    name = "Owner"
+    if users:
+        name = users[0].get("name") or users[0].get("id") or "Owner"
+    return name, ids
+
+
+def channel_detail(reader: "DashboardReader", name: str) -> dict:
+    """Participants + recent messages for a channel, read straight off the store.
+    Domain-neutral and best-effort."""
+    store = reader.store
+    try:
+        participants = store.get_channel_participants(name) or []
+    except Exception:
+        participants = []
+    try:
+        messages = store.get_recent_messages(name, limit=300) or []
+    except Exception:
+        messages = []
+    return {
+        "name": name,
+        "participants": participants,
+        "messages": messages,
+        "message_count": len(messages),
+    }

@@ -14,7 +14,7 @@ from src.core.prompts.helpers import (
 )
 from src.core.prompts.locale import simple_ack_examples, gender_options
 from src.core.prompts.model import tools_block_end_rule
-from glimi.tools.registry import _env_truthy
+from glimi.tools.registry import env_truthy
 
 
 def _drawing_section(oc: str) -> str:
@@ -23,7 +23,7 @@ def _drawing_section(oc: str) -> str:
     GLIMI_IMAGEGEN env var 가 truthy 일 때만 비어있지 않은 문자열 반환. 비활성 시
     빈 문자열 — 도구 자체가 없으므로 프롬프트에서도 언급하지 않음.
     """
-    if not _env_truthy("GLIMI_IMAGEGEN"):
+    if not env_truthy("GLIMI_IMAGEGEN"):
         return ""
     return f"""
 === Profile image — drawing one yourself (when sample doesn't fit) ===

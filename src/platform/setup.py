@@ -99,8 +99,8 @@ def claude_creds_available(api_key: str = "") -> bool:
     if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
         return True
     try:
-        from glimi.llm.claude_cli import _find_claude
-        return _find_claude() is not None
+        from glimi.llm import find_claude
+        return find_claude() is not None
     except Exception:
         return False
 

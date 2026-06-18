@@ -1,0 +1,28 @@
+# Staged pyproject for the `glimi-community` repo (dropped in by split/split.sh).
+# src/* runs as a flat-layout app (python -m src.platform via run.sh), not a wheel;
+# fastapi/uvicorn/jinja2 arrive transitively via glimi[dashboard].
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glimi-community"
+version = "0.1.0"
+description = "Glimi Community — AI-friend social-sim showcase app on Glimi Core."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Jaebin Sim" }]
+dependencies = [
+    "glimi[dashboard]>=0.1.0",   # published kernel (editable path in dev — see requirements-dev.txt)
+    "discord.py>=2.3.0",
+    "python-dotenv>=1.0.0",
+    "itsdangerous>=2.1.0",
+    "python-multipart>=0.0.9",
+    "rich>=13.0.0",
+    "Pillow>=10.0.0",
+    "textual>=0.40.0",
+]
+
+[project.optional-dependencies]
+imagegen = ["torch>=2.1", "diffusers>=0.27", "transformers>=4.36",
+            "accelerate", "peft>=0.10", "safetensors", "opencv-python", "numpy"]

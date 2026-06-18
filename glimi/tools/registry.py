@@ -30,6 +30,12 @@ def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def env_truthy(name: str) -> bool:
+    """Public: True if env var ``name`` is a truthy flag (1/true/yes/on).
+    Apps consume this from the published package instead of the private alias."""
+    return _env_truthy(name)
+
+
 @dataclass
 class ToolSpec:
     name: str

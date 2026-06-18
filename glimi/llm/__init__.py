@@ -2,7 +2,7 @@
 LLM 백엔드 선택 + 편의 함수 파사드.
 
 사용:
-    from src.llm import generate
+    from glimi.llm import generate
     resp = generate(
         system="너는 유나",
         user="안녕",
@@ -27,7 +27,7 @@ import time
 from typing import Optional
 
 from .base import LLMBackend, LLMResponse
-from .claude_cli import ClaudeCLIBackend
+from .claude_cli import ClaudeCLIBackend, find_claude
 from .anthropic_sdk import AnthropicSDKBackend
 from . import pricing
 
@@ -281,6 +281,7 @@ __all__ = [
     "stream_lines",
     "current_backend_name",
     "set_usage_sink",
+    "find_claude",
     "LLMResponse",
     "LLMBackend",
 ]

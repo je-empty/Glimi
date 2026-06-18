@@ -16,6 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Protocol, runtime_checkable
 
+# Public contract — apps implement Outbox/Inbox against these (declared so the
+# surface is explicit for consumers of the published glimi package).
+__all__ = ["Speaker", "ImagePart", "Outbox", "InboundMessage", "Inbox"]
+
 
 @dataclass(frozen=True)
 class Speaker:

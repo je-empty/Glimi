@@ -41,6 +41,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .reader import DashboardReader
+# owner_info/channel_detail are now public, pure helpers in reader (zero-dep) so
+# apps can import them from glimi.dashboard without the web layer. Keep the
+# underscore aliases for this module's internal callers (back-compat).
+from .reader import owner_info as _owner_info, channel_detail as _channel_detail
 
 _HERE = Path(__file__).resolve().parent
 _STATIC_DIR = _HERE / "static"
@@ -111,48 +115,10 @@ def create_app(reader: DashboardReader) -> FastAPI:
     return app
 
 
-# ── helpers (read-only store reads the reader does not surface) ───────────
-
-def _owner_info(reader: DashboardReader) -> tuple[str, list[str]]:
-    """(display name, list of user ids) for the registered owner(s).
-
-    Best-effort: returns ``("Owner", [])`` if the store exposes no users. The
-    first registered user is treated as the display owner; all user ids are
-    returned so the client can distinguish owner-authored messages from agents.
-    """
-    try:
-        users = reader.store.list_users() or []
-    except Exception:
-        users = []
-    ids = [u.get("id") for u in users if u.get("id")]
-    name = "Owner"
-    if users:
-        name = users[0].get("name") or users[0].get("id") or "Owner"
-    return name, ids
-
-
-def _channel_detail(reader: DashboardReader, name: str) -> dict:
-    """Participants + messages for a channel, read straight off the store.
-
-    Domain-neutral and best-effort. Messages come from
-    ``store.get_recent_messages`` (the kernel conversation log); participants from
-    ``store.get_channel_participants``.
-    """
-    store = reader.store
-    try:
-        participants = store.get_channel_participants(name) or []
-    except Exception:
-        participants = []
-    try:
-        messages = store.get_recent_messages(name, limit=300) or []
-    except Exception:
-        messages = []
-    return {
-        "name": name,
-        "participants": participants,
-        "messages": messages,
-        "message_count": len(messages),
-    }
+# ── helpers ───────────────────────────────────────────────────────────────
+# _owner_info / _channel_detail are imported above as aliases of the now-public
+# reader.owner_info / reader.channel_detail (kept zero-dep so apps can consume
+# them from glimi.dashboard). The defs used to live here.
 
 
 def create_app_for_store(store) -> FastAPI:

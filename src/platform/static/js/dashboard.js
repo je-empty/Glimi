@@ -682,10 +682,10 @@ function renderHero(snap) {
     const names = active.map(a => `<b style="color:${a.thinking ? 'var(--thinking)' : 'var(--speaking)'}">${esc(a.name)}</b>`).join(', ');
     const tAct = active.some(x => x.thinking);
     const sAct = active.some(x => x.speaking);
-    const verb = tAct && sAct ? '생각 · 응답 중' : tAct ? '생각 중' : '응답 중';
+    const verb = tAct && sAct ? `${t('thinking')} · ${t('speaking')}` : tAct ? t('thinking') : t('speaking');
     activeText = `${names} ${verb}`;
   } else {
-    activeText = `<span style="color:var(--text-dim)">평온 · 모두 대기 중</span>`;
+    activeText = `<span style="color:var(--text-dim)">${t('calm_idle')}</span>`;
   }
 
   const userName = m.user_name || '—';

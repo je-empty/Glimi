@@ -61,10 +61,10 @@ import glimi.dashboard as _dashboard
 from glimi import Glimi
 from glimi.dashboard import DashboardReader
 
-# The Core dashboard's web-layer helpers (read-only endpoints' exact shapes) and
-# the templates/static it ships. Reusing them keeps every workspace's dashboard
-# byte-identical to the standalone one.
-from glimi.dashboard.app import _channel_detail, _owner_info
+# Public reader-derived helpers (zero-dep) for the read-only endpoint shapes.
+# Public API so the workspace consumes only the supported glimi.dashboard surface
+# (no underscore-private internals) — important for the standalone-repo split.
+from glimi.dashboard import channel_detail as _channel_detail, owner_info as _owner_info
 
 # Import the sibling app modules the same dual-path way run.py does, so this works
 # whether loaded as ``apps.workspace.server`` or from a flat dir on sys.path.

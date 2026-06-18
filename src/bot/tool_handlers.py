@@ -568,7 +568,7 @@ async def _h_create_agent_profile(args: dict, ctx: ToolContext):
         FEMALE_OK = {"여자", "female", "f", "여성"}
         MALE_FORBIDDEN = {"남자", "male", "m", "남성"}
         if gender_raw in MALE_FORBIDDEN:
-            from glimi.tools.registry import _env_truthy as _et
+            from glimi.tools.registry import env_truthy as _et
             imagegen_on = _et("GLIMI_IMAGEGEN")
             log_writer.system(
                 f"[create_agent_profile] gender='{gender_raw}' rejected — sample path is female-only "
