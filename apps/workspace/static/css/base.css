@@ -1,0 +1,238 @@
+/* Pretendard (한글 최적) + JetBrains Mono — je-empty 타이포 톤. @import 는 최상단 필수. */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css');
+@import url('https://cdn.jsdelivr.net/npm/jetbrains-mono@1/css/jetbrains-mono.min.css');
+
+/* Glimi 플랫폼 공통 스타일 — 모든 페이지 로드됨 */
+/* 디자인 톤: je-empty 디자인 시스템 차용 (ink-forward 미니멀, 네이비 accent, 레이어드 paper,
+   tight 타이포). Glimi 고유 요소(감정색·아바타·그래프)는 컴포넌트 레벨에서 그대로 유지. */
+
+/* Light (default) */
+:root[data-theme="light"] {
+  --bg: #fafafa;
+  --panel: #ffffff;        /* paper */
+  --panel2: #f6f7f9;       /* paper-2 — 카드/hover */
+  --panel3: #eceef2;       /* paper-3 — 깊은 hover */
+  --text: #14161a;         /* ink */
+  --muted: #4a4e57;        /* ink-muted */
+  --faint: #8a8e98;        /* ink-faint */
+  --accent: #2a4365;       /* navy */
+  --accent-hover: #1e3a5f;
+  --accent-soft: #eef2f8;
+  --accent-line: #c3d2e6;
+  --accent-fg: #ffffff;
+  --ok: #047857;
+  --warn: #b45309;
+  --err: #b91c1c;
+  --border: #e5e7eb;       /* line */
+  --border-strong: #c8cdd5;
+  --shadow: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-modal: 0 4px 14px -2px rgba(0,0,0,0.18), 0 0 0 1px var(--border-strong);
+}
+/* Dark — 따뜻한 중성 (ChatGPT 풍) */
+:root[data-theme="dark"] {
+  --bg: #1a1a1a;
+  --panel: #212121;        /* paper */
+  --panel2: #2f2f2f;       /* paper-2 */
+  --panel3: #424242;       /* paper-3 */
+  --text: #ececec;         /* ink */
+  --muted: #b4b4b4;        /* ink-muted */
+  --faint: #9b9b9b;        /* ink-faint */
+  --accent: #9fb8e0;       /* lightened navy */
+  --accent-hover: #b8caea;
+  --accent-soft: #1a2536;
+  --accent-line: #2e3f5c;
+  --accent-fg: #14161a;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --err: #f87171;
+  --border: rgba(255,255,255,0.10);   /* line */
+  --border-strong: rgba(255,255,255,0.16);
+  --shadow: none;
+  --shadow-modal: 0 8px 28px -6px rgba(0,0,0,0.55), 0 0 0 1px var(--border-strong);
+}
+
+:root {
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg); color: var(--text); line-height: 1.55;
+  letter-spacing: -0.008em;       /* je-empty tight 본문 */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1, h2, h3, h4 { letter-spacing: -0.022em; }   /* tight 헤딩 */
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Top bar (universal) ─────────────────────────────────── */
+.gp-topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  min-height: 56px;
+}
+.gp-brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  color: var(--text); text-decoration: none;
+  padding: 4px 6px; border-radius: 6px; transition: background 0.12s;
+}
+.gp-brand:hover { background: var(--panel2); text-decoration: none; }
+.gp-brand-logo {
+  width: 28px; height: 28px; object-fit: contain; border-radius: 6px;
+  display: block;
+}
+.gp-brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+.gp-spacer { flex: 1; }
+
+/* ── User menu (dropdown with logout) ─────────────────── */
+.gp-user-menu { position: relative; display: inline-block; }
+.gp-user-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--panel2); color: var(--text);
+  border: 0; border-radius: 999px;
+  padding: 4px 11px 4px 4px; cursor: pointer; font-size: 13px;
+  font-family: inherit; font-weight: 500;
+  transition: background 0.15s ease-out;
+}
+.gp-user-btn:hover { background: var(--panel3); }
+.gp-user-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-fg);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.gp-user-name { font-size: 13px; }
+.gp-user-chev { font-size: 9px; color: var(--muted); margin-left: -2px; }
+
+.gp-user-dropdown {
+  display: none;
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 180px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+  z-index: 200;
+}
+.gp-user-dropdown.open { display: block; }
+.gp-user-info {
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.gp-user-info-name {
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+}
+.gp-user-info-role {
+  font-size: 11.5px; color: var(--muted); margin-top: 2px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.gp-user-logout {
+  width: 100%; text-align: left;
+  background: transparent; border: none;
+  padding: 8px 12px; border-radius: 6px;
+  color: var(--err); font-size: 13px; cursor: pointer;
+  font-family: inherit;
+}
+.gp-user-logout:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
+/* punched 아이콘 버튼 — 보더 없이 면 단차 (design_system §5.1) */
+.gp-btn-icon {
+  background: var(--panel2); color: var(--muted); border: 0;
+  border-radius: 50%; padding: 0; width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; cursor: pointer; transition: background 0.15s ease-out, color 0.15s ease-out;
+  font-family: inherit;
+}
+.gp-btn-icon:hover { background: var(--panel3); color: var(--text); }
+
+.gp-topbar-floating {
+  position: fixed; top: 14px; right: 20px; z-index: 100;
+}
+
+.gp-main { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+
+/* ── Common UI components ────────────────────────────────── */
+/* 컨트롤 3문법 (design_system §5.1) — quiet pill / 잉크 CTA / 위험은 텍스트색 */
+button, .btn {
+  background: var(--panel2); color: var(--text-dim, var(--muted)); border: 0;
+  padding: 7px 15px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  font-weight: 500; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+button:hover, .btn:hover { background: var(--panel3); color: var(--text); }
+button:disabled, .btn:disabled, button[disabled] {
+  opacity: 0.4; cursor: not-allowed; pointer-events: none;
+}
+button.primary, .btn.primary { background: var(--accent); color: var(--accent-fg); }
+button.primary:hover, .btn.primary:hover { background: var(--accent); opacity: 0.92; color: var(--accent-fg); }
+button.danger { background: var(--panel2); color: var(--err); }
+button.danger:hover { background: color-mix(in srgb, var(--err) 10%, var(--panel2)); color: var(--err); }
+
+input, select {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  padding: 7px 10px; border-radius: 6px; font-size: 14px; font-family: inherit;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+
+.card {
+  background: var(--panel); border: 0; border-radius: 14px;
+  padding: 18px; margin-bottom: 16px;
+}
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.05em; background: var(--panel2); color: var(--muted);
+}
+.pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.pill.running { color: var(--ok); }
+.pill.running::before { background: var(--ok); }
+.pill.stopped { color: var(--muted); }
+
+.err { color: var(--err); font-size: 13px; margin-top: 8px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+code {
+  background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── 모션 (design_system §4 — 진입 페이드만, hover transform 금지) ── */
+@keyframes gp-rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.gp-main { animation: gp-rise-in 0.3s ease-out; }
+.gp-user-dropdown.open { animation: gp-rise-in 0.16s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .gp-main, .gp-user-dropdown.open { animation: none; }
+}
+
+/* ── Mobile foundation (loaded on every page) ────────────────
+   F4: kill iOS focus-zoom by guaranteeing >=16px form text.
+   F3: 44px tap targets on touch (applied in media block only —
+       --tap-min stays 40px so desktop density is unchanged).
+   Topbar density + username collapse. Desktop layout untouched. */
+@media (max-width: 720px) {
+  /* F4 — iOS Safari auto-zooms on focus of <16px inputs */
+  input, select, textarea { font-size: 16px; }
+
+  /* F3 — 44px tap targets */
+  button, .btn, .gp-btn-icon, .gp-user-btn { min-height: 44px; }
+  .gp-btn-icon { width: 44px; height: 44px; }
+
+  /* topbar density — keep min-height:56px (agent_detail sticky offset
+     top:76px / side-nav top:56px assume the unshrunk topbar) */
+  .gp-topbar { padding: 8px 12px; gap: 8px; }
+  .gp-main   { padding: 16px 12px; }
+}
+@media (max-width: 480px) {
+  /* collapse user pill to avatar-only; name + logout live in dropdown */
+  .gp-user-name { display: none; }
+  .gp-user-chev { display: none; }
+}

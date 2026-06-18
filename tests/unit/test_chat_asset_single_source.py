@@ -59,3 +59,20 @@ def test_workspace_keeps_no_chat_copy():
             f"apps/workspace/static/{stray} should not exist — the workspace "
             "loads the canonical chat client from /static (glimi/dashboard)."
         )
+
+
+# The rich dashboard (dashboard.js + dashboard.css + dashboard-chat.css) is the
+# config-driven Community dashboard; the Workspace serves a byte-identical synced
+# copy (API_BASE + capability flags switch behavior at runtime). Guard the sync so
+# a change to one app's dashboard can't silently fork from the other.
+#   cp src/platform/static/js/dashboard.js  apps/workspace/static/js/dashboard.js
+#   cp src/platform/static/css/dashboard.css apps/workspace/static/css/dashboard.css
+def test_workspace_dashboard_assets_match_community():
+    for rel in ("js/dashboard.js", "css/dashboard.css", "css/dashboard-chat.css"):
+        comm = os.path.join(_ROOT, "src", "platform", "static", rel)
+        ws = os.path.join(_WS_STATIC, rel)
+        assert os.path.exists(ws), f"workspace missing {rel} (synced rich dashboard)"
+        assert _read(ws) == _read(comm), (
+            f"workspace {rel} drifted from community — re-sync:\n"
+            f"  cp src/platform/static/{rel} apps/workspace/static/{rel}"
+        )

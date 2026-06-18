@@ -43,6 +43,7 @@ Run it (needs ``pip install "glimi[dashboard]"``)::
 from __future__ import annotations
 
 import hashlib
+import json
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -109,6 +110,30 @@ def _asset_ver() -> str:
 
 
 _ASSET_VER = _asset_ver()
+
+# Jinja env for the rich dashboard (workspace-owned copies of the Community
+# templates, rendered with a workspace context: user=None + caps hide the
+# sim-only chrome, API_BASE=/w/{id} retargets the shared dashboard.js).
+from fastapi.templating import Jinja2Templates  # noqa: E402
+_TEMPLATES = Jinja2Templates(directory=str(_APP_DIR / "templates"))
+_I18N_DIR = _APP_DIR / "i18n"
+# Tabs the workspace exposes; everything else (scenes/achievements/supervisors/
+# sync/events/health/logs) is a Community sim feature → hidden via data-caps.
+_WS_CAPS = {
+    "scenes": False, "achievements": False, "supervisors": False,
+    "sync": False, "events": False, "health": False, "logs": False,
+}
+
+
+def _load_i18n(lang: str) -> dict:
+    lang = (lang or "ko").lower()
+    if lang not in ("ko", "en"):
+        lang = "ko"
+    try:
+        with open(_I18N_DIR / f"dashboard.{lang}.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        return {"error": str(e)}
 
 # Workspace chat avatars are role-based MONOGRAMS, not persona/anime faces. The
 # workspace team is functional (Coordinator / Researcher / Builder / Critic), so
@@ -242,12 +267,87 @@ class WorkspaceRegistry:
 # ── per-workspace dashboard endpoint shapes (mirror glimi/dashboard/app.py) ───
 
 def _snapshot_payload(reader: DashboardReader) -> dict:
-    """The exact ``/api/snapshot`` shape: snapshot + owner identity enrichment."""
+    """``/api/snapshot`` adapted to the shape the rich Community dashboard.js
+    reads, so the SAME dashboard renders the graph / KPIs / agent cards for a
+    workspace. The kernel reader is minimal (agents/channels/owner/relationships);
+    we fill in the community fields: meta.user_name, recent_messages, bot,
+    total_messages, per-agent live flags, and channel kind/participant_count."""
     snap = reader.snapshot()
     owner_name, owner_ids = _owner_info(reader)
-    snap["owner_name"] = owner_name
-    snap["owner_ids"] = owner_ids
-    return snap
+    names = _agent_name_map(reader)
+
+    def _kind(nm: str) -> str:
+        if nm.startswith("dm-"):
+            return "dm"
+        if nm.startswith("internal-"):
+            return "internal-group"
+        if nm.startswith("mgr-"):
+            return "mgr"
+        return "group"
+
+    def _band(i):
+        return "high" if i >= 7 else ("mid" if i >= 4 else "low")
+
+    agents = [{
+        "thinking": False, "speaking": False,
+        "thinking_channel": "", "speaking_channel": "",
+        "thinking_seconds": 0, "speaking_seconds": 0,
+        "model": a.get("model") or "claude-haiku-4-5",
+        "provider": a.get("provider") or "claude",
+        "emoji": a.get("emoji") or "",          # avoid 'undefined' in the emoji badge
+        "intensity_band": a.get("intensity_band") or _band(a.get("intensity") or 0),
+        "mbti": a.get("mbti") or "",
+        "age": a.get("age") or "",
+        **a,
+    } for a in snap.get("agents", [])]
+
+    channels, total = [], 0
+    for c in snap.get("channels", []):
+        nm = c.get("channel") or c.get("name") or ""
+        mc = c.get("msg_count", 0) or 0
+        total += mc
+        parts = c.get("participants", []) or []
+        channels.append({
+            "name": nm, "participants": parts, "participant_count": len(parts),
+            "status": "idle", "msg_count": mc, "kind": _kind(nm),
+            "internal": nm.startswith("internal-"),
+            "last_ts": c.get("last_active", ""), "last_ago": "", "last_speaker": "",
+        })
+
+    # recent_messages — aggregate the last few across channels (oldest → newest).
+    recent = []
+    for c in channels:
+        try:
+            for m in (reader.store.get_recent_messages(c["name"], limit=8) or []):
+                spk = m.get("speaker") or m.get("agent_id") or ""
+                recent.append({
+                    "channel": c["name"],
+                    "speaker": spk,
+                    "display_name": owner_name if spk in owner_ids else names.get(spk, spk),
+                    "is_user": spk in owner_ids,
+                    "text": m.get("text") or m.get("content") or "",
+                    "timestamp": m.get("timestamp") or m.get("ts") or "",
+                })
+        except Exception:
+            pass
+    recent.sort(key=lambda m: m.get("timestamp") or "")
+    recent = recent[-40:]
+
+    return {
+        **snap,
+        "agents": agents,
+        "channels": channels,
+        "recent_messages": recent,
+        "total_messages": total,
+        "owner_name": owner_name,
+        "owner_ids": owner_ids,
+        "meta": {"user_name": owner_name},
+        "bot": {"bot_alive": True},
+        "events": [], "scenes": [], "supervisors": [],
+        "community_id": None,
+        "community_meta": {"language": "en"},
+        "dev_pending_count": 0, "dev_visible": False,
+    }
 
 
 def _index_html_for(ws: Workspace) -> str:
@@ -551,13 +651,45 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     _NO_STORE = {"Cache-Control": "no-store"}
 
     @app.get("/w/{ws_id}", response_class=HTMLResponse)
-    def dashboard(ws_id: str) -> HTMLResponse:
+    def dashboard(ws_id: str, request: Request) -> HTMLResponse:
+        """The full Community-grade dashboard (chat + overview/graph + agents +
+        channels + …), rendered from the shared templates with a workspace
+        context: user=None + data-caps hide the sim-only chrome, API_BASE=/w/{id}
+        retargets the shared dashboard.js, and the KO/EN picker comes built-in."""
         ws = _require(ws_id)
-        return HTMLResponse(_ws_dashboard_html_for(ws), headers=_NO_STORE)
+        owner_name, _ = _chat_owner(ws.reader())
+        lang = (request.query_params.get("lang") or "en").lower()
+        if lang not in ("ko", "en"):
+            lang = "en"
+        ctx = {
+            "request": request,
+            "workspace": True,
+            "user": None,
+            "community_id": None,           # workspace uses API_BASE, not ?community=
+            "community_name": ws.title,
+            "language": lang,
+            "read_only": (ws.kind == "demo"),
+            "asset_v": _ASSET_VER,
+            "api_base": f"/w/{ws.id}",
+            "caps_json": json.dumps(_WS_CAPS),
+            "chat_channel": "dm-coordinator",
+            "chat_agent": "coordinator",
+            "chat_user": owner_name or "You",
+        }
+        resp = _TEMPLATES.TemplateResponse(request, "dashboard/index.html", ctx)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.get("/w/{ws_id}/api/i18n")
+    def w_i18n(ws_id: str, lang: str = "ko") -> JSONResponse:
+        """Dashboard chrome translations for the KO/EN picker (shared dicts)."""
+        _require(ws_id)
+        return JSONResponse(_load_i18n(lang))
 
     @app.get("/w/{ws_id}/graph", response_class=HTMLResponse)
     def dashboard_graph(ws_id: str) -> HTMLResponse:
-        """The Core connection-graph dashboard (unchanged), under /graph."""
+        """Legacy: the minimal Core graph dashboard. The full /w/{id} now has an
+        Overview tab with the same graph; kept for direct links."""
         ws = _require(ws_id)
         return HTMLResponse(_index_html_for(ws), headers=_NO_STORE)
 
@@ -623,6 +755,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         return JSONResponse(_snapshot_payload(ws.reader()))
 
     @app.get("/w/{ws_id}/api/agent_detail")
+    @app.get("/w/{ws_id}/api/agent")  # rich dashboard.js openAgent() uses /api/agent
     def w_agent_detail(ws_id: str, id: str) -> JSONResponse:
         ws = _require(ws_id)
         if not id:
