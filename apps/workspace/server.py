@@ -347,7 +347,7 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
             "agent_id": aid,
             "name": a.get("name") or aid,
             "type": a.get("type", ""),
-            "avatar_url": f"/w/{ws.id}/api/avatar?id={aid}",
+            "avatar_url": f"/w/{ws.id}/api/avatar?id={aid}&v={_ASSET_VER}",
             "last": _last_preview(store, dm_channel, owner_ids, names, owner_name),
         })
     # Registered group channels (multi-agent). The overview lists every channel;
@@ -462,7 +462,8 @@ def _ws_dashboard_html_for(ws: "Workspace") -> str:
             .replace("{{ws_title}}", _esc(ws.title))
             .replace("{{ws_base}}", base)
             .replace("{{owner_name}}", _esc(owner_name))
-            .replace("{{readonly}}", readonly))
+            .replace("{{readonly}}", readonly)
+            .replace("{{asset_ver}}", _ASSET_VER))
     # Cache-bust the chat JS/CSS so a returning visitor never gets a stale copy.
     # chat.js/chat.css are the canonical /static (kernel) assets; tokens.css is
     # the workspace-local /wstatic one.
@@ -505,7 +506,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     # ── home ──────────────────────────────────────────────────────────────
     @app.get("/", response_class=HTMLResponse)
     def home() -> FileResponse:
-        return FileResponse(str(_HOME_HTML), media_type="text/html")
+        return FileResponse(str(_HOME_HTML), media_type="text/html",
+                            headers={"Cache-Control": "no-store"})
 
     @app.get("/api/workspaces")
     def list_workspaces() -> JSONResponse:
@@ -543,16 +545,21 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     # Primary view = the Community-style chat (chat shell + sidebar/feed). The
     # connection graph (the previous /w/{id} Core dashboard) moves to /w/{id}/graph
     # and is reachable from the chat page's Overview nav.
+    # no-store: the HTML must always re-fetch so its versioned asset refs
+    # (chat.js?v=…, __GLIMI_ASSET_VER__) are current — otherwise a returning
+    # visitor's cached page keeps pointing at stale assets/avatars.
+    _NO_STORE = {"Cache-Control": "no-store"}
+
     @app.get("/w/{ws_id}", response_class=HTMLResponse)
     def dashboard(ws_id: str) -> HTMLResponse:
         ws = _require(ws_id)
-        return HTMLResponse(_ws_dashboard_html_for(ws))
+        return HTMLResponse(_ws_dashboard_html_for(ws), headers=_NO_STORE)
 
     @app.get("/w/{ws_id}/graph", response_class=HTMLResponse)
     def dashboard_graph(ws_id: str) -> HTMLResponse:
         """The Core connection-graph dashboard (unchanged), under /graph."""
         ws = _require(ws_id)
-        return HTMLResponse(_index_html_for(ws))
+        return HTMLResponse(_index_html_for(ws), headers=_NO_STORE)
 
     # ── per-workspace chat read-APIs (mirror the Community chat contract) ────
     @app.get("/w/{ws_id}/chat/channels")

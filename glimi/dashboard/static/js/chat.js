@@ -148,10 +148,15 @@
   }
   function avatarUrl(agentId) {
     // Workspace serves avatars per-workspace; Community keys them by community.
+    // Append the asset version (when the app injects __GLIMI_ASSET_VER__) so a
+    // returning visitor never gets a STALE cached avatar after the route's output
+    // changes (e.g. anime portrait → role monogram).
+    var ver = (typeof window !== 'undefined' && window.__GLIMI_ASSET_VER__)
+      ? '&v=' + encodeURIComponent(window.__GLIMI_ASSET_VER__) : '';
     return WS_BASE
-      ? WS_BASE + '/api/avatar?id=' + encodeURIComponent(agentId)
+      ? WS_BASE + '/api/avatar?id=' + encodeURIComponent(agentId) + ver
       : '/api/avatar?id=' + encodeURIComponent(agentId) +
-        (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '');
+        (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '') + ver;
   }
 
   function initialOf(name) {
