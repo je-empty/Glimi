@@ -520,9 +520,10 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
     retargets the shared dashboard.js, KO/EN picker built in. The markup is the
     single shared source — only this context differs from the kernel/community."""
     owner_name, _ = _chat_owner(ws.reader())
-    lang = (request.query_params.get("lang") or "en").lower()
+    # Default to Korean (primary audience); the built-in KO/EN picker (🌐) switches.
+    lang = (request.query_params.get("lang") or "ko").lower()
     if lang not in ("ko", "en"):
-        lang = "en"
+        lang = "ko"
     ctx = {
         "request": request,
         "static_base": "/static",
