@@ -64,7 +64,11 @@ from glimi.dashboard import DashboardReader
 # Public reader-derived helpers (zero-dep) for the read-only endpoint shapes.
 # Public API so the workspace consumes only the supported glimi.dashboard surface
 # (no underscore-private internals) — important for the standalone-repo split.
-from glimi.dashboard import channel_detail as _channel_detail, owner_info as _owner_info
+from glimi.dashboard import (
+    channel_detail as _channel_detail,
+    owner_info as _owner_info,
+    enrich_snapshot as _enrich_snapshot,
+)
 
 # Import the sibling app modules the same dual-path way run.py does, so this works
 # whether loaded as ``apps.workspace.server`` or from a flat dir on sys.path.
@@ -77,31 +81,29 @@ except ImportError:  # imported as apps.workspace.server
     from .run import run_workspace
     from .team import TEAM
 
-# Locate the Core dashboard's static + index template (reused, never modified).
+# The Core dashboard ships the canonical rich UI — assets (css/js), the shared
+# templates (dashboard/_core.html + _chat_shell.html), and the i18n dicts. This
+# app consumes them straight from the installed ``glimi[dashboard]`` package; it
+# keeps NO copy of its own (single source of truth → no drift across the split).
 _DASH_DIR = Path(_dashboard.__file__).resolve().parent
 _DASH_STATIC = _DASH_DIR / "static"
-_DASH_INDEX = _DASH_DIR / "templates" / "index.html"
+_DASH_TEMPLATES = _DASH_DIR / "templates"
+_DASH_I18N = _DASH_DIR / "i18n"
 
-# This app's own templates + static (the chat UI lives entirely in this layer —
-# the kernel store gains no image/chat concerns).
+# This app's own dir — only the home (workspace picker) page is workspace-local;
+# the dashboard itself is the shared Core template.
 _APP_DIR = Path(__file__).resolve().parent
 _HOME_HTML = _APP_DIR / "templates" / "home.html"
-_WS_DASH_HTML = _APP_DIR / "templates" / "ws_dashboard.html"
-_CHAT_SHELL_HTML = _APP_DIR / "templates" / "_chat_shell.html"
-_WS_STATIC = _APP_DIR / "static"
 
 
 def _asset_ver() -> str:
-    """Cache-busting token = short hash of the newest chat-asset mtime across BOTH
-    the workspace-local static (tokens.css) and the canonical kernel dashboard
-    static (chat.js/chat.css live there now). Appended to the chat URLs so a
-    returning visitor never gets a stale copy, while still caching within a
-    release. Recomputed at import, so it changes only when assets do."""
+    """Cache-busting token = short hash of the newest canonical dashboard-asset
+    mtime. Appended to asset URLs so a returning visitor never gets a stale copy,
+    while still caching within a release. Recomputed at import (changes only when
+    the shipped assets do)."""
     try:
         latest = max(
-            (p.stat().st_mtime
-             for d in (_WS_STATIC, _DASH_STATIC)
-             for p in d.rglob("*") if p.is_file()),
+            (p.stat().st_mtime for p in _DASH_STATIC.rglob("*") if p.is_file()),
             default=0.0,
         )
     except Exception:
@@ -111,12 +113,13 @@ def _asset_ver() -> str:
 
 _ASSET_VER = _asset_ver()
 
-# Jinja env for the rich dashboard (workspace-owned copies of the Community
-# templates, rendered with a workspace context: user=None + caps hide the
-# sim-only chrome, API_BASE=/w/{id} retargets the shared dashboard.js).
+# Jinja env: the workspace's own templates (home.html) + the canonical Core
+# templates (dashboard/_core.html, _chat_shell.html). The dashboard renders with a
+# workspace context — user=None + caps hide the sim-only chrome, api_base=/w/{id}
+# retargets the shared dashboard.js — but the markup is the single shared source.
 from fastapi.templating import Jinja2Templates  # noqa: E402
-_TEMPLATES = Jinja2Templates(directory=str(_APP_DIR / "templates"))
-_I18N_DIR = _APP_DIR / "i18n"
+_TEMPLATES = Jinja2Templates(directory=[str(_APP_DIR / "templates"), str(_DASH_TEMPLATES)])
+_I18N_DIR = _DASH_I18N
 # Tabs the workspace exposes; everything else (scenes/achievements/supervisors/
 # sync/events/health/logs) is a Community sim feature → hidden via data-caps.
 _WS_CAPS = {
@@ -267,112 +270,12 @@ class WorkspaceRegistry:
 # ── per-workspace dashboard endpoint shapes (mirror glimi/dashboard/app.py) ───
 
 def _snapshot_payload(reader: DashboardReader) -> dict:
-    """``/api/snapshot`` adapted to the shape the rich Community dashboard.js
-    reads, so the SAME dashboard renders the graph / KPIs / agent cards for a
-    workspace. The kernel reader is minimal (agents/channels/owner/relationships);
-    we fill in the community fields: meta.user_name, recent_messages, bot,
-    total_messages, per-agent live flags, and channel kind/participant_count."""
-    snap = reader.snapshot()
-    owner_name, owner_ids = _owner_info(reader)
-    names = _agent_name_map(reader)
-
-    def _kind(nm: str) -> str:
-        if nm.startswith("dm-"):
-            return "dm"
-        if nm.startswith("internal-"):
-            return "internal-group"
-        if nm.startswith("mgr-"):
-            return "mgr"
-        return "group"
-
-    def _band(i):
-        return "high" if i >= 7 else ("mid" if i >= 4 else "low")
-
-    agents = [{
-        "thinking": False, "speaking": False,
-        "thinking_channel": "", "speaking_channel": "",
-        "thinking_seconds": 0, "speaking_seconds": 0,
-        "model": a.get("model") or "claude-haiku-4-5",
-        "provider": a.get("provider") or "claude",
-        "emoji": a.get("emoji") or "",          # avoid 'undefined' in the emoji badge
-        "intensity_band": a.get("intensity_band") or _band(a.get("intensity") or 0),
-        "mbti": a.get("mbti") or "",
-        "age": a.get("age") or "",
-        **a,
-    } for a in snap.get("agents", [])]
-
-    channels, total = [], 0
-    for c in snap.get("channels", []):
-        nm = c.get("channel") or c.get("name") or ""
-        mc = c.get("msg_count", 0) or 0
-        total += mc
-        parts = c.get("participants", []) or []
-        channels.append({
-            "name": nm, "participants": parts, "participant_count": len(parts),
-            "status": "idle", "msg_count": mc, "kind": _kind(nm),
-            "internal": nm.startswith("internal-"),
-            "last_ts": c.get("last_active", ""), "last_ago": "", "last_speaker": "",
-        })
-
-    # recent_messages — aggregate the last few across channels (oldest → newest).
-    recent = []
-    for c in channels:
-        try:
-            for m in (reader.store.get_recent_messages(c["name"], limit=8) or []):
-                spk = m.get("speaker") or m.get("agent_id") or ""
-                recent.append({
-                    "channel": c["name"],
-                    "speaker": spk,
-                    "display_name": owner_name if spk in owner_ids else names.get(spk, spk),
-                    "is_user": spk in owner_ids,
-                    "text": m.get("text") or m.get("content") or "",
-                    "timestamp": m.get("timestamp") or m.get("ts") or "",
-                })
-        except Exception:
-            pass
-    recent.sort(key=lambda m: m.get("timestamp") or "")
-    recent = recent[-40:]
-
-    return {
-        **snap,
-        "agents": agents,
-        "channels": channels,
-        "recent_messages": recent,
-        "total_messages": total,
-        "owner_name": owner_name,
-        "owner_ids": owner_ids,
-        "meta": {"user_name": owner_name},
-        "bot": {"bot_alive": True},
-        "events": [], "scenes": [], "supervisors": [],
-        "community_id": None,
-        "community_meta": {"language": "en"},
-        "dev_pending_count": 0, "dev_visible": False,
-    }
-
-
-def _index_html_for(ws: Workspace) -> str:
-    """The Core dashboard index.html with per-workspace body attributes injected.
-
-    Reads (never modifies) ``glimi/dashboard/templates/index.html``, sets
-    ``<body data-api-base="/w/{id}" data-refresh-ms="6000">`` so the SAME shipped
-    JS drives this workspace's endpoints, and retitles the page. One additive JS
-    change (``API_BASE`` off ``data-api-base``) makes this work; without the
-    attribute the standalone dashboard is unchanged.
-    """
-    html = _DASH_INDEX.read_text(encoding="utf-8")
-    base = f"/w/{ws.id}"
-    html = html.replace(
-        "<body>",
-        f'<body data-api-base="{base}" data-refresh-ms="6000">',
-        1,
-    )
-    # Retitle (best-effort; both occurrences are the same string).
-    html = html.replace(
-        "<title>Glimi Core — Dashboard</title>",
-        f"<title>{_esc(ws.title)} — Glimi Workspace</title>",
-        1,
-    )
-    return html
+    """``/api/snapshot`` in the rich dashboard shape. This is exactly the canonical
+    :func:`glimi.dashboard.enrich_snapshot` — the kernel ships the enricher so the
+    SAME shape (graph / KPIs / agent cards) renders for the kernel demo, a
+    workspace, and any ``KernelStore`` population. Kept as a thin alias so the
+    route reads naturally and a workspace-specific tweak would have one home."""
+    return _enrich_snapshot(reader)
 
 
 def _esc(s: str) -> str:
@@ -533,43 +436,37 @@ def _chat_history(ws: "Workspace", channel: str, limit: int) -> list[dict]:
     return out
 
 
-def _ws_dashboard_html_for(ws: "Workspace") -> str:
-    """Render the Community-style workspace page (chat primary view).
-
-    The Workspace server does not run Jinja; the template + chat-shell partial use
-    literal ``{{...}}`` placeholders filled here by ``str.replace`` (same pattern
-    as ``_index_html_for``). Injects the per-workspace base, owner name, and the
-    read-only flag (the Demo is read-only — composer locked + banner).
-    """
-    reader = ws.reader()
-    owner_name, _ = _chat_owner(reader)
-    owner_initial = (owner_name.strip()[:1].upper() or "Y") if owner_name else "Y"
-    base = f"/w/{ws.id}"
-    # The Demo workspace is browse-only; user-created ones are too (echo, no live
-    # turn loop here) — treat every workspace chat as read-only (it's a demo).
-    readonly = "true"
-
-    shell = _CHAT_SHELL_HTML.read_text(encoding="utf-8")
-    shell = (shell
-             .replace("{{ws_name}}", _esc(ws.title))
-             .replace("{{owner_name}}", _esc(owner_name))
-             .replace("{{owner_initial}}", _esc(owner_initial))
-             .replace("{{channel}}", "dm-coordinator"))
-
-    html = _WS_DASH_HTML.read_text(encoding="utf-8")
-    html = (html
-            .replace("<!--CHAT_SHELL-->", shell)
-            .replace("{{ws_title}}", _esc(ws.title))
-            .replace("{{ws_base}}", base)
-            .replace("{{owner_name}}", _esc(owner_name))
-            .replace("{{readonly}}", readonly)
-            .replace("{{asset_ver}}", _ASSET_VER))
-    # Cache-bust the chat JS/CSS so a returning visitor never gets a stale copy.
-    # chat.js/chat.css are the canonical /static (kernel) assets; tokens.css is
-    # the workspace-local /wstatic one.
-    for _a in ("/static/js/chat.js", "/static/css/chat.css", "/wstatic/css/tokens.css"):
-        html = html.replace(_a, f"{_a}?v={_ASSET_VER}")
-    return html
+def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
+                 refresh_ms: int = 0):
+    """Render the canonical Core dashboard (``dashboard/_core.html``) for a
+    workspace: user=None + ``_WS_CAPS`` hide the sim-only chrome, api_base=/w/{id}
+    retargets the shared dashboard.js, KO/EN picker built in. The markup is the
+    single shared source — only this context differs from the kernel/community."""
+    owner_name, _ = _chat_owner(ws.reader())
+    lang = (request.query_params.get("lang") or "en").lower()
+    if lang not in ("ko", "en"):
+        lang = "en"
+    ctx = {
+        "request": request,
+        "static_base": "/static",
+        "api_base": f"/w/{ws.id}",
+        "caps_json": json.dumps(_WS_CAPS),
+        "community_chrome": False,
+        "active_tab": active_tab,
+        "user": None,
+        "community_id": None,           # workspace uses api_base, not ?community=
+        "community_name": ws.title,
+        "language": lang,
+        "read_only": (ws.kind == "demo"),
+        "asset_v": _ASSET_VER,
+        "chat_channel": "dm-coordinator",
+        "chat_agent": "coordinator",
+        "chat_user": owner_name or "You",
+        "refresh_ms": refresh_ms or "",
+    }
+    resp = _TEMPLATES.TemplateResponse(request, "dashboard/_core.html", ctx)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ── app ───────────────────────────────────────────────────────────────────────
@@ -587,12 +484,9 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     app = FastAPI(title="Glimi Workspace — Server", docs_url=None, redoc_url=None)
     app.state.registry = reg
 
-    # Reuse the Core dashboard's static assets (CSS/JS) for BOTH the home page and
-    # every per-workspace dashboard.
+    # All dashboard assets (css / js) are the canonical Core ones, served from the
+    # installed glimi[dashboard] package — single source, no workspace-local copy.
     app.mount("/static", StaticFiles(directory=str(_DASH_STATIC)), name="static")
-    # This app's OWN static (chat.css / chat.js / tokens.css) under a separate
-    # prefix so the chat assets never collide with the kernel `/static`.
-    app.mount("/wstatic", StaticFiles(directory=str(_WS_STATIC)), name="wstatic")
 
     if with_demo:
         _install_demo(reg, interval=demo_interval)
@@ -657,28 +551,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         context: user=None + data-caps hide the sim-only chrome, API_BASE=/w/{id}
         retargets the shared dashboard.js, and the KO/EN picker comes built-in."""
         ws = _require(ws_id)
-        owner_name, _ = _chat_owner(ws.reader())
-        lang = (request.query_params.get("lang") or "en").lower()
-        if lang not in ("ko", "en"):
-            lang = "en"
-        ctx = {
-            "request": request,
-            "workspace": True,
-            "user": None,
-            "community_id": None,           # workspace uses API_BASE, not ?community=
-            "community_name": ws.title,
-            "language": lang,
-            "read_only": (ws.kind == "demo"),
-            "asset_v": _ASSET_VER,
-            "api_base": f"/w/{ws.id}",
-            "caps_json": json.dumps(_WS_CAPS),
-            "chat_channel": "dm-coordinator",
-            "chat_agent": "coordinator",
-            "chat_user": owner_name or "You",
-        }
-        resp = _TEMPLATES.TemplateResponse(request, "dashboard/index.html", ctx)
-        resp.headers["Cache-Control"] = "no-store"
-        return resp
+        return _render_core(request, ws, active_tab="chat")
 
     @app.get("/w/{ws_id}/api/i18n")
     def w_i18n(ws_id: str, lang: str = "ko") -> JSONResponse:
@@ -687,11 +560,12 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         return JSONResponse(_load_i18n(lang))
 
     @app.get("/w/{ws_id}/graph", response_class=HTMLResponse)
-    def dashboard_graph(ws_id: str) -> HTMLResponse:
-        """Legacy: the minimal Core graph dashboard. The full /w/{id} now has an
-        Overview tab with the same graph; kept for direct links."""
+    def dashboard_graph(ws_id: str, request: Request) -> HTMLResponse:
+        """The connection-graph / overview view — the same shared dashboard opened
+        on its Overview tab, with periodic refresh. Reachable from the chat page's
+        Overview nav and direct links."""
         ws = _require(ws_id)
-        return HTMLResponse(_index_html_for(ws), headers=_NO_STORE)
+        return _render_core(request, ws, active_tab="overview", refresh_ms=6000)
 
     # ── per-workspace chat read-APIs (mirror the Community chat contract) ────
     @app.get("/w/{ws_id}/chat/channels")

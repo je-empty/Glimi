@@ -1,0 +1,235 @@
+{# ── Glimi Core dashboard — the single canonical shell ───────────────────────
+   The rich, config-driven dashboard. ONE source of truth, consumed by:
+     • the kernel's own `glimi.dashboard.serve()` (this template rendered directly),
+     • Glimi Workspace (rendered with a workspace context),
+     • Glimi Community (extends this, fills the extension blocks).
+
+   It is **platform-neutral**: no Discord, no bot lifecycle, no community content.
+   Behaviour is switched entirely by render context — never by forking the markup:
+
+     static_base      asset URL prefix (default "/static"); all css/js load from here.
+     api_base         API prefix for the shared dashboard.js (→ <body data-api-base>).
+     caps_json        JSON capability map (→ <body data-caps>); null = everything on.
+     community_chrome bool — community-only chrome (switcher / server-ctrl / elastic /
+                      Discord+Scene KPIs / logo). Kernel & Workspace pass false.
+     active_tab       which tab opens first ("chat" for apps, "overview" for the
+                      chat-less kernel viewer).
+     language         "ko" | "en"   ·   asset_v   cache-bust token
+     community_name / community_id / read_only / chat_channel / chat_agent / chat_user
+     refresh_ms       optional <body data-refresh-ms> (graph embed view).
+
+   Extension hooks (empty here — apps fill them, Core never carries app logic):
+     extra_head · extra_chrome · extra_modals · extra_scripts
+#}
+<!doctype html>
+<html lang="{{ language or 'en' }}" data-theme="light" class="{% block html_class %}{% if request and request.query_params.get('capture') %}capture-mode{% endif %}{% endblock %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ community_name or 'Glimi' }} · Glimi{% endblock %}</title>
+  <script>
+    // Apply saved theme before render — FOUC guard.
+    (function () {
+      try {
+        if (localStorage.getItem('glimi-theme') === 'dark')
+          document.documentElement.setAttribute('data-theme', 'dark');
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ static_base }}/css/tokens.css?v={{ asset_v }}">
+  <link rel="stylesheet" href="{{ static_base }}/css/base.css?v={{ asset_v }}">
+  <link rel="stylesheet" href="{{ static_base }}/css/dashboard.css?v={{ asset_v }}">
+  <!-- Embedded chat tab (#view-chat): tokens → chat → scoped override, after dashboard.css.
+       dashboard-chat.css re-pins chat.css's global 100dvh rule to .chat-shell inside #view-chat. -->
+  <link rel="stylesheet" href="{{ static_base }}/css/chat.css?v={{ asset_v }}">
+  <link rel="stylesheet" href="{{ static_base }}/css/dashboard-chat.css?v={{ asset_v }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* The dashboard owns the full viewport. */
+    html, body { height: 100%; overflow: hidden; isolation: isolate; }
+    body {
+      font: 13px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    @keyframes spin { to { transform: rotate(360deg) } }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% if request and request.query_params.get('capture') %}capture-mode{% endif %}{% endblock %}"
+      {%- if api_base %} data-api-base="{{ api_base }}" data-ws-base="{{ api_base }}"{% endif %}
+      {%- if caps_json %} data-caps='{{ caps_json|safe }}'{% endif %}
+      {%- if refresh_ms %} data-refresh-ms="{{ refresh_ms }}"{% endif %}>
+<div class="app">
+  <header class="status">
+    <span class="brand">
+      {% if community_chrome %}
+      <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo" onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기">
+      {% endif %}
+      <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="Home">{{ community_name or 'Glimi' }}</a>
+    </span>
+
+    {% if community_chrome %}
+    <div style="position:relative" id="community-switcher-wrap">
+      <button class="community-btn" id="community-btn" title="커뮤니티 전환">
+        <span class="sv-dot"></span>
+        <span id="community-btn-name">—</span>
+        <span class="chev">▾</span>
+      </button>
+      <div class="community-menu" id="community-menu"></div>
+    </div>
+    {% endif %}
+
+    {% block extra_chrome %}{% endblock %}
+
+    <div class="header-spacer" style="flex:1"></div>
+
+    {% if user and user.role == 'admin' %}
+    <a id="admin-dev-link" class="gp-devlink" href="/admin/dev-requests" target="_self"
+       title="모든 커뮤니티 dev requests 통합 관리 (admin)">
+      <i class="ti ti-tool" aria-hidden="true"></i>Dev Requests
+    </a>
+    {% endif %}
+    <a id="dev-pending-badge" href="/admin/dev-requests" target="_self"
+       title="이 커뮤니티의 미처리 dev requests"
+       style="display:none;margin-right:8px;padding:3px 9px;border-radius:999px;font-size:11px;color:white;text-decoration:none;font-weight:700;background:var(--err);">
+      <span id="dev-pending-count">0</span>
+    </a>
+
+    <div style="position:relative" id="lang-switcher-wrap">
+      <button class="btn-icon" id="lang-toggle" title="언어">🌐</button>
+      <div class="lang-menu" id="lang-menu"></div>
+    </div>
+    <button class="btn-icon" id="supervisor-toggle" title="Supervisor view" style="{% if not community_chrome %}display:none{% endif %}"><i class="ti ti-ghost-2" aria-hidden="true"></i></button>
+    {% if community_chrome %}
+    <button class="btn-icon" id="elastic-mem-btn" title="Elastic Memory" onclick="openElasticMemory()"><i class="ti ti-brain" aria-hidden="true"></i></button>
+    {% endif %}
+    <button class="btn-icon" id="theme-toggle" title="Theme"><i class="ti ti-sun" aria-hidden="true"></i></button>
+    {% if user %}
+    <span class="gp-user" style="font-size:12px;color:var(--text-dim);margin:0 6px">{{ user.username }}</span>
+    <form method="post" action="/logout" style="display:inline">
+      <button type="submit" class="btn-icon" title="로그아웃"><i class="ti ti-logout" aria-hidden="true"></i></button>
+    </form>
+    {% endif %}
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="chat" class="{% if (active_tab or 'chat') == 'chat' %}active{% endif %}"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">Chat</span></button>
+    <button data-tab="overview" class="{% if active_tab == 'overview' %}active{% endif %}"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
+    <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">Agents</span> <span class="count" id="tc-agents">0</span></button>
+    <button data-tab="channels"><i class="ti ti-message-circle tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>
+    <button data-tab="messages"><i class="ti ti-mail tab-emoji" aria-hidden="true"></i><span class="tab-label">Messages</span> <span class="count" id="tc-messages">0</span></button>
+    <button data-tab="scenes"><i class="ti ti-movie tab-emoji" aria-hidden="true"></i><span class="tab-label">Scenes</span> <span class="count" id="tc-scenes">0</span></button>
+    <button data-tab="achievements"><i class="ti ti-trophy tab-emoji" aria-hidden="true"></i><span class="tab-label">Achievements</span> <span class="count" id="tc-achievements">—</span></button>
+    <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">Events</span> <span class="count" id="tc-events">0</span></button>
+    <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i><span class="tab-label">Supervisors</span> <span class="count" id="tc-supervisors">0</span></button>
+    <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i><span class="tab-label">Health</span></button>
+    <button data-tab="sync"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">Sync</span></button>
+    <button data-tab="usage"><i class="ti ti-chart-bar tab-emoji" aria-hidden="true"></i><span class="tab-label">Usage</span></button>
+    <button data-tab="tools"><i class="ti ti-tool tab-emoji" aria-hidden="true"></i><span class="tab-label">Tools</span></button>
+    <button data-tab="logs"><i class="ti ti-file-text tab-emoji" aria-hidden="true"></i><span class="tab-label">Logs</span></button>
+  </nav>
+
+  <main>
+    <div class="view view-chat {% if (active_tab or 'chat') == 'chat' %}active{% endif %}" id="view-chat">{% include "_chat_shell.html" %}</div>
+
+    <div class="view {% if active_tab == 'overview' %}active{% endif %}" id="view-overview">
+      <div class="empty-banner">
+        <h2>📭 {% if language == 'en' %}Nothing here yet{% else %}이 커뮤니티는 비어있어요{% endif %}</h2>
+        <div>{% if language == 'en' %}No agents or conversations yet.{% else %}아직 에이전트나 대화가 없어요.{% endif %}</div>
+      </div>
+      <div class="offline-banner" id="offline-banner">
+        <b>{% if language == 'en' %}Offline{% else %}오프라인{% endif %}</b> — {% if language == 'en' %}showing the last snapshot (not live).{% else %}마지막 스냅샷 표시 중 (실시간 아님){% endif %}
+        <span class="muted" id="offline-last"></span>
+      </div>
+      <div class="hero" id="hero"></div>
+      <div class="overview-grid">
+        <div class="kpi"><div class="label">Server Status</div><div class="value" id="kpi-server">—</div></div>
+        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">Discord Bot</div><div class="value" id="kpi-bot">—</div></div>
+        <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
+        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">Active Scene</div><div class="value" id="kpi-scene">—</div></div>
+        <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
+      </div>
+      <div class="graph-panel" id="graph-panel"></div>
+      <div class="section-title">Agents</div>
+      <div class="agent-grid" id="overview-agents"></div>
+      <div class="section-title">Recent Conversations</div>
+      <div class="msg-list" id="overview-msgs"></div>
+    </div>
+
+    <div class="view" id="view-agents"><div class="agent-grid" id="agents-full"></div></div>
+    <div class="view" id="view-channels"><div id="channels-full"></div></div>
+    <div class="view" id="view-messages"><div class="msg-list" id="messages-full"></div></div>
+    <div class="view" id="view-scenes"><div id="scenes-full"></div></div>
+    <div class="view" id="view-achievements">
+      <div class="ach-header">
+        <div class="ach-title">{% if language == 'en' %}Achievements{% else %}도전과제{% endif %}</div>
+        <div class="ach-sub">{% if language == 'en' %}Moments you meet while living in the community ✨{% else %}커뮤니티를 살면서 만나는 순간들 ✨{% endif %}</div>
+        <div class="ach-progress-wrap">
+          <div class="ach-progress-bar"><div class="ach-progress-fill" id="ach-fill" style="width:0%"></div></div>
+          <div class="ach-progress-text" id="ach-pct">0 / 0</div>
+        </div>
+      </div>
+      <div class="ach-grid" id="ach-grid"></div>
+    </div>
+    <div class="view" id="view-events"><div class="event-list" id="events-full"></div></div>
+    <div class="view" id="view-health"><div class="health-grid" id="health-full"></div></div>
+    <div class="view" id="view-sync"><div id="sync-full"></div></div>
+    <div class="view" id="view-usage"><div id="usage-full"></div></div>
+    <div class="view" id="view-tools"><div id="tools-full"></div></div>
+    <div class="view" id="view-supervisors"><div id="supervisors-full"></div></div>
+    <div class="view" id="view-logs"><div class="log-view" id="logs-full"></div></div>
+  </main>
+</div>
+
+<!-- Detail Modal -->
+<div class="detail-backdrop" id="detail-backdrop">
+  <div class="detail-panel">
+    <div class="detail-head">
+      <span class="d-emoji" id="d-emoji">◆</span>
+      <span class="d-title" id="d-title">—</span>
+      <a id="d-detail-link" class="d-detail-link" href="#" style="display:none;margin-right:8px;padding:6px 12px;border:1px solid var(--accent);border-radius:6px;color:var(--accent);text-decoration:none;font-size:12px;font-weight:600">↗ 전체 보기</a>
+      <button class="d-close" id="d-close">닫기</button>
+    </div>
+    <div class="detail-body" id="d-body"></div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="this.classList.remove('open')">
+  <img id="lightbox-img" src="" alt="">
+  <div class="lb-caption" id="lightbox-caption"></div>
+</div>
+
+<div class="loading-bar"></div>
+<div class="toast" id="toast"></div>
+
+{% block extra_modals %}{% endblock %}
+
+<!-- Server-injected globals (URL-query independent). -->
+<script>
+  window.__GLIMI_COMMUNITY__  = {{ (community_id if community_id is defined else none)|tojson }};
+  window.__GLIMI_ASSET_VER__  = {{ (asset_v or "")|tojson }};
+  window.__GLIMI_CHANNEL__    = {{ (chat_channel if chat_channel else none)|tojson }};
+  window.__GLIMI_AGENT__      = {{ (chat_agent if chat_agent else none)|tojson }};
+  window.__GLIMI_USER__       = {{ (chat_user if chat_user else (user.username if user else "You"))|tojson }};
+  window.__GLIMI_EMBEDDED__   = true;
+  window.__GLIMI_READONLY__   = {{ 'true' if read_only else 'false' }};
+</script>
+
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="{{ static_base }}/js/dashboard.js?v={{ asset_v }}"></script>
+<script src="{{ static_base }}/js/chat.js?v={{ asset_v }}"></script>
+<script>
+  window.addEventListener('load', function () {
+    if (window.GlimiChat) window.GlimiChat.init();
+  });
+</script>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -33,9 +33,11 @@ Serve the web dashboard in-process (needs ``pip install glimi[dashboard]``)::
 """
 from __future__ import annotations
 
-from .reader import DashboardReader, owner_info, channel_detail
+from .reader import DashboardReader, owner_info, channel_detail, enrich_snapshot
 
-__all__ = ["DashboardReader", "owner_info", "channel_detail", "serve"]
+__all__ = [
+    "DashboardReader", "owner_info", "channel_detail", "enrich_snapshot", "serve",
+]
 
 
 def serve(store, host: str = "127.0.0.1", port: int = 8800, **uvicorn_kwargs):

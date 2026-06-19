@@ -141,10 +141,14 @@ def test_index_serves_html_with_graph_container(client):
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     body = r.text
-    assert 'id="cy-graph"' in body            # the graph mount point
-    assert "Connection Graph" in body
+    # The kernel demo renders the canonical rich shell (dashboard/_core.html).
+    assert 'id="graph-panel"' in body         # the graph mount point (Overview tab)
+    assert 'id="tabs"' in body                # rich tab rail
+    assert 'id="view-overview"' in body       # opens on Overview (chat-less viewer)
     assert "cytoscape" in body.lower()        # graph lib loaded
     assert "static/js/dashboard.js" in body
+    # Standalone kernel viewer: no per-app retargeting attribute.
+    assert "data-api-base" not in body
 
 
 def test_static_assets_served(client):

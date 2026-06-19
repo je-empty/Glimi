@@ -1,25 +1,21 @@
-<!-- Chat body partial — apps/workspace copy of src/platform/templates/_chat_shell.html.
-     Single source of the chat surface markup; every chat-* id is preserved
-     VERBATIM (chat.js binds to these ids and is id-scoped).
+{# Chat body partial — single source of the chat surface markup.
+   Included by:
+     • templates/chat.html — standalone /community/{cid}/chat page (full-height /chat).
+     • templates/dashboard/index.html — #view-chat embedded dashboard tab.
+   Jinja vars consumed: community_name, user, channel. Both host templates pass them.
+   Every chat-* id is preserved verbatim — chat.js binds to these ids and is
+   id-scoped (it never touches host chrome), so the partial embeds anywhere
+   same-origin with zero topbar/query dependency.
 
-     The Community original is a Jinja partial consuming {{ community_name }},
-     {{ user.username }}, {{ channel }}. The Workspace server does NOT run Jinja
-     (it serves templates via str.replace), so those vars are replaced here by
-     literal placeholders the server fills at serve time:
-       {{ws_name}}     → workspace title (sidebar header)
-       {{owner_name}}  → owner display name (me-row + avatar initial)
-       {{channel}}     → seeded default channel label (chat.js overwrites at runtime)
-
-     Discord paradigm: author-grouped full-width rows (left-aligned), a left
-     channel/people rail, a feed + 2-tier composer + thread panel. Narrow screens
-     collapse the sidebar into a drawer. -->
+   Discord 패러다임: 작성자별로 묶인 전체 너비 행(좌측 정렬), 좌측 채널/사람 레일,
+   우측 피드 + 2-tier 컴포저 + 스레드 패널. 좁은 화면은 사이드바를 드로어로 collapse. #}
 <div class="chat-shell" id="chat-shell">
 
   <aside class="side" id="chat-sidebar" aria-label="Channels">
     <div class="side-top">
       <span class="mark" aria-hidden="true"><i class="ti ti-sparkles"></i></span>
       <span class="col">
-        <span class="nm">{{ws_name}}</span>
+        <span class="nm">{{ community_name }}</span>
         <span class="sub" id="chat-side-sub"></span>
       </span>
       <button type="button" class="new" aria-label="Refresh" id="chat-side-refresh">
@@ -42,9 +38,9 @@
 
     <div class="me">
       <span class="ava" aria-hidden="true" id="chat-me-ava"
-            style="background:var(--chat-av-3)">{{owner_initial}}<span class="pres online"></span></span>
+            style="background:var(--chat-av-3)">{{ (user.username[0] if user and user.username else "Me")|upper }}<span class="pres online"></span></span>
       <span class="meta">
-        <span class="t">{{owner_name}}</span>
+        <span class="t">{{ user.username if user else "Me" }}</span>
         <span class="p"><span class="d"></span>Online</span>
       </span>
       <span class="chat-status" id="chat-status" data-state="connecting"
@@ -52,7 +48,7 @@
     </div>
   </aside>
 
-  <!-- drawer backdrop (narrow screens) -->
+  <!-- 드로어 백드롭 (좁은 화면) -->
   <div class="chat-scrim" id="chat-scrim" hidden></div>
 
   <section class="main">
@@ -62,7 +58,7 @@
         <i class="ti ti-menu-2" aria-hidden="true"></i>
       </button>
       <i class="ti ti-at hash" id="chat-head-icon" aria-hidden="true"></i>
-      <span class="ttl" id="chat-channel-label"># {{channel}}</span>
+      <span class="ttl" id="chat-channel-label"># {{ channel }}</span>
       <span class="topic" id="chat-head-topic" hidden></span>
       <div class="acts">
         <button type="button" class="ib" id="chat-thread-toggle" aria-label="Thread"
@@ -75,8 +71,8 @@
     </div>
 
     <div class="composer">
-      <!-- demo (mockup) banner — read-only only (chat.js toggles hidden).
-           Design tokens only (no raw hex). Makes clear this is browse-only. -->
+      <!-- 데모(목업) 배너 — read-only 커뮤니티에서만 노출 (chat.js 가 hidden 토글).
+           디자인 토큰만 사용 (raw hex 금지). 둘러보기 전용임을 명확히 알림. -->
       <div class="chat-readonly-banner" id="chat-readonly-banner" role="status" hidden>
         <i class="ti ti-lock" aria-hidden="true"></i>
         <span>Demo — read-only. Sending messages is disabled here.</span>
@@ -113,7 +109,7 @@
       </div>
     </div>
 
-    <!-- thread panel (root + replies) — desktop right slide-in, narrow fullscreen -->
+    <!-- 스레드 패널 (root + 답글) — 데스크탑 우측 슬라이드, 좁은 화면 풀스크린 -->
     <aside class="thread-panel" id="chat-thread-panel" role="dialog"
            aria-label="Thread" aria-modal="false" hidden>
       <header class="tp-head">

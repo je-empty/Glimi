@@ -1,22 +1,31 @@
-"""Chat front-end single-source guard.
+"""Dashboard front-end single-source guard.
 
-The chat client (``chat.js`` + ``chat.css``) is **canonical in the kernel
-dashboard** (``glimi/dashboard/static``) and shipped with ``glimi[dashboard]``.
-Both apps consume that one source:
+The rich dashboard — its assets (``dashboard.js`` / ``dashboard.css`` /
+``dashboard-chat.css`` / ``base.css`` / ``tokens.css`` + the chat client
+``chat.js`` / ``chat.css``), its templates (``dashboard/_core.html`` +
+``_chat_shell.html``) and its i18n dicts — is **canonical in the kernel dashboard**
+(``glimi/dashboard``) and shipped with ``glimi[dashboard]``. Both apps consume that
+one source:
 
-  - **Workspace** mounts it directly at ``/static`` and keeps NO copy of its own.
-  - **Community** serves it from its existing ``/static`` URL (service-worker /
-    cache-busting machinery hangs off that path), so it keeps a **byte-identical
-    synced copy** — the file content is the canonical, the URL is unchanged.
+  - **Workspace** renders the canonical templates + serves the canonical ``/static``
+    straight from the installed package and keeps **NO copy** of its own.
+  - **Community** serves the assets from its existing ``/static`` URL (the
+    service-worker / cache-busting machinery hangs off that path), so it keeps a
+    **byte-identical synced copy** — the content is the canonical, the URL is
+    unchanged. (Community's dashboard *template* migration to the canonical shell
+    is a separate, live-verified step; until then it keeps its own template that
+    loads these canonical assets.)
 
-This test fails the moment the copies drift, so a change to the chat client can't
-silently fork again (edit the canonical, then copy it to ``src/platform``):
+This test fails the moment a copy drifts, so a change to the dashboard can't
+silently fork again — edit the canonical in ``glimi/dashboard``, then re-sync the
+community copies:
 
-    cp glimi/dashboard/static/js/chat.js  src/platform/static/js/chat.js
-    cp glimi/dashboard/static/css/chat.css src/platform/static/css/chat.css
+    cp glimi/dashboard/static/js/dashboard.js   src/platform/static/js/dashboard.js
+    cp glimi/dashboard/static/css/dashboard.css src/platform/static/css/dashboard.css
+    cp glimi/dashboard/i18n/dashboard.*.json    i18n/
 
 Run:
-    PYTHONPATH=<worktree> python -m pytest tests/unit/test_chat_asset_single_source.py -q
+    python -m pytest tests/unit/test_chat_asset_single_source.py -q
 """
 from __future__ import annotations
 
@@ -24,55 +33,68 @@ import os
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_CANON_JS = os.path.join(_ROOT, "glimi", "dashboard", "static", "js", "chat.js")
-_CANON_CSS = os.path.join(_ROOT, "glimi", "dashboard", "static", "css", "chat.css")
-_COMM_JS = os.path.join(_ROOT, "src", "platform", "static", "js", "chat.js")
-_COMM_CSS = os.path.join(_ROOT, "src", "platform", "static", "css", "chat.css")
-_WS_STATIC = os.path.join(_ROOT, "apps", "workspace", "static")
-
 
 def _read(p: str) -> str:
     with open(p, "r", encoding="utf-8") as fh:
         return fh.read()
 
 
-def test_community_chat_js_matches_canonical():
-    assert os.path.exists(_CANON_JS), "canonical chat.js missing in glimi/dashboard"
-    assert _read(_COMM_JS) == _read(_CANON_JS), (
-        "community chat.js drifted from the canonical — re-sync:\n"
-        "  cp glimi/dashboard/static/js/chat.js src/platform/static/js/chat.js"
-    )
+# Canonical (glimi/dashboard) → Community synced copy.
+#   static assets live under static/; i18n dicts under i18n/ (community keeps its
+#   copy at the repo-root i18n/ that its /api/i18n endpoint reads).
+_SYNCED = [
+    ("static/js/chat.js",            "src/platform/static/js/chat.js"),
+    ("static/css/chat.css",          "src/platform/static/css/chat.css"),
+    ("static/js/dashboard.js",       "src/platform/static/js/dashboard.js"),
+    ("static/css/dashboard.css",     "src/platform/static/css/dashboard.css"),
+    ("static/css/dashboard-chat.css", "src/platform/static/css/dashboard-chat.css"),
+    ("static/css/base.css",          "src/platform/static/css/base.css"),
+    ("static/css/tokens.css",        "src/platform/static/css/tokens.css"),
+    ("i18n/dashboard.en.json",       "i18n/dashboard.en.json"),
+    ("i18n/dashboard.ko.json",       "i18n/dashboard.ko.json"),
+]
 
 
-def test_community_chat_css_matches_canonical():
-    assert _read(_COMM_CSS) == _read(_CANON_CSS), (
-        "community chat.css drifted from the canonical — re-sync:\n"
-        "  cp glimi/dashboard/static/css/chat.css src/platform/static/css/chat.css"
-    )
-
-
-def test_workspace_keeps_no_chat_copy():
-    # Workspace must load the canonical from /static, not fork its own copy.
-    for stray in ("js/chat.js", "css/chat.css"):
-        p = os.path.join(_WS_STATIC, stray)
-        assert not os.path.exists(p), (
-            f"apps/workspace/static/{stray} should not exist — the workspace "
-            "loads the canonical chat client from /static (glimi/dashboard)."
+def test_community_assets_match_canonical():
+    for rel, comm_rel in _SYNCED:
+        canon = os.path.join(_ROOT, "glimi", "dashboard", rel)
+        comm = os.path.join(_ROOT, comm_rel)
+        assert os.path.exists(canon), f"canonical missing: glimi/dashboard/{rel}"
+        assert os.path.exists(comm), f"community copy missing: {comm_rel}"
+        assert _read(comm) == _read(canon), (
+            f"community {comm_rel} drifted from the canonical — re-sync:\n"
+            f"  cp glimi/dashboard/{rel} {comm_rel}"
         )
 
 
-# The rich dashboard (dashboard.js + dashboard.css + dashboard-chat.css) is the
-# config-driven Community dashboard; the Workspace serves a byte-identical synced
-# copy (API_BASE + capability flags switch behavior at runtime). Guard the sync so
-# a change to one app's dashboard can't silently fork from the other.
-#   cp src/platform/static/js/dashboard.js  apps/workspace/static/js/dashboard.js
-#   cp src/platform/static/css/dashboard.css apps/workspace/static/css/dashboard.css
-def test_workspace_dashboard_assets_match_community():
-    for rel in ("js/dashboard.js", "css/dashboard.css", "css/dashboard-chat.css"):
-        comm = os.path.join(_ROOT, "src", "platform", "static", rel)
-        ws = os.path.join(_WS_STATIC, rel)
-        assert os.path.exists(ws), f"workspace missing {rel} (synced rich dashboard)"
-        assert _read(ws) == _read(comm), (
-            f"workspace {rel} drifted from community — re-sync:\n"
-            f"  cp src/platform/static/{rel} apps/workspace/static/{rel}"
+def test_workspace_keeps_no_asset_copies():
+    # The workspace consumes the canonical from the package — it must not vendor
+    # its own dashboard/chat assets (no apps/workspace/static at all).
+    ws_static = os.path.join(_ROOT, "apps", "workspace", "static")
+    assert not os.path.isdir(ws_static), (
+        "apps/workspace/static should not exist — the workspace serves the "
+        "canonical assets from /static (glimi/dashboard) via the package."
+    )
+    ws_i18n = os.path.join(_ROOT, "apps", "workspace", "i18n")
+    assert not os.path.isdir(ws_i18n), (
+        "apps/workspace/i18n should not exist — the workspace loads the canonical "
+        "i18n dicts from glimi/dashboard/i18n via the package."
+    )
+
+
+def test_canonical_templates_present():
+    # The shared shell + chat partial must ship from the kernel package.
+    for rel in ("templates/dashboard/_core.html", "templates/_chat_shell.html"):
+        p = os.path.join(_ROOT, "glimi", "dashboard", rel)
+        assert os.path.exists(p), f"canonical template missing: glimi/dashboard/{rel}"
+
+
+def test_workspace_keeps_no_dashboard_template_copy():
+    # The workspace renders the canonical dashboard/_core.html — it must not fork
+    # its own dashboard template (only home.html is workspace-local).
+    for stray in ("dashboard/_core.html", "dashboard/index.html", "base.html", "_chat_shell.html"):
+        p = os.path.join(_ROOT, "apps", "workspace", "templates", stray)
+        assert not os.path.exists(p), (
+            f"apps/workspace/templates/{stray} should not exist — the workspace "
+            "renders the canonical shell from glimi/dashboard/templates."
         )

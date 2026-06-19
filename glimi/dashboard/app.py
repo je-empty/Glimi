@@ -33,23 +33,54 @@ empty data rather than 500 on a sparse store.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Optional
 
-from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from .reader import DashboardReader
-# owner_info/channel_detail are now public, pure helpers in reader (zero-dep) so
-# apps can import them from glimi.dashboard without the web layer. Keep the
-# underscore aliases for this module's internal callers (back-compat).
-from .reader import owner_info as _owner_info, channel_detail as _channel_detail
+# owner_info/channel_detail/enrich_snapshot are public, pure helpers in reader
+# (zero-dep) so apps can import them from glimi.dashboard without the web layer.
+# Keep the underscore aliases for this module's internal callers (back-compat).
+from .reader import (
+    owner_info as _owner_info,
+    channel_detail as _channel_detail,
+    enrich_snapshot as _enrich_snapshot,
+)
 
 _HERE = Path(__file__).resolve().parent
 _STATIC_DIR = _HERE / "static"
 _TEMPLATES_DIR = _HERE / "templates"
-_INDEX_HTML = _TEMPLATES_DIR / "index.html"
+_I18N_DIR = _HERE / "i18n"
+
+# The rich, config-driven dashboard shell — the single canonical template, shared
+# with Glimi Workspace / Community. Rendered here for the kernel's own demo with a
+# kernel-default context (no community chrome; the chat-less store viewer opens on
+# Overview). Jinja is imported at module top (web-layer only) — `import
+# glimi.dashboard` stays zero-dep because this module is lazy-imported by serve().
+_TEMPLATES = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+# Capabilities the kernel store can actually back. Everything else (chat backend,
+# scenes / achievements / supervisors / sync / events / health / logs) is an app
+# concern → off, so those tabs hide and the viewer opens on Overview.
+_KERNEL_CAPS = {
+    "chat": False, "scenes": False, "achievements": False, "supervisors": False,
+    "sync": False, "events": False, "health": False, "logs": False,
+}
+
+
+def _load_i18n(lang: str) -> dict:
+    lang = (lang or "en").lower()
+    if lang not in ("ko", "en"):
+        lang = "en"
+    try:
+        with open(_I18N_DIR / f"dashboard.{lang}.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:  # best-effort: a missing dict must not 500 the page
+        return {"error": str(exc)}
 
 
 def create_app(reader: DashboardReader) -> FastAPI:
@@ -69,23 +100,46 @@ def create_app(reader: DashboardReader) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     @app.get("/")
-    def index() -> FileResponse:
-        """The dashboard page. Fully client-rendered; fetches the API below."""
-        return FileResponse(str(_INDEX_HTML), media_type="text/html")
+    def index(request: Request):
+        """The dashboard page (rich shell, client-rendered; fetches the API below).
+
+        Rendered from the canonical ``dashboard/_core.html`` with a kernel-default
+        context: no community chrome, kernel-only caps, opens on Overview (the
+        read-only store viewer has no chat backend)."""
+        lang = (request.query_params.get("lang") or "en").lower()
+        if lang not in ("ko", "en"):
+            lang = "en"
+        ctx = {
+            "request": request,
+            "static_base": "/static",
+            "api_base": "",
+            "caps_json": json.dumps(_KERNEL_CAPS),
+            "community_chrome": False,
+            "active_tab": "overview",
+            "user": None,
+            "community_id": None,
+            "community_name": "Glimi Core",
+            "language": lang,
+            "read_only": True,
+            "asset_v": "1",
+            "chat_channel": None,
+            "chat_agent": None,
+            "chat_user": "You",
+        }
+        return _TEMPLATES.TemplateResponse(request, "dashboard/_core.html", ctx)
 
     @app.get("/api/snapshot")
     def api_snapshot() -> JSONResponse:
-        """Graph snapshot: agents + channels + relationships.
+        """Graph snapshot in the rich dashboard shape: agents (+ live flags /
+        presentation defaults) + channels (+ kind/participant_count) + relationships
+        + aggregated ``recent_messages`` + ``meta`` / ``bot`` / ``total_messages``.
+        See :func:`glimi.dashboard.enrich_snapshot`."""
+        return JSONResponse(_enrich_snapshot(reader))
 
-        Enriched with owner identity (``owner_name`` / ``owner_ids``) so the
-        client can label the owner node and tag owner-authored messages without
-        guessing — the reader itself stays population-only, so we read users here.
-        """
-        snap = reader.snapshot()
-        owner_name, owner_ids = _owner_info(reader)
-        snap["owner_name"] = owner_name
-        snap["owner_ids"] = owner_ids
-        return JSONResponse(snap)
+    @app.get("/api/i18n")
+    def api_i18n(lang: str = "en") -> JSONResponse:
+        """Dashboard chrome translations for the KO/EN picker (shipped dicts)."""
+        return JSONResponse(_load_i18n(lang))
 
     @app.get("/api/agent_detail")
     def api_agent_detail(id: str = Query(..., min_length=1)) -> JSONResponse:

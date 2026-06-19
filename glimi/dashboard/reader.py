@@ -417,3 +417,100 @@ def channel_detail(reader: "DashboardReader", name: str) -> dict:
         "messages": messages,
         "message_count": len(messages),
     }
+
+
+def _channel_kind(nm: str) -> str:
+    if nm.startswith("dm-"):
+        return "dm"
+    if nm.startswith("internal-"):
+        return "internal-group"
+    if nm.startswith("mgr-"):
+        return "mgr"
+    return "group"
+
+
+def enrich_snapshot(reader: "DashboardReader") -> dict:
+    """The canonical ``/api/snapshot`` shape the rich dashboard.js reads.
+
+    ``DashboardReader.snapshot()`` is the minimal kernel view (agents / channels /
+    relationships / owner). The polished dashboard expects a few presentation
+    fields on top — per-agent live flags + emoji/mbti/age/intensity_band defaults,
+    channel kind/participant_count, an aggregated ``recent_messages`` feed, plus
+    ``meta`` / ``bot`` / ``total_messages``. This helper fills them from the store
+    so the SAME dashboard renders any ``KernelStore`` population (kernel demo,
+    Glimi Workspace). Pure/zero-dep and best-effort — never raises on a sparse
+    store. Apps with a richer native snapshot (Community's ``monitor.snapshot()``)
+    don't need this; they already produce the full shape.
+    """
+    snap = reader.snapshot()
+    owner_name, owner_ids = owner_info(reader)
+    owner_id_set = set(owner_ids)
+    try:
+        names = {a["id"]: (a.get("name") or a["id"]) for a in reader.agents()}
+    except Exception:
+        names = {}
+
+    def _band(i):
+        return "high" if i >= 7 else ("mid" if i >= 4 else "low")
+
+    agents = [{
+        "thinking": False, "speaking": False,
+        "thinking_channel": "", "speaking_channel": "",
+        "thinking_seconds": 0, "speaking_seconds": 0,
+        "model": a.get("model") or "claude-haiku-4-5",
+        "provider": a.get("provider") or "claude",
+        "emoji": a.get("emoji") or "",          # avoid 'undefined' in the emoji badge
+        "intensity_band": a.get("intensity_band") or _band(a.get("intensity") or 0),
+        "mbti": a.get("mbti") or "",
+        "age": a.get("age") or "",
+        **a,
+    } for a in snap.get("agents", [])]
+
+    channels, total = [], 0
+    for c in snap.get("channels", []):
+        nm = c.get("channel") or c.get("name") or ""
+        mc = c.get("msg_count", 0) or 0
+        total += mc
+        parts = c.get("participants", []) or []
+        channels.append({
+            "name": nm, "channel": nm,   # "channel" kept for back-compat consumers
+            "participants": parts, "participant_count": len(parts),
+            "status": "idle", "msg_count": mc, "kind": _channel_kind(nm),
+            "internal": nm.startswith("internal-"),
+            "last_ts": c.get("last_active", ""), "last_ago": "", "last_speaker": "",
+        })
+
+    # recent_messages — last few across channels (oldest → newest).
+    recent = []
+    for c in channels:
+        try:
+            for m in (reader.store.get_recent_messages(c["name"], limit=8) or []):
+                spk = m.get("speaker") or m.get("agent_id") or ""
+                recent.append({
+                    "channel": c["name"],
+                    "speaker": spk,
+                    "display_name": owner_name if spk in owner_id_set else names.get(spk, spk),
+                    "is_user": spk in owner_id_set,
+                    "text": m.get("text") or m.get("content") or "",
+                    "timestamp": m.get("timestamp") or m.get("ts") or "",
+                })
+        except Exception:
+            pass
+    recent.sort(key=lambda m: m.get("timestamp") or "")
+    recent = recent[-40:]
+
+    return {
+        **snap,
+        "agents": agents,
+        "channels": channels,
+        "recent_messages": recent,
+        "total_messages": total,
+        "owner_name": owner_name,
+        "owner_ids": owner_ids,
+        "meta": {"user_name": owner_name},
+        "bot": {"bot_alive": True},
+        "events": [], "scenes": [], "supervisors": [],
+        "community_id": None,
+        "community_meta": {"language": "en"},
+        "dev_pending_count": 0, "dev_visible": False,
+    }

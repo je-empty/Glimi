@@ -41,26 +41,24 @@ Optional polish (non-blocking — these are public-submodule, not underscore-pri
 
 ---
 
-## Phase 2 — Shared UI in `glimi/dashboard` ⏳ REMAINING (the one risky piece)
+## Phase 2 — Shared UI in `glimi/dashboard` ✅ DONE (kernel + workspace) · ⏳ community template deferred
 
-For a clean split the **rich** dashboard UI must be the single source in `glimi`
-so both apps consume `glimi[dashboard]` rather than vendoring copies.
+The **rich** dashboard UI is now the single source in `glimi`. Resolved the open
+"degrade vs ship-both" question: **one rich client, capability-driven** — the kernel
+ships the rich `dashboard.js`/`css` + the canonical shell template and renders it on
+a bare store via `enrich_snapshot`; apps switch behaviour by render context, never by
+forking markup.
 
-Today:
-- ✅ `chat.js` / `chat.css` already canonical in `glimi/dashboard/static` (apps consume it; community keeps a CI-guarded synced copy).
-- ✅ The workspace already **renders** the rich Community dashboard (config-driven `dashboard.js`: `API_BASE` + `data-caps`), via a CI-guarded synced copy in `apps/workspace/static` (community is the source). i18n + monogram avatars + KO/EN picker work.
-- ⏳ The rich `dashboard.js`(3875)/`dashboard.css`(1736)/`base.css`/`dashboard-chat.css`/`tokens.css`(reconcile 169 vs kernel 120)/`base.html`/`_chat_shell.html`/rich `dashboard/index.html`/`i18n/dashboard.*.json` still live in `src/platform` (master) + `apps/workspace` (copy). The kernel ships only a **minimal** 720-line `dashboard.js`.
+Done:
+- ✅ Canonical in `glimi/dashboard`: `dashboard.js` (rich, replaced the minimal one), `dashboard.css`, `dashboard-chat.css`, `base.css`, `tokens.css`, `chat.js`/`chat.css`, `i18n/dashboard.{en,ko}.json`, and the shared templates `templates/dashboard/_core.html` (parameterized shell — `static_base`/`api_base`/`caps_json`/`community_chrome`/`active_tab`, with `extra_head`/`extra_chrome`/`extra_modals`/`extra_scripts` hooks) + `templates/_chat_shell.html`.
+- ✅ Kernel demo (`glimi.dashboard.serve()` / `create_app`) renders `_core.html` with kernel-default caps (opens on Overview, chat-less) and serves the enriched snapshot + `/api/i18n`. `import glimi.dashboard` stays zero-dep (guarded).
+- ✅ Snapshot enricher promoted to `glimi.dashboard.enrich_snapshot` (pure, zero-dep) — kernel + workspace both use it (workspace `_snapshot_payload` is now a thin alias).
+- ✅ Workspace **fully consumes** the package: renders `dashboard/_core.html` (multi-dir Jinja: app `templates/` + the package `templates/`), serves `/static` from `glimi/dashboard/static`, loads i18n from `glimi/dashboard/i18n`. Deleted ALL vendored copies (`apps/workspace/static`, `apps/workspace/i18n`, `templates/{base,dashboard/index,_chat_shell,ws_dashboard}.html`) + the `/wstatic` mount + dead `_index_html_for`/`_ws_dashboard_html_for`. Only `home.html` stays workspace-local.
+- ✅ Retired the kernel minimal `templates/index.html`.
+- ✅ `tests/unit/test_chat_asset_single_source.py` re-anchored: community = byte-identical synced copies of the canonical (assets + i18n); workspace holds **no** copies (static/i18n/dashboard-template). `pyproject.toml` package-data already ships templates(+nested)/static/i18n.
 
-To finish (sequence so tests stay green at every step):
-1. Copy the rich masters into `glimi/dashboard/static` + `glimi/dashboard/templates/` + `glimi/dashboard/i18n/`, **reconciling** `tokens.css` (adopt the 169-line superset; verify the kernel `dashboard.css` needs no dropped token).
-2. **Decide (open question):** *one rich client that degrades* on the kernel's bare `serve()` (no community endpoints) — preferred, single artifact — **vs** *ship both* (rich for apps + keep minimal `dashboard.min.js` for `glimi.dashboard.serve`). Verify the rich client renders read-only on a bare `DashboardReader` app **without console errors** (highest-risk step) before retiring the minimal one.
-3. Point both apps at the shared mount; delete the app-owned copies (`apps/workspace/static/{js/dashboard.js,css/dashboard.css,dashboard-chat.css,base.css,tokens.css}`, `apps/workspace/i18n/`, and the equivalents community would otherwise carry). Render the glimi-shipped templates via each app's Jinja env (resolve the package template dir via `glimi.dashboard.__path__`).
-4. Re-anchor `tests/unit/test_chat_asset_single_source.py` to assert apps hold **no** dashboard copies (mirror `test_workspace_keeps_no_chat_copy`).
-5. ✅ `pyproject.toml` package-data already extended (`templates/**/*.html`, `i18n/*.json`) so the assets will ship.
-
-> Until Phase 2 lands, the split still produces working repos — community + workspace
-> each carry a (guarded, identical) dashboard copy. Phase 2 removes that duplication
-> so both consume one `glimi[dashboard]`.
+⏳ Deferred (live-flagship risk — separate verified cutover):
+- **Community still renders its own `src/platform/templates/dashboard/index.html`** (it carries a ~530-line Discord bot-lifecycle / damage-recovery `<script>` that must NOT enter Core) and serves its own `/static` copies (test-guarded == canonical). The clean migration: community's template `{% extends "dashboard/_core.html" %}` with `community_chrome=True`, filling `extra_scripts` with a community-only partial (server-control) + `extra_head` (PWA), via a Jinja `ChoiceLoader` adding the package template dir. Touches the live community's main template + serving → do on a scratch port first, then `serverctl` restart + curl-verify. Community serving is **unchanged** until then, so zero live risk now; assets are single-source via the guard.
 
 ---
 
@@ -88,7 +86,7 @@ To finish (sequence so tests stay green at every step):
 ⏳ Pre-split fixes the script assumes (do before running):
 - **5.1** `src/platform` repo-root traversals (`config.py`, `dashboard/api.py`, `routers/dashboard.py` `PROJECT_ROOT`) — make env-driven / single `_repo_root()` helper so they work at standalone depth.
 - **5.2** `src/platform/demo_seed.py` imports `scripts.seed_demo_mockup` — the community filter in `split.sh` already includes `scripts/seed_demo_mockup*.py` (confirm path).
-- **5.3** Delete workspace dead code (`ws_dashboard.html`, `_ws_dashboard_html_for`, `_WS_DASH_HTML`, `_CHAT_SHELL_HTML`) once Phase 2 lands — keep `_avatar_svg`/`_esc`.
+- **5.3** ✅ Done in Phase 2 — workspace dead code (`ws_dashboard.html`, `_ws_dashboard_html_for`, `_index_html_for`, vendored static/templates/i18n) removed; `_avatar_svg`/`_esc`/`_monogram` kept.
 
 🔒 Never-leak (verify not tracked in any extract; `.gitignore`d but double-check): `CLAUDE.local.md`, `communities*/`, `data*/`, `.env*` (except `.env.example`), `analysis/`, `.claude/`, `eval/reports/`, LoRA `*.safetensors`. Explicit scrub of tracked personal docs under `docs/` (`docs/[0-9][0-9]_*`, `*지시서*`) handled by the community filter's invert pass.
 

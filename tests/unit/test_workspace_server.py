@@ -170,11 +170,12 @@ def test_dashboard_js_api_base_defaults_empty():
     js_path = os.path.join(_REPO, "glimi", "dashboard", "static", "js", "dashboard.js")
     with open(js_path, encoding="utf-8") as f:
         js = f.read()
-    # The default is "" (empty) when the attribute is absent.
-    assert 'document.body.getAttribute("data-api-base") || ""' in js
-    # Every /api/* fetch is prefixed with API_BASE (none left bare).
+    # API_BASE reads <body data-api-base> and defaults to "" when absent.
+    assert "getAttribute('data-api-base')" in js
+    assert "const API_BASE" in js and "|| ''" in js
+    # Every /api/* fetch is prefixed with API_BASE (none left bare via fetchJson).
     assert not re.search(r'fetchJson\(\s*[`"]/api/', js), "found an unprefixed /api/ fetch"
-    assert js.count("API_BASE") >= 7  # the const + 6 fetch prefixes
+    assert js.count("API_BASE") >= 7  # the const + the fetch prefixes
 
 
 def test_standalone_dashboard_unchanged_absolute_paths():
