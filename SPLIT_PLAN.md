@@ -57,8 +57,22 @@ Done:
 - ✅ Retired the kernel minimal `templates/index.html`.
 - ✅ `tests/unit/test_chat_asset_single_source.py` re-anchored: community = byte-identical synced copies of the canonical (assets + i18n); workspace holds **no** copies (static/i18n/dashboard-template). `pyproject.toml` package-data already ships templates(+nested)/static/i18n.
 
-⏳ Deferred (live-flagship risk — separate verified cutover):
-- **Community still renders its own `src/platform/templates/dashboard/index.html`** (it carries a ~530-line Discord bot-lifecycle / damage-recovery `<script>` that must NOT enter Core) and serves its own `/static` copies (test-guarded == canonical). The clean migration: community's template `{% extends "dashboard/_core.html" %}` with `community_chrome=True`, filling `extra_scripts` with a community-only partial (server-control) + `extra_head` (PWA), via a Jinja `ChoiceLoader` adding the package template dir. Touches the live community's main template + serving → do on a scratch port first, then `serverctl` restart + curl-verify. Community serving is **unchanged** until then, so zero live risk now; assets are single-source via the guard.
+✅ Community also migrated (2026-06-19): `src/platform/templates/dashboard/index.html`
+is now a thin `{% extends "dashboard/_core.html" %}` rendered with `community_chrome=True`
++ all caps. The Discord bot-lifecycle / damage-recovery script lives in a community
+partial (`_community_server_control.html`) filled into `extra_scripts`; PWA into
+`extra_head`; sync-modal + boot overlay into `extra_modals`; the server-control
+buttons (`gp-server-ctrl`) into `extra_chrome` — **none of it in Core**. `templates/__init__.py`
+adds the package template dir to the Jinja search path. Community still serves its own
+`/static` copies (test-guarded == canonical; its SW/cache-busting hangs off that path).
+Verified on a scratch demo instance: full chrome (switcher / 가동 / lang / supervisor /
+elastic / Discord+Scene KPIs), all 13 tabs, graph, chat, no console errors — pixel-identical
+to before. The behaviour is neutral, so the live community adopts it on its next restart
+(its running process has the old template cached until then — no live disruption needed).
+
+> All three apps now consume the single canonical `glimi[dashboard]` UI. Template
+> duplication is gone; only `home.html` (workspace) + the non-dashboard community
+> pages keep their own templates.
 
 ---
 
@@ -83,9 +97,9 @@ Done:
 ## Phase 5 — The split script ✅ `split/split.sh`
 `git filter-repo` extracts each tree with history into `/tmp/glimi-split/{glimi,glimi-community,glimi-workspace}`, drops the staged pyproject/CI, hoists `apps/workspace/`→root, and runs a >5MB blob audit. Review the output, then add remotes + push.
 
-⏳ Pre-split fixes the script assumes (do before running):
-- **5.1** `src/platform` repo-root traversals (`config.py`, `dashboard/api.py`, `routers/dashboard.py` `PROJECT_ROOT`) — make env-driven / single `_repo_root()` helper so they work at standalone depth.
-- **5.2** `src/platform/demo_seed.py` imports `scripts.seed_demo_mockup` — the community filter in `split.sh` already includes `scripts/seed_demo_mockup*.py` (confirm path).
+Pre-split fixes the script assumes:
+- **5.1** ✅ Verified **not a blocker**: `split.sh` keeps `src/` at the community repo root (`--path src/`, no rename), so `config.py`'s `parent.parent.parent` (and `routers/dashboard.py`/`dashboard/api.py` `parent×4`) resolve to the repo root at the **same depth** pre- and post-split. `GLIMI_DATA_DIR` already overrides the data dir. No change needed.
+- **5.2** ✅ `src/platform/demo_seed.py` does `from scripts.seed_demo_mockup import seed`; `scripts/` is an implicit namespace package (no `__init__`, works from repo root) and `split.sh` includes `scripts/seed_demo_mockup*.py`. Fine standalone.
 - **5.3** ✅ Done in Phase 2 — workspace dead code (`ws_dashboard.html`, `_ws_dashboard_html_for`, `_index_html_for`, vendored static/templates/i18n) removed; `_avatar_svg`/`_esc`/`_monogram` kept.
 
 🔒 Never-leak (verify not tracked in any extract; `.gitignore`d but double-check): `CLAUDE.local.md`, `communities*/`, `data*/`, `.env*` (except `.env.example`), `analysis/`, `.claude/`, `eval/reports/`, LoRA `*.safetensors`. Explicit scrub of tracked personal docs under `docs/` (`docs/[0-9][0-9]_*`, `*지시서*`) handled by the community filter's invert pass.

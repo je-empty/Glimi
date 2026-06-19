@@ -1,0 +1,546 @@
+{# Community-only dashboard scripts — Discord bot lifecycle / damage-recovery
+   overlay + PWA service worker. Filled into {% block extra_scripts %} of the
+   canonical dashboard/_core.html. This is COMMUNITY-layer logic (mgr name,
+   Discord sync) and must never live in glimi Core. #}
+<!-- 플랫폼 서버 컨트롤 로직 -->
+<script>
+(function() {
+  const CID = window.__GLIMI_COMMUNITY__;
+  async function refresh() {
+    try {
+      const r = await fetch('/api/communities/' + CID + '/status');
+      if (!r.ok) return;
+      const s = await r.json();
+      const badge = document.getElementById('gp-bot-status');
+      const up = document.getElementById('gp-bot-uptime');
+      const startBtn = document.getElementById('gp-start');
+      const restartBtn = document.getElementById('gp-restart');
+      const stopBtn = document.getElementById('gp-stop');
+      if (!badge) return;
+      // raw 초 노출 금지 — design_system §5.5 수치 표기 문법
+      const fmtUp = (sec) => {
+        sec = Math.round(sec);
+        if (sec < 60) return sec + 's';
+        const m = Math.floor(sec / 60);
+        if (m < 60) return m + 'm';
+        const h = Math.floor(m / 60);
+        if (h < 24) return h + 'h ' + (m % 60) + 'm';
+        return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+      };
+      if (s.running) {
+        badge.textContent = 'RUNNING';
+        badge.className = 'gp-status running';
+        if (s.uptime_sec) up.textContent = fmtUp(s.uptime_sec);
+        startBtn.style.display = 'none';
+        restartBtn.style.display = '';
+        stopBtn.style.display = '';
+      } else {
+        badge.textContent = 'STOPPED';
+        badge.className = 'gp-status stopped';
+        up.textContent = '';
+        startBtn.style.display = '';
+        restartBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+      }
+      // demo 커뮤니티는 시연용 — 제어 버튼 전부 숨김 (실제 spawn 방지)
+      if (CID === 'demo') {
+        startBtn.style.display = 'none';
+        restartBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+      }
+    } catch (e) {}
+  }
+  window.glimiServerCtrl = async function(action) {
+    // demo 커뮤니티는 시연용 mock — 실제 봇 spawn 금지 (Claude CLI 호출 방지).
+    // 서버 제어 버튼 눌러도 no-op 처리.
+    if (CID === 'demo') {
+      console.log('[demo] server control disabled — demo 는 mock 상태라 실제 bot spawn 하지 않음');
+      return;
+    }
+    if (action === 'start' || action === 'restart') {
+      await _runStartupPrep(action);
+      return;
+    }
+    try {
+      const r = await fetch('/api/communities/' + CID + '/' + action, { method: 'POST' });
+      if (!r.ok) { alert('실패: ' + await r.text()); return; }
+      setTimeout(refresh, 500);
+      setTimeout(refresh, 2500);
+    } catch (e) { alert(e); }
+  };
+
+  // ── Glimi Overlay: 가동 시퀀스 소비자 ─────────────────────
+  // phase: scanning → (damaged → recover) → booting → ready
+  let _overlayActive = false;
+  let _overlayResolver = null;
+  async function _runStartupPrep(action) {
+    _showOverlay();
+    // ── 봇 먼저 종료 — scan/sync 는 봇 stopped 요구.
+    // 회귀: 재가동 시 봇 살아있는 채로 overlay 띄우면 뒤편에서 에이전트 계속 추론 → 손상 복구
+    // 와 동시에 새 메시지 적재 → race. 무조건 stop 후 prep 진행.
+    _setOverlayPhase('stopping');
+    try {
+      const stopRes = await fetch('/api/communities/' + CID + '/stop', { method: 'POST' }).then(r => r.json()).catch(() => null);
+      // stopped (또는 was_running=false) 까지 짧게 polling — 종료 race 방지
+      for (let i = 0; i < 20; i++) {
+        const st = await fetch('/api/communities/' + CID + '/status').then(r => r.json()).catch(() => ({}));
+        if (!st || !st.running) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    } catch (_) {}
+
+    _setOverlayPhase('scanning');
+    try {
+      // 현 상태 조회 — fresh(에이전트 0) 면 scan 스킵
+      const snap = await fetch('/api/snapshot?community=' + encodeURIComponent(CID)).then(r => r.json()).catch(() => ({}));
+      const agents = snap.agents || [];
+      let skipScan = agents.length === 0;
+
+      if (!skipScan) {
+        // 단일 진실원: backend 의 _analyze_damage 가 tolerance 적용해 'clean' 필드 반환.
+        // 이전 frontend 는 자체 count 계산으로 tolerance 적용 — 두 곳 logic 갈리며 회귀 발생.
+        // 이제 backend damage 결과만 신뢰.
+        let scanRes;
+        const cached = (typeof _lastScanResult !== 'undefined') ? _lastScanResult : null;
+        if (cached) {
+          scanRes = { ok: true, result: cached };
+        } else {
+          scanRes = await fetch('/api/action/scan_discord?community=' + encodeURIComponent(CID), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          }).then(r => r.json()).catch(e => ({ ok: false, error: String(e) }));
+        }
+
+        const damage = (scanRes && scanRes.result && scanRes.result.damage) || {};
+        const isClean = damage.clean !== false;  // unknown 도 clean 으로 (안전)
+        // 표시용 rows — significant drift 만. minor_drifts 는 무시.
+        const rows = [];
+        for (const r of (damage.msg_drift_db_more || [])) rows.push({ ch: r.name, db: r.db, discord: r.discord, diff: r.diff });
+        for (const r of (damage.msg_drift_discord_more || [])) rows.push({ ch: r.name, db: r.db, discord: r.discord, diff: -r.diff });
+        for (const ch of (damage.missing_in_discord || [])) rows.push({ ch, db: '?', discord: 0, diff: 1 });
+        for (const ch of (damage.orphan_in_discord || [])) rows.push({ ch, db: 0, discord: '?', diff: -1 });
+
+        if (!isClean) {
+          // 큰 drift — 사용자에게 결정 위임
+          _setOverlayPhase('damaged', { rows });
+          const decision = await new Promise(resolve => { _overlayResolver = resolve; });
+          if (decision === 'cancel') {
+            _hideOverlay();
+            return;
+          }
+          // decision === 'skip' 이면 sync 안 돌리고 곧장 booting 으로 fall-through.
+          // (아래 if 블록 안에서 recovering/recovered 단계만 skip)
+          if (decision === 'recover') {
+          // recovering 진입 — 복구 대상 채널 목록을 overlay 에 넘겨서 per-channel 진행 표시.
+          _setOverlayPhase('recovering', { rows });
+          // 영향 받은 채널만 sync — Sync 탭의 "선택한 채널 싱크" 와 동일
+          const channels = rows.map(r => r.ch);
+          // 백그라운드에서 sync 진행 중에 /api/logs poll — sync 로그 실시간 표시
+          // + 로그에서 "[Sync] 동기화 완료" 감지해서 fetch 실패해도 완료 판정 가능 (모바일 Safari fetch timeout 대응).
+          _recoveryLogPolling = true;
+          _syncLogCompletion = null;
+          _syncLogStartTail = null;  // 새 시작 — 첫 poll 에서 기준선 재설정
+          _pollRecoveryLog();
+
+          const fetchPromise = fetch('/api/action/run_sync?community=' + encodeURIComponent(CID), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channels }),
+          }).then(r => r.json()).catch(e => ({ error: String(e), _fetchFailed: true }));
+
+          // 로그 기반 완료 감지 promise — "[Sync] 동기화 완료" or "[Sync] 실패" 라인 잡힐 때 resolve
+          const logPromise = new Promise(resolve => { _resolveSyncLog = resolve; });
+
+          // fetch 와 로그 감지 중 먼저 resolve 되는 쪽 승리.
+          // fetch 성공: {ok, result, logs} — 정상 경로.
+          // fetch 실패 + 로그 완료: {ok:true, _fromLog:true} — 모바일 timeout 이어도 성공 판정.
+          // fetch 실패 + 로그 없음: timeout 까지 대기.
+          // 60분 hard cap (이전 5분 → 메시지 많은 채널은 못 끝남): 도달 시 실패 단정 X,
+          // 'recovering_long' 으로 phase 전환하고 logPromise 무기한 대기 (백엔드는 그대로 진행 중).
+          const TIMEOUT_MIN = 60;
+          const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ _timeout: true }), TIMEOUT_MIN * 60 * 1000));
+          const syncRes = await Promise.race([fetchPromise, logPromise, timeoutPromise]);
+          // fetch 만 실패하고 로그는 아직 안 왔으면, 로그 기반 완료까지 기다려봄 (+90초)
+          let finalRes = syncRes;
+          if (syncRes && syncRes._fetchFailed) {
+            finalRes = await Promise.race([logPromise, new Promise(r => setTimeout(() => r({ error: syncRes.error || 'fetch 실패', _fromFetch: true }), 90 * 1000))]);
+          }
+          if (syncRes && syncRes._timeout) {
+            // hard cap 도달 — 백엔드는 여전히 진행 중일 가능성 높음. 실패 단정 금지.
+            // 사용자에게 "장시간 진행 중" 알리고 logPromise (백엔드 완료 시그널) 무기한 대기.
+            _setOverlayPhase('recovering_long', { rows, minutes: TIMEOUT_MIN });
+            finalRes = await logPromise;
+          }
+          _recoveryLogPolling = false;
+          _resolveSyncLog = null;
+          if (finalRes && finalRes.error && !finalRes.ok) {
+            _setOverlayPhase('error', { msg: '복구 실패: ' + (finalRes.message || finalRes.error) });
+            return;
+          }
+          // sync 완료 — rows 에 최종 상태 표시
+          _setOverlayPhase('recovered', { rows, result: finalRes && finalRes.result });
+          await new Promise(r => setTimeout(r, 1200));  // 결과 잠시 보여주기
+          }  // end: decision === 'recover'
+        }
+      }
+
+      // 가동
+      _setOverlayPhase('booting');
+      const r = await fetch('/api/communities/' + CID + '/' + action, { method: 'POST' });
+      if (!r.ok) {
+        _setOverlayPhase('error', { msg: '가동 실패: ' + await r.text() });
+        return;
+      }
+      setTimeout(refresh, 500);
+      setTimeout(refresh, 2500);
+      _pollTutorialProgress();
+    } catch (e) {
+      _setOverlayPhase('error', { msg: String(e) });
+    }
+  }
+  window._overlayDecide = function(decision) {
+    if (_overlayResolver) {
+      const r = _overlayResolver;
+      _overlayResolver = null;
+      r(decision);
+    }
+  };
+
+  // Phase rendering
+  function _setOverlayPhase(phase, ctx) {
+    ctx = ctx || {};
+    const emoji = document.getElementById('go-emoji');
+    const title = document.getElementById('go-title');
+    const sub = document.getElementById('go-sub');
+    const dots = document.getElementById('go-dots');
+    const actions = document.getElementById('go-actions');
+    const progress = document.getElementById('go-progress');
+    if (!emoji) return;
+
+    // default show/hide
+    dots.style.display = 'flex';
+    actions.style.display = 'none';
+
+    if (phase === 'stopping') {
+      emoji.textContent = '⏸';
+      title.textContent = '봇 종료 중';
+      sub.innerHTML = '복구 작업 전에 에이전트 추론을 멈추는 중...';
+      progress.textContent = '';
+    } else if (phase === 'scanning') {
+      emoji.textContent = '🔍';
+      title.textContent = '디스코드 상태 확인 중';
+      sub.innerHTML = '현 채널 상태 빠르게 스캔 중...';
+      progress.textContent = '';
+    } else if (phase === 'damaged') {
+      emoji.textContent = '⚠️';
+      title.textContent = '디스코드 손상 감지';
+      const rows = (ctx.rows || []).slice().sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+
+      // Sync 탭 _chDiffInfo 와 동일 문구 + 색 매핑
+      const statusFor = (r) => {
+        if (r.diff > 0) return { label: `⬆ ${r.diff}건 Discord 누락 → 복원`, color: '#fbbf24' };
+        if (r.diff < 0) return { label: `⬇ ${-r.diff}건 Discord 초과 → 삭제`, color: '#f87171' };
+        return { label: '✓ 동기화됨', color: '#9ca3af' };
+      };
+
+      const totalDB = rows.reduce((s, r) => s + r.db, 0);
+      const totalDC = rows.reduce((s, r) => s + r.discord, 0);
+      const needUp = rows.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0);
+      const needDown = rows.filter(r => r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
+
+      const esc = (s) => String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+      ));
+
+      const summary = `
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;margin-bottom:10px;font-size:12px;color:#e5e7eb">
+          <div><span style="color:#9ca3af">DB:</span> <b>${totalDB.toLocaleString()}</b></div>
+          <div><span style="color:#9ca3af">Discord:</span> <b>${totalDC.toLocaleString()}</b></div>
+          ${needUp > 0 ? `<div style="color:#fbbf24">⬆ ${needUp.toLocaleString()}건 복원 예정</div>` : ''}
+          ${needDown > 0 ? `<div style="color:#f87171">⬇ ${needDown.toLocaleString()}건 삭제 예정</div>` : ''}
+          <div style="flex:1"></div>
+          <div style="color:#9ca3af">${rows.length}개 채널 영향</div>
+        </div>`;
+
+      const tableRows = rows.map(r => {
+        const st = statusFor(r);
+        return `
+          <tr style="border-top:1px solid rgba(255,255,255,0.08)">
+            <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#e5e7eb">#${esc(r.ch)}</td>
+            <td style="padding:6px 10px;text-align:right;color:#9ca3af">${r.db}</td>
+            <td style="padding:6px 10px;text-align:right;color:#9ca3af">${r.discord}</td>
+            <td style="padding:6px 12px;color:${st.color}">${st.label}</td>
+          </tr>`;
+      }).join('');
+
+      const table = `
+        <div style="max-height:240px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:8px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="background:rgba(255,255,255,0.05);position:sticky;top:0">
+              <tr>
+                <th style="text-align:left;padding:8px 10px;font-weight:600;color:#9ca3af">채널</th>
+                <th style="text-align:right;padding:8px 10px;font-weight:600;color:#9ca3af;width:70px">DB</th>
+                <th style="text-align:right;padding:8px 10px;font-weight:600;color:#9ca3af;width:70px">Discord</th>
+                <th style="text-align:left;padding:8px 12px;font-weight:600;color:#9ca3af">상태</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>`;
+
+      sub.innerHTML =
+        '<div style="text-align:left">' + summary + table + '</div>' +
+        '<div style="color:#f59e0b;font-size:12px;margin-top:10px;text-align:center">DB 기준으로 복구. 복구 안 하면 가동 취소.</div>';
+      dots.style.display = 'none';
+      actions.style.display = 'flex';
+      progress.textContent = '';
+    } else if (phase === 'recovering' || phase === 'recovered' || phase === 'recovering_long') {
+      const done = phase === 'recovered';
+      const longRunning = phase === 'recovering_long';
+      emoji.textContent = done ? '✅' : (longRunning ? '⏳' : '🔧');
+      title.textContent = done ? '복구 완료' : (longRunning ? '장시간 복구 진행 중' : '디스코드 복구 중');
+      const rows = (ctx.rows || []).slice().sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+
+      const statusFor = (r) => {
+        if (r.diff > 0) return { label: `⬆ ${r.diff}건 복원`, color: '#fbbf24' };
+        if (r.diff < 0) return { label: `⬇ ${-r.diff}건 삭제`, color: '#f87171' };
+        return { label: '—', color: '#9ca3af' };
+      };
+
+      const escH = (s) => String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+      ));
+
+      // 각 채널별 현재 상태 — sync 로그에서 최근 라인 찾아 매칭 (done 이면 ✓)
+      const channelStatusHtml = rows.map(r => {
+        const st = statusFor(r);
+        const state = done
+          ? '<span style="color:#10b981">✓ 완료</span>'
+          : '<span style="color:#6366f1">⟳ 진행 중</span>';
+        return `
+          <tr style="border-top:1px solid rgba(255,255,255,0.08)">
+            <td style="padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#e5e7eb">#${escH(r.ch)}</td>
+            <td style="padding:5px 10px;text-align:right;color:#9ca3af">${r.db}</td>
+            <td style="padding:5px 10px;text-align:right;color:#9ca3af">${r.discord}</td>
+            <td style="padding:5px 10px;color:${st.color};font-size:11.5px">${st.label}</td>
+            <td style="padding:5px 10px">${state}</td>
+          </tr>`;
+      }).join('');
+
+      const table = `
+        <div style="max-height:180px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:8px;margin-bottom:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="background:rgba(255,255,255,0.05);position:sticky;top:0">
+              <tr>
+                <th style="text-align:left;padding:7px 10px;font-weight:600;color:#9ca3af">채널</th>
+                <th style="text-align:right;padding:7px 10px;font-weight:600;color:#9ca3af;width:55px">DB</th>
+                <th style="text-align:right;padding:7px 10px;font-weight:600;color:#9ca3af;width:55px">Discord</th>
+                <th style="text-align:left;padding:7px 10px;font-weight:600;color:#9ca3af;width:90px">액션</th>
+                <th style="text-align:left;padding:7px 10px;font-weight:600;color:#9ca3af;width:70px">상태</th>
+              </tr>
+            </thead>
+            <tbody>${channelStatusHtml}</tbody>
+          </table>
+        </div>`;
+
+      const logHtml = `
+        <div style="border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(0,0,0,0.2)">
+          <div style="padding:5px 10px;font-size:11px;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.08)">sync 로그</div>
+          <pre id="go-recovery-log" style="background:transparent;border:none;padding:8px 10px;margin:0;height:130px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.5;color:#8b8fa3;white-space:pre-wrap;word-break:break-all"></pre>
+        </div>`;
+
+      sub.innerHTML = '<div style="text-align:left">' + table + logHtml + '</div>';
+      if (done) {
+        sub.innerHTML += '<div style="color:#10b981;font-size:12.5px;margin-top:10px;text-align:center">✓ 모든 채널 복구 — 가동 이어갑니다</div>';
+      } else if (longRunning) {
+        const mins = ctx.minutes || 60;
+        sub.innerHTML += `<div style="color:#fbbf24;font-size:12px;margin-top:10px;text-align:center;line-height:1.6">⏳ ${mins}분 경과 — 메시지 많은 채널 처리 중<br><span style="color:#9ca3af;font-size:11px">백엔드는 정상 진행 중. 콘솔/로그에서 확인 가능. 이 창은 백엔드 완료 시 자동 갱신.</span></div>`;
+      } else {
+        sub.innerHTML += '<div style="color:#9ca3af;font-size:11.5px;margin-top:8px;text-align:center">(1~3분 걸릴 수 있어)</div>';
+      }
+      dots.style.display = done ? 'none' : 'flex';
+      actions.style.display = 'none';
+      progress.textContent = '';
+    } else if (phase === 'booting') {
+      emoji.textContent = '🧸';
+      title.textContent = '유나를 부르는 중...';
+      sub.innerHTML = '머리 빗고 옷 매무새 다듬는 중... 첫인상이 중요하니까.<br><span style="color:#f59e0b;font-size:13px;display:inline-block;margin-top:6px">⚠ 디스코드 미리 보면 안 돼 — 아직 준비 덜 된 모습이야 🙈</span>';
+      _pollTutorialLog();
+    } else if (phase === 'ready') {
+      emoji.textContent = '✓';
+      title.textContent = '준비 완료';
+      sub.innerHTML = '';
+      dots.style.display = 'none';
+      progress.textContent = '';
+    } else if (phase === 'error') {
+      emoji.textContent = '✕';
+      title.textContent = '실패';
+      sub.innerHTML = '<span style="color:#f87171">' + (ctx.msg || '') + '</span>';
+      dots.style.display = 'none';
+      actions.innerHTML = '<button onclick="_hideOverlay()" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">닫기</button>';
+      actions.style.display = 'flex';
+    }
+  }
+
+  function _showOverlay() {
+    if (_overlayActive) return;
+    _overlayActive = true;
+    document.getElementById('glimi-overlay').style.display = 'flex';
+  }
+  function _hideOverlay() {
+    _overlayActive = false;
+    document.getElementById('glimi-overlay').style.display = 'none';
+    // actions 영역 복원 — 3개 버튼 (취소 / 무시하고 가동 / 복구하고 가동) 모두 항상 포함.
+    // 옛 reset 은 skip 버튼 빠뜨려서 한 번 취소 후 다음 시도에 무시 버튼 사라지는 회귀.
+    const actions = document.getElementById('go-actions');
+    if (actions) actions.innerHTML =
+      '<button onclick="_overlayDecide(\'cancel\')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">취소</button>' +
+      '<button onclick="_overlayDecide(\'skip\')" style="background:transparent;color:#d1d5db;border:1px solid #3a3d48;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit">무시하고 가동</button>' +
+      '<button onclick="_overlayDecide(\'recover\')" style="background:#2563eb;color:#fff;border:1px solid #2563eb;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">복구하고 가동</button>';
+  }
+
+  // sync 진행 중 system.log 의 [Sync]/[Scan]/[Arrange] 라인 tail → recovery overlay 의 pre 박스 채움.
+  // + "[Sync] 동기화 완료" 감지 시 _resolveSyncLog 호출 — 모바일 Safari fetch 끊겨도 완료 판정.
+  let _recoveryLogPolling = false;
+  let _resolveSyncLog = null;   // sync 로그에서 완료 라인 감지 시 호출
+  let _syncLogCompletion = null;  // 이미 resolve 됐는지 (중복 방지)
+  // 이 오버레이 호출 이전에 쌓여있던 로그와 새로 쓰인 로그를 구분하기 위해 시작 시점의 라인 개수를 기록
+  let _syncLogStartTail = null;
+  async function _pollRecoveryLog() {
+    if (!_overlayActive || !_recoveryLogPolling) return;
+    try {
+      const r = await fetch('/api/logs?tail=120&community=' + encodeURIComponent(CID));
+      if (r.ok) {
+        const data = await r.json();
+        const lines = data.lines || [];
+        const logEl = document.getElementById('go-recovery-log');
+        if (logEl) {
+          const filtered = lines
+            .filter(l => /\[(Sync|Scan|Arrange)\]/.test(l))
+            .slice(-25)
+            .join('\n');
+          if (logEl.textContent !== filtered) {
+            logEl.textContent = filtered;
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        }
+        // 시작 시점 기록 (첫 poll 에서만)
+        if (_syncLogStartTail === null) {
+          _syncLogStartTail = lines.length;
+        }
+        // 이 호출 이후 새로 추가된 라인만 검사 — 이전 sync 의 완료 라인을 잘못 잡지 않게
+        if (_resolveSyncLog && !_syncLogCompletion) {
+          const newLines = lines.slice(Math.max(0, _syncLogStartTail - 3));  // 약간 여유 (-3) 두고
+          const doneLine = newLines.find(l => /\[Sync\]\s*동기화 완료/.test(l));
+          const failLine = newLines.find(l => /\[Sync\]\s*(오류|실패|크래시)/.test(l));
+          if (doneLine) {
+            _syncLogCompletion = { ok: true, _fromLog: true, logLine: doneLine };
+            _resolveSyncLog(_syncLogCompletion);
+          } else if (failLine) {
+            _syncLogCompletion = { ok: false, error: 'sync 실패', message: failLine, _fromLog: true };
+            _resolveSyncLog(_syncLogCompletion);
+          }
+        }
+      }
+    } catch (e) {}
+    if (_recoveryLogPolling) setTimeout(_pollRecoveryLog, 1500);
+  }
+
+  // bot.log 실시간 tail — 게이트가 떠있는 동안 1.5초마다 갱신
+  async function _pollTutorialLog() {
+    if (!_overlayActive) return;
+    try {
+      const r = await fetch('/api/communities/' + CID + '/log?lines=80');
+      if (r.ok) {
+        const data = await r.json();
+        const logEl = document.getElementById('go-log');
+        const auto = document.getElementById('go-autoscroll');
+        const wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
+        const content = data.log || '';
+        if (logEl.textContent !== content) {
+          logEl.textContent = content;
+          if (auto && auto.checked && wasAtBottom) {
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        }
+      }
+    } catch (e) {}
+    setTimeout(_pollTutorialLog, 1500);
+  }
+  async function _pollTutorialProgress() {
+    if (!_overlayActive) return;
+    const prog = document.getElementById('go-progress');
+    try {
+      const r = await fetch('/api/snapshot?community=' + encodeURIComponent(CID));
+      if (r.ok) {
+        const snap = await r.json();
+        const bot = snap.bot || {};
+        const agents = snap.agents || [];
+        const meta = snap.meta || {};
+        const phase = meta.tutorial_phase || '(대기)';
+        const msgs = (snap.recent_messages || []).length;
+
+        if (!bot.alive) {
+          prog.textContent = '봇 기동 대기 중... · phase: ' + phase;
+        } else if (agents.length === 0) {
+          prog.textContent = '봇 준비 중... · 에이전트 0명';
+        } else {
+          prog.textContent = 'agents=' + agents.length + ' · msgs=' + msgs + ' · phase=' + phase;
+        }
+
+        // 게이트 해제 조건:
+        //   (A) tutorial_phase === complete (튜토리얼 완료)
+        //   (B) 유나(mgr)가 존재하고 최근 메시지가 5개 이상 누적 (유나가 인사 보냄)
+        const hasMgr = agents.some(a => a.type === 'mgr');
+        if (phase === 'complete' || (hasMgr && msgs >= 5)) {
+          const title = document.getElementById('go-title');
+          const sub = document.getElementById('go-sub');
+          title.textContent = '✓ 준비 완료';
+          sub.textContent = '유나 소환 끝! 대시보드 사용 가능.';
+          setTimeout(_hideOverlay, 1200);
+          return;
+        }
+      }
+    } catch (e) {}
+    setTimeout(_pollTutorialProgress, 2500);
+  }
+
+  // 페이지 로드 시점에 이미 게이트 조건이면 띄움 (예: Start 후 새로고침 한 경우)
+  (async function () {
+    try {
+      const r = await fetch('/api/communities/' + CID + '/status');
+      if (!r.ok) return;
+      const s = await r.json();
+      if (!s.running) return;
+      const snap = await fetch('/api/snapshot?community=' + encodeURIComponent(CID)).then(x => x.json()).catch(() => null);
+      if (!snap) return;
+      const phase = (snap.meta || {}).tutorial_phase || '';
+      const agentCount = (snap.agents || []).length;
+      const hasMgr = (snap.agents || []).some(a => a.type === 'mgr');
+      const msgs = (snap.recent_messages || []).length;
+      // 봇 켜져있고 아직 튜토리얼 진행 중이면 오버레이
+      if (phase !== 'complete' && !(hasMgr && msgs >= 5)) {
+        _showOverlay();
+        _setOverlayPhase('booting');
+      }
+    } catch (e) {}
+  })();
+  refresh();
+  setInterval(refresh, 3000);
+})();
+</script>
+
+<script>
+  // PWA service worker — same-origin, secure-context only (https or localhost).
+  (function () {
+    if (!('serviceWorker' in navigator)) return;
+    var secure = window.isSecureContext ||
+      location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (!secure) return;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js?v={{ asset_v }}', { scope: '/' })
+        .catch(function () { /* registration failure is non-fatal */ });
+    });
+  })();
+</script>

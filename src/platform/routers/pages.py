@@ -155,6 +155,13 @@ async def community_dashboard(
             # 임베드된 채팅 탭 기본 채널/에이전트 — 오너↔mgr DM (standalone /chat 기본과 동일).
             "chat_agent": "mgr",
             "chat_channel": "dm-mgr",
+            # 정본 셸(dashboard/_core.html) 파라미터: 커뮤니티는 풀 chrome + 전 caps.
+            # api_base="" → dashboard.js 가 절대 /api/* + ?community= 로 라우팅 (data-api-base
+            # 없음). caps_json 미전달 → CAPS=null → 모든 탭 노출.
+            "community_chrome": True,
+            "static_base": "/static",
+            "api_base": "",
+            "active_tab": "chat",
         },
     )
 

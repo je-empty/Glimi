@@ -70,7 +70,7 @@
       {% if community_chrome %}
       <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo" onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기">
       {% endif %}
-      <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="Home">{{ community_name or 'Glimi' }}</a>
+      <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="Home">{{ 'Glimi' if community_chrome else (community_name or 'Glimi') }}</a>
     </span>
 
     {% if community_chrome %}
