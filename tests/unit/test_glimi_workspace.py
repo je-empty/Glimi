@@ -128,10 +128,11 @@ def test_run_workspace_echo_flow(capsys):
     rc = run.main(["--name", "Owner", "--goal", "Plan our launch", "--backend", "echo"])
     assert rc == 0
     out = capsys.readouterr().out
-    # banner + every member label printed
+    # banner + every member printed (names come from team.py — language-agnostic)
     assert "Glimi Workspace" in out
-    for label in ("Coordinator:", "Researcher:", "Builder:", "Critic:"):
-        assert label in out
+    from team import TEAM
+    for _id, name, _t, _p in TEAM:
+        assert name in out, f"team member {name!r} missing from run output"
     # the deliverable + the interaction-web summary printed
     assert "Deliverable for Owner:" in out
     assert "interaction web" in out

@@ -465,10 +465,10 @@ function renderLangMenu() {
 function applyStaticI18n() {
   // 탭 라벨
   const tabMap = {
-    overview: 'tab_overview', agents: 'tab_agents', channels: 'tab_channels',
-    messages: 'tab_messages', scenes: 'tab_scenes', events: 'tab_events',
-    health: 'tab_health', sync: 'tab_sync', dev: 'tab_dev', usage: 'tab_usage',
-    supervisors: 'tab_supervisors', logs: 'tab_logs',
+    chat: 'tab_chat', overview: 'tab_overview', agents: 'tab_agents', channels: 'tab_channels',
+    messages: 'tab_messages', scenes: 'tab_scenes', achievements: 'tab_achievements',
+    events: 'tab_events', health: 'tab_health', sync: 'tab_sync', dev: 'tab_dev',
+    usage: 'tab_usage', tools: 'tab_tools', supervisors: 'tab_supervisors', logs: 'tab_logs',
   };
   document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
     const k = tabMap[btn.dataset.tab];

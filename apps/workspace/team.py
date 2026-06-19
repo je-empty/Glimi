@@ -28,23 +28,23 @@ from typing import Optional
 # the dashboard ranks it first (mgr → … ), matching the Community sim's manager.
 # Personas are functional roles — persona yes, personal name no.
 TEAM: list[tuple[str, str, str, str]] = [
-    ("coordinator", "Coordinator", "mgr",
-     "You run this workspace. You greet the owner, restate the goal in your own "
-     "words, assign each specialist a clear angle, keep the work moving, and "
-     "deliver the final synthesis. Be concise, organized, and decisive — no "
-     "filler, no hedging. You speak for the team."),
-    ("researcher", "Researcher", "persona",
-     "You gather the facts, options, and trade-offs the decision needs. Bring "
-     "concrete detail: specifics, numbers, named approaches, real constraints — "
-     "not generalities. You inform; you do not decide."),
-    ("builder", "Builder", "persona",
-     "You turn decisions into a concrete plan: ordered steps, owners, a rough "
-     "timeline, and a first draft of whatever needs drafting. Pragmatic and "
-     "specific — favor the smallest thing that ships over the perfect thing."),
-    ("critic", "Critic", "persona",
-     "You stress-test the plan. Surface the biggest risks, the gaps, the "
-     "unstated assumptions, and what would make it fail. Push for rigor and name "
-     "what is missing — but be constructive: every risk comes with a mitigation."),
+    ("coordinator", "코디네이터", "mgr",
+     "당신은 이 워크스페이스를 이끕니다. 오너를 맞이하고, 목표를 당신의 말로 다시 "
+     "정리하고, 각 전문가에게 명확한 방향을 배분하고, 일이 굴러가게 하고, 최종 "
+     "종합을 전달합니다. 간결하고 체계적이며 결단력 있게 — 군더더기 없이, 얼버무리지 "
+     "않고. 당신이 팀을 대표해 말합니다."),
+    ("researcher", "리서처", "persona",
+     "당신은 의사결정에 필요한 사실과 선택지, 트레이드오프를 모읍니다. 구체적인 "
+     "디테일을 가져오세요 — 세부 사항, 수치, 이름 붙은 접근법, 실제 제약들. "
+     "두루뭉술한 일반론은 금물. 당신은 정보를 제공하지, 결정하지는 않습니다."),
+    ("builder", "빌더", "persona",
+     "당신은 결정을 구체적인 계획으로 바꿉니다 — 순서가 있는 단계, 담당자, 대략적인 "
+     "일정, 그리고 초안이 필요한 것들의 첫 초안. 실용적이고 구체적으로 — 완벽한 것보다 "
+     "당장 내보낼 수 있는 가장 작은 것을 우선합니다."),
+    ("critic", "크리틱", "persona",
+     "당신은 계획을 압박 검증합니다. 가장 큰 리스크, 빈틈, 말하지 않은 가정, 무엇이 "
+     "실패를 부르는지를 드러냅니다. 엄밀함을 밀어붙이고 빠진 것을 짚어내되 — 건설적으로. "
+     "모든 리스크에는 완화책을 함께 제시합니다."),
 ]
 
 # The three specialists, in their contribution order each round.
@@ -75,9 +75,9 @@ DELEGATION_CHANNELS: dict[str, str] = {
 # (a, b, channel, the brief that opens their exchange)
 COLLAB_PAIRS: list[tuple[str, str, str, str]] = [
     ("researcher", "critic", "internal-researcher-critic",
-     "debate the findings: which facts actually hold up, and which are shaky?"),
+     "결과를 두고 토론하세요: 어떤 사실이 실제로 버티고, 어떤 게 흔들리나요?"),
     ("builder", "researcher", "internal-builder-researcher",
-     "ground the plan in the facts: which steps are supported, which need evidence?"),
+     "계획을 사실에 기반시키세요: 어떤 단계가 뒷받침되고, 어떤 게 근거가 필요한가요?"),
 ]
 
 # How many back-and-forth turns each collaborating pair takes. Two turns per side
@@ -92,8 +92,8 @@ GROUP_CHANNEL = "group-team"
 LABELS: dict[str, str] = {aid: name for aid, name, _, _ in TEAM}
 
 # Sensible non-interactive defaults — used when there is no TTY to prompt on.
-DEFAULT_OWNER_NAME = "Owner"
-DEFAULT_GOAL = "Plan the public launch of our open-source project"
+DEFAULT_OWNER_NAME = "오너"
+DEFAULT_GOAL = "오픈소스 프로젝트 공개 런칭 기획"
 
 # Where first-run answers are remembered, so setup is truly "first-run" once.
 STATE_FILE = Path(__file__).resolve().parent / ".workspace_state.json"
@@ -181,9 +181,9 @@ def resolve_setup(
     first_run = False
     if interactive and (name_src == "default" or goal_src == "default"):
         if name_src == "default":
-            name, name_src = _prompt("Your name", DEFAULT_OWNER_NAME), "prompt"
+            name, name_src = _prompt("이름", DEFAULT_OWNER_NAME), "prompt"
         if goal_src == "default":
-            goal, goal_src = _prompt("Work goal", DEFAULT_GOAL), "prompt"
+            goal, goal_src = _prompt("업무 목표", DEFAULT_GOAL), "prompt"
         first_run = _save_state(path, name, goal)
 
     return Setup(owner_name=name, goal=goal, name_source=name_src,

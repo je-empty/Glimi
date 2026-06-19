@@ -41,9 +41,9 @@ except ImportError:  # imported as apps.workspace.demo
     from .team import LABELS, SPECIALISTS, TEAM
 
 # ── the demo's fixed setup ───────────────────────────────────────────────────
-OWNER_NAME = "Sam"
+OWNER_NAME = "수민"
 OWNER_ID = "owner"
-GOAL = "Plan the public launch of our open-source project"
+GOAL = "오픈소스 프로젝트 공개 런칭 기획"
 
 # Channels (mirror team.py's topology so the seeded demo and a real run look alike).
 DM_COORDINATOR = "dm-coordinator"
@@ -54,168 +54,162 @@ GROUP = "group-team"
 APPROVALS = "mgr-approvals"  # mgr-* system log convention (never a chat channel)
 
 # ── the seeded transcript (hand-authored, believable — the finished work) ─────
-# (channel, speaker_id, text). speaker "owner" == Sam.
+# (channel, speaker_id, text). speaker "owner" == 수민.
 TRANSCRIPT: list[tuple[str, str, str]] = [
     # 1) Owner ↔ Coordinator — the goal lands, the Coordinator plans.
     (DM_COORDINATOR, OWNER_ID,
-     "Here's the goal: plan the public launch of our open-source project. I don't "
-     "want hype we can't back up — a clean, honest launch. Where do we start?"),
+     "목표는 이거예요: 우리 오픈소스 프로젝트 공개 런칭을 기획하는 거. 근거 없는 과장은 "
+     "싫어요 — 깔끔하고 정직한 런칭이면 좋겠어요. 어디서부터 시작할까요?"),
     (DM_COORDINATOR, "coordinator",
-     "Got it, Sam — one clear target: a credible launch that doesn't overpromise. "
-     "I'll split it three ways. Researcher digs into how comparable projects "
-     "actually converted; Builder turns the call into an ordered checklist with a "
-     "date and owners; Critic stress-tests it for the ways launch day bites. I'll "
-     "bring you the synthesis."),
+     "알겠어요, 수민님 — 목표는 하나로 명확해요. 과장하지 않으면서도 신뢰를 주는 런칭. "
+     "셋으로 나눠서 진행할게요. 리서처는 비슷한 프로젝트들이 실제로 어떻게 전환을 "
+     "이끌어냈는지 파고들고, 빌더는 그 방향을 날짜와 담당자가 있는 순서 잡힌 체크리스트로 "
+     "만들고, 크리틱은 런칭 당일에 터질 수 있는 지점들로 계획을 압박 검증해요. 종합은 제가 "
+     "정리해서 가져올게요."),
 
     # 2) Coordinator ↔ each specialist — real delegation + first take.
     (DM["researcher"], "coordinator",
-     "Researcher — your angle: how did comparable open-source projects launch, and "
-     "what actually moved the needle (not vanity metrics)? Bring specifics."),
+     "리서처 — 당신 몫은 이거예요. 비슷한 오픈소스 프로젝트들은 어떻게 런칭했고, 실제로 "
+     "성과를 움직인 건 뭐였는지(허영 지표 말고). 구체적으로 가져와요."),
     (DM["researcher"], "researcher",
-     "On it. First read: the launches that converted weren't the loudest — they led "
-     "with a 60-second 'here's the thing working' demo and a brutally clear 'what "
-     "it is / what it isn't.' Show HN plus one well-timed thread beat a scattered "
-     "multi-channel push in three of the four cases I pulled. Digging into the "
-     "conversion data now."),
+     "맡았어요. 첫 인상부터: 전환에 성공한 런칭들은 가장 시끄러운 쪽이 아니었어요 — '이게 "
+     "이렇게 동작합니다'를 보여주는 60초 데모와, '이게 무엇이고 무엇이 아닌지'를 잔인할 만큼 "
+     "명확하게 내건 쪽이었죠. 제가 뽑은 네 사례 중 셋에서 Show HN 하나에 타이밍 맞춘 스레드 "
+     "하나가 산만한 멀티채널 푸시를 이겼어요. 지금 전환 데이터를 더 파고드는 중이에요."),
 
     (DM["builder"], "coordinator",
-     "Builder — turn the direction into a concrete, ordered launch checklist: "
-     "steps, owners, a realistic date. Smallest thing that ships."),
+     "빌더 — 이 방향을 구체적이고 순서 잡힌 런칭 체크리스트로 만들어줘요. 단계, 담당자, "
+     "현실적인 날짜까지. 당장 내보낼 수 있는 가장 작은 것으로."),
     (DM["builder"], "builder",
-     "Drafting. Skeleton: (1) freeze scope + write the honest README, (2) record "
-     "the 60s demo, (3) stage the Show HN post + first-comment FAQ, (4) line up "
-     "people to answer issues on launch day, (5) ship Tuesday 9am PT. I'd cut "
-     "everything that isn't those five. Sequencing the dependencies now."),
+     "초안 잡는 중이에요. 뼈대: (1) 범위 확정 + 정직한 README 작성, (2) 60초 데모 녹화, "
+     "(3) Show HN 글 + 첫 댓글 FAQ 준비, (4) 런칭 당일 이슈에 답할 인원 배치, (5) 화요일 "
+     "오전 9시(PT) 출시. 이 다섯에 안 들어가는 건 다 쳐낼게요. 지금 의존 관계 순서를 잡고 "
+     "있어요."),
 
     (DM["critic"], "coordinator",
-     "Critic — stress-test the emerging plan. Where does launch day actually hurt "
-     "us? Every risk with a mitigation."),
+     "크리틱 — 잡혀가는 계획을 압박 검증해줘요. 런칭 당일 우리가 실제로 아픈 지점이 어디죠? "
+     "모든 리스크에 완화책을 같이."),
     (DM["critic"], "critic",
-     "Biggest risk isn't traffic — it's the gap between the demo and a cold install. "
-     "If someone clones it and hits a wall in the first five minutes, the thread "
-     "turns on us. Mitigation: a 'works in 60 seconds' quickstart we've tested on a "
-     "clean machine, plus a pinned known-issues note. Second risk: support load."),
+     "가장 큰 리스크는 트래픽이 아니에요 — 데모와 맨바닥 설치 사이의 간극이죠. 누가 클론 "
+     "받고 첫 5분 안에 벽에 부딪히면, 그 스레드가 우리한테 등을 돌려요. 완화책: 깨끗한 환경에서 "
+     "직접 검증한 '60초면 동작한다' 퀵스타트, 그리고 상단 고정된 알려진 이슈 안내. 두 번째 "
+     "리스크는 지원 부담이에요."),
 
     # 3) Specialist ↔ specialist (A2A) — they genuinely debate.
     (A2A_RC, "researcher",
-     "Critic — my read is Show HN is the highest-leverage single move. Push back if "
-     "you see it."),
+     "크리틱 — 제 판단엔 Show HN이 단일 수단으로는 레버리지가 가장 커요. 이견 있으면 "
+     "반박해줘요."),
     (A2A_RC, "critic",
-     "I don't disagree it's leverage — I disagree it's safe by default. Show HN "
-     "rewards 'it works' and punishes 'it almost works.' What's your evidence the "
-     "cold start holds up?"),
+     "레버리지가 크다는 데는 동의해요 — 기본적으로 안전하다는 데는 동의 못 해요. Show HN은 "
+     "'동작한다'엔 보상을 주고 '거의 동작한다'엔 벌을 줘요. 맨바닥 시작이 버틴다는 근거가 "
+     "뭐예요?"),
     (A2A_RC, "researcher",
-     "Fair. Two of the four projects credited a tested quickstart for the "
-     "conversion — the one that skipped it got a top comment about a broken install "
-     "and never recovered. So your cold-start risk is the actual lever, not a side "
-     "note."),
+     "타당해요. 네 프로젝트 중 둘은 검증된 퀵스타트가 전환에 결정적이었다고 꼽았어요 — 그걸 "
+     "건너뛴 하나는 설치가 깨졌다는 최상단 댓글이 달렸고 끝내 회복 못 했고요. 그러니까 당신이 "
+     "말한 맨바닥 시작 리스크가 곁다리가 아니라 진짜 핵심 레버예요."),
     (A2A_RC, "critic",
-     "Then we agree: the demo gets attention, the quickstart keeps it. I'll hold "
-     "the plan to a clean-machine test before we call it ready."),
+     "그럼 합의 본 거네요. 데모가 시선을 끌고, 퀵스타트가 그 시선을 붙잡는다. 준비 완료라고 "
+     "하기 전에 깨끗한 환경 테스트를 통과하도록 제가 계획을 잡고 있을게요."),
 
     (A2A_BR, "builder",
-     "Researcher — which of my five steps does your data actually support, and "
-     "which am I assuming?"),
+     "리서처 — 제 다섯 단계 중에 당신 데이터가 실제로 뒷받침하는 건 어떤 거고, 제가 그냥 "
+     "가정하고 있는 건 어떤 거예요?"),
     (A2A_BR, "researcher",
-     "Steps 1–3 are supported — the honest README, the 60s demo, and the Show HN "
-     "timing all map to what converted. Step 4 is where you're under-resourcing: "
-     "the data says load spikes for about six hours, not the afternoon you "
-     "budgeted."),
+     "1~3단계는 뒷받침돼요 — 정직한 README, 60초 데모, Show HN 타이밍 다 전환에 성공한 "
+     "패턴과 맞아요. 4단계가 자원이 부족한 지점인데요. 데이터를 보면 부하는 당신이 잡은 한 "
+     "나절이 아니라 여섯 시간쯤 치솟아요."),
     (A2A_BR, "builder",
-     "Good catch — I'll widen the support window to a full day and name backups. "
-     "Does the data say anything about the demo length?"),
+     "잘 짚었어요 — 지원 시간을 하루 종일로 늘리고 백업 인원도 지정할게요. 데모 길이에 대해선 "
+     "데이터가 뭐라고 하나요?"),
     (A2A_BR, "researcher",
-     "Under 90 seconds or people bounce. Sixty is the sweet spot — keep it."),
+     "90초 넘어가면 사람들이 떠나요. 60초가 딱 적당한 지점이에요 — 그대로 가요."),
 
     # 4) Group round — the team converges.
     (GROUP, "coordinator",
-     "Team — converging. One sentence each: your single most important point for "
-     "the launch."),
+     "팀 — 정리합시다. 각자 한 문장씩: 런칭에서 가장 중요한 단 하나의 포인트."),
     (GROUP, "researcher",
-     "Lead with a tested 60-second demo and a clear 'what it is / what it isn't' — "
-     "that's what actually converted."),
+     "검증된 60초 데모와 명확한 '이게 무엇이고 무엇이 아닌지'를 앞세우기 — 실제로 전환을 만든 "
+     "건 그거예요."),
     (GROUP, "builder",
-     "Ship the five-step checklist Tuesday; cut anything that isn't on it."),
+     "다섯 단계 체크리스트를 화요일에 출시하고, 거기 없는 건 다 쳐내기."),
     (GROUP, "critic",
-     "Test the quickstart on a clean machine before we call it ready — the cold "
-     "start is the whole game."),
+     "준비 완료라고 하기 전에 깨끗한 환경에서 퀵스타트 테스트하기 — 맨바닥 시작이 승부의 "
+     "전부예요."),
 
     # 5) The owner-approved deliverable, back in the owner DM.
     (DM_COORDINATOR, "coordinator",
-     "Sam — here's the synthesis. DECISION: a focused, honest launch — Show HN "
-     "Tuesday 9am PT, led by a tested 60-second demo and a clear 'what it is / what "
-     "it isn't' README. PLAN: (1) freeze scope + honest README, (2) record the 60s "
-     "demo, (3) stage the Show HN post + first-comment FAQ, (4) tested clean-machine "
-     "quickstart + pinned known-issues, (5) five people on support for the full "
-     "launch day. TOP RISK: the gap between the demo and a cold install — we don't "
-     "launch until the quickstart passes on a clean machine. That's the line."),
+     "수민님 — 종합 정리예요. 결정: 집중되고 정직한 런칭 — 화요일 오전 9시(PT) Show HN, "
+     "검증된 60초 데모와 명확한 '이게 무엇이고 무엇이 아닌지' README를 앞세움. 계획: (1) 범위 "
+     "확정 + 정직한 README, (2) 60초 데모 녹화, (3) Show HN 글 + 첫 댓글 FAQ 준비, "
+     "(4) 깨끗한 환경에서 검증한 퀵스타트 + 상단 고정 알려진 이슈, (5) 런칭 당일 종일 지원 "
+     "인원 다섯. 최대 리스크: 데모와 맨바닥 설치 사이의 간극 — 퀵스타트가 깨끗한 환경에서 "
+     "통과하기 전엔 런칭하지 않습니다. 그게 마지노선이에요."),
 ]
 
-# The HITL approval trail for the one consequential action (delivering to Sam).
+# The HITL approval trail for the one consequential action (delivering to 수민).
 # Written to the mgr-approvals system-log channel (the convention from the
 # Workspace HITL gate), so it's inspectable in the same dashboard.
 APPROVAL_TRAIL: list[str] = [
-    "[HITL] PROPOSED · final_deliverable · the launch synthesis for Sam",
-    "[HITL] DECISION · APPROVED by owner (edited: tightened the top-risk line)",
-    "[HITL] OUTCOME · delivered to dm-coordinator",
+    "[HITL] 제안됨 · final_deliverable · 수민님을 위한 런칭 종합",
+    "[HITL] 결정 · 오너 승인 (수정: 최대 리스크 문구 더 단단하게)",
+    "[HITL] 결과 · dm-coordinator 로 전달됨",
 ]
 
 # Working relationships → the dashboard's connection-graph edges.
 # (a, b, type, intimacy, dynamics)
 RELATIONSHIPS: list[tuple[str, str, str, int, str]] = [
     ("coordinator", OWNER_ID, "lead", 82,
-     "Runs the workspace for Sam; took the goal and delivered the synthesis."),
+     "수민님을 위해 워크스페이스를 이끔. 목표를 받아 종합을 전달함."),
     ("coordinator", "researcher", "manages", 62,
-     "Delegated the 'what converted' angle and folded the findings into the plan."),
+     "'무엇이 전환을 만들었나' 방향을 배분하고 그 결과를 계획에 녹임."),
     ("coordinator", "builder", "manages", 62,
-     "Delegated the checklist and held it to a shippable five steps."),
+     "체크리스트를 배분하고 출시 가능한 다섯 단계로 붙들어 둠."),
     ("coordinator", "critic", "manages", 62,
-     "Delegated the risk pass and adopted the clean-machine gate."),
+     "리스크 점검을 배분하고 깨끗한 환경 게이트를 채택함."),
     ("researcher", "critic", "collaborator", 78,
-     "Debated the findings — converged on the cold-start gap as the real lever."),
+     "결과를 두고 토론 — 맨바닥 시작 간극이 진짜 레버라는 데 의견을 모음."),
     ("builder", "researcher", "collaborator", 70,
-     "Grounded the checklist in the data — widened the support window to a full day."),
+     "체크리스트를 데이터에 기반시킴 — 지원 시간을 하루 종일로 늘림."),
 ]
 
 # Current emotion per agent (drives the agent cards + node tone).
 EMOTIONS: dict[str, tuple[str, int]] = {
-    "coordinator": ("focused", 7),
-    "researcher": ("curious", 7),
-    "builder": ("driven", 8),
-    "critic": ("vigilant", 7),
+    "coordinator": ("집중", 7),
+    "researcher": ("호기심", 7),
+    "builder": ("몰입", 8),
+    "critic": ("경계", 7),
 }
 
 # 5-layer memory: (agent, channel, level, content, importance, pinned).
 MEMORIES: list[tuple[str, str, int, str, int, bool]] = [
     ("coordinator", DM_COORDINATOR, 2,
-     "The launch decision: a focused, honest Show HN on Tuesday 9am PT, led by a "
-     "tested 60-second demo.", 9, True),
+     "런칭 결정: 집중되고 정직한 Show HN, 화요일 오전 9시(PT), 검증된 60초 데모를 "
+     "앞세움.", 9, True),
     ("coordinator", GROUP, 1,
-     "Each specialist's one-line point converged cleanly — demo, checklist, "
-     "clean-machine test.", 6, False),
+     "전문가 각자의 한 줄 포인트가 깔끔하게 모였다 — 데모, 체크리스트, 깨끗한 환경 "
+     "테스트.", 6, False),
     ("researcher", A2A_RC, 2,
-     "A tested quickstart was the difference between conversion and a broken-install "
-     "top comment.", 8, True),
+     "검증된 퀵스타트가 전환과 '설치가 깨졌다는 최상단 댓글'을 가른 차이였다.", 8, True),
     ("researcher", DM["researcher"], 1,
-     "Show HN plus one well-timed thread beat a scattered multi-channel push (3 of 4 "
-     "cases).", 6, False),
+     "Show HN 하나에 타이밍 맞춘 스레드 하나가 산만한 멀티채널 푸시를 이겼다 (4건 중 "
+     "3건).", 6, False),
     ("builder", DM["builder"], 1,
-     "Five-step checklist; ship Tuesday; cut everything else.", 7, False),
+     "다섯 단계 체크리스트; 화요일 출시; 나머지는 다 쳐낸다.", 7, False),
     ("builder", A2A_BR, 2,
-     "Support load spikes ~6 hours, not an afternoon — widened the window and named "
-     "backups.", 7, True),
+     "지원 부하는 한나절이 아니라 약 6시간 치솟는다 — 시간을 늘리고 백업 인원을 "
+     "지정함.", 7, True),
     ("critic", DM["critic"], 2,
-     "The cold-start gap is the whole game — don't launch until the quickstart "
-     "passes on a clean machine.", 9, True),
+     "맨바닥 시작 간극이 승부의 전부 — 퀵스타트가 깨끗한 환경에서 통과하기 전엔 "
+     "런칭하지 않는다.", 9, True),
 ]
 
 # Semantic facts (Layer 3): (agent, subject, predicate, object).
 FACTS: list[tuple[str, str, str, str]] = [
-    ("coordinator", "Sam", "wants", "a launch that doesn't overpromise"),
-    ("coordinator", "the launch", "ships", "Tuesday 9am PT"),
-    ("researcher", "Show HN", "rewards", "'it works'; punishes 'it almost works'"),
-    ("builder", "the support window", "should be", "a full launch day, with named backups"),
-    ("critic", "the biggest risk", "is", "the gap between the demo and a cold install"),
+    ("coordinator", "수민", "원한다", "과장하지 않는 런칭"),
+    ("coordinator", "런칭", "출시한다", "화요일 오전 9시(PT)"),
+    ("researcher", "Show HN", "보상한다", "'동작한다'; 벌한다 '거의 동작한다'"),
+    ("builder", "지원 시간", "이어야 한다", "백업 인원을 지정한 런칭 당일 종일"),
+    ("critic", "가장 큰 리스크", "는", "데모와 맨바닥 설치 사이의 간극"),
 ]
 
 # A few illustrative observability rows so the dashboard's Tool-call Timeline shows
@@ -225,44 +219,44 @@ FACTS: list[tuple[str, str, str, str]] = [
 TOOL_CALLS: list[tuple[str, str, str, dict, str]] = [
     # (agent, channel, tool_name, args, result_preview)
     ("researcher", A2A_RC, "recall_memory",
-     {"query": "comparable launch conversion"},
-     "3 memories: tested quickstart → conversion; Show HN timing; demo length"),
+     {"query": "비슷한 런칭 전환 사례"},
+     "기억 3건: 검증된 퀵스타트 → 전환; Show HN 타이밍; 데모 길이"),
     ("critic", DM["critic"], "remember",
-     {"content": "cold-start gap is the launch's biggest risk", "importance": 9},
-     "stored (L2, pinned)"),
+     {"content": "맨바닥 시작 간극이 런칭의 가장 큰 리스크", "importance": 9},
+     "저장됨 (L2, 고정)"),
     ("builder", A2A_BR, "recall_memory",
-     {"query": "support load window"},
-     "1 memory: load spikes ~6h, not an afternoon"),
+     {"query": "지원 부하 시간대"},
+     "기억 1건: 부하는 한나절이 아니라 약 6시간 치솟음"),
     ("coordinator", GROUP, "summarize_channel",
      {"channel": "group-team"},
-     "3 points converged: demo, checklist, clean-machine test"),
+     "3개 포인트로 수렴: 데모, 체크리스트, 깨끗한 환경 테스트"),
 ]
 
 # The live "launch prep" continuation — unfolded one turn per tick by the activity
 # loop so a viewer watches the work move forward in real time.
 CONTINUATION: list[tuple[str, str, str]] = [
-    (GROUP, "builder", "Quickstart draft is up — testing it on a fresh VM now."),
+    (GROUP, "builder", "퀵스타트 초안 올렸어요 — 지금 새 VM에서 테스트 중이에요."),
     (A2A_BR, "researcher",
-     "Clean-machine run: install to first output in 48 seconds. It holds."),
+     "깨끗한 환경 실행: 설치부터 첫 출력까지 48초. 버텨요."),
     (GROUP, "critic",
-     "Confirmed the clean-machine run myself. Lifting my block on step 4."),
+     "깨끗한 환경 실행을 제가 직접 확인했어요. 4단계 보류 해제할게요."),
     (DM_COORDINATOR, "coordinator",
-     "Sam — quickstart passes on a clean machine. We're go for Tuesday."),
+     "수민님 — 퀵스타트가 깨끗한 환경에서 통과해요. 화요일 진행 가능합니다."),
     (GROUP, "researcher",
-     "Demo cut to 58 seconds — lands on the working output, no preamble."),
+     "데모 58초로 줄였어요 — 군말 없이 바로 동작하는 출력으로 끝나요."),
     (A2A_RC, "critic",
-     "Pinned known-issues note is drafted. One less thing to bite us."),
+     "상단 고정 알려진 이슈 안내 초안 잡았어요. 우리 발목 잡을 거 하나 줄였네요."),
     (GROUP, "builder",
-     "Show HN post + first-comment FAQ staged. Five people confirmed for support."),
-    (DM_COORDINATOR, "coordinator", "Everything's staged, Sam. Holding for your go."),
+     "Show HN 글 + 첫 댓글 FAQ 준비됐어요. 지원 인원 다섯 명 확정됐고요."),
+    (DM_COORDINATOR, "coordinator", "전부 준비됐어요, 수민님. 진행 신호만 기다릴게요."),
 ]
 
 # Emotions the continuation nudges as the work lands (speaker → new emotion).
 _CONT_EMOTION: dict[str, tuple[str, int]] = {
-    "builder": ("energized", 8),
-    "researcher": ("confident", 8),
-    "critic": ("reassured", 6),
-    "coordinator": ("focused", 8),
+    "builder": ("활기", 8),
+    "researcher": ("자신감", 8),
+    "critic": ("안도", 6),
+    "coordinator": ("집중", 8),
 }
 
 
@@ -370,7 +364,7 @@ class _Heartbeat:
     def beat(self, g: Glimi) -> None:
         aid = self._order[self._i % len(self._order)]
         self._i += 1
-        base = EMOTIONS.get(aid, ("focused", 6))
+        base = EMOTIONS.get(aid, ("집중", 6))
         # gently oscillate intensity 6↔8 so the agent cards change between polls.
         intensity = 6 + (self._i % 3)
         try:
@@ -442,12 +436,12 @@ def run_demo(*, host: str = "127.0.0.1", port: int = 8800,
 
     url = f"http://{host}:{port}"
     print("=" * 64)
-    print("  Glimi Workspace — LIVE DEMO")
+    print("  Glimi Workspace — 라이브 데모")
     print("=" * 64)
-    print(f"  goal    : {GOAL}")
-    print(f"  team    : Coordinator, Researcher, Builder, Critic  (owner: {OWNER_NAME})")
-    print(f"  backend : {backend} (offline — no API key, $0)")
-    print(f"  view    : {url}   ← watch it update live (Ctrl-C to stop)")
+    print(f"  목표    : {GOAL}")
+    print(f"  팀      : 코디네이터, 리서처, 빌더, 크리틱  (오너: {OWNER_NAME})")
+    print(f"  백엔드  : {backend} (오프라인 — API 키 불필요, $0)")
+    print(f"  보기    : {url}   ← 실시간으로 업데이트 (Ctrl-C 로 중지)")
     print("=" * 64 + "\n")
 
     try:
