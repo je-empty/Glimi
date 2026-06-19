@@ -78,4 +78,4 @@ a working end-to-end application live in the monorepo:
 
 ## License
 
-[Apache-2.0](https://github.com/jaebinsim/Glimi/blob/main/LICENSE)
+[AGPL-3.0](https://github.com/jaebinsim/Glimi/blob/main/LICENSE)

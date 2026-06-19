@@ -12,7 +12,7 @@ name = "glimi-workspace"
 version = "0.1.0"
 description = "Glimi Workspace — a persistent specialist team for real work, on Glimi Core."
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Jaebin Sim" }]
 dependencies = [
     "glimi[dashboard]>=0.1.0",

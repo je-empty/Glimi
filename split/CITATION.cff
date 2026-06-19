@@ -12,7 +12,7 @@ authors:
     given-names: Jaebin
     alias: jaebinsim
 repository-code: "https://github.com/jaebinsim/glimi"
-license: Apache-2.0
+license: AGPL-3.0
 keywords:
   - generative-agents
   - multi-agent

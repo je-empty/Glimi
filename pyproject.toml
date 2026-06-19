@@ -8,13 +8,13 @@ version = "0.1.0"
 description = "Glimi Core — a domain-neutral, platform-neutral multi-agent kernel (agent runtime, layered memory, <tools> protocol, conversation engine)."
 readme = "PYPI_README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Jaebin Sim" }]
 keywords = ["agent", "multi-agent", "llm", "memory", "claude", "ollama"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

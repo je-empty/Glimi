@@ -2,7 +2,7 @@
 
 # Glimi
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white) ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-D22128) ![Status: alpha 0.1.0](https://img.shields.io/badge/status-alpha%200.1.0-orange) ![Backends: Claude · Ollama · vLLM · llama.cpp](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Ollama%20%C2%B7%20vLLM%20%C2%B7%20llama.cpp-4aff9e)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-A42E2B) ![Status: alpha 0.1.0](https://img.shields.io/badge/status-alpha%200.1.0-orange) ![Backends: Claude · Ollama · vLLM · llama.cpp](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Ollama%20%C2%B7%20vLLM%20%C2%B7%20llama.cpp-4aff9e)
 
 Glimi 는 각자 성격·기억·관계를 가진 AI 캐릭터 한 무리를 굴리는 파이썬 라이브러리다. 캐릭터마다 정하는 건 페르소나와 모델, 둘뿐. 그러면 캐릭터들은 당신하고도 자기들끼리도 대화한다. 뒤에서 supervisor 가 주기적으로 대화를 트고 끊긴 걸 이어줘서, 자리를 비웠다 와도 그사이 나눈 얘기가 채널에 쌓여 있다.
 
@@ -48,7 +48,7 @@ Glimi/                            단일 git repo (모노레포) · `glimi` 는 
 ├── examples/                     · 라이브러리 스타터 (research_buddies · dev_pair · dashboard_demo)
 ├── eval/                         · 평가 하네스 (골든셋 · LLM-judge · 회귀 게이트)
 ├── docs/ · tests/
-├── LICENSE · NOTICE · CITATION.cff   · Apache-2.0 + 저작자/인용
+├── LICENSE · NOTICE · CITATION.cff   · AGPL-3.0 + 저작자/인용
 └── README.md · README.ko.md          · 영문 + 이 파일
 ```
 
@@ -89,7 +89,7 @@ Glimi Core 는 세션마다 처음으로 돌아가지 않는 에이전트를 만
 | 하드웨어 인지 elastic 컨텍스트 버짓 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | 관계 그래프 + 메모리 대시보드 내장 | ✅ | ◐ 단일 | ◐ 시뮬뷰 | ❌ 호스팅 | ❌ 별도 | ❌ |
 
-✅ 됨 · ◐ 부분 · ❌ 안 됨 · — 해당 없음. 솔직한 평: 메모리 페이징은 Letta 가 더 깊고, AI Town 은 더 다듬어진 세계와 훨씬 많은 사용자를 가졌고, Zep 의 시간 그래프가 더 완전하고, SillyTavern 의 캐릭터 도구가 더 풍부하다. Glimi 는 이 일곱 줄을 한 번에, 하나의 Apache-2.0 패키지로 하는 유일한 쪽이다.
+✅ 됨 · ◐ 부분 · ❌ 안 됨 · — 해당 없음. 솔직한 평: 메모리 페이징은 Letta 가 더 깊고, AI Town 은 더 다듬어진 세계와 훨씬 많은 사용자를 가졌고, Zep 의 시간 그래프가 더 완전하고, SillyTavern 의 캐릭터 도구가 더 풍부하다. Glimi 는 이 일곱 줄을 한 번에, 하나의 AGPL-3.0 패키지로 하는 유일한 쪽이다.
 
 ---
 
@@ -585,6 +585,6 @@ Community 의 소셜 sim 스캐폴딩 없이 Glimi Core 를 직접 보여주는,
 
 ## 라이선스
 
-**Apache-2.0** — patent grant, 상용 사용 허용, copyleft 없음. LangChain, AutoGen, LlamaIndex, Kubernetes, TensorFlow, Hugging Face Transformers 와 동일한 라이선스.
+**AGPL-3.0-or-later** — 강한 카피레프트. 누구나 자유롭게 사용·연구·수정·공유 가능; 대신 **배포하거나 네트워크 서비스로 제공하는 파생물은 반드시 AGPL 로 소스 공개 + 이 프로젝트 저작자 표기 유지** — 닫아서 독점 제품으로 못 만든다. 기여는 같은 라이선스로 환영하고, 저작권은 저자가 보유해 별도 상업 라이선스를 줄 수 있다. MongoDB·Grafana·Mastodon 과 같은 "열린 채로 + 컨트리뷰터와 성장 + 독점 free-riding 방지" 노선.
 
 전문은 `LICENSE` 파일 참조.

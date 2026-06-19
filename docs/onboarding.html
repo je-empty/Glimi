@@ -562,7 +562,7 @@ Retrieval scoring:
 ├── run.sh · scripts/
 ├── pyproject.toml              <span style="color:var(--muted)"># glimi (core, deps 0) / glimi[community] (앱)</span>
 ├── README.md · README.ko.md
-├── LICENSE                     <span style="color:var(--muted)"># Apache-2.0</span>
+├── LICENSE                     <span style="color:var(--muted)"># AGPL-3.0</span>
 └── CLAUDE.md</code></pre>
 
     <p>커널은 <code>KernelStore</code> ABC + <code>AgentProfile</code> / <code>OwnerContext</code> / <code>KernelObserver</code> protocol 뒤에서 storage·platform 중립이고, 앱은 <code>src/adapters/</code> 에서 구체 구현을 주입한다. 남은 작업은 PyPI 0.1.0 공개.</p>
@@ -612,7 +612,7 @@ Retrieval scoring:
 
 fix: creator 프롬프트 Korean f-string placeholder NameError — '{소개한_친구}' → '&lt;소개한친구이름&gt;'
 
-docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE Apache-2.0</code></pre>
+docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></pre>
     </div>
 
     <h3>PR 머지 정책</h3>
@@ -843,7 +843,7 @@ pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
 
   <footer>
     <p>이 문서: <code>docs/onboarding.html</code> · 마지막 갱신 2026-05-17</p>
-    <p>관련: <a href="../README.md">README</a> · <a href="../CLAUDE.md">CLAUDE.md</a> · <a href="../LICENSE">LICENSE (Apache-2.0)</a></p>
+    <p>관련: <a href="../README.md">README</a> · <a href="../CLAUDE.md">CLAUDE.md</a> · <a href="../LICENSE">LICENSE (AGPL-3.0)</a></p>
     <p>Glimi — The open harness for AI agent populations that keep living.</p>
   </footer>
 

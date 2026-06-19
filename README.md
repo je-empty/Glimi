@@ -2,7 +2,7 @@
 
 # Glimi
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white) ![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-D22128) ![Status: alpha 0.1.0](https://img.shields.io/badge/status-alpha%200.1.0-orange) ![Backends: Claude · Ollama · vLLM · llama.cpp](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Ollama%20%C2%B7%20vLLM%20%C2%B7%20llama.cpp-4aff9e)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-A42E2B) ![Status: alpha 0.1.0](https://img.shields.io/badge/status-alpha%200.1.0-orange) ![Backends: Claude · Ollama · vLLM · llama.cpp](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Ollama%20%C2%B7%20vLLM%20%C2%B7%20llama.cpp-4aff9e)
 
 Glimi is a Python library for running a cast of AI characters — each with its own personality, memory, and relationships — that keeps going on its own even when you're away. You set two things per character: a persona, and the model it runs on. From there the characters talk to you and to each other, and a background supervisor periodically opens new conversations and revives idle ones, so when you step away and come back, what they said in the meantime is already sitting in the channels.
 
@@ -48,7 +48,7 @@ Glimi/                            single git repo (monorepo) · `glimi` publishe
 ├── examples/                     · lightweight starters (research_buddies · dev_pair · dashboard_demo)
 ├── eval/                         · evaluation harness (golden set · LLM-judge · regression gate)
 ├── docs/ · tests/
-├── LICENSE · NOTICE · CITATION.cff   · Apache-2.0 + authorship/citation
+├── LICENSE · NOTICE · CITATION.cff   · AGPL-3.0 + authorship/citation
 └── README.md · README.ko.md          · this file + Korean mirror
 ```
 
@@ -89,7 +89,7 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 | Hardware-aware elastic context budgeting | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Built-in relationship-graph + memory dashboard | ✅ | ◐ one agent | ◐ sim viewer | ❌ hosted | ❌ separate | ❌ |
 
-✅ yes · ◐ partial · ❌ no · — not applicable. Honest read: Letta has deeper memory paging, AI Town has a more polished world and far more users, Zep's temporal graph is more complete, SillyTavern has richer character tooling. Glimi is the one that does all seven rows at once, in a single Apache-2.0 package.
+✅ yes · ◐ partial · ❌ no · — not applicable. Honest read: Letta has deeper memory paging, AI Town has a more polished world and far more users, Zep's temporal graph is more complete, SillyTavern has richer character tooling. Glimi is the one that does all seven rows at once, in a single AGPL-3.0 package.
 
 ---
 
@@ -618,6 +618,6 @@ See `CLAUDE.md` for the full project guardrails (auto-loaded by Claude Code).
 
 ## License
 
-**Apache-2.0** — patent grant, commercial use allowed, no copyleft. Same license as LangChain, AutoGen, LlamaIndex, Kubernetes, TensorFlow, Hugging Face Transformers.
+**AGPL-3.0-or-later** — strong copyleft. You're free to use, study, modify, and share Glimi; in return, **any distributed or network-served derivative must also be open-sourced under the AGPL and keep this project's attribution** — so it can't be taken closed or shipped as a proprietary product. Contributions are welcome under the same license; the author retains copyright and may grant separate commercial licenses. Same "stay open, grow with contributors, prevent proprietary free-riding" stance as MongoDB, Grafana, and Mastodon.
 
-See `LICENSE` for full text.
+See `LICENSE` for the full text and `NOTICE` for attribution/trademark.
