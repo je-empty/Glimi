@@ -42,6 +42,7 @@ Run it (needs ``pip install "glimi[dashboard]"``)::
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import threading
@@ -58,6 +59,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 import glimi.dashboard as _dashboard
+import glimi.runtime as _kr   # kernel runtime singleton (module-global store/cache)
+import glimi.memory as _km    # kernel memory layer (shares the same DI globals)
 from glimi import Glimi
 from glimi.dashboard import DashboardReader
 
@@ -266,6 +269,28 @@ class WorkspaceRegistry:
             self.register(ws)
         return ws
 
+    def run_in_ws(self, ws: "Workspace", fn):
+        """Run ``fn`` with the kernel runtime/memory module-globals scoped to ``ws``
+        — under the build lock, so it serializes with builds and other chats (the
+        only callers that drive ``runtime.generate_*`` against the process-global
+        store / ``_active_agents`` cache; the demo loop is store-only).
+
+        The kernel ``runtime`` is a singleton whose store / profiles / owner /
+        observer and ``_active_agents`` cache are shared across workspaces (agent
+        ids collide — every workspace has a ``coordinator``). Each ``Glimi`` points
+        those globals at its own instances on construction (last wins), so before a
+        turn we re-point them to THIS workspace and clear the agent cache so it
+        re-activates from this workspace's profiles/store (cross-tenant safety)."""
+        g = ws.glimi
+        with self._lock:
+            for mod in (_kr, _km):
+                mod.set_store(g.store)
+                mod.set_profiles(g.profiles)
+                mod.set_owner(g.owner)
+                mod.set_observer(g.observer)
+            _kr.runtime._active_agents.clear()  # force re-activation from this ws
+            return fn()
+
 
 # ── per-workspace dashboard endpoint shapes (mirror glimi/dashboard/app.py) ───
 
@@ -281,6 +306,32 @@ def _snapshot_payload(reader: DashboardReader) -> dict:
 def _esc(s: str) -> str:
     return (str(s).replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _ws_postable(channel: str) -> bool:
+    """Owner-postable channels: DMs + group rooms. ``internal-*`` (agent-only) and
+    anything else are read-only (the owner watches, doesn't post)."""
+    c = (channel or "").strip()
+    if not c or c.startswith("internal-"):
+        return False
+    return c.startswith("dm-") or c.startswith("group-")
+
+
+def _ws_agent_for(channel: str, frame_agent: str) -> str:
+    """Which agent answers an owner turn: a ``dm-<agent>`` channel → that agent;
+    a group room → the frame's explicit agent (v1 single responder), defaulting to
+    the Coordinator."""
+    c = (channel or "").strip()
+    if c.startswith("dm-"):
+        return c[3:] or "coordinator"
+    return (frame_agent or "").strip() or "coordinator"
+
+
+def _ws_speaker_name(ws: "Workspace", agent_id: str) -> str:
+    try:
+        return (ws.store.get_agent(agent_id) or {}).get("name") or agent_id
+    except Exception:
+        return agent_id
 
 
 # ── chat read-APIs (per-workspace) — mirror src/platform/routers/chat.py shapes ─
@@ -590,23 +641,79 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     @app.websocket("/w/{ws_id}/chat/ws")
     async def w_chat_ws(websocket: WebSocket, ws_id: str) -> None:
-        """Read-only demo socket: accept + keep open so chat.js shows "Connected".
+        """Live chat socket.
 
-        No sending in the Workspace demo — we drain inbound frames (the client
-        pings on connect/channel-switch) and reply 'pong' to a ping, otherwise
-        ignore. Never writes to the store; never crashes on a closed socket.
+        Demo workspace = read-only (browse only). A user workspace accepts the
+        owner's turns: the message is dispatched to the channel's agent through the
+        kernel runtime **scoped to this workspace** (``reg.run_in_ws``), which logs
+        the owner turn + the reply, and the reply line(s) stream back here. The
+        kernel call is blocking, so it runs in an executor thread (the event loop
+        stays responsive). ``ping`` → ``pong`` keeps the status 'Connected'.
         """
-        if reg.get(ws_id) is None:
+        ws = reg.get(ws_id)
+        if ws is None:
             await websocket.close(code=1008)
             return
+        read_only = (ws.kind == "demo")
         await websocket.accept()
+        loop = asyncio.get_event_loop()
         try:
             while True:
-                frame = await websocket.receive_json()
-                if (frame or {}).get("type") == "ping":
-                    # Mirror the client's ping so its status flips to Connected.
+                frame = await websocket.receive_json() or {}
+                ftype = (frame.get("type") or "text").strip()
+                channel = (frame.get("channel") or "").strip()
+
+                if ftype == "ping":
                     await websocket.send_json({"type": "pong"})
-                # All other inbound frames are ignored (read-only demo).
+                    continue
+                if ftype != "text":
+                    continue  # WS-1 scope = the owner→agent turn; reactions/threads later
+                if not channel:
+                    await websocket.send_json({"type": "error", "error": "missing channel"})
+                    continue
+                if read_only:
+                    await websocket.send_json({
+                        "type": "error", "channel": channel, "error": "demo_readonly",
+                        "message": "Demo — read-only. Create your own workspace to chat with the team.",
+                    })
+                    continue
+                if not _ws_postable(channel):
+                    await websocket.send_json({
+                        "type": "error", "channel": channel,
+                        "error": "channel is not user-postable",
+                    })
+                    continue
+                text = (frame.get("text") or "").strip()
+                if not text:
+                    await websocket.send_json({"type": "error", "error": "empty text"})
+                    continue
+
+                agent_id = _ws_agent_for(channel, frame.get("agent") or "")
+                speaker = _ws_speaker_name(ws, agent_id)
+
+                def _turn():
+                    # store-explicit (safe); generate_response logs owner + reply.
+                    ws.store.set_channel_participants(channel, [ws.glimi.owner.id(), agent_id])
+                    return _kr.runtime.generate_response(agent_id, channel, text)
+
+                await websocket.send_json({"type": "typing", "channel": channel,
+                                           "agent_id": agent_id, "speaker": speaker, "on": True})
+                try:
+                    lines = await loop.run_in_executor(None, reg.run_in_ws, ws, _turn)
+                except Exception as e:  # noqa: BLE001 — never hang the socket
+                    await websocket.send_json({"type": "typing", "channel": channel,
+                                               "agent_id": agent_id, "speaker": speaker, "on": False})
+                    await websocket.send_json({"type": "error", "channel": channel,
+                                               "error": "turn failed", "message": str(e)})
+                    continue
+                await websocket.send_json({"type": "typing", "channel": channel,
+                                           "agent_id": agent_id, "speaker": speaker, "on": False})
+                for line in (lines or []):
+                    if (line or "").strip():
+                        await websocket.send_json({
+                            "type": "text", "channel": channel,
+                            "agent_id": agent_id, "speaker": speaker, "text": line,
+                        })
         except WebSocketDisconnect:
             pass
         except Exception:
