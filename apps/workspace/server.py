@@ -45,6 +45,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -129,6 +130,16 @@ _WS_CAPS = {
     "scenes": False, "achievements": False, "supervisors": False,
     "sync": False, "events": False, "health": False, "logs": False,
 }
+
+# Backend for USER workspaces (build + chat). The chat brain (provider selection +
+# the Claude CLI / Ollama / echo backends + budget cap) all live in Glimi Core
+# (glimi.runtime / glimi.llm) — this app doesn't implement a backend, it just lets
+# Core's config-driven selection run, exactly like Community ("no backend is
+# forced"). Captured at import, BEFORE the demo / any build constructs a Glimi (each
+# sets GLIMI_LLM_BACKEND on construction). Operator opts into a real backend via the
+# env (e.g. GLIMI_LLM_BACKEND=ollama → free local, =claude_cli → metered); default
+# is the offline echo placeholder. The Demo always stays echo ($0).
+_USER_BACKEND = (os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo"
 
 
 def _load_i18n(lang: str) -> dict:
@@ -249,17 +260,20 @@ class WorkspaceRegistry:
         return f"ws{self._seq}"
 
     def create(self, name: str, goal: str) -> Workspace:
-        """Build a real-topology workspace (echo) under the build lock.
+        """Build a real-topology workspace under the build lock, on the configured
+        backend (``_USER_BACKEND`` — echo by default; a real model when the operator
+        sets ``GLIMI_LLM_BACKEND``).
 
         Serialized because ``run_workspace`` drives ``runtime.generate_*`` against
-        the process-global store; constructing the ``Glimi`` re-points that global
-        to this workspace's store, so only one build may be in flight at a time.
-        Echo keeps each build instant + deterministic.
+        the process-global store; constructing the ``Glimi`` re-points that global to
+        this workspace's store, so only one build may be in flight at a time. On the
+        echo backend each build is instant + deterministic; on a real backend the
+        create runs the team on the goal (the workspace's first deliverable).
         """
         owner_name = (name or "Owner").strip() or "Owner"
         goal = (goal or "").strip() or "Plan the public launch of our open-source project"
         with self._lock:
-            g = Glimi(backend="echo", owner_name=owner_name)
+            g = Glimi(backend=_USER_BACKEND, owner_name=owner_name)
             for aid, disp, atype, persona in TEAM:
                 g.add_agent(aid, name=disp, persona=persona, agent_type=atype)
             # Real interaction topology (echo) → a genuine interaction web for goal.
@@ -289,7 +303,19 @@ class WorkspaceRegistry:
                 mod.set_owner(g.owner)
                 mod.set_observer(g.observer)
             _kr.runtime._active_agents.clear()  # force re-activation from this ws
-            return fn()
+            # Pin the backend to THIS workspace's for the turn (the kernel's
+            # provider selection reads GLIMI_LLM_BACKEND; other constructions may
+            # have moved it). Restored after — all under the lock, so no race.
+            _prev = os.environ.get("GLIMI_LLM_BACKEND")
+            if g._backend:
+                os.environ["GLIMI_LLM_BACKEND"] = g._backend
+            try:
+                return fn()
+            finally:
+                if _prev is None:
+                    os.environ.pop("GLIMI_LLM_BACKEND", None)
+                else:
+                    os.environ["GLIMI_LLM_BACKEND"] = _prev
 
 
 # ── per-workspace dashboard endpoint shapes (mirror glimi/dashboard/app.py) ───
