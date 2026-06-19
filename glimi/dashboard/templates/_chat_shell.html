@@ -8,7 +8,10 @@
    same-origin with zero topbar/query dependency.
 
    Discord 패러다임: 작성자별로 묶인 전체 너비 행(좌측 정렬), 좌측 채널/사람 레일,
-   우측 피드 + 2-tier 컴포저 + 스레드 패널. 좁은 화면은 사이드바를 드로어로 collapse. #}
+   우측 피드 + 2-tier 컴포저 + 스레드 패널. 좁은 화면은 사이드바를 드로어로 collapse.
+   `language` (ko default; en via toggle) localizes the static chrome below; the
+   dynamic copy (placeholder/status/typing) is localized in chat.js the same way. #}
+{% set EN = (language == 'en') %}
 <div class="chat-shell" id="chat-shell">
 
   <aside class="side" id="chat-sidebar" aria-label="Channels">
@@ -26,8 +29,8 @@
     <div class="search">
       <label class="box" for="chat-search">
         <i class="ti ti-search" aria-hidden="true"></i>
-        <input type="text" id="chat-search" placeholder="Search" autocomplete="off"
-               aria-label="Search conversations">
+        <input type="text" id="chat-search" placeholder="{{ 'Search' if EN else '검색' }}" autocomplete="off"
+               aria-label="{{ 'Search conversations' if EN else '대화 검색' }}">
         <span class="k" aria-hidden="true">⌘K</span>
       </label>
     </div>
@@ -41,10 +44,10 @@
             style="background:var(--chat-av-3)">{{ (user.username[0] if user and user.username else "Me")|upper }}<span class="pres online"></span></span>
       <span class="meta">
         <span class="t">{{ user.username if user else "Me" }}</span>
-        <span class="p"><span class="d"></span>Online</span>
+        <span class="p"><span class="d"></span>{{ 'Online' if EN else '접속 중' }}</span>
       </span>
       <span class="chat-status" id="chat-status" data-state="connecting"
-            role="status" aria-live="polite">Connecting…</span>
+            role="status" aria-live="polite">{{ 'Connecting…' if EN else '연결 중…' }}</span>
     </div>
   </aside>
 
@@ -54,11 +57,12 @@
   <section class="main">
     <header class="head">
       <button type="button" class="chat-sidebar-toggle" id="chat-sidebar-toggle"
-              aria-label="Open channels" aria-expanded="false">
+              aria-label="{{ 'Open channels' if EN else '채널 열기' }}" aria-expanded="false">
         <i class="ti ti-menu-2" aria-hidden="true"></i>
       </button>
       <i class="ti ti-at hash" id="chat-head-icon" aria-hidden="true"></i>
       <span class="ttl" id="chat-channel-label"># {{ channel }}</span>
+      <i class="ti ti-chevron-down head-nav-cue" id="chat-head-nav-cue" aria-hidden="true"></i>
       <span class="topic" id="chat-head-topic" hidden></span>
       <div class="acts">
         <button type="button" class="ib" id="chat-thread-toggle" aria-label="Thread"
@@ -75,36 +79,36 @@
            디자인 토큰만 사용 (raw hex 금지). 둘러보기 전용임을 명확히 알림. -->
       <div class="chat-readonly-banner" id="chat-readonly-banner" role="status" hidden>
         <i class="ti ti-lock" aria-hidden="true"></i>
-        <span>Demo — read-only. Sending messages is disabled here.</span>
+        <span>{{ 'Demo — read-only. Sending messages is disabled here.' if EN else '데모 — 둘러보기 전용. 여기서는 메시지를 보낼 수 없어요.' }}</span>
       </div>
       <div class="typefoot" id="chat-typefoot" aria-hidden="true">
         <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span><b id="chat-typefoot-who"></b> is typing…</span>
+        <span><b id="chat-typefoot-who"></b>{{ ' is typing…' if EN else '님이 입력 중…' }}</span>
       </div>
       <div class="cbox" id="chat-cbox">
         <div class="reply-cue" id="chat-reply-cue" hidden>
           <i class="ti ti-arrow-back-up" aria-hidden="true"></i>
           <span class="rc-txt" id="chat-reply-cue-text"></span>
-          <button type="button" class="x" id="chat-reply-cue-clear" aria-label="Cancel reply">
+          <button type="button" class="x" id="chat-reply-cue-clear" aria-label="{{ 'Cancel reply' if EN else '답장 취소' }}">
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>
         </div>
         <div class="ctop">
           <span class="plus" aria-hidden="true"><i class="ti ti-plus"></i></span>
           <div class="ta" id="chat-input" contenteditable="true" role="textbox"
-               aria-multiline="true" aria-label="Send a message"
-               data-ph="Message…"></div>
+               aria-multiline="true" aria-label="{{ 'Send a message' if EN else '메시지 입력' }}"
+               data-ph="{{ 'Message…' if EN else '메시지…' }}"></div>
           <div class="ctail">
-            <button type="button" class="send" id="chat-send" aria-label="Send" disabled>
+            <button type="button" class="send" id="chat-send" aria-label="{{ 'Send' if EN else '보내기' }}" disabled>
               <i class="ti ti-arrow-up" aria-hidden="true"></i>
             </button>
           </div>
         </div>
         <div class="cfoot">
-          <span class="seg"><i class="ti ti-paperclip" aria-hidden="true"></i>Drag files or photos</span>
+          <span class="seg"><i class="ti ti-paperclip" aria-hidden="true"></i>{{ 'Drag files or photos' if EN else '파일이나 사진을 끌어다 놓기' }}</span>
           <span class="grow"></span>
           <span class="cnt" id="chat-cnt" hidden>0</span>
-          <span class="seg"><span class="kbd">Shift</span><span class="plus-sign">+</span><span class="kbd">Enter</span>new line</span>
+          <span class="seg"><span class="kbd">Shift</span><span class="plus-sign">+</span><span class="kbd">Enter</span>{{ 'new line' if EN else '줄바꿈' }}</span>
         </div>
       </div>
     </div>
@@ -113,10 +117,10 @@
     <aside class="thread-panel" id="chat-thread-panel" role="dialog"
            aria-label="Thread" aria-modal="false" hidden>
       <header class="tp-head">
-        <button type="button" class="tp-back" id="chat-thread-close" aria-label="Close thread">
+        <button type="button" class="tp-back" id="chat-thread-close" aria-label="{{ 'Close thread' if EN else '스레드 닫기' }}">
           <i class="ti ti-chevron-left" aria-hidden="true"></i>
         </button>
-        <span class="tp-title">Thread</span>
+        <span class="tp-title">{{ 'Thread' if EN else '스레드' }}</span>
         <span class="tp-sub" id="chat-thread-sub"></span>
       </header>
       <div class="tp-body" id="chat-thread-body"></div>

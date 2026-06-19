@@ -160,6 +160,66 @@ def test_unknown_id_404s(client):
     assert client.get("/w/nope/api/usage").status_code == 404
 
 
+# ── presenter demo: chat-enabled twin of the public read-only demo ───────────
+
+def test_presenter_unlisted_but_reachable(client):
+    # The presenter twin is NOT on the public home list (cards() skips it) — the
+    # public surface stays just the read-only demo — but it IS reachable by URL
+    # and seeded from the SAME launch team (4 agents, 8 channels).
+    ids = {c["id"] for c in client.get("/api/workspaces").json()}
+    assert "demo" in ids
+    assert "demo-live" not in ids
+    snap = client.get("/w/demo-live/api/snapshot").json()
+    assert len(snap["agents"]) == 4
+    assert len(snap["channels"]) == 8
+
+
+def test_presenter_chat_enabled_demo_readonly(client):
+    # Public demo page: read-only flag true, no reset control.
+    demo = client.get("/w/demo").text
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", demo)
+    assert "presenter-reset" not in demo
+    # Presenter page: read-only flag false (chat on) + the reset control present.
+    live = client.get("/w/demo-live").text
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", live)
+    assert "presenter-reset" in live
+
+
+def test_presenter_reset_only_for_presenter(client):
+    # Reset rebuilds the presenter back to the seeded state (still 4 agents).
+    r = client.post("/w/demo-live/reset")
+    assert r.status_code == 200 and r.json()["status"] == "reset"
+    assert len(client.get("/w/demo-live/api/snapshot").json()["agents"]) == 4
+    # The public demo + user workspaces can't be reset; unknown id 404s.
+    assert client.post("/w/demo/reset").status_code == 403
+    created = client.post("/api/workspaces", json={"name": "Mia", "goal": "X"}).json()
+    assert client.post(f"/w/{created['id']}/reset").status_code == 403
+    assert client.post("/w/nope/reset").status_code == 404
+
+
+def test_presenter_ws_accepts_owner_turn(client):
+    # Demo socket rejects owner text (read-only); the presenter socket accepts it.
+    with client.websocket_connect("/w/demo/chat/ws") as sock:
+        sock.send_json({"type": "text", "channel": "dm-coordinator", "text": "hi"})
+        assert sock.receive_json().get("error") == "demo_readonly"
+    with client.websocket_connect("/w/demo-live/chat/ws") as sock:
+        sock.send_json({"type": "text", "channel": "dm-coordinator", "text": "hi"})
+        saw_readonly = got_response = False
+        for _ in range(8):
+            msg = sock.receive_json()
+            if msg.get("error") == "demo_readonly":
+                saw_readonly = True
+                break
+            if msg.get("type") in ("typing", "text"):
+                got_response = True
+                if msg.get("type") == "text":
+                    break
+            if msg.get("type") == "typing" and msg.get("on") is False:
+                break
+        assert not saw_readonly  # chat is enabled on the presenter
+        assert got_response
+
+
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────
 
 def test_dashboard_js_api_base_defaults_empty():

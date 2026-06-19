@@ -54,7 +54,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import (
-    FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response,
+    HTMLResponse, JSONResponse, RedirectResponse, Response,
 )
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
@@ -94,10 +94,9 @@ _DASH_STATIC = _DASH_DIR / "static"
 _DASH_TEMPLATES = _DASH_DIR / "templates"
 _DASH_I18N = _DASH_DIR / "i18n"
 
-# This app's own dir — only the home (workspace picker) page is workspace-local;
-# the dashboard itself is the shared Core template.
+# This app's own dir — the home (workspace picker) page + the presenter child
+# template are workspace-local; the dashboard itself is the shared Core template.
 _APP_DIR = Path(__file__).resolve().parent
-_HOME_HTML = _APP_DIR / "templates" / "home.html"
 
 
 def _asset_ver() -> str:
@@ -140,6 +139,16 @@ _WS_CAPS = {
 # env (e.g. GLIMI_LLM_BACKEND=ollama → free local, =claude_cli → metered); default
 # is the offline echo placeholder. The Demo always stays echo ($0).
 _USER_BACKEND = (os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo"
+
+# Demo identities. Two entries are built from the SAME seeded launch team
+# (``demo.build``):
+#   • ``demo`` (/w/demo)       — public, always exposed, read-only (browse only).
+#   • ``demo-live`` (/w/demo-live) — the Presenter twin: identical seeded state but
+#     chat-ENABLED so the owner can demo live + keep using it. Unlisted on the
+#     public home (``cards()`` skips it); reset to the seeded state via POST .../reset.
+_DEMO_TITLE = "런칭 데모"
+_PRESENTER_ID = "demo-live"
+_PRESENTER_TITLE = "런칭 데모"
 
 
 def _load_i18n(lang: str) -> dict:
@@ -207,7 +216,7 @@ class Workspace:
     glimi: Glimi
     title: str
     goal: str
-    kind: str  # "demo" | "user"
+    kind: str  # "demo" (public read-only) | "presenter" (chat-enabled twin) | "user"
     created_at: str = field(default_factory=_now_utc_iso)
 
     @property
@@ -246,9 +255,11 @@ class WorkspaceRegistry:
         return self._by_id.get(ws_id)
 
     def cards(self) -> list[dict]:
-        """Demo first, then user workspaces oldest → newest."""
+        """Demo first, then user workspaces oldest → newest. The presenter twin is
+        intentionally UNLISTED — it's the owner's private live-demo entry, reachable
+        only by direct URL so the public home shows just the read-only demo."""
         demos = [w for w in self._by_id.values() if w.kind == "demo"]
-        users = [w for w in self._by_id.values() if w.kind != "demo"]
+        users = [w for w in self._by_id.values() if w.kind == "user"]
         users.sort(key=lambda w: w.created_at)
         return [w.card() for w in (*demos, *users)]
 
@@ -316,6 +327,19 @@ class WorkspaceRegistry:
                     os.environ.pop("GLIMI_LLM_BACKEND", None)
                 else:
                     os.environ["GLIMI_LLM_BACKEND"] = _prev
+
+    def rebuild(self, ws_id: str, builder, *, kinds=("presenter",)) -> Optional["Workspace"]:
+        """Reset a workspace to a fresh seeded state: swap its ``Glimi`` for one from
+        ``builder()``, under the build lock. Held because constructing a ``Glimi``
+        re-points the process-global kernel runtime (same hazard as create / chat),
+        so the rebuild must serialize with them. Restricted to ``kinds`` (presenter
+        only) so the public demo and user workspaces can't be wiped."""
+        with self._lock:
+            ws = self._by_id.get(ws_id)
+            if ws is None or ws.kind not in kinds:
+                return None
+            ws.glimi = builder()
+            return ws
 
 
 # ── per-workspace dashboard endpoint shapes (mirror glimi/dashboard/app.py) ───
@@ -542,7 +566,11 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "chat_user": owner_name or "You",
         "refresh_ms": refresh_ms or "",
     }
-    resp = _TEMPLATES.TemplateResponse(request, "dashboard/_core.html", ctx)
+    # The presenter twin renders a thin child of the canonical shell that adds the
+    # owner-only "reset to initial state" control (extra_chrome/extra_scripts).
+    template = ("dashboard/presenter.html" if ws.kind == "presenter"
+                else "dashboard/_core.html")
+    resp = _TEMPLATES.TemplateResponse(request, template, ctx)
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -568,6 +596,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     if with_demo:
         _install_demo(reg, interval=demo_interval)
+        _install_presenter(reg)
 
     def _require(ws_id: str) -> Workspace:
         ws = reg.get(ws_id)
@@ -577,9 +606,16 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     # ── home ──────────────────────────────────────────────────────────────
     @app.get("/", response_class=HTMLResponse)
-    def home() -> FileResponse:
-        return FileResponse(str(_HOME_HTML), media_type="text/html",
-                            headers={"Cache-Control": "no-store"})
+    def home(request: Request, lang: str = "ko"):
+        """Workspace picker + create form. Korean-primary (the audience); ``?lang=en``
+        switches. Rendered (not served static) so the landing copy localizes."""
+        lang = (lang or "ko").lower()
+        if lang not in ("ko", "en"):
+            lang = "ko"
+        resp = _TEMPLATES.TemplateResponse(
+            request, "home.html", {"request": request, "lang": lang})
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     @app.get("/api/workspaces")
     def list_workspaces() -> JSONResponse:
@@ -787,6 +823,21 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         ws = _require(ws_id)
         return JSONResponse(ws.reader().usage())
 
+    # ── presenter: reset to the initial seeded state ────────────────────────
+    @app.post("/w/{ws_id}/reset")
+    def w_reset(ws_id: str) -> JSONResponse:
+        """Rebuild the Presenter demo back to the seeded mockup state (clears every
+        message the owner sent during a walkthrough). Presenter-only — the public
+        demo and user workspaces can't be reset (the registry guards on kind)."""
+        ws = _require(ws_id)
+        if ws.kind != "presenter":
+            raise HTTPException(status_code=403,
+                                detail="reset is only available for the presenter demo")
+        out = reg.rebuild(ws_id, lambda: _demo.build(backend=_USER_BACKEND))
+        if out is None:
+            raise HTTPException(status_code=404, detail="presenter demo not found")
+        return JSONResponse({"status": "reset", "id": ws_id})
+
     return app
 
 
@@ -798,7 +849,7 @@ def _install_demo(reg: WorkspaceRegistry, *, interval: float = 6.0) -> Workspace
     so it runs safely alongside reads + serialized creates.
     """
     g = _demo.build()
-    ws = Workspace(id="demo", glimi=g, title="Launch demo",
+    ws = Workspace(id="demo", glimi=g, title=_DEMO_TITLE,
                    goal=_demo.GOAL, kind="demo")
     reg.register(ws)
     stop = threading.Event()
@@ -809,6 +860,23 @@ def _install_demo(reg: WorkspaceRegistry, *, interval: float = 6.0) -> Workspace
     thread.start()
     # Daemon thread → dies with the process; server lifetime == demo lifetime, so
     # we don't expose a stop handle.
+    return ws
+
+
+def _install_presenter(reg: WorkspaceRegistry) -> Workspace:
+    """Register the Presenter demo (``/w/demo-live``) — the chat-enabled twin of the
+    public read-only demo, built from the SAME seeded launch team so the owner can
+    open it for a live walkthrough and continue from the exact mockup state.
+
+    Differences from the public demo: ``kind="presenter"`` (so chat is NOT
+    read-only), built on ``_USER_BACKEND`` (real replies when the operator sets
+    ``GLIMI_LLM_BACKEND``; echo/$0 otherwise), and NO activity loop — the state is
+    owner-driven + stays stable for a demo, with ``POST .../reset`` rebuilding it
+    back to the seeded mockup. Unlisted on the public home (see ``cards()``)."""
+    g = _demo.build(backend=_USER_BACKEND)
+    ws = Workspace(id=_PRESENTER_ID, glimi=g, title=_PRESENTER_TITLE,
+                   goal=_demo.GOAL, kind="presenter")
+    reg.register(ws)
     return ws
 
 
@@ -826,8 +894,9 @@ def serve(host: str = "127.0.0.1", port: int = 8800, **uvicorn_kwargs) -> int:
     print("=" * 64)
     print("  Glimi Workspace — SERVER (N workspaces)")
     print("=" * 64)
-    print(f"  home : {url}            ← workspace list + create")
-    print(f"  demo : {url}/w/demo     ← seeded live demo (read-only, $0)")
+    print(f"  home : {url}              ← workspace list + create")
+    print(f"  demo : {url}/w/demo       ← seeded live demo (read-only, public, $0)")
+    print(f"  live : {url}/w/demo-live  ← presenter twin (chat ON, owner-only, resettable)")
     print("=" * 64 + "\n")
     uvicorn.run(app, host=host, port=port, **uvicorn_kwargs)
     return 0

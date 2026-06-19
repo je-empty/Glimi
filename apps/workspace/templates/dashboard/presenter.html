@@ -1,0 +1,47 @@
+{# Presenter demo = the canonical Glimi Core shell + an owner-only "reset to
+   initial state" control. Rendered ONLY for kind="presenter" workspaces
+   (/w/demo-live) by apps/workspace/server.py:_render_core — the public read-only
+   demo (/w/demo) renders dashboard/_core.html directly and never carries this.
+   The chrome/badge localizes off `language` (ko default; ?lang=en). #}
+{% extends "dashboard/_core.html" %}
+
+{% block extra_chrome %}
+<!-- Live-demo badge + reset. Presenter chat is enabled (read_only is False for
+     kind="presenter"), so the owner can demo live and reset between runs. -->
+<span class="presenter-tag"
+      title="{{ '시연 모드 — 채팅이 켜져 있어요' if language != 'en' else 'Presenter mode — chat is live' }}"
+      style="display:inline-flex;align-items:center;gap:5px;margin-left:10px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.02em;background:var(--accent-soft);color:var(--accent)">
+  <i class="ti ti-broadcast" aria-hidden="true"></i>{{ '시연 모드' if language != 'en' else 'Presenter' }}
+</span>
+<button id="presenter-reset" type="button"
+        title="{{ '처음 상태로 되돌리기' if language != 'en' else 'Reset to initial state' }}"
+        style="display:inline-flex;align-items:center;gap:5px;margin-left:6px;padding:4px 11px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text-dim);font-size:12px;font-weight:600;cursor:pointer">
+  <i class="ti ti-rotate-2" aria-hidden="true"></i><span>{{ '초기화' if language != 'en' else 'Reset' }}</span>
+</button>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var btn = document.getElementById('presenter-reset');
+  if (!btn) return;
+  var EN = {{ 'true' if language == 'en' else 'false' }};
+  // POST {api_base}/reset rebuilds this workspace's seeded state server-side.
+  var base = (document.body && document.body.getAttribute('data-api-base')) || '';
+  btn.addEventListener('click', function () {
+    var ask = EN
+      ? 'Reset the demo to its initial state? Every message you sent during the walkthrough will be cleared.'
+      : '데모를 처음 상태로 되돌릴까요? 시연 중 보낸 메시지가 모두 지워집니다.';
+    if (!window.confirm(ask)) return;
+    btn.disabled = true;
+    fetch(base + '/reset', { method: 'POST' })
+      .then(function (r) { if (!r.ok) throw new Error('reset failed'); return r.json(); })
+      .then(function () { window.location.reload(); })
+      .catch(function () {
+        btn.disabled = false;
+        window.alert(EN ? 'Reset failed — please try again.' : '초기화에 실패했어요. 다시 시도해 주세요.');
+      });
+  });
+})();
+</script>
+{% endblock %}

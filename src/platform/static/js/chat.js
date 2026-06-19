@@ -42,6 +42,18 @@
   // Look-only mockup (demo): composer stays disabled + a banner shows. The WS
   // backend also rejects writes ('demo_readonly') — this is the UI half.
   var READONLY = window.__GLIMI_READONLY__ === true;
+  // Chat-client language. The chat client is separate from dashboard.js; mirror
+  // its pick — localStorage override → <html lang> (server) → ko default — so the
+  // composer / status / typing copy matches the dashboard chrome. Read once at
+  // load (a live language toggle re-renders chrome immediately; chat copy follows
+  // on the next load), so default to Korean (the primary audience).
+  var LANG = (function () {
+    var l = null;
+    try { l = localStorage.getItem('glimi-lang'); } catch (e) {}
+    l = l || (document.documentElement && document.documentElement.lang) || 'ko';
+    return l === 'en' ? 'en' : 'ko';
+  })();
+  var EN = LANG === 'en';
   // Embedded (dashboard #view-chat) vs standalone (/chat). Embedded does NOT
   // auto-boot at load — the dashboard lazy-inits on first Chat-tab entry so the
   // WS isn't opened until the tab is actually shown. Standalone auto-boots.
@@ -510,7 +522,7 @@
   function showTypeFoot(on, who) {
     if (!$typefoot) return;
     if (on) {
-      if ($typefootWho) $typefootWho.textContent = who || 'Someone';
+      if ($typefootWho) $typefootWho.textContent = who || (EN ? 'Someone' : '누군가');
       $typefoot.classList.add('show');
       $typefoot.setAttribute('aria-hidden', 'false');
     } else {
@@ -837,8 +849,12 @@
     // presence API → online == DM count as a neutral default).
     if ($sideSub) {
       var n = dms.length;
-      var noun = WS_BASE ? 'members' : 'friends';
-      $sideSub.textContent = n + ' ' + noun + ' · ' + n + ' online';
+      if (EN) {
+        var noun = WS_BASE ? 'members' : 'friends';
+        $sideSub.textContent = n + ' ' + noun + ' · ' + n + ' online';
+      } else {
+        $sideSub.textContent = n + '명 · ' + n + '명 접속 중';
+      }
     }
   }
 
@@ -871,9 +887,9 @@
         $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash' : 'ti ti-hash hash');
       }
       if ($input) {
-        var ph = 'Message ' + (c.name || c.channel) + '…';
-        $input.setAttribute('data-ph', ph);
-        $input.setAttribute('aria-label', 'Message ' + (c.name || c.channel));
+        var nm = c.name || c.channel;
+        $input.setAttribute('data-ph', EN ? ('Message ' + nm + '…') : (nm + '에게 메시지…'));
+        $input.setAttribute('aria-label', EN ? ('Message ' + nm) : (nm + '에게 메시지'));
       }
     } else {
       setChannelLabel('# ' + CHANNEL);
@@ -915,6 +931,14 @@
     });
   }
   if ($scrim) $scrim.addEventListener('click', closeSidebarMobile);
+  // Mobile: the channel header doubles as the channel switcher — tapping the
+  // title / icon / ⌄ cue opens the drawer (the small hamburger alone was hard to
+  // discover on phones). No-op on desktop where the sidebar is always present.
+  function headTapNav() { if (isNarrow()) openSidebarMobile(); }
+  if ($channelLabel) $channelLabel.addEventListener('click', headTapNav);
+  if ($headIcon) $headIcon.addEventListener('click', headTapNav);
+  var $headNavCue = document.getElementById('chat-head-nav-cue');
+  if ($headNavCue) $headNavCue.addEventListener('click', headTapNav);
   if ($sideRefresh) $sideRefresh.addEventListener('click', function () { loadChannels(); });
   if ($search) $search.addEventListener('input', renderChannels);
 
@@ -937,7 +961,7 @@
     if (reconnectTimer) return;
     var delay = Math.min(RECONNECT_MAX, 500 * Math.pow(2, reconnectAttempts));
     reconnectAttempts++;
-    setStatus('connecting', 'Reconnecting…');
+    setStatus('connecting', EN ? 'Reconnecting…' : '다시 연결 중…');
     reconnectTimer = setTimeout(function () {
       reconnectTimer = null;
       connect();
@@ -945,7 +969,7 @@
   }
   function connect() {
     intentionalClose = false;
-    setStatus('connecting', 'Connecting…');
+    setStatus('connecting', EN ? 'Connecting…' : '연결 중…');
     try {
       ws = new WebSocket(wsUrl());
     } catch (e) {
@@ -955,7 +979,7 @@
     }
     ws.onopen = function () {
       reconnectAttempts = 0;
-      setStatus('open', 'Connected');
+      setStatus('open', EN ? 'Connected' : '연결됨');
       syncSendDisabled();
       try { ws.send(JSON.stringify({ type: 'ping', channel: CHANNEL, agent: AGENT })); } catch (e2) {}
     };
@@ -1236,7 +1260,7 @@
     var root = models[0] || msgIndex[rootId];
     var replyCount = Math.max(0, models.length - 1);
     if ($threadSub) {
-      $threadSub.textContent = (root ? (root.name + ' · ') : '') + replyCount + (replyCount === 1 ? ' reply' : ' replies');
+      $threadSub.textContent = (root ? (root.name + ' · ') : '') + (EN ? (replyCount + (replyCount === 1 ? ' reply' : ' replies')) : (replyCount + '개의 답글'));
     }
     $threadBody.innerHTML = '';
     models.forEach(function (r) { $threadBody.appendChild(threadRow(r, true)); });
@@ -1290,7 +1314,7 @@
     openThreadRootId = actualRoot;
     lastFocused = document.activeElement;
     // Show a loading shell, then fetch the real thread over the socket.
-    if ($threadSub) $threadSub.textContent = 'Loading…';
+    if ($threadSub) $threadSub.textContent = EN ? 'Loading…' : '불러오는 중…';
     $threadBody.innerHTML = '';
     $threadFoot.innerHTML = '';
     $threadPanel.hidden = false;
