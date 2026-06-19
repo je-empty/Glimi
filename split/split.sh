@@ -27,6 +27,7 @@ git clone --no-local "$SRC" "$OUT/glimi"
   git filter-repo \
     --path glimi/ --path eval/ \
     --path PYPI_README.md --path LICENSE --path pyproject.toml \
+    --path docs/screenshots/ --path resources/ \
     --path tests/__init__.py --path tests/unit/__init__.py \
     --path-glob 'tests/unit/test_glimi_*.py' \
     --path tests/unit/test_reactions_kernel.py \
@@ -38,7 +39,17 @@ git clone --no-local "$SRC" "$OUT/glimi"
   mkdir -p .github/workflows
   cp "$SRC/split/ci.kernel.yml" .github/workflows/ci.yml
   # pyproject.toml is already the trimmed kernel one (lives in the monorepo).
-  git add -A && git commit -q -m "chore: kernel CI for standalone repo" || true )
+  # The kernel (Core) README is the portfolio entry point: links out to the two
+  # app repos + embeds docs/screenshots. CLAUDE.md = owner-only kernel rules.
+  # Per-repo README/CLAUDE are staged-pending (monorepo is the current shape; the
+  # split is deferred — see SPLIT_PLAN.md). Author split/README.kernel*.md +
+  # split/CLAUDE.kernel.md before a real split (workflow output saved). Fail-soft.
+  cp "$SRC/split/README.kernel.md"     README.md       2>/dev/null || true
+  cp "$SRC/split/README.kernel.ko.md"  README.ko.md    2>/dev/null || true
+  cp "$SRC/split/CLAUDE.kernel.md"     CLAUDE.md        2>/dev/null || true
+  cp "$SRC/NOTICE"                     NOTICE          2>/dev/null || true
+  cp "$SRC/CITATION.cff"               CITATION.cff    2>/dev/null || true
+  git add -A && git commit -q -m "chore: kernel CI + README/CLAUDE + NOTICE for standalone repo" || true )
 
 # ── Repo C: workspace (glimi-workspace) ─────────────────────────────────────
 git clone --no-local "$SRC" "$OUT/glimi-workspace"
@@ -53,9 +64,11 @@ git clone --no-local "$SRC" "$OUT/glimi-workspace"
     --path-rename apps/workspace/:        # hoist to repo root
   cp "$SRC/split/pyproject.workspace.toml" pyproject.toml
   cp "$SRC/LICENSE" LICENSE 2>/dev/null || true
+  cp "$SRC/split/README.workspace.md" README.md       2>/dev/null || true
+  cp "$SRC/split/CLAUDE.workspace.md"  CLAUDE.md        2>/dev/null || true
   mkdir -p .github/workflows
   cp "$SRC/split/ci.workspace.yml" .github/workflows/ci.yml
-  git add -A && git commit -q -m "chore: workspace pyproject + CI for standalone repo" )
+  git add -A && git commit -q -m "chore: workspace pyproject + CI + README/CLAUDE for standalone repo" )
 
 # ── Repo B: community (glimi-community) ──────────────────────────────────────
 git clone --no-local "$SRC" "$OUT/glimi-community"
@@ -89,9 +102,13 @@ git clone --no-local "$SRC" "$OUT/glimi-community"
     --path apps/
   cp "$SRC/split/pyproject.community.toml" pyproject.toml
   cp "$SRC/LICENSE" LICENSE 2>/dev/null || true
+  # Overwrite the monorepo README the filter carried in with the community one.
+  cp "$SRC/split/README.community.md"    README.md       2>/dev/null || true
+  cp "$SRC/split/README.community.ko.md" README.ko.md    2>/dev/null || true
+  cp "$SRC/split/CLAUDE.community.md"     CLAUDE.md        2>/dev/null || true
   mkdir -p .github/workflows
   cp "$SRC/split/ci.community.yml" .github/workflows/ci.yml
-  git add -A && git commit -q -m "chore: community pyproject + CI for standalone repo" )
+  git add -A && git commit -q -m "chore: community pyproject + CI + README/CLAUDE for standalone repo" )
 
 # ── safety: large blobs + leaked private files per extract ──────────────────
 for r in glimi glimi-workspace glimi-community; do

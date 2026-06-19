@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use Glimi in your work, please cite it."
+title: "Glimi — a living multi-agent harness"
+abstract: >-
+  A Python harness for a cast of persistent AI characters with their own
+  personality, memory, and relationships, that keep going on their own — built
+  around a storage/profile/observer-neutral kernel with elastic context budgeting
+  and per-character model swapping across cloud and local backends.
+type: software
+authors:
+  - family-names: Sim
+    given-names: Jaebin
+    alias: jaebinsim
+repository-code: "https://github.com/jaebinsim/glimi"
+license: Apache-2.0
+keywords:
+  - generative-agents
+  - multi-agent
+  - llm
+  - memory
+  - agent-harness
+date-released: 2026-06-19
