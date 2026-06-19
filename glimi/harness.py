@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """High-level convenience API — wire an agent and chat in a few lines.
 
 This is the friendly front door to the kernel. It assembles the moving parts the

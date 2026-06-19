@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 에이전트 런타임: Claude Code CLI subagent를 통해 에이전트 응답 생성
 

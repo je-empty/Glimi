@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 LLM 백엔드 선택 + 편의 함수 파사드.
 

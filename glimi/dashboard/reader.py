@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """DashboardReader — a store-driven, read-only view over an agent population.
 
 This is the data layer of the (future) ``glimi[dashboard]`` extra. It renders

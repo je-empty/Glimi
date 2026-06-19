@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """Platform-neutral chat transport seam.
 
 These are the types that decouple the kernel chat brain from any concrete

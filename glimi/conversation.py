@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 대화 엔진: 에이전트 간 자동 대화 관리 (Glimi Core)
 

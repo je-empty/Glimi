@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 Tool 실행 결과 포맷 — 다음 턴 에이전트에게 되먹임.
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """LLM 가격표 + 비용 추정 — kernel-side, platform-neutral.
 
 비용은 **resolved API model id** (anthropic_sdk._MODEL_ALIAS 적용 후) 기준으로 매긴다.

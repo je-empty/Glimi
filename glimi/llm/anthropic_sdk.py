@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 Anthropic SDK 백엔드 — 직접 API 호출 + prompt caching.
 

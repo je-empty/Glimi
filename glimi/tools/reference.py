@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 Tool reference 생성 — 에이전트 system prompt에 주입될 도구 목록 텍스트.
 

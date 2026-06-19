@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 컨텍스트 예산 — 프롬프트가 모델 컨텍스트 윈도우(num_ctx)를 절대 넘지 않게 동적 조립.
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 Glimi Tool System — Claude Code tool_use 패턴의 프롬프트 레벨 구현.
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 에이전트 응답에서 <tools> 블록 + <call> 항목 파싱.
 

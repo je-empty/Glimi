@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 Tool call 인자 검증 — spec에 맞춰 타입/필수 필드 체크.
 

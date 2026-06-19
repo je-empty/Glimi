@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """Glimi dashboard — store-driven, app-agnostic dashboard.
 
 This package is the dashboard slice of Glimi Core. It renders *any* agent

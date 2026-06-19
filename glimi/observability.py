@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """Observability sink the Glimi kernel writes to.
 
 The kernel emits structured runtime signals (system notices, per-agent thinking

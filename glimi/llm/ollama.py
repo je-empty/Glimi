@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 Ollama 백엔드 — 로컬 LLM 추론 엔진 (HTTP API).
 

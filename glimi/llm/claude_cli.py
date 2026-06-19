@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 Claude Code CLI 백엔드 — `claude -p` subprocess 호출 래퍼.
 

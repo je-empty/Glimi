@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """Glimi Core — domain-neutral multi-agent kernel.
 
 This package holds the reusable kernel that any application (Glimi Community,

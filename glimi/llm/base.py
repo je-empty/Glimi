@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """
 LLM 백엔드 추상화 — Glimi 가 어떤 추론 엔진을 쓰는지 결정하는 레이어.
 

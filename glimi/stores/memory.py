@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """In-memory :class:`~glimi.store.KernelStore` — zero-dependency, in-process.
 
 Every abstract method is implemented faithfully against plain dicts/lists, so

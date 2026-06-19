@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """FastAPI web app for the store-driven Glimi Core dashboard (P1.1).
 
 This is the **web layer** of the ``glimi[dashboard]`` extra. It is intentionally

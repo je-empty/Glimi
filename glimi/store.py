@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
 """KernelStore — the data-store interface the Glimi kernel depends on.
 
 The kernel (runtime / memory / conversation) must never import the hosting
