@@ -245,6 +245,7 @@ def list_communities() -> list[dict]:
             "description": info.get("description", ""),
             "is_default": d.name == default_id,
             "read_only": bool(info.get("read_only", False)),
+            "language": info.get("language", ""),
             "has_db": (d / "community.db").exists(),
             "has_env": (d / ".env").exists(),
         })

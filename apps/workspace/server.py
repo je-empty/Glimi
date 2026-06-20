@@ -10,8 +10,9 @@ Three things live here:
 1. A **Demo** workspace, always present, read-only + visibly live — the seeded
    launch team from :mod:`demo`, with its ``activity_loop`` running on a daemon
    thread (so the dashboard keeps updating with zero setup, offline, $0).
-2. A **home** page (``templates/home.html``) listing every workspace as a card and
-   a "create workspace" form (name + goal).
+2. A **home** page (the shared ``_demo_list.html`` from glimi/dashboard, identical
+   to the Community demo list) listing every workspace as a card + a "create
+   workspace" form (name + goal) unless ``GLIMI_DEMO_ONLY``.
 3. **User-created** workspaces: ``POST /api/workspaces`` constructs a fresh
    ``Glimi(backend="echo")``, builds the real interaction topology via
    ``run.run_workspace`` (echo → fast, deterministic, a genuine interaction web),
@@ -117,8 +118,8 @@ def _asset_ver() -> str:
 
 _ASSET_VER = _asset_ver()
 
-# Jinja env: the workspace's own templates (home.html) + the canonical Core
-# templates (dashboard/_core.html, _chat_shell.html). The dashboard renders with a
+# Jinja env: the canonical Core templates from glimi/dashboard (the shared
+# _demo_list.html home + dashboard/_core.html + _chat_shell.html). The dashboard renders with a
 # workspace context — user=None + caps hide the sim-only chrome, api_base=/w/{id}
 # retargets the shared dashboard.js — but the markup is the single shared source.
 from fastapi.templating import Jinja2Templates  # noqa: E402
@@ -674,14 +675,52 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     # ── home ──────────────────────────────────────────────────────────────
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request, lang: str = "ko"):
-        """Workspace picker + create form. Korean-primary (the audience); ``?lang=en``
-        switches. Rendered (not served static) so the landing copy localizes."""
+        """Workspace picker + (unless demo-only) create form. Renders the SHARED
+        ``_demo_list.html`` so this page is visually identical to the Community demo
+        list. Korean-primary; ``?lang=en`` switches."""
         lang = (lang or "ko").lower()
         if lang not in ("ko", "en"):
             lang = "ko"
-        resp = _TEMPLATES.TemplateResponse(
-            request, "home.html",
-            {"request": request, "lang": lang, "demo_only": _DEMO_ONLY})
+        EN = (lang == "en")
+        items = []
+        for c in reg.cards():
+            metas = ([f"{c['agents']} agents", f"{c['channels']} channels"] if EN
+                     else [f"팀원 {c['agents']}명", f"채널 {c['channels']}개"])
+            items.append({
+                "href": f"/w/{c['id']}",
+                "title": c["title"],
+                "desc": c.get("goal") or "",
+                "is_demo": (c["kind"] == "demo"),
+                "metas": metas,
+            })
+        create = None
+        if not _DEMO_ONLY:
+            create = {
+                "action": "/api/workspaces",
+                "heading": "Or start your own" if EN else "직접 만들어 보기",
+                "lede": ("Name yourself, give a goal, and a fresh Coordinator-led team spins up around it."
+                         if EN else "이름을 정하고 목표를 적으면, 코디네이터가 이끄는 새 팀이 그 주위로 꾸려져요."),
+                "name_label": "Your name" if EN else "이름",
+                "name_ph": "Owner" if EN else "예: 수민",
+                "goal_label": "Goal" if EN else "목표",
+                "goal_ph": ("Plan the public launch of our open-source project"
+                            if EN else "예: 오픈소스 프로젝트 공개 런칭 기획"),
+                "submit": "Create workspace" if EN else "워크스페이스 만들기",
+            }
+        ctx = {
+            "request": request, "lang": lang,
+            "brand": "Glimi Workspace",
+            "brand_sub": ("specialist teams on one Glimi Core" if EN
+                          else "하나의 Glimi Core 위에서 움직이는 전문가 팀"),
+            "lede": ("Give a goal and a team forms around it — a Coordinator that delegates to "
+                     "Researcher, Builder, and Critic, who talk to each other and report back. "
+                     "Open the demo to watch one in motion. No login needed." if EN
+                     else "목표를 주면 그 주위로 팀이 꾸려져요 — 코디네이터가 리서처·빌더·크리틱에게 일을 나눠주고, "
+                          "서로 이야기하며 결과를 가져옵니다. 데모를 열어 직접 보세요. 로그인은 필요 없어요."),
+            "items": items,
+            "create": create,
+        }
+        resp = _TEMPLATES.TemplateResponse(request, "_demo_list.html", ctx)
         resp.headers["Cache-Control"] = "no-store"
         return resp
 

@@ -21,19 +21,41 @@ async def home(request: Request):
     # 이 앱은 커뮤니티 전용 — 별도 랜딩 페이지는 없다.
     user = get_current_user(request)
     if not user:
-        # 로그아웃 방문자: 공개(read-only 데모) 커뮤니티 목록을 그대로 보여준다 (리다이렉트
-        # 아님 — 랜딩에서 들어오면 워크스페이스처럼 '목록 페이지'에 닿게). 관리 컨트롤
-        # (생성/가동/삭제)은 home.html 에서 user 없으면 숨긴다. 공개 데모가 없으면 /login.
+        # 로그아웃 방문자: 공개(read-only 데모) 커뮤니티를 SHARED `_demo_list.html` 로
+        # 보여준다 (워크스페이스 홈과 똑같은 목록 페이지). 언어(?lang)에 맞는 데모 하나만
+        # (ko→내 커뮤니티, en→Your Community). 공개 데모가 없으면 /login.
         public = [c for c in list_communities() if c.get("read_only")]
         if not public:
             return RedirectResponse(url="/login", status_code=303)
-        running = set(supervisor.list_running())
-        for c in public:
-            c["running"] = c["id"] in running
-            c["members"] = _fetch_members(c["id"])
-            c["member_count"] = len(c["members"])
-        return templates.env.TemplateResponse(
-            request, "home.html", {"user": None, "communities": public})
+        lang = (request.query_params.get("lang") or "ko").lower()
+        if lang not in ("ko", "en"):
+            lang = "ko"
+        EN = (lang == "en")
+        matched = [c for c in public if (c.get("language") or "ko").lower() == lang]
+        shown = matched or public  # 언어 매칭 없으면 전체로 폴백
+        items = []
+        for c in shown:
+            n = len(_fetch_members(c["id"]))
+            metas = ([f"{n} friends"] if EN else [f"친구 {n}명"])
+            items.append({
+                "href": f"/community/{c['id']}",
+                "title": c.get("name") or c["id"],
+                "desc": c.get("description") or "",
+                "is_demo": True,
+                "metas": metas,
+            })
+        ctx = {
+            "request": request, "lang": lang,
+            "brand": "Glimi Community",
+            "brand_sub": ("AI friends who live alongside each other" if EN
+                          else "서로 곁에서 살아가는 AI 친구들"),
+            "lede": ("Friends who talk to each other, remember, and grow closer. "
+                     "Browse the demo below — no login." if EN
+                     else "서로 대화하고, 기억하고, 관계를 쌓아가는 친구들. 아래 데모를 둘러보세요. 로그인 없이."),
+            "items": items,
+            "create": None,
+        }
+        return templates.env.TemplateResponse(request, "_demo_list.html", ctx)
 
     visible = _visible_communities(user)
     running = set(supervisor.list_running())

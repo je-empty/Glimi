@@ -77,10 +77,15 @@ def test_home_lists_demo(client):
 def test_home_page_renders(client):
     r = client.get("/")
     assert r.status_code == 200
-    # The home page is its own template — NOT a per-workspace dashboard, so it must
-    # not carry a data-api-base (that attribute is only for /w/{id} dashboards).
-    assert "data-api-base" not in r.text
-    assert "Glimi Workspace" in r.text
+    body = r.text
+    # The home page is the shared _demo_list.html — NOT a per-workspace dashboard,
+    # so no data-api-base (that's only for /w/{id} dashboards).
+    assert "data-api-base" not in body
+    assert "Glimi Workspace" in body
+    assert 'class="badge"' in body          # the demo card renders server-side
+    assert "?lang=en" in body               # shared language toggle present
+    # The old workspace-only "features" section is gone (unified with Community).
+    assert "안에 들어있는" not in body and "What's inside" not in body
 
 
 # ── creating a workspace adds one with an independent store ───────────────────

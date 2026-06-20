@@ -90,8 +90,8 @@ def test_canonical_templates_present():
 
 
 def test_workspace_keeps_no_dashboard_template_copy():
-    # The workspace renders the canonical dashboard/_core.html — it must not fork
-    # its own dashboard template (only home.html is workspace-local).
+    # The workspace renders the canonical dashboard/_core.html AND the shared
+    # _demo_list.html home — it must not fork its own copies of these.
     for stray in ("dashboard/_core.html", "dashboard/index.html", "base.html", "_chat_shell.html"):
         p = os.path.join(_ROOT, "apps", "workspace", "templates", stray)
         assert not os.path.exists(p), (
