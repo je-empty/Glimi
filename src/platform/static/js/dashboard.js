@@ -463,32 +463,13 @@ function renderLangMenu() {
   });
 }
 function applyStaticI18n() {
-  // 탭 라벨
-  const tabMap = {
-    chat: 'tab_chat', overview: 'tab_overview', agents: 'tab_agents', channels: 'tab_channels',
-    messages: 'tab_messages', scenes: 'tab_scenes', achievements: 'tab_achievements',
-    events: 'tab_events', health: 'tab_health', sync: 'tab_sync', dev: 'tab_dev',
-    usage: 'tab_usage', tools: 'tab_tools', supervisors: 'tab_supervisors', logs: 'tab_logs',
-  };
-  document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
-    const k = tabMap[btn.dataset.tab];
-    if (!k) return;
-    const cnt = btn.querySelector('.count');
-    const cntHtml = cnt ? cnt.outerHTML : '';
-    // 템플릿에서 서버 렌더한 아이콘 보존 (i18n 재빌드가 innerHTML 갈아끼우며 날리던 것)
-    const em = btn.querySelector('.tab-emoji');
-    const emHtml = em ? em.outerHTML : '';
-    btn.innerHTML = `${emHtml}<span class="tab-label">${t(k)}</span> ${cntHtml}`;
-  });
-  // KPI labels
-  const kpiMap = [['kpi-server','kpi_server'],['kpi-bot','kpi_bot'],['kpi-user','kpi_owner'],['kpi-scene','kpi_scene'],['kpi-msgs','kpi_msgs']];
-  kpiMap.forEach(([id, k]) => {
-    const el = document.getElementById(id);
-    if (el && el.previousElementSibling && el.previousElementSibling.classList.contains('label')) {
-      el.previousElementSibling.textContent = t(k);
-    }
-  });
-  // Detail close button
+  // Dashboard META chrome (tab labels + KPI labels) is intentionally kept in
+  // ENGLISH — these are developer/observability terms that read cleaner in English
+  // ("Overview"/"Agents"/"Usage" beat the awkward "개요"/"구성원"/"사용량"), and the
+  // template already hardcodes the English. The PRODUCT/content surfaces (chat,
+  // demo conversations, landing) are localized separately (chat.js · templates ·
+  // seeded data), so they stay Korean. Only the detail-panel close button — a
+  // product-side control — follows the language toggle.
   const closeBtn = document.getElementById('d-close');
   if (closeBtn) closeBtn.textContent = t('btn_close');
 }
