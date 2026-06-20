@@ -2,8 +2,8 @@
 
 문제:
   유나가 internal-dm-서유나-윤하나 에서 "하나야 ~~ 부탁해" 요청 →
-  하나가 "ㅋㅋ 알겠어, mgr-creator 가서 빈이한테 물어볼게" 약속 →
-  내부 대화 끝남. 이후 trigger 없으면 하나가 mgr-creator 에 가서 발화 안 함.
+  하나가 "ㅋㅋ 알겠어, 내 DM 가서 빈이한테 물어볼게" 약속 →
+  내부 대화 끝남. 이후 trigger 없으면 하나가 자기 DM 채널에 가서 발화 안 함.
   결과: 약속 묵음 + 빈이 무한 대기.
 
 해결:
@@ -25,9 +25,9 @@ from community.supervisors.base import Supervisor
 
 
 # Commitment 발화 감지 — "(channel) 가볼게" 류 패턴.
-# Group 1: 채널 (mgr-creator 등). Group 2: 약속 동사 (가볼게/할게/물어볼게/부탁할게/등).
+# Group 1: 채널 (dm-윤하나 등; 레거시 mgr-* 도 매칭). Group 2: 약속 동사 (가볼게/할게/등).
 _COMMIT_PATTERNS = [
-    # 채널명 #mgr-creator 가볼게 / mgr-creator 에 가볼게
+    # 채널명 #dm-윤하나 가볼게 / dm-윤하나 에 가볼게 (레거시 mgr-* 도 매칭)
     _re.compile(r"#?(mgr-[a-z\-가-힣]+|dm-[\w가-힣]+|group-[\w가-힣\-]+)\s*(?:에|로)?\s*가\s*(?:볼게|봐야|볼래|볼)|"
                 r"#?(mgr-[a-z\-가-힣]+|dm-[\w가-힣]+|group-[\w가-힣\-]+)\s*에서\s*(?:할|물어|가)",
                 _re.IGNORECASE),
@@ -44,11 +44,25 @@ _GENERIC_COMMIT = _re.compile(
     r"적용할게|반영할게|넣어둘게|넣어볼게)",
 )
 
-# Channel hints — 내부 commitment 만 있을 때 디폴트 target 결정용
-_DEFAULT_TARGET_BY_AGENT_TYPE = {
-    "creator": "mgr-creator",  # 하나는 mgr-creator 가 본거지
-    "mgr": "mgr-dashboard",
-}
+# Channel hints — 내부 commitment 만 있을 때 디폴트 target 결정용.
+# 매니저(유나/하나/세나)도 dm-<이름> 채널을 본거지로 쓴다 → DB 에이전트 이름에서 도출.
+def _default_target_for_type(agent_type: str) -> Optional[str]:
+    """agent_type (mgr/creator/dev) → 그 매니저의 owner↔manager DM 채널 (dm-<이름>)."""
+    if agent_type not in ("mgr", "creator", "dev"):
+        return None
+    try:
+        for a in db.list_agents():
+            if a.get("type") == agent_type:
+                return f"dm-{a['name']}"
+    except Exception:
+        pass
+    # seed 기본 이름 fallback
+    return {"mgr": "dm-서유나", "creator": "dm-윤하나", "dev": "dm-한세나"}.get(agent_type)
+
+
+def _mgr_dm_channel_name() -> str:
+    """mgr (유나) 의 owner↔mgr DM 채널명 — yuna_force_agent 호출 컨텍스트용."""
+    return _default_target_for_type("mgr") or "dm-서유나"
 
 NUDGE_AFTER_SEC = 5 * 60      # 5 분 안에 안 가면 nudge
 RENUDGE_COOLDOWN_SEC = 15 * 60  # 같은 (agent, target) 쌍 15 분에 1회만 nudge
@@ -180,7 +194,7 @@ class CommitmentSupervisor(Supervisor):
                     break
             # 2) generic + agent type 디폴트
             if not target and _GENERIC_COMMIT.search(msg):
-                target = _DEFAULT_TARGET_BY_AGENT_TYPE.get(d["agent_type"])
+                target = _default_target_for_type(d["agent_type"])
             if not target:
                 continue
             out.append({
@@ -231,7 +245,8 @@ class CommitmentSupervisor(Supervisor):
                 "target": target_channel,
                 "instruction": instruction,
             }, ensure_ascii=False)
-            mgr_ch = next((c for c in guild.text_channels if c.name == "mgr-dashboard"), None)
+            _mgr_dm = _mgr_dm_channel_name()
+            mgr_ch = next((c for c in guild.text_channels if c.name == _mgr_dm), None)
             await yuna_force_agent(mgr_ch, payload, guild)
             log_writer.system(
                 f"[commitment] {agent_name} → #{target_channel} nudge 발송 (commit: {commit_msg[:80]})"

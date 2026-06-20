@@ -18,7 +18,6 @@ from community import db, log_writer
 from community.core.runtime import runtime
 from community.bot import (
     MGR_CHANNEL,
-    MGR_SYSTEM_LOG,
     CREATOR_CHANNEL,
     MGR_ID,
 )
@@ -200,9 +199,8 @@ class TutorialFlowSupervisor(Supervisor):
 
     async def _check_channel_setup(self, guild):
         ch_names = {ch.name for ch in guild.text_channels}
-        has_syslog = MGR_SYSTEM_LOG in ch_names
         has_creator = CREATOR_CHANNEL in ch_names
-        if not has_syslog or not has_creator:
+        if not has_creator:
             # 재기동·충돌 등으로 phase=channels_setup 인데 채널이 아직 없을 수 있음.
             # 원래 trigger_phase2 가 setup_channels 를 돌리는데, supervisor 가 채널 조건으로
             # 일찍 return 하면 아무도 진행을 못 시킴 → Phase 2 영구 stall.
@@ -267,12 +265,12 @@ class TutorialFlowSupervisor(Supervisor):
                     from community.scenes.tutorial.handlers import complete_tutorial
                     await complete_tutorial()
                     return
-                # DM 까진 왔는데 유나가 mgr-dashboard에 아직 안내를 안 했다 → nudge
+                # DM 까진 왔는데 유나가 자기 DM 에 아직 안내를 안 했다 → nudge
                 if persona_dm_ready and not yuna_mentioned_friend and self._can_nudge():
                     self._mark_nudged()
                     await self._nudge_yuna(guild,
                         f"하나가 {', '.join(persona_names)} 프로필 만들었고 "
-                        f"dm 채널까지 열렸어. mgr-dashboard 에서 오너한테 한 줄 소개하고 "
+                        f"dm 채널까지 열렸어. 네 DM 에서 오너한테 한 줄 소개하고 "
                         f"바로 finish_tutorial 호출해서 튜토리얼 마무리하자."
                     )
                     return

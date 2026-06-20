@@ -101,19 +101,25 @@ def _build_name_order_map() -> dict[str, int]:
 def _channel_sort_key(ch_name: str, name_order: dict[str, int]) -> tuple:
     """채널 내부 정렬 키.
     규칙:
-      - glimi-mgr: mgr-system-log → mgr-dashboard → mgr-creator
+      - 매니저 DM (dm-<유나> → dm-<하나> → dm-<세나>) 먼저
       - glimi-dm: 에이전트 creation order (name_order)
       - glimi-group: 채널명 알파벳
       - glimi-internal-dm: 두 참여자의 order (min, max)
       - glimi-internal-group: 채널명 알파벳
+      - 레거시 mgr-* 채널은 dm 보다 앞 (back-compat 커뮤니티)
     """
-    MGR_ORDER = ["mgr-system-log", "mgr-dashboard", "mgr-creator"]
+    import community.bot as _bot
+    MGR_ORDER = [_bot.MGR_CHANNEL, _bot.CREATOR_CHANNEL, _bot.DEV_CHANNEL]
     BIG = 10_000  # unknown 이름은 맨 뒤
+    # 매니저 DM (dm-<유나/하나/세나>) — 같은 category 안에서 맨 앞 고정 순서.
     if ch_name in MGR_ORDER:
-        return (0, MGR_ORDER.index(ch_name))
+        return (0, -1, MGR_ORDER.index(ch_name), "")
+    # 레거시 mgr-* 채널 (구 커뮤니티) — mgr category 안 정렬용, dm 보다 앞.
+    if ch_name.startswith("mgr"):
+        return (0, -1, BIG, ch_name)
     if ch_name.startswith("dm-"):
         name = ch_name[len("dm-"):]
-        return (0, name_order.get(name, BIG), name)
+        return (0, name_order.get(name, BIG), 0, name)
     if ch_name.startswith("internal-dm-"):
         rest = ch_name[len("internal-dm-"):]
         # "A-B" 형태. 이름에 "-" 가 포함되지 않는다고 가정 (한글 이름).
@@ -123,11 +129,11 @@ def _channel_sort_key(ch_name: str, name_order: dict[str, int]) -> tuple:
             oa = name_order.get(a, BIG)
             ob = name_order.get(b, BIG)
             return (0, min(oa, ob), max(oa, ob), rest)
-        return (0, BIG, rest)
+        return (0, BIG, BIG, rest)
     if ch_name.startswith("internal-group-") or ch_name.startswith("group-"):
-        return (0, ch_name)
+        return (0, BIG, BIG, ch_name)
     # 기타 (예: glimi-* 아닌 것) → 맨 뒤
-    return (1, ch_name)
+    return (1, BIG, BIG, ch_name)
 
 
 def _get_token() -> Optional[str]:
@@ -152,8 +158,8 @@ def _get_expected_channels() -> set[str]:
     sync 는 '테이블에 있는 것을 Discord 에 반영' 할 뿐 — 채널 종류나
     에이전트 타입으로 유추해서 미리 만들지 않음.
 
-    초기 커뮤니티 상태: mgr-dashboard 만 (튜토리얼 greet 단계).
-    튜토리얼 진행되면 phase 별로 mgr-creator, mgr-system-log, dm-* 가 추가 등록.
+    초기 커뮤니티 상태: 매니저(유나) DM (dm-<유나>) 만 (튜토리얼 greet 단계).
+    튜토리얼 진행되면 phase 별로 creator DM (dm-<하나>), persona dm-* 가 추가 등록.
     """
     channels = set()
     for ch in db.get_channel_overview():
@@ -336,12 +342,15 @@ async def sync_community(
                                 pass
 
             # ═══ 2. 카테고리 생성 + 채널 생성 (순서대로) ═══
+            # 생성 순서는 _channel_sort_key 로 통일 (매니저 DM 먼저 → persona DM → group → internal).
+            # 최종 position 정렬은 아래 "카테고리 내부 채널 정렬" 단계가 다시 보장.
             _progress("채널 생성 중...")
-            MGR_ORDER = ["mgr-system-log", "mgr-dashboard", "mgr-creator"]
+            _name_order_create = _build_name_order_map()
 
             # 카테고리를 원하는 순서대로 생성
             for cat_name in CATEGORY_ORDER:
-                needed = [ch for ch in sorted(expected) if _get_category_for_channel(ch) == cat_name and ch not in surviving]
+                needed = [ch for ch in sorted(expected, key=lambda c: _channel_sort_key(c, _name_order_create))
+                          if _get_category_for_channel(ch) == cat_name and ch not in surviving]
                 if not needed and not any(ch for ch in surviving.values() if ch.category and ch.category.name == cat_name):
                     continue
 
@@ -352,10 +361,6 @@ async def sync_community(
                     else:
                         cat = await guild.create_category(cat_name)
                         _progress(f"  카테고리 생성: {cat_name}")
-
-                # mgr 카테고리는 expected 중에서 MGR_ORDER 순으로
-                if cat_name == "glimi-mgr":
-                    needed = [ch for ch in MGR_ORDER if ch in expected and ch not in surviving]
 
                 for ch_name in needed:
                     if dry_run:
@@ -426,7 +431,8 @@ async def sync_community(
             from community.bot.core import _get_profile_image_bytes
 
             # 메시지 sync 제외 채널 — 채널 존재는 보장하지만 DB↔Discord 메시지 카운트 맞춤 X.
-            # mgr-system-log 는 런타임 로그가 webhook 으로 실시간 누적되는 곳이라 매번 drift.
+            # mgr-system-log 디코 채널은 폐지됐지만, 기존(레거시) 커뮤니티에 orphan 으로
+            # 남아 있을 수 있어 back-compat 으로 제외 유지 (런타임 로그가 쌓여 매번 drift 했던 채널).
             MSG_SYNC_EXCLUDED = {"mgr-system-log"}
 
             for ch_name in list(surviving.keys()):
@@ -434,7 +440,7 @@ async def sync_community(
                 # 채널 필터 적용
                 if channels_filter and ch_name not in channels_filter:
                     continue
-                # mgr-system-log 같은 런타임 로그 채널은 메시지 sync 스킵 (존재만 보장)
+                # 레거시 로그 채널은 메시지 sync 스킵 (존재만 보장)
                 if ch_name in MSG_SYNC_EXCLUDED:
                     _progress(f"  {ch_name}: 메시지 sync 스킵 (로그 채널)")
                     result["channels_scanned"] += 1

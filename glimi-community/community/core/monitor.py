@@ -26,6 +26,21 @@ from community import log_writer
 from community import community
 
 
+def _mgr_dm_channel() -> str:
+    """매니저(mgr/유나) 의 owner↔mgr DM 채널명 — dm-<유나 이름>.
+
+    매니저도 페르소나처럼 dm-<이름> 채널을 쓴다. DB 의 mgr 에이전트 이름에서 도출.
+    (core 레이어라 community.bot import 회피 — discord 의존성 누수 방지.)
+    레거시 fallback: 'dm-서유나' (seed 기본 이름)."""
+    try:
+        for a in db.list_agents():
+            if a.get("type") == "mgr":
+                return f"dm-{a['name']}"
+    except Exception:
+        pass
+    return "dm-서유나"
+
+
 # ── 프로세스 상태 ──────────────────────────────────────
 
 def _ps_has(pattern: str) -> bool:
@@ -372,12 +387,10 @@ def get_agent_thinking_logs(agent_id: str, n: int = 5) -> list[str]:
 def get_agent_recent_chat(agent_id: str, channel_hint: str = "", limit: int = 3) -> list[dict]:
     """특정 에이전트가 주로 말하는 채널의 최근 메시지."""
     if not channel_hint:
-        # 에이전트 타입으로 기본 채널 추정
+        # 에이전트 기본 채널 — 매니저 포함 전부 dm-<이름>
         try:
             a = db.get_agent(agent_id)
-            if a and a.get("type") == "mgr":
-                channel_hint = "mgr-dashboard"
-            elif a:
+            if a:
                 channel_hint = f"dm-{a['name']}"
         except Exception:
             return []
@@ -823,13 +836,8 @@ def get_agent_detail(agent_id: str) -> dict:
         facts = []
         print(f"[Monitor] memory detail 로드 실패: {e}")
 
-    # 주 채널 이름 (atype 은 위에서 결정됨)
-    if atype == "mgr":
-        primary = "mgr-dashboard"
-    elif atype == "creator":
-        primary = "mgr-creator"
-    else:
-        primary = f"dm-{agent.get('name', '')}"
+    # 주 채널 이름 — 매니저 포함 전부 dm-<이름>
+    primary = f"dm-{agent.get('name', '')}"
 
     # 추론 로그 (agent_id 태그 필터)
     sys_lines = get_recent_system_logs(tail_lines=300)
@@ -922,8 +930,7 @@ def _get_supervisor_detail(sup_name: str) -> dict:
             a = db.get_agent(aid)
             if not a:
                 continue
-            atype = a.get("type", "persona")
-            ch = "mgr-dashboard" if atype == "mgr" else ("mgr-creator" if atype == "creator" else f"dm-{a['name']}")
+            ch = f"dm-{a['name']}"  # 매니저 포함 전부 dm-<이름>
             msgs = get_recent_messages(limit=5, channel=ch)
             primary_chat.extend(msgs)
         except Exception:
@@ -1038,7 +1045,7 @@ def _get_test_user_detail() -> dict:
         "relationships": [],
         "memories_by_channel": {},
         "thinking_logs": thinking_logs,
-        "primary_channel": "mgr-dashboard",
+        "primary_channel": _mgr_dm_channel(),
         "primary_chat": primary_chat,
         "model": "claude-haiku-4-5",
         "provider": "claude",
@@ -1462,11 +1469,12 @@ def get_scenes() -> list[dict]:
         complete_flag = log_dir / ".tutorial-complete"
         if complete_flag.exists():
             completed_at = datetime.fromtimestamp(complete_flag.stat().st_mtime).isoformat()
-        # 시작 시간: 유나의 첫 mgr-dashboard 메시지 timestamp
+        # 시작 시간: 유나의 첫 mgr DM 메시지 timestamp
         try:
             conn = db.get_conn()
             row = conn.execute(
-                "SELECT MIN(timestamp) as ts FROM conversations WHERE channel='mgr-dashboard'"
+                "SELECT MIN(timestamp) as ts FROM conversations WHERE channel=?",
+                (_mgr_dm_channel(),),
             ).fetchone()
             conn.close()
             if row and row["ts"]:

@@ -18,7 +18,6 @@ from community.bot import (
     AGENT_CHANNEL_MAP,
     GROUP_PARTICIPANTS,
     MGR_CHANNEL,
-    MGR_SYSTEM_LOG,
     CREATOR_CHANNEL,
     MGR_ID,
     _system_log_queue,
@@ -84,7 +83,7 @@ def _is_agent_in_channel(ch_name: str, agent_id: str, agent_name: str) -> bool:
         return agent_id in db_participants
 
     # 2. DB에 없으면 채널 이름 기반 폴백
-    if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
+    if ch_name == MGR_CHANNEL:
         return agent_id == MGR_ID
     if ch_name == CREATOR_CHANNEL:
         return agent_id == "agent-creator-001" or agent_id == MGR_ID
@@ -287,19 +286,9 @@ async def _get_plain_webhook(channel: discord.TextChannel) -> discord.Webhook:
 
 
 # ── 시스템 로그 ─────────────────────────────────────────
-
-
-# 디코 #mgr-system-log 채널에 노출할 로그 키워드.
-# - 에이전트가 호출하는 모든 도구 ([Tool] / [프로필] / [관계])
-# - 튜토리얼/Phase 전환
-# - 에러·경고
-_DISCORD_LOG_KEYWORDS = {
-    "❌", "⚠",
-    "[Tool]", "[프로필]", "[관계]", "[채널]", "[감정]",
-    "튜토리얼", "Phase", "sup:tutorial",
-    "Channel created", "Channel deleted",
-    "개발요청", "에러", "크래시", "비정상",
-}
+# 시스템 로그는 파일(communities/<id>/logs/system.log)에만 기록한다.
+# 과거엔 #mgr-system-log 디코 채널에도 미러링했지만, owner↔agent 채널을
+# 전부 dm-* 로 통일하면서 system-log 디코 채널은 폐지 — 파일 로깅만 유지.
 
 
 def get_target_guild(bot_ref=None) -> Optional[discord.Guild]:
@@ -327,57 +316,53 @@ def get_target_guild(bot_ref=None) -> Optional[discord.Guild]:
 
 
 async def send_system_log(msg: str, force: bool = False):
-    """시스템 로그를 mgr-system-log 디코 채널에 전송 (크리티컬만)"""
-    if not force and not any(kw in msg for kw in _DISCORD_LOG_KEYWORDS):
-        return
-    guild = get_target_guild()
-    if not guild:
-        return
-    ch = discord.utils.get(guild.text_channels, name=MGR_SYSTEM_LOG)
-    if ch:
-        try:
-            await ch.send(f"`{msg}`")
-        except Exception:
-            pass
+    """시스템 로그 — 디코 채널 폐지됨. 파일 로깅만 (back-compat no-op).
+
+    과거엔 #mgr-system-log 디코 채널로 미러링했으나 폐지. 호출부 호환을 위해
+    시그니처는 유지하되 파일 로깅만 한다 (log_writer.system)."""
+    log_writer.system(msg)
 
 
 def queue_system_log(msg: str, force: bool = False):
-    """동기 코드에서 시스템 로그 디코 전송 예약 (크리티컬만)"""
+    """동기 코드에서 시스템 로그 기록 — 파일 로깅만 (디코 채널 폐지)."""
     log_writer.system(msg)
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(send_system_log(msg, force))
-    except Exception:
-        pass
 
 
 # ── 채널 매핑 ───────────────────────────────────────────
 
 
 def _build_channel_maps():
-    """프로필 기반으로 채널 ↔ 에이전트 매핑 생성"""
-    from community.bot import _norm_name_for_channel, DEV_CHANNEL
+    """프로필 기반으로 채널 ↔ 에이전트 매핑 생성.
+
+    매니저(mgr/creator/dev)도 페르소나와 동일하게 dm-<norm(이름)> 채널을 쓴다.
+    각 커뮤니티 실제 프로필 이름으로 채널을 도출하고, 모듈 전역
+    MGR_CHANNEL/CREATOR_CHANNEL/DEV_CHANNEL 도 그 값으로 덮어쓴다 —
+    그래야 상수를 import 해서 쓰는 모든 호출부가 커뮤니티별 올바른 값을 받는다.
+    """
+    import community.bot as _bot
+    from community.bot import _norm_name_for_channel
     for p in list_all_profiles():
         agent_id = p["id"]
         name = p["name"]
         agent_type = p["type"]
+        ch = f"dm-{_norm_name_for_channel(name)}"
         if agent_type == "persona":
-            # normalize — Discord 가 공백 → 하이픈 변환하므로 DB 도 같은 형식
-            ch = f"dm-{_norm_name_for_channel(name)}"
             CHANNEL_AGENT_MAP[ch] = agent_id
             AGENT_CHANNEL_MAP[agent_id] = ch
         elif agent_type == "mgr":
-            CHANNEL_AGENT_MAP[MGR_CHANNEL] = agent_id
-            AGENT_CHANNEL_MAP[agent_id] = MGR_CHANNEL
+            _bot.MGR_CHANNEL = ch
+            CHANNEL_AGENT_MAP[ch] = agent_id
+            AGENT_CHANNEL_MAP[agent_id] = ch
         elif agent_type == "creator":
-            CHANNEL_AGENT_MAP[CREATOR_CHANNEL] = agent_id
-            AGENT_CHANNEL_MAP[agent_id] = CREATOR_CHANNEL
+            _bot.CREATOR_CHANNEL = ch
+            CHANNEL_AGENT_MAP[ch] = agent_id
+            AGENT_CHANNEL_MAP[agent_id] = ch
         elif agent_type == "dev":
-            # 한세나 — mgr-dev-request 채널. ensure_dev_seeded 가 DB 시드 후에만 등록하는
-            # 회귀 (재시작 시 매핑 비어서 owner 메시지 라우팅 실패) 차단.
-            CHANNEL_AGENT_MAP[DEV_CHANNEL] = agent_id
-            AGENT_CHANNEL_MAP[agent_id] = DEV_CHANNEL
+            # 한세나 — dm-한세나 (이전 mgr-dev-request). ensure_dev_seeded 가 DB 시드 후에만
+            # 등록하는 회귀 (재시작 시 매핑 비어서 owner 메시지 라우팅 실패) 차단.
+            _bot.DEV_CHANNEL = ch
+            CHANNEL_AGENT_MAP[ch] = agent_id
+            AGENT_CHANNEL_MAP[agent_id] = ch
 
 
 def _get_category_for_channel(ch_name: str) -> str:
@@ -407,7 +392,7 @@ async def _ensure_category(guild: discord.Guild, name: str) -> discord.CategoryC
 def _infer_channel_participants(ch_name: str, _db) -> list[str]:
     """채널 이름에서 참가자 ID 추론"""
     agents = {a["name"]: a["id"] for a in _db.list_agents()}
-    if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
+    if ch_name == MGR_CHANNEL:
         return [MGR_ID]
     if ch_name == CREATOR_CHANNEL:
         return ["agent-creator-001"]
@@ -422,7 +407,7 @@ def _infer_channel_participants(ch_name: str, _db) -> list[str]:
 
 
 async def ensure_channels(guild: discord.Guild):
-    """채널 초기화. 첫 실행이면 mgr-dashboard만, 이후에는 전체 채널 보장."""
+    """채널 초기화. 첫 실행이면 mgr DM(dm-<유나>)만, 이후에는 전체 채널 보장."""
     from community import db as _db
     tutorial_done = _db.get_meta("tutorial_phase") == "complete"
     greeted = _db.get_meta("yuna_greeted")
@@ -516,7 +501,7 @@ async def ensure_channels(guild: discord.Guild):
             if deleted_any:
                 await asyncio.sleep(1.5)
 
-        # mgr-dashboard만 생성 — guild.text_channels 캐시 말고 fetch로 실제 상태 확인
+        # mgr DM(dm-<유나>)만 생성 — guild.text_channels 캐시 말고 fetch로 실제 상태 확인
         try:
             actual_channels = await guild.fetch_channels()
             names = {c.name for c in actual_channels if isinstance(c, discord.TextChannel)}
@@ -525,7 +510,7 @@ async def ensure_channels(guild: discord.Guild):
             names = {ch.name for ch in guild.text_channels}
 
         if MGR_CHANNEL not in names:
-            cat = await _ensure_category(guild, "glimi-mgr")
+            cat = await _ensure_category(guild, _get_category_for_channel(MGR_CHANNEL))
             try:
                 from community.core.sync import ensure_unique_channel
                 created, was_created = await ensure_unique_channel(guild, MGR_CHANNEL, cat)
@@ -537,11 +522,11 @@ async def ensure_channels(guild: discord.Guild):
         else:
             log_writer.system(f"Channel (existing): {MGR_CHANNEL}")
         db.set_channel_participants(MGR_CHANNEL, [MGR_ID])
-        log_writer.system("Initial setup: mgr-dashboard ready")
+        log_writer.system(f"Initial setup: {MGR_CHANNEL} ready")
     else:
         # 일반 실행: DB channels 테이블 = 단일 진실원.
         # 튜토리얼이 phase 별로 채널을 DB 에 등록하므로 '등록된 것만' Discord 에 보장.
-        # 이전 방식 (CHANNEL_AGENT_MAP + MGR_SYSTEM_LOG/CREATOR_CHANNEL 하드코딩) 은
+        # 이전 방식 (CHANNEL_AGENT_MAP + CREATOR_CHANNEL 하드코딩) 은
         # 튜토리얼 greet 단계에서 봇 재시작 시 미래 phase 채널까지 미리 만들던 버그.
         needed = set()
         try:
@@ -551,7 +536,7 @@ async def ensure_channels(guild: discord.Guild):
                     needed.add(ch)
         except Exception:
             pass
-        # 방어: DB 엔트리가 비정상 유실됐는데 이미 greet 끝난 상태면 최소 mgr-dashboard 는 보장
+        # 방어: DB 엔트리가 비정상 유실됐는데 이미 greet 끝난 상태면 최소 mgr DM 은 보장
         if not needed:
             needed.add(MGR_CHANNEL)
         existing = {ch.name: ch for ch in guild.text_channels}
@@ -583,7 +568,7 @@ async def ensure_channels(guild: discord.Guild):
 
             # DB에 참가자 등록 (없으면)
             if not db.get_channel_participants(ch_name):
-                if ch_name == MGR_CHANNEL or ch_name == MGR_SYSTEM_LOG:
+                if ch_name == MGR_CHANNEL:
                     db.set_channel_participants(ch_name, [MGR_ID])
                 elif ch_name == CREATOR_CHANNEL:
                     db.set_channel_participants(ch_name, ["agent-creator-001"])

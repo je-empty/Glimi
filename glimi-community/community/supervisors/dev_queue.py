@@ -2,7 +2,7 @@
 
 System-scoped supervisor:
   - 30s 간격으로 platform.db 의 status='pending' 인 row 중 현재 community 발생분 체크.
-  - 있으면 mgr-dev-request 채널로 dev agent 응답 1턴 invoke.
+  - 있으면 dev (세나) DM 채널로 dev agent 응답 1턴 invoke.
   - dev agent 가 dev_organize / dev_escalate / dev_clarify 중 하나 선택해서 처리.
   - 큐가 비어있으면 자연스럽게 무발화 (NO_REPLY).
 """
@@ -50,7 +50,7 @@ class DevQueueSupervisor(Supervisor):
         # Dev agent lazy seed
         ensure_dev_seeded()
 
-        # mgr-dev-request 채널 ensure
+        # dev (세나) DM 채널 ensure
         ch = None
         for c in guild.text_channels:
             if c.name == DEV_CHANNEL:
@@ -59,10 +59,10 @@ class DevQueueSupervisor(Supervisor):
         if ch is None:
             try:
                 from community.core.sync import ensure_unique_channel
-                from community.bot.core import _ensure_category
+                from community.bot.core import _ensure_category, _get_category_for_channel
                 from community.bot import MGR_ID
                 from community import db as _db
-                category = await _ensure_category(guild, "glimi-mgr")
+                category = await _ensure_category(guild, _get_category_for_channel(DEV_CHANNEL))
                 # ensure_unique_channel 은 (channel, created) 튜플 반환
                 result = await ensure_unique_channel(guild, DEV_CHANNEL, category)
                 ch = result[0] if isinstance(result, tuple) else result
@@ -86,7 +86,7 @@ class DevQueueSupervisor(Supervisor):
                 "  - dev_organize (가장 흔함, 작업 brief 정리해서 admin 검토 대기로)\n"
                 "  - dev_escalate (정리도 어려운 모호한 케이스, admin 직접 판단)\n"
                 "  - dev_clarify (보고서 정보 부족, 추가 질문)\n"
-                "그리고 mgr-dev-request 에 in-character 한 줄 ack."
+                "그리고 너의 DM 채널에 in-character 한 줄 ack."
             )
             from community.core.runtime import runtime
             from community.bot.core import send_as_agent
@@ -108,7 +108,7 @@ class DevQueueSupervisor(Supervisor):
                 )
             except Exception as e:
                 log_writer.system(f"[dev.queue] tool dispatch 실패: {type(e).__name__}: {e}")
-            # 응답 chat 메시지를 mgr-dev-request 에 게시
+            # 응답 chat 메시지를 dev (세나) DM 채널에 게시
             for msg in responses or []:
                 if msg and msg.strip():
                     try:

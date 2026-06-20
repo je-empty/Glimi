@@ -13,7 +13,7 @@ import re as _re
 import discord
 
 from community import db, log_writer
-from community.bot import MGR_CHANNEL, MGR_SYSTEM_LOG, CREATOR_CHANNEL, MGR_ID
+from community.bot import MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID
 from community.bot.core import (
     create_tutorial_channel,
     send_as_agent,
@@ -61,8 +61,8 @@ def _ensure_creator_seeded() -> bool:
 
 
 async def force_hana_greeting_if_missing(guild) -> bool:
-    """복구 헬퍼 — phase 가 channels_done/complete 인데 mgr-creator 에 creator 발화가
-    0 건이면 Hana 첫 인사가 누락된 상태. setup_channels 의 Hana 인사 부분만 강제 실행.
+    """복구 헬퍼 — phase 가 channels_done/complete 인데 creator DM(dm-<하나>) 에 creator
+    발화가 0 건이면 Hana 첫 인사가 누락된 상태. setup_channels 의 Hana 인사 부분만 강제 실행.
 
     회귀 케이스: 봇 첫 부팅 시 Hana 호출 중 prompt 빌더에서 NameError 등으로 abort →
     phase 는 channels_done 으로 진척했지만 실제 Hana 메시지 없음 → 오너가 영원히 대기.
@@ -79,7 +79,7 @@ async def force_hana_greeting_if_missing(guild) -> bool:
     if has_creator_msg:
         return False
     log_writer.system(
-        "[recovery] mgr-creator 에 Hana 발화 0건 — 첫 인사 누락 복구 시작"
+        "[recovery] creator DM 에 Hana 발화 0건 — 첫 인사 누락 복구 시작"
     )
     _ensure_creator_seeded()
     runtime.activate_agent(CREATOR_ID)
@@ -175,7 +175,7 @@ async def trigger_phase2(guild):
 
 
 async def setup_channels(guild):
-    """Phase 2 본체 — mgr-system-log + mgr-creator 생성, 유나 안내, 하나 인사."""
+    """Phase 2 본체 — 크리에이터(하나) DM 생성, 유나 안내, 하나 인사."""
     current = scene.current_phase()
     if current in ("channels_done", "complete"):
         return
@@ -183,35 +183,23 @@ async def setup_channels(guild):
 
     await asyncio.sleep(2)
 
-    # 1. mgr-system-log 생성 + 유나 안내 (mgr-dashboard에서)
-    try:
-        log_ch = await create_tutorial_channel(
-            guild, MGR_SYSTEM_LOG, participants=[MGR_ID]
-        )
-    except Exception as e:
-        log_writer.system(
-            f"❌ Phase 2 중단: {MGR_SYSTEM_LOG} 생성 실패 ({type(e).__name__}: {e})"
-        )
-        return
-    if not log_ch:
-        log_writer.system(f"❌ Phase 2 중단: {MGR_SYSTEM_LOG} 생성 결과 없음")
-        return
+    # 크리에이터(하나) 이름 — 유나가 이름으로 자연스럽게 안내하도록.
+    creator_profile = load_profile(CREATOR_ID)
+    creator_name = creator_profile["name"] if creator_profile else "하나"
 
+    # 1. 유나 안내 (mgr DM 에서) — 크리에이터를 '이름'으로 자연스럽게 소개.
     mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
     if mgr_ch:
-        # 고정 순서 템플릿 — LLM이 순서 섞거나 채널 설명 혼동하는 것 방지.
-        # Yuna가 2건 응답한 것처럼 보이게 카톡 스타일로 나눠 전송.
+        # 고정 순서 템플릿 — LLM이 순서 섞거나 혼동하는 것 방지.
+        # Yuna가 여러 건 응답한 것처럼 카톡 스타일로 나눠 전송.
         prompt = (
             "[상황] 오너 프로필 수집이 끝났어. 이제 튜토리얼 다음 단계로 넘어가는 순간.\n"
             "[지시] 아래 흐름을 순서대로 — 네 말투로 자연스럽게 풀어서 전달:\n"
-            f"  1. 방금 #{MGR_SYSTEM_LOG} 채널이 생겼어. 그건 시스템 로그가 올라오는 곳 "
-            "(멤버 활동, 상태 변화 등 자동 기록).\n"
-            f"  2. 그리고 #{CREATOR_CHANNEL} 채널도 생겼는데, 거기에 곧 크리에이터(하나)가 와서 "
-            "새 친구 만드는 걸 도와줄 거야.\n"
-            "  3. 하나가 인사하면 #mgr-creator 가서 어떤 친구 원하는지 얘기해봐.\n"
+            f"  1. 이제 새 친구를 만들어줄 {creator_name}을(를) 소개해줄게.\n"
+            f"  2. {creator_name}이(가) 곧 따로 인사할 거야. {creator_name}한테 어떤 친구 "
+            "원하는지 얘기하면 같이 만들어줘.\n"
             "[중요]\n"
-            "  - 두 채널을 혼동하지 마. #mgr-system-log 는 로그 채널, #mgr-creator 는 친구 생성 채널.\n"
-            "  - 채널명은 항상 #채널명 형식 (볼드/평문 섞지 마).\n"
+            "  - '채널'/'시스템 로그' 같은 용어 쓰지 말고, 사람 이름으로 자연스럽게.\n"
             "  - 같은 안내 반복하지 마. 한 번만 깔끔하게.\n"
             "[스타일] 카톡처럼 3~5개 짧은 메시지로. 친근하게.\n"
             "[금지] `<tools>` 블록 쓰지 마 (지금은 안내 텍스트만)."
@@ -236,7 +224,7 @@ async def setup_channels(guild):
     # 2. 크리에이터(하나) lazy 시드 — 이 phase 에 '새로 등장'하는 것처럼
     _ensure_creator_seeded()
 
-    # 3. mgr-creator 생성
+    # 3. 크리에이터(하나) DM 채널 생성 (dm-<하나>)
     try:
         creator_ch = await create_tutorial_channel(
             guild, CREATOR_CHANNEL, participants=[CREATOR_ID]

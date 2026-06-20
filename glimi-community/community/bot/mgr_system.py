@@ -26,7 +26,7 @@ from community.bot.conversation_bridge import (
     detect_room_request,
 )
 from community.bot import (
-    bot, log, MGR_CHANNEL, MGR_SYSTEM_LOG, CREATOR_CHANNEL, MGR_ID,
+    bot, log, MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID,
     CHANNEL_AGENT_MAP, AGENT_CHANNEL_MAP, GROUP_PARTICIPANTS,
     _webhook_cache, DEV_DIR, DEV_PENDING, DEV_RESULT,
     DAILY_SOCIAL_LIMIT,
@@ -702,7 +702,7 @@ async def _run_and_report_yuna(report_ch, ch_name, participant_ids, send_fn, con
         loop = asyncio.get_event_loop()
         responses = await loop.run_in_executor(
             None,
-            lambda: runtime.generate_response(MGR_ID, "mgr-dashboard", report_prompt, log_user_message=False)
+            lambda: runtime.generate_response(MGR_ID, MGR_CHANNEL, report_prompt, log_user_message=False)
         )
         if responses and report_ch.guild:
             responses = await parse_and_execute_actions(report_ch, responses, report_ch.guild)
