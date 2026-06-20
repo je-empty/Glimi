@@ -210,6 +210,21 @@ def test_route_anon_401_on_post_action_even_demo(client_app):
     assert r.status_code == 401, r.text
 
 
+def test_anon_home_shows_readonly_community_list(client_app, monkeypatch):
+    """Anon ``GET /`` renders a read-only community LIST (like the Workspace home),
+    not a redirect into the dashboard: only read_only communities show, and the
+    management controls (create / start-stop / delete) are gated out."""
+    monkeypatch.setattr("src.platform.setup.is_configured", lambda: True)
+    anon, _comm = client_app
+    r = anon.get("/")
+    assert r.status_code == 200, r.text          # a list page, not a 303 redirect
+    body = r.text
+    assert "데모" in body                          # the read_only demo is listed
+    assert "Private" not in body                   # non-read_only community hidden from anon
+    assert "새 커뮤니티" not in body                # create control gated out
+    assert "삭제" not in body                       # management controls gated out
+
+
 def test_route_anon_401_on_list_communities(client_app):
     """The community LIST must never enumerate for anon (no list exposure)."""
     anon, _comm = client_app

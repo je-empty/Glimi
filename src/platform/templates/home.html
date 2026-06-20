@@ -73,11 +73,15 @@
 {% endblock %}
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-  <h2 style="margin: 0;">내 커뮤니티</h2>
-  <a class="btn primary" href="/community/new" style="text-decoration:none"><i class="ti ti-plus" aria-hidden="true"></i>새 커뮤니티</a>
+  <h2 style="margin: 0;">{{ '내 커뮤니티' if user else '커뮤니티' }}</h2>
+  {% if user %}<a class="btn primary" href="/community/new" style="text-decoration:none"><i class="ti ti-plus" aria-hidden="true"></i>새 커뮤니티</a>{% endif %}
 </div>
 
-{% if not communities %}
+{% if not user %}
+<p class="muted" style="margin: -8px 0 18px;">둘러볼 수 있는 데모예요. 카드를 눌러 들어가 보세요.</p>
+{% endif %}
+
+{% if user and not communities %}
 <div class="card">
   <p class="muted" style="margin: 0;">아직 커뮤니티가 없어. 상단의 <a href="/community/new"><strong>+ 새 커뮤니티</strong></a> 로 하나 만들어봐.</p>
 </div>
@@ -90,9 +94,9 @@
       <div class="head">
         <h3>{{ c.name or c.id }}</h3>
         <span class="id">{{ c.id }}</span>
-        <span class="pill {{ 'running' if c.running else 'stopped' }}">
+        {% if user %}<span class="pill {{ 'running' if c.running else 'stopped' }}">
           {{ 'RUN' if c.running else 'STOP' }}
-        </span>
+        </span>{% endif %}
       </div>
       {% if c.description %}<div class="desc">{{ c.description }}</div>{% endif %}
       <div class="meta">
@@ -112,9 +116,10 @@
             아직 없음
           {% endif %}
         </span>
-        {% if not c.has_env %}<span class="count-badge" style="color: var(--warn);">⚠ no .env</span>{% endif %}
+        {% if user and not c.has_env %}<span class="count-badge" style="color: var(--warn);">⚠ no .env</span>{% endif %}
       </div>
     </div>
+    {% if user %}
     <div class="controls" onclick="event.stopPropagation()">
       {% if c.running %}
       <button onclick="ctrl('{{ c.id }}', 'stop')" style="color:var(--err)"><i class="ti ti-player-stop" aria-hidden="true"></i>정지</button>
@@ -124,10 +129,12 @@
       {% endif %}
       <button class="danger" onclick="deleteCommunity('{{ c.id }}')">삭제</button>
     </div>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
 
+{% if user %}
 <dialog id="delete-dialog" style="background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 22px; min-width: min(420px, calc(100vw - 32px)); max-width: 500px;">
   <h3 style="margin-top: 0; color: var(--err);">커뮤니티 삭제</h3>
   <p style="margin: 10px 0 6px 0; font-size: 13.5px; line-height: 1.6;">
@@ -219,4 +226,5 @@ async function confirmDelete() {
   }
 }
 </script>
+{% endif %}
 {% endblock %}

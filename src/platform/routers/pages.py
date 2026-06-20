@@ -21,11 +21,19 @@ async def home(request: Request):
     # 이 앱은 커뮤니티 전용 — 별도 랜딩 페이지는 없다.
     user = get_current_user(request)
     if not user:
-        # 로그아웃 방문자: read-only(데모) 둘러보기로 보냄 (커뮤니티 리스트는 노출 X).
-        # demo 가 존재 + read_only 일 때만. 아니면 기존대로 /login.
-        if any(c["id"] == "demo" for c in list_communities()) and is_read_only("demo"):
-            return RedirectResponse(url="/community/demo", status_code=303)
-        return RedirectResponse(url="/login", status_code=303)
+        # 로그아웃 방문자: 공개(read-only 데모) 커뮤니티 목록을 그대로 보여준다 (리다이렉트
+        # 아님 — 랜딩에서 들어오면 워크스페이스처럼 '목록 페이지'에 닿게). 관리 컨트롤
+        # (생성/가동/삭제)은 home.html 에서 user 없으면 숨긴다. 공개 데모가 없으면 /login.
+        public = [c for c in list_communities() if c.get("read_only")]
+        if not public:
+            return RedirectResponse(url="/login", status_code=303)
+        running = set(supervisor.list_running())
+        for c in public:
+            c["running"] = c["id"] in running
+            c["members"] = _fetch_members(c["id"])
+            c["member_count"] = len(c["members"])
+        return templates.env.TemplateResponse(
+            request, "home.html", {"user": None, "communities": public})
 
     visible = _visible_communities(user)
     running = set(supervisor.list_running())
