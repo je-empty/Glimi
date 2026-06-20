@@ -21,10 +21,13 @@ from community.bot import bot, TOKEN, CHANNEL_AGENT_MAP, log
 import community.bot as _bot_state
 from community.bot.core import _build_channel_maps
 
-# 하위 모듈 임포트 — 데코레이터(@bot.event, @bot.command, @tasks.loop) 등록
-import community.bot.handlers    # noqa: F401 — on_message
-import community.bot.commands    # noqa: F401 — !commands
-import community.bot.tasks       # noqa: F401 — background tasks + events
+# 하위 모듈 임포트 — 데코레이터(@bot.event, @bot.command, @tasks.loop) 등록.
+# NB: `from community.bot import X` 형태 필수 — `import community.bot.X` 는 로컬 이름
+# `community`(= line 16 의 community 서브모듈)를 community 패키지로 재바인딩해버려서
+# 아래 main() 의 community.get_community_id() 가 깨진다 (src→community rename 트랩).
+from community.bot import handlers   # noqa: F401 — on_message
+from community.bot import commands   # noqa: F401 — !commands
+from community.bot import tasks      # noqa: F401 — background tasks + events
 
 # 도전과제 엔진 — db.log_message 훅으로 진척도 자동 추적
 from community.achievements import engine as _ach_engine

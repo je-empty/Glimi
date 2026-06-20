@@ -93,7 +93,7 @@ tmux new-session -d -s "$SESSION" -n runner \
     "ulimit -n 4096 2>/dev/null; \
      $KEYCHAIN_UNLOCK_PREFIX \
      set -a; [ -f communities/qa/.env ] && source communities/qa/.env; set +a; \
-     PYTHONUNBUFFERED=1 $PYTHON -u -m tests.e2e.runner $ESCAPED_ARGS 2>&1 | tee tests/e2e/results/latest.log"
+     PYTHONUNBUFFERED=1 PYTHONPATH=$PWD/glimi-core:$PWD/glimi-community:$PWD/glimi-workspace:$PWD GLIMI_COMMUNITIES_DIR=$PWD/communities GLIMI_LLM_BACKEND=claude_cli $PYTHON -u -m tests.e2e.runner $ESCAPED_ARGS 2>&1 | tee tests/e2e/results/latest.log"
 
 echo -e "${GREEN}[$SESSION] 시작됨${NC}"
 echo -e "  실시간 로그: ${CYAN}./scripts/qa.sh attach${NC}"
