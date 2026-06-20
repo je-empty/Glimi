@@ -1,4 +1,4 @@
-"""Tests for the Workspace live demo (apps/workspace/demo.py) and the in-memory
+"""Tests for the Workspace live demo (workspace/demo.py) and the in-memory
 store's observability methods that back the dashboard's usage / tool-timeline panels.
 
 Kernel-only: imports `glimi` + the app's `demo` module, never `src` / Discord.
@@ -13,7 +13,7 @@ import pytest
 
 # Make the flat-dir app modules (demo, team) importable like run.py does.
 _WS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), "apps", "workspace")
+    os.path.abspath(__file__)))), "workspace")
 if _WS_DIR not in sys.path:
     sys.path.insert(0, _WS_DIR)
 

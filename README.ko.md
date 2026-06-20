@@ -39,12 +39,12 @@ Glimi/                            단일 git repo (모노레포) · `glimi` 는 
 │   ├── llm/                      · Claude CLI · Ollama · anthropic SDK 백엔드 (+ pricing)
 │   ├── store.py · stores/        · KernelStore ABC + 인메모리 구현
 │   └── dashboard/                · 라이브 관찰성 웹 UI (그래프 · 메모리 · 도구 로그 · 사용량)
-├── community/                          ← Glimi Community — flagship 앱 (Core 가 여기서 추출됨)
+├── community/                    ← Glimi Community — flagship 앱 (Core 가 여기서 추출됨)
 │   ├── platform/                 · FastAPI 플랫폼 · 내장 웹 챗 · 대시보드 호스트
 │   ├── adapters/kernel_store.py  · SqliteKernelStore(KernelStore) — 앱을 커널에 주입 (DI)
 │   ├── core/                     · glimi(runtime·memory) 위 얇은 shim + 커뮤니티 전용 모듈
 │   └── scenes/ · achievements/ · bot/   · 커뮤니티 전용 (씬, 도전과제, 디스코드 어댑터)
-├── apps/workspace/               ← Glimi Workspace — 추출된 Core 위에 새로 지은 2번째 앱 (재사용성 증명)
+├── workspace/                    ← Glimi Workspace — 추출된 Core 위에 새로 지은 2번째 앱 (재사용성 증명)
 ├── examples/                     · 라이브러리 스타터 (research_buddies · dev_pair · dashboard_demo)
 ├── eval/                         · 평가 하네스 (골든셋 · LLM-judge · 회귀 게이트)
 ├── docs/ · tests/
@@ -52,7 +52,7 @@ Glimi/                            단일 git repo (모노레포) · `glimi` 는 
 └── README.md · README.ko.md          · 영문 + 이 파일
 ```
 
-> **왜 레이아웃이 두 개냐면** — Glimi Core(`glimi/`)는 **작동하는 앱(Glimi Community, `community/`)에서 추출**한 커널이라 이론이 아니라 검증된 물건이다. **Glimi Workspace**(`apps/workspace/`)는 그 추출된 `glimi` 패키지 *위에만* 새로 지었다(`community/` import 0) — 하나의 커널 위에 성격이 전혀 다른 두 번째 앱이 도는 게 Core 가 진짜 재사용 가능하다는 증거다. `glimi` 패키지는 이 모노레포에서 단독으로 빌드·PyPI 배포되고, 두 앱은 그걸 쓰는 **실제 애플리케이션**이다.
+> **왜 레이아웃이 두 개냐면** — Glimi Core(`glimi/`)는 **작동하는 앱(Glimi Community, `community/`)에서 추출**한 커널이라 이론이 아니라 검증된 물건이다. **Glimi Workspace**(`workspace/`)는 그 추출된 `glimi` 패키지 *위에만* 새로 지었다(`community/` import 0) — 하나의 커널 위에 성격이 전혀 다른 두 번째 앱이 도는 게 Core 가 진짜 재사용 가능하다는 증거다. `glimi` 패키지는 이 모노레포에서 단독으로 빌드·PyPI 배포되고, 두 앱은 그걸 쓰는 **실제 애플리케이션**이다.
 
 ---
 

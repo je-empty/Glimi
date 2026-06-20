@@ -1,4 +1,4 @@
-"""Glimi Workspace HITL approval-gate unit tests (apps/workspace/approval.py).
+"""Glimi Workspace HITL approval-gate unit tests (workspace/approval.py).
 
 Verifies the human-in-the-loop seam end to end on the offline ``echo`` backend:
 
@@ -27,10 +27,10 @@ import sys
 
 import pytest
 
-# Worktree root + apps/workspace on sys.path so the flat app modules (run / team /
+# Worktree root + workspace on sys.path so the flat app modules (run / team /
 # approval) import the same way the script does. Mirrors test_glimi_workspace.py.
 _WORKTREE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_APP_DIR = os.path.join(_WORKTREE, "apps", "workspace")
+_APP_DIR = os.path.join(_WORKTREE, "workspace")
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 if _WORKTREE not in sys.path:

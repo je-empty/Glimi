@@ -39,12 +39,12 @@ Glimi/                            single git repo (monorepo) · `glimi` publishe
 │   ├── llm/                      · Claude CLI · Ollama · anthropic SDK backends (+ pricing)
 │   ├── store.py · stores/        · KernelStore ABC + in-memory implementation
 │   └── dashboard/                · live observability web UI (graph · memory · tool log · usage)
-├── community/                          ← Glimi Community — the flagship app (Core was extracted FROM here)
+├── community/                    ← Glimi Community — the flagship app (Core was extracted FROM here)
 │   ├── platform/                 · FastAPI platform · built-in web chat · dashboard host
 │   ├── adapters/kernel_store.py  · SqliteKernelStore(KernelStore) — wires the app into the kernel (DI)
 │   ├── core/                     · thin shims over glimi (runtime·memory) + community-only modules
 │   └── scenes/ · achievements/ · bot/   · community-specific (scenes, unlocks, Discord adapter)
-├── apps/workspace/               ← Glimi Workspace — a 2nd app built ON the extracted Core (proof of reuse)
+├── workspace/                    ← Glimi Workspace — a 2nd app built ON the extracted Core (proof of reuse)
 ├── examples/                     · lightweight starters (research_buddies · dev_pair · dashboard_demo)
 ├── eval/                         · evaluation harness (golden set · LLM-judge · regression gate)
 ├── docs/ · tests/
@@ -52,7 +52,7 @@ Glimi/                            single git repo (monorepo) · `glimi` publishe
 └── README.md · README.ko.md          · this file + Korean mirror
 ```
 
-> **Why two different layouts?** Glimi Core (`glimi/`) was **extracted from a working app** — Glimi Community (`community/`) — so the kernel is proven, not theoretical. **Glimi Workspace** (`apps/workspace/`) was then built *entirely on the extracted `glimi` package* (zero `community/` imports) — a second, very different app on one kernel is the proof that Core is genuinely reusable. The `glimi` package builds and publishes to PyPI on its own; the two apps are real applications that consume it.
+> **Why two different layouts?** Glimi Core (`glimi/`) was **extracted from a working app** — Glimi Community (`community/`) — so the kernel is proven, not theoretical. **Glimi Workspace** (`workspace/`) was then built *entirely on the extracted `glimi` package* (zero `community/` imports) — a second, very different app on one kernel is the proof that Core is genuinely reusable. The `glimi` package builds and publishes to PyPI on its own; the two apps are real applications that consume it.
 
 ---
 

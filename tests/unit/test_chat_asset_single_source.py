@@ -69,15 +69,15 @@ def test_community_assets_match_canonical():
 
 def test_workspace_keeps_no_asset_copies():
     # The workspace consumes the canonical from the package — it must not vendor
-    # its own dashboard/chat assets (no apps/workspace/static at all).
-    ws_static = os.path.join(_ROOT, "apps", "workspace", "static")
+    # its own dashboard/chat assets (no workspace/static at all).
+    ws_static = os.path.join(_ROOT, "workspace", "static")
     assert not os.path.isdir(ws_static), (
-        "apps/workspace/static should not exist — the workspace serves the "
+        "workspace/static should not exist — the workspace serves the "
         "canonical assets from /static (glimi/dashboard) via the package."
     )
-    ws_i18n = os.path.join(_ROOT, "apps", "workspace", "i18n")
+    ws_i18n = os.path.join(_ROOT, "workspace", "i18n")
     assert not os.path.isdir(ws_i18n), (
-        "apps/workspace/i18n should not exist — the workspace loads the canonical "
+        "workspace/i18n should not exist — the workspace loads the canonical "
         "i18n dicts from glimi/dashboard/i18n via the package."
     )
 
@@ -93,8 +93,8 @@ def test_workspace_keeps_no_dashboard_template_copy():
     # The workspace renders the canonical dashboard/_core.html AND the shared
     # _demo_list.html home — it must not fork its own copies of these.
     for stray in ("dashboard/_core.html", "dashboard/index.html", "base.html", "_chat_shell.html"):
-        p = os.path.join(_ROOT, "apps", "workspace", "templates", stray)
+        p = os.path.join(_ROOT, "workspace", "templates", stray)
         assert not os.path.exists(p), (
-            f"apps/workspace/templates/{stray} should not exist — the workspace "
+            f"workspace/templates/{stray} should not exist — the workspace "
             "renders the canonical shell from glimi/dashboard/templates."
         )

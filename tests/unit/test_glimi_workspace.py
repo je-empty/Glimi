@@ -1,4 +1,4 @@
-"""Glimi Workspace 앱 (apps/workspace) 단위 테스트 — 커널-온리 두 번째 앱.
+"""Glimi Workspace 앱 (workspace) 단위 테스트 — 커널-온리 두 번째 앱.
 
 검증:
   - **setup 해석**: flag → env → state file → default 우선순위. 비대화형(non-TTY)
@@ -13,7 +13,7 @@
     /api/snapshot 이 Coordinator + 3 specialist + 상호작용 채널을 나열하고,
     snapshot()['relationships'] 가 비어있지 않으며 owner↔coordinator +
     specialist↔specialist 엣지를 포함한다 (그래프가 상호작용 웹을 그린다는 증명).
-  - **kernel-only**: apps/workspace 가 discord / src 를 import 하지 않는다.
+  - **kernel-only**: workspace 가 discord / src 를 import 하지 않는다.
 
 web 부분은 fastapi 가 있어야 하므로 ``pytest.importorskip("fastapi")`` 로 가드.
 
@@ -28,10 +28,10 @@ import sys
 
 import pytest
 
-# Worktree root (<wt>/tests/unit/this → up 3) + apps/workspace on sys.path so the
+# Worktree root (<wt>/tests/unit/this → up 3) + workspace on sys.path so the
 # app's flat modules (run / team) import the same way the script does.
 _WORKTREE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_APP_DIR = os.path.join(_WORKTREE, "apps", "workspace")
+_APP_DIR = os.path.join(_WORKTREE, "workspace")
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 if _WORKTREE not in sys.path:
@@ -286,7 +286,7 @@ def test_snapshot_relationships_populate_graph():
 # ────────────────────────────────────────────────────
 
 def test_app_is_kernel_only():
-    """apps/workspace imports nothing from discord or the Community app (src)."""
+    """workspace imports nothing from discord or the Community app (src)."""
     forbidden = re.compile(r"^\s*(import\s+discord|from\s+src|import\s+src)\b", re.M)
     for fname in ("run.py", "team.py", "__init__.py"):
         path = os.path.join(_APP_DIR, fname)

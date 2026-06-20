@@ -34,16 +34,16 @@ First run asks your **name** and **goal** (flags / env / interactive prompt).
 
 Run it (offline echo by default — zero deps, no API key)::
 
-    PYTHONPATH=. python apps/workspace/run.py --name Owner --goal "Plan our launch"
+    PYTHONPATH=. python workspace/run.py --name Owner --goal "Plan our launch"
 
 A real model (genuine collaboration + memory + organic relationship growth)::
 
-    GLIMI_LLM_BACKEND=claude_cli PYTHONPATH=. python apps/workspace/run.py
-    PYTHONPATH=. python apps/workspace/run.py --backend ollama
+    GLIMI_LLM_BACKEND=claude_cli PYTHONPATH=. python workspace/run.py
+    PYTHONPATH=. python workspace/run.py --backend ollama
 
 View the finished team in the Core dashboard (needs ``pip install glimi[dashboard]``)::
 
-    PYTHONPATH=. python apps/workspace/run.py --serve   # → http://127.0.0.1:8800
+    PYTHONPATH=. python workspace/run.py --serve   # → http://127.0.0.1:8800
 """
 from __future__ import annotations
 
@@ -54,8 +54,8 @@ import sys
 from glimi import Glimi
 
 # Import the sibling ``team`` module whether this file is run as a script
-# (``python apps/workspace/run.py`` — its dir is on sys.path[0]) or imported as a
-# package module (``apps.workspace.run`` — use a relative import). Either way the
+# (``python workspace/run.py`` — its dir is on sys.path[0]) or imported as a
+# package module (``workspace.run`` — use a relative import). Either way the
 # kernel boundary holds: ``team`` imports nothing from glimi/src/discord.
 try:  # script / flat-dir on sys.path
     from team import (
@@ -67,7 +67,7 @@ try:  # script / flat-dir on sys.path
         APPROVALS_CHANNEL, ApprovalAction, ApprovalPolicy, WebApprovalQueue,
         first_line_elision, run_gate,
     )
-except ImportError:  # imported as apps.workspace.run
+except ImportError:  # imported as workspace.run
     from .team import (
         COLLAB_PAIRS, COLLAB_TURNS, COORDINATOR_DM, DEFAULT_GOAL,
         DELEGATION_CHANNELS, GROUP_CHANNEL, LABELS, SPECIALISTS, TEAM,
@@ -559,7 +559,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # Allow `python apps/workspace/run.py` to import the sibling `team` module
+    # Allow `python workspace/run.py` to import the sibling `team` module
     # without packaging gymnastics: ensure this dir is on sys.path.
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     sys.exit(main())

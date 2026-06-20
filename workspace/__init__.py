@@ -4,5 +4,5 @@ A second app on the kernel (alongside the Community social-sim): a Coordinator
 manager plus Researcher / Builder / Critic specialists take a work goal and
 produce a deliverable on one shared store, viewable in the Core dashboard.
 
-Entry point: :func:`apps.workspace.run.main` (CLI ``apps/workspace/run.py``).
+Entry point: :func:`workspace.run.main` (CLI ``workspace/run.py``).
 """

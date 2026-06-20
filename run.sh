@@ -264,7 +264,7 @@ _cleanup_existing() {
     pkill -f "community.tui.dashboard" 2>/dev/null || true
     pkill -f "community.tui.wizard" 2>/dev/null || true
     pkill -f "community.tools.dev_runner" 2>/dev/null || true
-    pkill -f "apps/workspace/run.py" 2>/dev/null || true
+    pkill -f "workspace/run.py" 2>/dev/null || true
     rm -f dev/.bot*.pid dev/.platform.pid 2>/dev/null || true
     sleep 1
     pkill -9 -f "community.platform" 2>/dev/null || true
@@ -347,7 +347,7 @@ fi
 
 # ── Glimi Workspace 앱 모드 ───────────────────────────
 # ./run.sh workspace [--server|--serve|--demo] [--name X] [--goal "..."] [--backend echo|claude_cli|ollama]
-# 같은 venv·커널(glimi)로 apps/workspace 를 실행.
+# 같은 venv·커널(glimi)로 workspace 를 실행.
 #   (기본)   : --server — 멀티 워크스페이스 호스트(홈 + N 워크스페이스 대시보드). 사람용 기본값.
 #   --server : 워크스페이스 목록(읽기전용 Demo + 생성분) + 워크스페이스별 대시보드 + 생성 폼.
 #   --serve  : 작업을 한 번 돌린 뒤 그 팀을 대시보드(:8800)로 서빙 + 브라우저 자동 오픈.
@@ -357,7 +357,7 @@ if [ "$1" = "workspace" ]; then
     WS_PORT="${GLIMI_WS_PORT:-8800}"
     echo -e "${CYAN}◈ Glimi Workspace${NC}"
     # 셸 런처(사람) 기본값: --serve/--demo/--server 가 하나도 없으면 멀티 워크스페이스 서버를
-    # 띄운다. (모듈 직접 실행 `python -m apps.workspace.run` 은 손대지 않음 — 테스트의 1회성
+    # 띄운다. (모듈 직접 실행 `python -m workspace.run` 은 손대지 않음 — 테스트의 1회성
     # CLI 디폴트 유지.)
     case " $* " in
         *" --serve "*|*" --demo "*|*" --server "*) : ;;
@@ -384,7 +384,7 @@ if [ "$1" = "workspace" ]; then
             ;;
     esac
     # -m (모듈 실행) → repo 루트가 sys.path 에 올라가 glimi/src 가 잡힘 (Community 의 -m 패턴과 동일).
-    exec python -m apps.workspace.run "$@"
+    exec python -m workspace.run "$@"
 fi
 
 # ── 플랫폼 모드 = Glimi Community 앱 (기본) ─────────────

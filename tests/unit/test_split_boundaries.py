@@ -1,13 +1,13 @@
 """3-repo split boundary guards.
 
-Before the monorepo splits into `glimi` (kernel) / `glimi-community` (src/) /
-`glimi-workspace` (apps/workspace/), the import boundaries must hold so each
+Before the monorepo splits into `glimi` (kernel) / `glimi-community` (community/) /
+`glimi-workspace` (workspace/), the import boundaries must hold so each
 piece can stand alone depending only on the *published* `glimi` public API:
 
-  - the kernel (`glimi/`) imports no app code (`community.*` / `apps.*`);
+  - the kernel (`glimi/`) imports no app code (`community.*` / `workspace.*`);
   - the apps never reach into underscore-private `glimi` internals (those can
     change on any kernel release);
-  - `apps/workspace` never imports `community.*` (and vice-versa).
+  - `workspace` never imports `community.*` (and vice-versa).
 
 These are AST checks (docstring mentions don't count). Keep them green and the
 split stays push-button — see SPLIT_PLAN.md.
@@ -53,36 +53,36 @@ def test_kernel_imports_no_app_code():
         f"{p}:{ln} {mod}"
         for p in _py_files("glimi")
         for ln, mod, _ in _imports(p)
-        if _top(mod) in ("community", "apps")
+        if _top(mod) in ("community", "workspace")
     ]
-    assert not bad, "glimi/ must not import app code (src/apps):\n" + "\n".join(bad)
+    assert not bad, "glimi/ must not import app code (community/workspace):\n" + "\n".join(bad)
 
 
 def test_workspace_does_not_import_src():
     bad = [
         f"{p}:{ln} {mod}"
-        for p in _py_files("apps/workspace")
+        for p in _py_files("workspace")
         for ln, mod, _ in _imports(p)
         if _top(mod) == "community"
     ]
-    assert not bad, "apps/workspace must not import community.* :\n" + "\n".join(bad)
+    assert not bad, "workspace must not import community.* :\n" + "\n".join(bad)
 
 
-def test_community_does_not_import_apps():
+def test_community_does_not_import_workspace():
     bad = [
         f"{p}:{ln} {mod}"
-        for p in _py_files("src")
+        for p in _py_files("community")
         for ln, mod, _ in _imports(p)
-        if _top(mod) == "apps"
+        if _top(mod) == "workspace"
     ]
-    assert not bad, "src/ must not import apps.* :\n" + "\n".join(bad)
+    assert not bad, "community/ must not import workspace.* :\n" + "\n".join(bad)
 
 
 def test_apps_use_only_public_glimi_api():
     """Apps must import public (non-underscore) symbols from glimi, so they don't
     break when kernel internals change across a published release."""
     bad = []
-    for rel in ("src", "apps/workspace"):
+    for rel in ("community", "workspace"):
         for p in _py_files(rel):
             for ln, mod, names in _imports(p):
                 if _top(mod) == "glimi":

@@ -1,4 +1,4 @@
-"""apps/workspace/server.py — one Workspace server hosting N workspaces.
+"""workspace/server.py — one Workspace server hosting N workspaces.
 
 The Workspace analogue of the Community platform's "one process → N communities":
 a single FastAPI server that owns a :class:`WorkspaceRegistry` and serves, for
@@ -39,7 +39,7 @@ last. So:
 
 Run it (needs ``pip install "glimi[dashboard]"``)::
 
-    PYTHONPATH=. python apps/workspace/run.py --server     # → http://127.0.0.1:8800
+    PYTHONPATH=. python workspace/run.py --server     # → http://127.0.0.1:8800
 """
 from __future__ import annotations
 
@@ -76,12 +76,12 @@ from glimi.dashboard import (
 )
 
 # Import the sibling app modules the same dual-path way run.py does, so this works
-# whether loaded as ``apps.workspace.server`` or from a flat dir on sys.path.
+# whether loaded as ``workspace.server`` or from a flat dir on sys.path.
 try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
     from run import run_workspace  # type: ignore
     from team import TEAM  # type: ignore
-except ImportError:  # imported as apps.workspace.server
+except ImportError:  # imported as workspace.server
     from . import demo as _demo
     from .run import run_workspace
     from .team import TEAM
@@ -98,7 +98,7 @@ _DASH_I18N = _DASH_DIR / "i18n"
 # This app's own dir — the home (workspace picker) page is workspace-local;
 # the dashboard itself is the shared Core template.
 _APP_DIR = Path(__file__).resolve().parent
-_RESOURCES = _APP_DIR.parent.parent / "assets" / "brand"  # repo-root /resources (logo, etc.)
+_RESOURCES = _APP_DIR.parent / "assets" / "brand"  # repo-root /resources (logo, etc.)
 
 
 def _asset_ver() -> str:

@@ -55,7 +55,7 @@ The app asks the owner's **name** and **goal**, resolved in this order (first hi
 4. an interactive `input()` prompt — **only when `sys.stdin.isatty()`**
 5. a sensible default (default goal: *"Plan the public launch of our open-source project"*)
 
-Non-interactive runs (CI, pipes, the echo demo) **never hang on input** — they fall straight through to defaults. On a real terminal, the first run asks and persists your answers to `apps/workspace/.workspace_state.json` (gitignored), so it's truly "first run" once.
+Non-interactive runs (CI, pipes, the echo demo) **never hang on input** — they fall straight through to defaults. On a real terminal, the first run asks and persists your answers to `workspace/.workspace_state.json` (gitignored), so it's truly "first run" once.
 
 ## How to run
 
@@ -64,17 +64,17 @@ Run from the repo root (until `pip install glimi` lands, use `PYTHONPATH=.`):
 ```bash
 # Offline — the echo backend (zero deps, no API key; replies are stubbed,
 # so the flow is illustrative).
-PYTHONPATH=. python apps/workspace/run.py --name Owner --goal "Plan our launch"
+PYTHONPATH=. python workspace/run.py --name Owner --goal "Plan our launch"
 
 # Real model — genuine collaboration + memory.
-GLIMI_LLM_BACKEND=claude_cli PYTHONPATH=. python apps/workspace/run.py \
+GLIMI_LLM_BACKEND=claude_cli PYTHONPATH=. python workspace/run.py \
     --name Owner --goal "Plan the public launch of our open-source project"
-PYTHONPATH=. python apps/workspace/run.py --backend ollama   # local Ollama
+PYTHONPATH=. python workspace/run.py --backend ollama   # local Ollama
 ```
 
 ## Human-in-the-loop — the approval gate
 
-A real team can let routine work flow on its own, but a **consequential** action — the Coordinator *finalizing the deliverable* — is exactly where a human should stay in the loop. Workspace gates that one action behind an **approval policy** (`apps/workspace/approval.py`), so the owner judges what the agent can own versus where they must intervene.
+A real team can let routine work flow on its own, but a **consequential** action — the Coordinator *finalizing the deliverable* — is exactly where a human should stay in the loop. Workspace gates that one action behind an **approval policy** (`workspace/approval.py`), so the owner judges what the agent can own versus where they must intervene.
 
 **`--approve` modes:**
 
@@ -86,7 +86,7 @@ A real team can let routine work flow on its own, but a **consequential** action
 
 ```bash
 # Require approval before the Coordinator commits the deliverable:
-PYTHONPATH=. python apps/workspace/run.py --name Owner --goal "Plan our launch" --approve final
+PYTHONPATH=. python workspace/run.py --name Owner --goal "Plan our launch" --approve final
 ```
 
 On a real terminal with `--approve final`, after the Coordinator drafts the synthesis the owner is prompted:
@@ -106,7 +106,7 @@ On a real terminal with `--approve final`, after the Coordinator drafts the synt
 `--serve` is **off by default** (so a plain run completes, prints the deliverable, and is CI-safe). With it, after the work the app serves the finished team in the **same store-driven Core dashboard that serves Community** — the **connection graph** (owner + Coordinator hubs, the specialists, and the collaboration edges between them) plus each member's 5-layer memory:
 
 ```bash
-PYTHONPATH=. python apps/workspace/run.py --serve   # → http://127.0.0.1:8800
+PYTHONPATH=. python workspace/run.py --serve   # → http://127.0.0.1:8800
 ```
 
 Needs the optional web deps: `pip install glimi[dashboard]`. This is the payoff — the dashboard behind the social sim now renders *your work team as a real interaction web*, not a list of isolated agents.

@@ -384,7 +384,7 @@ if "%_WANT_SERVE%"=="1" if not defined GLIMI_NO_BROWSER (
     start "" /b powershell -NoProfile -Command "for($i=0;$i -lt 60;$i++){try{Invoke-WebRequest -UseBasicParsing http://127.0.0.1:%WS_PORT%/api/snapshot -TimeoutSec 1 ^| Out-Null; break}catch{Start-Sleep -Milliseconds 500}}; Start-Process 'http://127.0.0.1:%WS_PORT%'"
 )
 REM -m (module mode) -> repo root on sys.path so glimi kernel + apps package resolve (mirrors Community).
-python -m apps.workspace.run%WS_ARGS%
+python -m workspace.run%WS_ARGS%
 exit /b %errorlevel%
 
 REM === uninstall (conservative) ===

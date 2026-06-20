@@ -1,4 +1,4 @@
-"""Tests for the multi-workspace server (apps/workspace/server.py).
+"""Tests for the multi-workspace server (workspace/server.py).
 
 One Workspace server hosts N workspaces, parallel to the Community platform's
 "one process → N communities". Covered here:
@@ -32,7 +32,7 @@ from fastapi.testclient import TestClient
 
 # Make the flat-dir app modules (server, demo, run, team) importable like run.py.
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_WS_DIR = os.path.join(_REPO, "apps", "workspace")
+_WS_DIR = os.path.join(_REPO, "workspace")
 if _WS_DIR not in sys.path:
     sys.path.insert(0, _WS_DIR)
 

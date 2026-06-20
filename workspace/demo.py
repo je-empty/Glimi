@@ -1,4 +1,4 @@
-"""apps/workspace/demo.py — a seeded, live, real-time-viewable Workspace demo.
+"""workspace/demo.py — a seeded, live, real-time-viewable Workspace demo.
 
 The Workspace analogue of the Community showcase (``scripts/seed_demo_mockup.py``):
 a hand-authored, believable team — a **Coordinator** plus a **Researcher**,
@@ -24,8 +24,8 @@ same boundary the rest of Glimi Workspace holds.
 
 Run it (needs the dashboard extra: ``pip install "glimi[dashboard]"``)::
 
-    PYTHONPATH=. python apps/workspace/run.py --demo            # → http://127.0.0.1:8800
-    PYTHONPATH=. python apps/workspace/run.py --demo --host 0.0.0.0
+    PYTHONPATH=. python workspace/run.py --demo            # → http://127.0.0.1:8800
+    PYTHONPATH=. python workspace/run.py --demo --host 0.0.0.0
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from glimi import Glimi
 
 try:  # script / flat-dir on sys.path
     from team import LABELS, SPECIALISTS, TEAM
-except ImportError:  # imported as apps.workspace.demo
+except ImportError:  # imported as workspace.demo
     from .team import LABELS, SPECIALISTS, TEAM
 
 # ── the demo's fixed setup ───────────────────────────────────────────────────
