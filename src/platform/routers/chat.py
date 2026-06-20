@@ -784,31 +784,16 @@ async def chat_ws(websocket: WebSocket, cid: str):
     # ONCE per socket from the registry (cheap, no per-frame I/O). Computed BEFORE
     # the auth gate so an anonymous viewer can be admitted to a read-only demo.
     from src import community as _community_mod
-    base_read_only = _community_mod.is_read_only(cid)
-    # invite_required (presenter) community: a valid community token (or the owner)
-    # both admits the viewer AND lifts the write-block. Gated on is_invite_required
-    # so a community token can NEVER affect a normal community (no privilege leak).
-    invited = False
-    if _community_mod.is_invite_required(cid):
-        try:
-            from src.platform.invite_gate import invite_ok as _invite_ok, touch as _invite_touch
-            invited = _invite_ok(websocket)
-            if invited:
-                _invite_touch(websocket)
-        except Exception:
-            invited = False
-    # Admit anon if the community is browsable (read_only) OR they hold an invite.
-    admit_anon = base_read_only or invited
-    # Block WRITES if read_only AND not invited (a valid invite lifts the block).
-    read_only = base_read_only and not invited
+    read_only = _community_mod.is_read_only(cid)
 
     user = _authenticate(websocket, cid)
-    if user is None and not admit_anon:
-        # Anon on a non-read_only, non-invited community (or a logged-in non-member)
-        # → reject BEFORE accept. 1008 = policy violation. A read-only (demo)
-        # community admits an anonymous READ-ONLY viewer; an invite_required
-        # presenter admits a token-holder who CAN write — the write actor is still
-        # the community owner (resolved inside the write path), never the viewer.
+    if user is None and not read_only:
+        # Anon on a non-read_only community (or a logged-in non-member) → reject
+        # BEFORE accept. 1008 = policy violation. A read-only (demo) community
+        # admits an anonymous READ-ONLY viewer: it can receive history/broadcasts
+        # but every WRITE is blocked below ('demo_readonly'), so the anon viewer
+        # is NEVER used as a write actor (the actor is always the community owner,
+        # resolved only inside the — for read_only, unreachable — write path).
         await websocket.close(code=1008)
         return
 

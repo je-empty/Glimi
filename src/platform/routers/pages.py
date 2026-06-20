@@ -2,11 +2,10 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from src.community import is_invite_required, is_read_only, list_communities
+from src.community import is_read_only, list_communities
 
 from .. import accounts, setup as setup_mod, templates
 from ..auth import get_current_user, public_readonly_user, require_admin, require_user
-from ..invite_gate import invite_ok, remember_cookie
 from ..supervisor import supervisor
 
 from .communities import _fetch_members, _visible_communities
@@ -19,8 +18,7 @@ async def home(request: Request):
     # 첫 실행이면 setup wizard 로.
     if not setup_mod.is_configured():
         return RedirectResponse(url="/setup", status_code=303)
-    # 공개 랜딩은 이제 별도 서비스(apps.landing — glimi.iruyo.com:8200). 이 앱은
-    # 커뮤니티 전용이라, 여기서는 랜딩을 서빙하지 않는다.
+    # 이 앱은 커뮤니티 전용 — 별도 랜딩 페이지는 없다.
     user = get_current_user(request)
     if not user:
         # 로그아웃 방문자: read-only(데모) 둘러보기로 보냄 (커뮤니티 리스트는 노출 X).
@@ -66,11 +64,7 @@ async def community_chat(
     /community/{community_id} 보다 먼저 등록되어야 함 (path 충돌 방지).
 
     공개 둘러보기: read-only(데모) 커뮤니티는 익명도 열람 가능 (read 전용).
-    초대 전용(invite_required, 예: demo-live)은 유효 토큰/오너만 입장 — 아니면 공개
-    데모로 보냄. 토큰 보유자에겐 read_only 를 풀어 컴포저를 활성화한다."""
-    invited = is_invite_required(community_id) and invite_ok(request)
-    if is_invite_required(community_id) and not invited:
-        return RedirectResponse(url="/community/demo", status_code=303)
+    read_only 를 템플릿에 전달 → 컴포저 비활성 + 배너 (전원 동일)."""
     user = public_readonly_user(request, community_id)
 
     all_communities = list_communities()
@@ -82,7 +76,7 @@ async def community_chat(
     agent_id = request.query_params.get("agent") or "mgr"
     channel = request.query_params.get("channel") or f"dm-{agent_id}"
 
-    resp = templates.env.TemplateResponse(
+    return templates.env.TemplateResponse(
         request,
         "chat.html",
         {
@@ -91,12 +85,10 @@ async def community_chat(
             "community_name": target.get("name") or community_id,
             "channel": channel,
             "agent_id": agent_id,
-            # read-only(데모 목업) → 컴포저 비활성 + 배너. 단 초대 토큰 보유자는 풀림.
-            "read_only": bool(target.get("read_only")) and not invited,
+            # read-only(데모 목업) → 컴포저 비활성 + 배너 (look-only 쇼케이스)
+            "read_only": bool(target.get("read_only")),
         },
     )
-    remember_cookie(resp, request)  # ?invite= 유효하면 쿠키로 기억 (리로드 유지)
-    return resp
 
 
 @router.get("/community/{community_id}", response_class=HTMLResponse)
@@ -104,11 +96,8 @@ async def community_dashboard(
     request: Request,
     community_id: str,
 ):
-    # 공개 둘러보기: read-only(데모)는 익명 열람 가능 (read 전용). 초대 전용
-    # (invite_required)은 토큰/오너만 — 아니면 공개 데모로. 토큰 보유자는 컴포저 풀림.
-    invited = is_invite_required(community_id) and invite_ok(request)
-    if is_invite_required(community_id) and not invited:
-        return RedirectResponse(url="/community/demo", status_code=303)
+    # 공개 둘러보기: read-only(데모)는 익명 열람 가능 (read 전용). read_only 를
+    # 템플릿에 전달 → 임베드 채팅 컴포저 비활성 + 배너 (전원 동일).
     user = public_readonly_user(request, community_id)
 
     all_communities = list_communities()
@@ -125,7 +114,7 @@ async def community_dashboard(
             _reg = tomllib.load(f)
         _lang = _reg.get("community", {}).get(community_id, {}).get("language", "en")
 
-    resp = templates.env.TemplateResponse(
+    return templates.env.TemplateResponse(
         request,
         "dashboard/index.html",
         {
@@ -134,8 +123,8 @@ async def community_dashboard(
             "community_name": target.get("name") or community_id,
             "community_description": target.get("description") or "",
             "language": _lang,
-            # read-only(데모 목업) → 임베드 채팅 컴포저 비활성 + 배너. 초대 토큰 보유자는 풀림.
-            "read_only": bool(target.get("read_only")) and not invited,
+            # read-only(데모 목업) → 임베드 채팅 컴포저 비활성 + 배너
+            "read_only": bool(target.get("read_only")),
             # 임베드된 채팅 탭 기본 채널/에이전트 — 오너↔mgr DM (standalone /chat 기본과 동일).
             "chat_agent": "mgr",
             "chat_channel": "dm-mgr",
@@ -148,8 +137,6 @@ async def community_dashboard(
             "active_tab": "chat",
         },
     )
-    remember_cookie(resp, request)  # ?invite= 유효하면 쿠키로 기억 (리로드 유지)
-    return resp
 
 
 @router.get("/agent/{agent_id}", response_class=HTMLResponse)

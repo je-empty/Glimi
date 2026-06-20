@@ -113,19 +113,6 @@ def is_read_only(community_id: Optional[str] = None) -> bool:
     return False
 
 
-def is_invite_required(community_id: Optional[str] = None) -> bool:
-    """커뮤니티가 초대 전용(시연/presenter — 토큰·오너만 입장+채팅)인지 (기본: False).
-    registry.toml `[community.<id>] invite_required = true` 로 표시. 공개 데모와 달리
-    토큰 없는 익명은 입장 자체가 막힌다 (게이트는 플랫폼 라우터/WS 에서 적용)."""
-    cid = community_id or get_community_id()
-    if REGISTRY_PATH.exists():
-        with open(REGISTRY_PATH, "rb") as f:
-            registry = tomllib.load(f)
-        info = registry.get("community", {}).get(cid, {})
-        return bool(info.get("invite_required", False))
-    return False
-
-
 # ── 경로 헬퍼 ────────────────────────────────────────────
 
 def get_community_dir() -> Path:
@@ -258,7 +245,6 @@ def list_communities() -> list[dict]:
             "description": info.get("description", ""),
             "is_default": d.name == default_id,
             "read_only": bool(info.get("read_only", False)),
-            "invite_required": bool(info.get("invite_required", False)),
             "has_db": (d / "community.db").exists(),
             "has_env": (d / ".env").exists(),
         })

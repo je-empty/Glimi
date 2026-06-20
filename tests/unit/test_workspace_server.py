@@ -151,13 +151,6 @@ def test_snapshot_injects_workspace_title(client):
     assert (snap.get("community_meta") or {}).get("name")   # non-empty
 
 
-def test_presenter_reset_requires_invite(client, monkeypatch):
-    # A read-only guest must NOT be able to wipe the presenter's seeded state.
-    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
-    assert client.post("/w/demo-live/reset").status_code == 403            # no token → blocked
-    assert client.post("/w/demo-live/reset?invite=SECRET").status_code == 200  # invited → ok
-
-
 def test_dashboard_html_injects_api_base(client):
     # The Core dashboard (graph/overview) now lives at /w/{id}/graph; /w/{id}
     # itself is the community-style chat view. The graph view is the one served
@@ -174,67 +167,7 @@ def test_unknown_id_404s(client):
     assert client.get("/w/nope/api/usage").status_code == 404
 
 
-# ── presenter demo: chat-enabled twin of the public read-only demo ───────────
-
-def test_presenter_unlisted_but_reachable(client):
-    # The presenter twin is NOT on the public home list (cards() skips it) — the
-    # public surface stays just the read-only demo — but it IS reachable by URL
-    # and seeded from the SAME launch team (4 agents, 8 channels).
-    ids = {c["id"] for c in client.get("/api/workspaces").json()}
-    assert "demo" in ids
-    assert "demo-live" not in ids
-    snap = client.get("/w/demo-live/api/snapshot").json()
-    assert len(snap["agents"]) == 4
-    assert len(snap["channels"]) == 8
-
-
-def test_presenter_chat_enabled_demo_readonly(client):
-    # Public demo page: read-only flag true, no reset control.
-    demo = client.get("/w/demo").text
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", demo)
-    assert "presenter-reset" not in demo
-    # Presenter page: read-only flag false (chat on) + the reset control present.
-    live = client.get("/w/demo-live").text
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", live)
-    assert "presenter-reset" in live
-
-
-def test_presenter_reset_only_for_presenter(client):
-    # Reset rebuilds the presenter back to the seeded state (still 4 agents).
-    r = client.post("/w/demo-live/reset")
-    assert r.status_code == 200 and r.json()["status"] == "reset"
-    assert len(client.get("/w/demo-live/api/snapshot").json()["agents"]) == 4
-    # The public demo + user workspaces can't be reset; unknown id 404s.
-    assert client.post("/w/demo/reset").status_code == 403
-    created = client.post("/api/workspaces", json={"name": "Mia", "goal": "X"}).json()
-    assert client.post(f"/w/{created['id']}/reset").status_code == 403
-    assert client.post("/w/nope/reset").status_code == 404
-
-
-def test_presenter_ws_accepts_owner_turn(client):
-    # Demo socket rejects owner text (read-only); the presenter socket accepts it.
-    with client.websocket_connect("/w/demo/chat/ws") as sock:
-        sock.send_json({"type": "text", "channel": "dm-coordinator", "text": "hi"})
-        assert sock.receive_json().get("error") == "demo_readonly"
-    with client.websocket_connect("/w/demo-live/chat/ws") as sock:
-        sock.send_json({"type": "text", "channel": "dm-coordinator", "text": "hi"})
-        saw_readonly = got_response = False
-        for _ in range(8):
-            msg = sock.receive_json()
-            if msg.get("error") == "demo_readonly":
-                saw_readonly = True
-                break
-            if msg.get("type") in ("typing", "text"):
-                got_response = True
-                if msg.get("type") == "text":
-                    break
-            if msg.get("type") == "typing" and msg.get("on") is False:
-                break
-        assert not saw_readonly  # chat is enabled on the presenter
-        assert got_response
-
-
-# ── invite gating (presenter chat + workspace creation) ─────────────────────
+# ── persistence + per-agent detail + open create ─────────────────────────────
 
 def test_created_workspace_persists_across_restart(monkeypatch, tmp_path):
     # User-created workspaces survive a restart: metadata persisted + deterministically
@@ -276,90 +209,13 @@ def test_agent_detail_page(client):
     assert '__GLIMI_BACK__ = "/w/demo"' in body           # back-link to the dashboard
 
 
-def test_invite_gate_off_by_default(client):
-    # Truly unconfigured (no tokens AND no owner email) = local/dev → gate open.
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live").text)
-
-
-def test_invite_gate_fails_closed_when_owner_email_set(client, monkeypatch):
-    # A public deploy sets GLIMI_OWNER_EMAIL → with no tokens the gate must fail
-    # CLOSED (anon presenter stays read-only), never hand out free real-model chat.
-    monkeypatch.setattr(server, "_INVITE_TOKENS", set())
-    monkeypatch.setattr(server, "_INVITE_TOKENS_FILE", "")
-    monkeypatch.setattr(server, "_OWNER_EMAIL", "owner@example.com")
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live").text)
-    assert client.post("/api/workspaces", json={"name": "X", "goal": "Y"}).status_code == 403
-
-
-def test_invite_gate_blocks_guests_without_token(client, monkeypatch):
-    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
-    # presenter without a token → read-only (chat locked)
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live").text)
-    # with a valid token → chat unlocked (+ cookie remembered)
-    r = client.get("/w/demo-live?invite=SECRET")
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", r.text)
-    assert "glimi_invite" in r.headers.get("set-cookie", "")
-    # the public read-only demo is never affected by the invite gate
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo").text)
-
-
-def test_invite_gate_blocks_create_without_token(client, monkeypatch):
-    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
-    assert client.post("/api/workspaces", json={"name": "X", "goal": "Y"}).status_code == 403
-    assert client.post("/api/workspaces?invite=SECRET",
-                       json={"name": "X", "goal": "Y"}).status_code == 200
-
-
-def test_invite_gate_owner_via_cf_header(client, monkeypatch):
-    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
-    monkeypatch.setattr(server, "_OWNER_EMAIL", "owner@example.com")
-    # CF Access verified the owner's email → chat unlocked without any token
-    r = client.get("/w/demo-live",
-                   headers={"Cf-Access-Authenticated-User-Email": "owner@example.com"})
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", r.text)
-    # a different CF email is NOT the owner → still gated
-    r2 = client.get("/w/demo-live",
-                    headers={"Cf-Access-Authenticated-User-Email": "someone@else.com"})
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", r2.text)
-
-
-def test_invite_tokens_from_file_live(client, monkeypatch, tmp_path):
-    # File-based tokens are re-read per request → issue/revoke with no restart.
-    f = tmp_path / "invite_tokens.txt"
-    f.write_text("# issued links\nFILETOKEN  # alice 2026-06-20\n")   # inline label (helper format)
-    monkeypatch.setattr(server, "_INVITE_TOKENS", set())          # env empty
-    monkeypatch.setattr(server, "_INVITE_TOKENS_FILE", str(f))
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live?invite=FILETOKEN").text)
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live?invite=NOPE").text)
-    # rotate the file (revoke FILETOKEN, issue OTHER) — no restart
-    f.write_text("OTHER  # bob\n")
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live?invite=FILETOKEN").text)
-    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live?invite=OTHER").text)
-
-
-def test_home_invite_sets_cookie_for_create(client, monkeypatch):
-    # "start fresh" link /?invite=TOKEN remembers the token so create is unlocked.
-    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
-    assert "glimi_invite" in client.get("/?invite=SECRET").headers.get("set-cookie", "")
-
-
-def test_home_hides_create_form_for_anon(client, monkeypatch):
-    # With a gate configured, an anon visitor must NOT see the open create form —
-    # only an invite-code entry affordance.
-    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
-    body = client.get("/").text
-    assert 'action="/api/workspaces"' not in body          # create form hidden
-    assert ("초대 코드" in body) or ("Invite code" in body)  # entry shown instead
-
-
-def test_home_shows_create_form_with_token(client, monkeypatch):
-    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
-    body = client.get("/?invite=SECRET").text
-    assert 'action="/api/workspaces"' in body              # token unlocks the form
-
-
-# (Token-admin panel tests moved to test_landing_app.py — the central admin now
-#  lives on the landing app, gating the shared glimi.dashboard.invites store.)
+def test_create_workspace_open(client):
+    # Creating a workspace is open (no invite gate) — it's the core product flow.
+    r = client.post("/api/workspaces", json={"name": "Mia", "goal": "Plan the launch"})
+    assert r.status_code == 200
+    created = r.json()
+    assert created["kind"] == "user" and created["goal"] == "Plan the launch"
+    assert created["id"] in [c["id"] for c in client.get("/api/workspaces").json()]
 
 
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────

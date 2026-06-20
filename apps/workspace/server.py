@@ -85,11 +85,6 @@ except ImportError:  # imported as apps.workspace.server
     from .run import run_workspace
     from .team import TEAM
 
-# Shared invite-token store (the central admin on the landing manages it; this app
-# only gates on tokens whose target is "workspace"). Lives in the kernel's shared
-# web layer so all three apps use one store.
-from glimi.dashboard import invites as _invites
-
 # The Core dashboard ships the canonical rich UI — assets (css/js), the shared
 # templates (dashboard/_core.html + _chat_shell.html), and the i18n dicts. This
 # app consumes them straight from the installed ``glimi[dashboard]`` package; it
@@ -99,8 +94,8 @@ _DASH_STATIC = _DASH_DIR / "static"
 _DASH_TEMPLATES = _DASH_DIR / "templates"
 _DASH_I18N = _DASH_DIR / "i18n"
 
-# This app's own dir — the home (workspace picker) page + the presenter child
-# template are workspace-local; the dashboard itself is the shared Core template.
+# This app's own dir — the home (workspace picker) page is workspace-local;
+# the dashboard itself is the shared Core template.
 _APP_DIR = Path(__file__).resolve().parent
 _RESOURCES = _APP_DIR.parent.parent / "resources"  # repo-root /resources (logo, etc.)
 
@@ -149,81 +144,7 @@ _USER_BACKEND = (os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo
 # Demo identities. Two entries are built from the SAME seeded launch team
 # (``demo.build``):
 #   • ``demo`` (/w/demo)       — public, always exposed, read-only (browse only).
-#   • ``demo-live`` (/w/demo-live) — the Presenter twin: identical seeded state but
-#     chat-ENABLED so the owner can demo live + keep using it. Unlisted on the
-#     public home (``cards()`` skips it); reset to the seeded state via POST .../reset.
 _DEMO_TITLE = "런칭 데모"
-_PRESENTER_ID = "demo-live"
-_PRESENTER_TITLE = "런칭 데모"
-
-# ── invite gating (presenter chat + workspace creation) ─────────────────────
-# When GLIMI_INVITE_TOKENS is set, the chat-ENABLED surfaces — the presenter
-# (/w/demo-live) and creating a workspace — require either:
-#   • the OWNER, recognized by Cloudflare Access' verified-email header (no token), or
-#   • a guest with ?invite=<token> (a REUSABLE share link; remembered in a cookie).
-# Unset → no gate (fully open: the OSS/local default). The public read-only demo
-# (/w/demo) is NEVER gated. The owner email is GLIMI_OWNER_EMAIL (the address
-# allowed through CF Access). Tokens come from two sources, unioned and re-read
-# LIVE per request so the owner can ISSUE or REVOKE a token without a restart:
-#   • GLIMI_INVITE_TOKENS      — comma-separated, fixed at startup (simple/CI), and
-#   • GLIMI_INVITE_TOKENS_FILE — a file with one token per line (# comments ok);
-#     issue = `echo <token> >> file`, revoke = delete its line. (per-person links)
-_INVITE_TOKENS = {t.strip() for t in (os.environ.get("GLIMI_INVITE_TOKENS") or "").split(",") if t.strip()}
-_INVITE_TOKENS_FILE = (os.environ.get("GLIMI_INVITE_TOKENS_FILE") or "").strip()
-_OWNER_EMAIL = (os.environ.get("GLIMI_OWNER_EMAIL") or "").strip().lower()
-_INVITE_COOKIE = "glimi_invite"
-
-
-def _invite_tokens() -> set:
-    """The currently-valid invite tokens: the env set ∪ the live token file
-    (re-read each call → issue/revoke with no restart). Empty → gate disabled."""
-    toks = set(_INVITE_TOKENS)
-    if _INVITE_TOKENS_FILE:
-        try:
-            with open(_INVITE_TOKENS_FILE, encoding="utf-8") as f:
-                for ln in f:
-                    s = ln.strip()
-                    if s and not s.startswith("#"):
-                        toks.add(s.split()[0])  # first field — ignore an inline "# label"
-        except OSError:
-            pass
-    toks |= _invites.token_set(target="workspace")  # admin-panel-managed (this app's target)
-    return toks
-
-
-def _touch_invite(scope) -> None:
-    """Record usage of a managed token (for the admin panel's 'who's using' view).
-    Owner (CF) requests carry no token → no-op. Best-effort."""
-    tok = (scope.query_params.get("invite") or scope.cookies.get(_INVITE_COOKIE) or "").strip()
-    if tok:
-        _invites.touch(tok)
-
-
-def _is_owner(scope) -> bool:
-    """True if Cloudflare Access authenticated this request as the owner — CF sets
-    ``Cf-Access-Authenticated-User-Email`` after its email login. Works for a
-    Request or a WebSocket (both carry case-insensitive headers)."""
-    if not _OWNER_EMAIL:
-        return False
-    email = (scope.headers.get("cf-access-authenticated-user-email") or "").strip().lower()
-    return email == _OWNER_EMAIL
-
-
-def _invite_ok(scope) -> bool:
-    """Whether this request may use the chat-enabled / create surfaces. The owner
-    (CF) always may; a valid invite token (``?invite=`` or remembered cookie) may.
-
-    With NO tokens configured, fail OPEN only for a truly unconfigured (local/dev)
-    deployment — i.e. no owner email set either. A deployment that set an owner email
-    clearly intends gating, so it fails CLOSED (owner-only) rather than handing free
-    chat / workspace creation to anyone (the presenter runs a real, paid/local model)."""
-    if _is_owner(scope):
-        return True
-    toks = _invite_tokens()
-    if not toks:
-        return not _OWNER_EMAIL  # local/dev → open; public (owner email set) → closed
-    tok = (scope.query_params.get("invite") or scope.cookies.get(_INVITE_COOKIE) or "").strip()
-    return tok in toks
 
 
 def _load_i18n(lang: str) -> dict:
@@ -363,7 +284,7 @@ class Workspace:
     glimi: Glimi
     title: str
     goal: str
-    kind: str  # "demo" (public read-only) | "presenter" (chat-enabled twin) | "user"
+    kind: str  # "demo" (public read-only) | "user" (created workspace)
     created_at: str = field(default_factory=_now_utc_iso)
 
     @property
@@ -402,9 +323,7 @@ class WorkspaceRegistry:
         return self._by_id.get(ws_id)
 
     def cards(self) -> list[dict]:
-        """Demo first, then user workspaces oldest → newest. The presenter twin is
-        intentionally UNLISTED — it's the owner's private live-demo entry, reachable
-        only by direct URL so the public home shows just the read-only demo."""
+        """Demo first, then user workspaces oldest → newest."""
         demos = [w for w in self._by_id.values() if w.kind == "demo"]
         users = [w for w in self._by_id.values() if w.kind == "user"]
         users.sort(key=lambda w: w.created_at)
@@ -485,20 +404,6 @@ class WorkspaceRegistry:
                     os.environ.pop("GLIMI_LLM_BACKEND", None)
                 else:
                     os.environ["GLIMI_LLM_BACKEND"] = _prev
-
-    def rebuild(self, ws_id: str, builder, *, kinds=("presenter",)) -> Optional["Workspace"]:
-        """Reset a workspace to a fresh seeded state: swap its ``Glimi`` for one from
-        ``builder()``, under the build lock. Held because constructing a ``Glimi``
-        re-points the process-global kernel runtime (same hazard as create / chat),
-        so the rebuild must serialize with them. Restricted to ``kinds`` (presenter
-        only) so the public demo and user workspaces can't be wiped."""
-        with self._lock:
-            ws = self._by_id.get(ws_id)
-            if ws is None or ws.kind not in kinds:
-                return None
-            ws.glimi = builder()
-            return ws
-
 
 # ── per-workspace dashboard endpoint shapes (mirror glimi/dashboard/app.py) ───
 
@@ -718,29 +623,15 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "community_id": None,           # workspace uses api_base, not ?community=
         "community_name": ws.title,
         "language": lang,
-        "read_only": (ws.kind == "demo")
-                     or (ws.kind == "presenter" and not _invite_ok(request)),
-        # Only an invited presenter (or owner) sees the destructive Reset control.
-        "can_reset": (ws.kind == "presenter") and _invite_ok(request),
+        "read_only": (ws.kind == "demo"),  # public demo = browse-only; user workspaces are writable
         "asset_v": _ASSET_VER,
         "chat_channel": "dm-coordinator",
         "chat_agent": "coordinator",
         "chat_user": owner_name or "You",
         "refresh_ms": refresh_ms or "",
     }
-    # The presenter twin renders a thin child of the canonical shell that adds the
-    # owner-only "reset to initial state" control (extra_chrome/extra_scripts).
-    template = ("dashboard/presenter.html" if ws.kind == "presenter"
-                else "dashboard/_core.html")
-    resp = _TEMPLATES.TemplateResponse(request, template, ctx)
+    resp = _TEMPLATES.TemplateResponse(request, "dashboard/_core.html", ctx)
     resp.headers["Cache-Control"] = "no-store"
-    # Remember a valid presenter invite (reusable share link) in a cookie so the
-    # chat socket + reloads stay unlocked without re-passing ?invite= each time.
-    _tok = (request.query_params.get("invite") or "").strip()
-    if ws.kind == "presenter" and _tok and _tok in _invite_tokens():
-        resp.set_cookie(_INVITE_COOKIE, _tok, max_age=2592000, httponly=True, samesite="lax")
-    if ws.kind == "presenter":
-        _touch_invite(request)  # record usage for the admin panel's 'who's using' view
     return resp
 
 
@@ -765,7 +656,6 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     if with_demo:
         _install_demo(reg, interval=demo_interval)
-        _install_presenter(reg)
     _restore_user_workspaces(reg)  # bring back user-created workspaces across restarts
 
     def _require(ws_id: str) -> Workspace:
@@ -783,19 +673,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         if lang not in ("ko", "en"):
             lang = "ko"
         resp = _TEMPLATES.TemplateResponse(
-            request, "home.html",
-            {"request": request, "lang": lang,
-             # Only owners / valid-token holders see the create form; anon visitors
-             # get an invite-code entry instead (the public subdomain has no CF/login).
-             "can_create": _invite_ok(request),
-             "bad_invite": bool((request.query_params.get("invite") or "").strip())
-                           and not _invite_ok(request)})
+            request, "home.html", {"request": request, "lang": lang})
         resp.headers["Cache-Control"] = "no-store"
-        # "start fresh" invite link: /?invite=TOKEN remembers the token (cookie) so
-        # the create form is unlocked (gate otherwise 403s guests).
-        _tok = (request.query_params.get("invite") or "").strip()
-        if _tok and _tok in _invite_tokens():
-            resp.set_cookie(_INVITE_COOKIE, _tok, max_age=2592000, httponly=True, samesite="lax")
         return resp
 
     @app.get("/logo")
@@ -819,11 +698,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
         Serialized by the registry's build lock (global-singleton WRITE path).
         Form submits get a 303 redirect to the new dashboard; JSON callers get
-        ``{id, title, goal, kind, ...}``. Gated by invite when GLIMI_INVITE_TOKENS
-        is set (owner via CF, or a valid token) so guests can't spam workspaces.
+        ``{id, title, goal, kind, ...}``.
         """
-        if not _invite_ok(request):
-            raise HTTPException(status_code=403, detail="invite required to create a workspace")
         name = goal = ""
         is_form = False
         ctype = request.headers.get("content-type", "")
@@ -937,7 +813,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         if ws is None:
             await websocket.close(code=1008)
             return
-        read_only = (ws.kind == "demo") or (ws.kind == "presenter" and not _invite_ok(websocket))
+        read_only = (ws.kind == "demo")
         await websocket.accept()
         loop = asyncio.get_event_loop()
         try:
@@ -1051,25 +927,6 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         ws = _require(ws_id)
         return JSONResponse(ws.reader().usage())
 
-    # ── presenter: reset to the initial seeded state ────────────────────────
-    @app.post("/w/{ws_id}/reset")
-    def w_reset(ws_id: str, request: Request) -> JSONResponse:
-        """Rebuild the Presenter demo back to the seeded mockup state (clears every
-        message the owner sent during a walkthrough). Presenter-only + invite-gated —
-        a read-only guest must NOT be able to wipe the seeded walkthrough state."""
-        ws = _require(ws_id)
-        if ws.kind != "presenter":
-            raise HTTPException(status_code=403,
-                                detail="reset is only available for the presenter demo")
-        if not _invite_ok(request):  # owner / invited presenter only — not read-only guests
-            raise HTTPException(status_code=403, detail="invite required to reset the presenter")
-        out = reg.rebuild(ws_id, lambda: _demo.build(backend=_USER_BACKEND))
-        if out is None:
-            raise HTTPException(status_code=404, detail="presenter demo not found")
-        return JSONResponse({"status": "reset", "id": ws_id})
-
-    # (The token-admin panel lives on the landing app — glimi.iruyo.com/admin —
-    #  so one central panel manages both community + workspace invites.)
     return app
 
 
@@ -1095,23 +952,6 @@ def _install_demo(reg: WorkspaceRegistry, *, interval: float = 6.0) -> Workspace
     return ws
 
 
-def _install_presenter(reg: WorkspaceRegistry) -> Workspace:
-    """Register the Presenter demo (``/w/demo-live``) — the chat-enabled twin of the
-    public read-only demo, built from the SAME seeded launch team so the owner can
-    open it for a live walkthrough and continue from the exact mockup state.
-
-    Differences from the public demo: ``kind="presenter"`` (so chat is NOT
-    read-only), built on ``_USER_BACKEND`` (real replies when the operator sets
-    ``GLIMI_LLM_BACKEND``; echo/$0 otherwise), and NO activity loop — the state is
-    owner-driven + stays stable for a demo, with ``POST .../reset`` rebuilding it
-    back to the seeded mockup. Unlisted on the public home (see ``cards()``)."""
-    g = _demo.build(backend=_USER_BACKEND)
-    ws = Workspace(id=_PRESENTER_ID, glimi=g, title=_PRESENTER_TITLE,
-                   goal=_demo.GOAL, kind="presenter")
-    reg.register(ws)
-    return ws
-
-
 def serve(host: str = "127.0.0.1", port: int = 8800, **uvicorn_kwargs) -> int:
     """Run the multi-workspace server (blocking). Needs ``glimi[dashboard]``."""
     try:
@@ -1128,7 +968,6 @@ def serve(host: str = "127.0.0.1", port: int = 8800, **uvicorn_kwargs) -> int:
     print("=" * 64)
     print(f"  home : {url}              ← workspace list + create")
     print(f"  demo : {url}/w/demo       ← seeded live demo (read-only, public, $0)")
-    print(f"  live : {url}/w/demo-live  ← presenter twin (chat ON, owner-only, resettable)")
     print("=" * 64 + "\n")
     uvicorn.run(app, host=host, port=port, **uvicorn_kwargs)
     return 0

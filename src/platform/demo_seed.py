@@ -17,10 +17,6 @@ DEMO_ID = "demo"
 _DEMO_NAME = "내 커뮤니티"
 _DEMO_DESC = "일상 수다 · 게임 · 맛집 · 주제 없는 아지트"
 
-DEMO_LIVE_ID = "demo-live"
-_LIVE_NAME = "내 커뮤니티 (라이브 시연)"
-_LIVE_DESC = "친구들과 직접 대화해보는 라이브 시연 — 초대 전용"
-
 
 def _toml_escape(s: str) -> str:
     """TOML 문자열 이스케이프 — 역슬래시·큰따옴표."""
@@ -28,15 +24,12 @@ def _toml_escape(s: str) -> str:
 
 
 def _write_registry_block(cid: str, name: str, description: str,
-                          language: str, read_only: bool,
-                          invite_required: bool = False) -> None:
-    """registry.toml 의 [community.<cid>] 블록을 name/description/language/read_only
-    (+ 선택 invite_required) 로 갱신.
+                          language: str, read_only: bool) -> None:
+    """registry.toml 의 [community.<cid>] 블록을 name/description/language/read_only 로 갱신.
 
     _ensure_registry 가 만든 기본 블록(name=cid, description="")을 통째로 교체.
     communities/routers/communities.py:_update_registry 패턴 + read_only 확장.
-    이미 같은 블록이 정확히 있으면 멱등(no-op). invite_required 는 True 일 때만 한 줄
-    추가 (기존 demo/demo-en 블록은 그대로 — churn 없음).
+    이미 같은 블록이 정확히 있으면 멱등(no-op).
     """
     if not REGISTRY_PATH.exists():
         return
@@ -48,8 +41,6 @@ def _write_registry_block(cid: str, name: str, description: str,
         f'language = "{language}"\n'
         f'read_only = {"true" if read_only else "false"}'
     )
-    if invite_required:
-        new_block += '\ninvite_required = true'
     if new_block in content:
         return  # 이미 동일 — 멱등
 
@@ -97,53 +88,5 @@ def ensure_demo_seeded() -> bool:
     except Exception as e:  # noqa: BLE001 — startup 을 절대 깨지 않는다
         import traceback
         print(f"[demo_seed] ⚠ demo 시딩 실패 (무시하고 계속): {e}")
-        traceback.print_exc()
-        return False
-
-
-def ensure_demo_live_seeded() -> bool:
-    """demo 를 채팅 가능한 초대전용 'demo-live'(presenter) 로 복제.
-
-    같은 친구·히스토리(공개 demo 의 DB/아바타 복사) 위에서:
-      - read_only=true  → 익명도 둘러보기는 가능 (게이트는 토큰 보유자에게만 입장 허용)
-      - invite_required=true → 토큰/오너만 입장 + 채팅 (pages/chat 게이트가 적용)
-    실모델 응답은 demo-live/.env 의 ollama 백엔드로 — 기본은 이미 로드된 로컬 모델 공유
-    (추가 메모리 0; GLIMI_DEMO_LIVE_MODEL 로 override). 공개 demo 는 그대로 깨끗하게 유지.
-    멱등(이미 있으면 .env/registry 만 보장) · best-effort(startup 보호).
-    """
-    try:
-        import os
-        import shutil
-        demo_dir = COMMUNITIES_DIR / DEMO_ID
-        live_dir = COMMUNITIES_DIR / DEMO_LIVE_ID
-        if not demo_dir.exists():
-            return False  # 공개 demo 가 먼저 시딩돼야 복제 가능
-        newly = False
-        if not live_dir.exists():
-            shutil.copytree(
-                demo_dir, live_dir,
-                ignore=shutil.ignore_patterns(
-                    "*.backup", "*.pre-utc.backup", "backups", "logs", ".DS_Store"),
-            )
-            newly = True
-        # 실모델 백엔드(.env) — 항상 재기록(재배포로 모델 교체 가능).
-        model = (os.environ.get("GLIMI_DEMO_LIVE_MODEL") or "gemma4:e4b-it-q4_K_M").strip()
-        (live_dir / ".env").write_text(
-            "DISCORD_BOT_TOKEN=mockup-no-token\n"
-            "GLIMI_LLM_BACKEND=ollama\n"
-            f"GLIMI_OLLAMA_MODEL={model}\n",
-            encoding="utf-8",
-        )
-        _ensure_registry(DEMO_LIVE_ID)
-        _write_registry_block(
-            DEMO_LIVE_ID, _LIVE_NAME, _LIVE_DESC,
-            language="ko", read_only=True, invite_required=True,
-        )
-        print(f"[demo_seed] '{DEMO_LIVE_ID}' {'복제' if newly else '메타'} 완료 "
-              f"(초대전용 실모델 시연, model={model})")
-        return newly
-    except Exception as e:  # noqa: BLE001 — startup 을 절대 깨지 않는다
-        import traceback
-        print(f"[demo_seed] ⚠ demo-live 복제 실패 (무시하고 계속): {e}")
         traceback.print_exc()
         return False
