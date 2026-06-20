@@ -80,10 +80,12 @@ try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
     from run import run_workspace  # type: ignore
     from team import TEAM  # type: ignore
+    import invites as _invites  # type: ignore
 except ImportError:  # imported as apps.workspace.server
     from . import demo as _demo
     from .run import run_workspace
     from .team import TEAM
+    from . import invites as _invites
 
 # The Core dashboard ships the canonical rich UI — assets (css/js), the shared
 # templates (dashboard/_core.html + _chat_shell.html), and the i18n dicts. This
@@ -97,6 +99,7 @@ _DASH_I18N = _DASH_DIR / "i18n"
 # This app's own dir — the home (workspace picker) page + the presenter child
 # template are workspace-local; the dashboard itself is the shared Core template.
 _APP_DIR = Path(__file__).resolve().parent
+_RESOURCES = _APP_DIR.parent.parent / "resources"  # repo-root /resources (logo, etc.)
 
 
 def _asset_ver() -> str:
@@ -181,7 +184,16 @@ def _invite_tokens() -> set:
                         toks.add(s.split()[0])  # first field — ignore an inline "# label"
         except OSError:
             pass
+    toks |= _invites.token_set()  # admin-panel-managed tokens (JSON store)
     return toks
+
+
+def _touch_invite(scope) -> None:
+    """Record usage of a managed token (for the admin panel's 'who's using' view).
+    Owner (CF) requests carry no token → no-op. Best-effort."""
+    tok = (scope.query_params.get("invite") or scope.cookies.get(_INVITE_COOKIE) or "").strip()
+    if tok:
+        _invites.touch(tok)
 
 
 def _is_owner(scope) -> bool:
@@ -240,19 +252,29 @@ def _monogram(agent_id: str) -> str:
     return (s[:1].upper() + s[1:2].lower()) if len(s) >= 2 else s[:1].upper()
 
 
+# Role-specific hues so the team reads as branded, distinct discs (not random):
+# Coordinator=amber, Researcher=blue, Builder=violet, Critic=rose. Others hash.
+_ROLE_HUE = {"coordinator": 35, "researcher": 212, "builder": 265, "critic": 350}
+
+
 def _avatar_svg(agent_id: str) -> str:
-    """Inline SVG avatar: the agent's monogram on a deterministic tinted disc.
-    Always renders — no external asset, so the avatar route is always 200."""
+    """Inline SVG avatar: the agent's monogram on a soft vertical-gradient disc,
+    tinted by ROLE (Coordinator/Researcher/Builder/Critic) for a branded, less-flat
+    look. Always renders — no external asset, so the avatar route is always 200."""
     mono = _monogram(agent_id)
-    # Deterministic hue from the id so distinct agents read apart.
-    hue = int(hashlib.sha1((agent_id or "").encode("utf-8")).hexdigest(), 16) % 360
-    fs = 40 if len(mono) >= 2 else 46
+    aid = (agent_id or "").strip().lower()
+    hue = _ROLE_HUE.get(aid, int(hashlib.sha1(aid.encode("utf-8")).hexdigest(), 16) % 360)
+    fs = 38 if len(mono) >= 2 else 46
+    gid = f"g{hue}"
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" '
         'viewBox="0 0 96 96" role="img">'
-        f'<rect width="96" height="96" rx="48" fill="hsl({hue},42%,84%)"/>'
-        f'<text x="48" y="50" font-family="-apple-system,Segoe UI,Roboto,sans-serif" '
-        f'font-size="{fs}" font-weight="600" fill="hsl({hue},48%,30%)" '
+        f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="0" y2="1">'
+        f'<stop offset="0" stop-color="hsl({hue},60%,90%)"/>'
+        f'<stop offset="1" stop-color="hsl({hue},52%,78%)"/></linearGradient></defs>'
+        f'<rect width="96" height="96" rx="48" fill="url(#{gid})"/>'
+        f'<text x="48" y="51" font-family="-apple-system,Segoe UI,Roboto,sans-serif" '
+        f'font-size="{fs}" font-weight="700" fill="hsl({hue},55%,30%)" '
         f'text-anchor="middle" dominant-baseline="central">{_esc(mono)}</text>'
         '</svg>'
     )
@@ -610,6 +632,7 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "api_base": f"/w/{ws.id}",
         "caps_json": json.dumps(_WS_CAPS),
         "community_chrome": False,
+        "brand_logo": True,            # show the Glimi logo (served at /logo) in the brand
         "active_tab": active_tab,
         "user": None,
         "community_id": None,           # workspace uses api_base, not ?community=
@@ -634,6 +657,8 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
     _tok = (request.query_params.get("invite") or "").strip()
     if ws.kind == "presenter" and _tok and _tok in _invite_tokens():
         resp.set_cookie(_INVITE_COOKIE, _tok, max_age=2592000, httponly=True, samesite="lax")
+    if ws.kind == "presenter":
+        _touch_invite(request)  # record usage for the admin panel's 'who's using' view
     return resp
 
 
@@ -683,6 +708,17 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         if _tok and _tok in _invite_tokens():
             resp.set_cookie(_INVITE_COOKIE, _tok, max_age=2592000, httponly=True, samesite="lax")
         return resp
+
+    @app.get("/logo")
+    def logo() -> Response:
+        """Glimi brand logo (SVG → PNG fallback) so the workspace top-left shows it
+        like Community does, instead of a bare title."""
+        for name, mt in (("Glimi-logo.svg", "image/svg+xml"), ("Glimi-logo.png", "image/png")):
+            p = _RESOURCES / name
+            if p.exists():
+                return Response(content=p.read_bytes(), media_type=mt,
+                                headers={"Cache-Control": "public, max-age=3600"})
+        return Response(status_code=404)
 
     @app.get("/api/workspaces")
     def list_workspaces() -> JSONResponse:
@@ -907,6 +943,59 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         if out is None:
             raise HTTPException(status_code=404, detail="presenter demo not found")
         return JSONResponse({"status": "reset", "id": ws_id})
+
+    # ── web admin panel: issue / list / usage / revoke invite tokens ─────────
+    # Hidden, password-gated (GLIMI_ADMIN_PASSWORD). Lets the owner manage
+    # presenter invites from a browser anywhere — no SSH/scripts.
+    def _admin_authed(request: Request) -> bool:
+        return _invites.admin_enabled() and _invites.valid_session(
+            request.cookies.get("glimi_admin", ""))
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_panel(request: Request):
+        ctx = {
+            "request": request,
+            "enabled": _invites.admin_enabled(),
+            "authed": _admin_authed(request),
+            "tokens": _invites.list_tokens() if _admin_authed(request) else [],
+            "base": str(request.base_url).rstrip("/"),
+            "login_error": request.query_params.get("e") == "1",
+        }
+        resp = _TEMPLATES.TemplateResponse(request, "admin.html", ctx)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.post("/admin/login")
+    async def admin_login(request: Request):
+        form = await request.form()
+        if _invites.check_password(str(form.get("password", ""))):
+            resp = RedirectResponse(url="/admin", status_code=303)
+            resp.set_cookie("glimi_admin", _invites.make_session(),
+                            max_age=7 * 24 * 3600, httponly=True, samesite="lax")
+            return resp
+        return RedirectResponse(url="/admin?e=1", status_code=303)
+
+    @app.post("/admin/logout")
+    def admin_logout():
+        resp = RedirectResponse(url="/admin", status_code=303)
+        resp.delete_cookie("glimi_admin")
+        return resp
+
+    @app.post("/admin/issue")
+    async def admin_issue(request: Request):
+        if not _admin_authed(request):
+            raise HTTPException(status_code=403, detail="admin auth required")
+        form = await request.form()
+        _invites.issue(str(form.get("label", "")), str(form.get("kind", "continue")))
+        return RedirectResponse(url="/admin", status_code=303)
+
+    @app.post("/admin/revoke")
+    async def admin_revoke(request: Request):
+        if not _admin_authed(request):
+            raise HTTPException(status_code=403, detail="admin auth required")
+        form = await request.form()
+        _invites.revoke(str(form.get("token", "")))
+        return RedirectResponse(url="/admin", status_code=303)
 
     return app
 

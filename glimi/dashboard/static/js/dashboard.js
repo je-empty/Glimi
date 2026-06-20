@@ -869,8 +869,11 @@ function openModal(emoji, title, body, agent=null) {
   // 에이전트 모달이면 상단에 전체 페이지 링크 표시 (닫기 옆). 그 외 (채널 등) 는 숨김.
   const detailLink = document.getElementById('d-detail-link');
   if (detailLink) {
-    if (agent && agent.id) {
-      detailLink.href = `/agent/${encodeURIComponent(agent.id)}?community=${encodeURIComponent(COMMUNITY || '')}`;
+    // The full agent PAGE (/agent/{id}) only exists in the Community app. Workspace
+    // / standalone (no COMMUNITY) have no such route → the modal IS the detail view,
+    // so hide the link there (clicking it 404'd before).
+    if (agent && agent.id && COMMUNITY) {
+      detailLink.href = `/agent/${encodeURIComponent(agent.id)}?community=${encodeURIComponent(COMMUNITY)}`;
       detailLink.style.display = '';
     } else {
       detailLink.style.display = 'none';
@@ -3397,6 +3400,11 @@ async function tick() {
     ? `<span style="color:var(--accent)">${esc(scene.icon || '')} ${esc(scene.name)}</span><small>${esc(scene.phase_desc || scene.status)}${actives.length > 1 ? ` +${actives.length - 1}` : ''}</small>`
     : `<span style="color:var(--text-faint);font-size:15px">—</span><small>nothing active</small>`;
   document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>total</small>`;
+  // Workspace-only KPIs (hidden for community via the template) — fill the row.
+  const _ka = document.getElementById('kpi-agents');
+  if (_ka) _ka.innerHTML = (snap.agents || []).length;
+  const _kc = document.getElementById('kpi-channels');
+  if (_kc) _kc.innerHTML = (snap.channels || []).length;
 
   // Connection Graph — 구조 변화 있을 때만 재렌더 (깜빡임 방지)
   //   동일 구조면 live 상태만 DOM 레벨로 업데이트

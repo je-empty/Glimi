@@ -67,8 +67,8 @@
 <div class="app">
   <header class="status">
     <span class="brand">
-      {% if community_chrome %}
-      <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo" onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기">
+      {% if community_chrome or brand_logo %}
+      <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo"{% if community_chrome %} onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기"{% endif %}>
       {% endif %}
       <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="Home">{{ 'Glimi' if community_chrome else (community_name or 'Glimi') }}</a>
     </span>
@@ -153,6 +153,8 @@
         <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
         <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">Active Scene</div><div class="value" id="kpi-scene">—</div></div>
         <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
+        <div class="kpi" style="{% if community_chrome %}display:none{% endif %}"><div class="label">Agents</div><div class="value" id="kpi-agents">—</div></div>
+        <div class="kpi" style="{% if community_chrome %}display:none{% endif %}"><div class="label">Channels</div><div class="value" id="kpi-channels">—</div></div>
       </div>
       <div class="graph-panel" id="graph-panel"></div>
       <div class="section-title">Agents</div>

@@ -1,0 +1,120 @@
+{# Hidden admin panel (/admin) — invite-token management. Password-gated
+   (GLIMI_ADMIN_PASSWORD); session = signed cookie. Owner-facing → Korean.
+   ctx: enabled, authed, tokens[], base (origin), login_error. #}
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Glimi — 관리</title>
+  <link rel="icon" type="image/svg+xml" href="/logo">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <style>
+    body { background: var(--bg); color: var(--text); }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-size: 1.4rem; font-weight: 800; margin: 0 0 .25rem; }
+    .sub { color: var(--text-dim); font-size: .9rem; margin: 0 0 1.75rem; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.2rem; margin-bottom: 1.1rem; }
+    label { font-size: .8rem; color: var(--text-dim); font-weight: 600; display: block; margin-bottom: .3rem; }
+    input[type=text], input[type=password] { width: 100%; padding: .55rem .7rem; font-size: .95rem; color: var(--text);
+      background: var(--bg-elev, var(--panel-2)); border: 1px solid var(--border); border-radius: 8px; }
+    input:focus { outline: none; border-color: var(--accent); }
+    button { font: inherit; cursor: pointer; border-radius: 8px; border: none; font-weight: 600; }
+    .primary { background: var(--accent); color: var(--accent-fg, #fff); padding: .55rem 1.1rem; }
+    .primary:hover { filter: brightness(1.06); }
+    .danger { background: transparent; color: var(--err, #c0392b); border: 1px solid var(--border); padding: .3rem .6rem; font-size: .8rem; }
+    .danger:hover { border-color: var(--err, #c0392b); }
+    .row { display: flex; gap: .8rem; align-items: end; flex-wrap: wrap; }
+    .kinds { display: flex; gap: 1rem; }
+    .kinds label { display: flex; align-items: center; gap: .35rem; font-weight: 500; color: var(--text); margin: 0; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th { text-align: left; color: var(--text-faint); font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; padding: 0 .5rem .5rem; border-bottom: 1px solid var(--border-soft); }
+    td { padding: .6rem .5rem; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+    .badge { font-size: .7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+    .badge.fresh { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .lnk { font-family: var(--font-mono, monospace); font-size: .78rem; color: var(--accent); word-break: break-all; }
+    .muted { color: var(--text-faint); }
+    .copy { background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); padding: .15rem .5rem; font-size: .72rem; border-radius: 6px; }
+    .empty { color: var(--text-faint); padding: 1.5rem; text-align: center; }
+    .err { color: var(--err, #c0392b); font-size: .85rem; margin-top: .5rem; }
+    .top { display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    {% if not enabled %}
+      <h1>관리 비활성화</h1>
+      <p class="sub">서버에 <code>GLIMI_ADMIN_PASSWORD</code> 를 설정하면 활성화됩니다.</p>
+    {% elif not authed %}
+      <div class="top"><h1>Glimi 관리</h1></div>
+      <p class="sub">시연 초대 토큰 관리. 로그인하세요.</p>
+      <div class="card" style="max-width:380px">
+        <form method="post" action="/admin/login">
+          <label for="pw">비밀번호</label>
+          <input id="pw" type="password" name="password" autocomplete="current-password" autofocus>
+          {% if login_error %}<div class="err">비밀번호가 틀렸어요.</div>{% endif %}
+          <div style="margin-top:.9rem"><button class="primary" type="submit">로그인</button></div>
+        </form>
+      </div>
+    {% else %}
+      <div class="top">
+        <div><h1>시연 초대 토큰</h1><p class="sub" style="margin:0">발급 / 사용현황 / 회수</p></div>
+        <form method="post" action="/admin/logout"><button class="copy" type="submit">로그아웃</button></form>
+      </div>
+
+      <div class="card">
+        <form method="post" action="/admin/issue" class="row">
+          <div style="flex:1;min-width:200px">
+            <label for="label">누구에게 / 메모</label>
+            <input id="label" type="text" name="label" placeholder="예: 면접관 김OO, 트위터 공유">
+          </div>
+          <div>
+            <label>종류</label>
+            <div class="kinds">
+              <label><input type="radio" name="kind" value="continue" checked> 데모 이어서</label>
+              <label><input type="radio" name="kind" value="fresh"> 빈 거부터</label>
+            </div>
+          </div>
+          <button class="primary" type="submit">토큰 발급</button>
+        </form>
+      </div>
+
+      <div class="card">
+        {% if tokens %}
+        <table>
+          <thead><tr>
+            <th>메모</th><th>종류</th><th>공유 링크</th><th>사용</th><th>마지막 사용</th><th>발급</th><th></th>
+          </tr></thead>
+          <tbody>
+          {% for t in tokens %}
+            {% set link = (base ~ '/w/demo-live?invite=' ~ t.token) if t.kind == 'continue' else (base ~ '/?invite=' ~ t.token) %}
+            <tr>
+              <td>{{ t.label }}</td>
+              <td><span class="badge {{ 'fresh' if t.kind == 'fresh' else '' }}">{{ '이어서' if t.kind == 'continue' else '빈 거' }}</span></td>
+              <td>
+                <span class="lnk">{{ link }}</span>
+                <button type="button" class="copy" onclick="navigator.clipboard.writeText('{{ link }}');this.textContent='복사됨'">복사</button>
+              </td>
+              <td>{{ t.uses or 0 }}회</td>
+              <td class="muted">{{ (t.last_used[:16].replace('T',' ')) if t.last_used else '—' }}</td>
+              <td class="muted">{{ t.created[:10] if t.created else '' }}</td>
+              <td>
+                <form method="post" action="/admin/revoke" onsubmit="return confirm('이 토큰을 회수할까요? 그 링크는 즉시 막혀요.')">
+                  <input type="hidden" name="token" value="{{ t.token }}">
+                  <button class="danger" type="submit">회수</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <div class="empty">아직 발급한 토큰이 없어요. 위에서 발급하세요.</div>
+        {% endif %}
+      </div>
+
+      <p class="sub muted">공개 읽기전용 데모(<code>/w/demo</code>)는 토큰 없이 항상 열려 있어요. 위 링크들은 채팅이 켜진 시연용입니다.</p>
+    {% endif %}
+  </div>
+</body>
+</html>
