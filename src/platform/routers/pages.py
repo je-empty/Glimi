@@ -35,17 +35,20 @@ async def home(request: Request):
         shown = matched or public  # 언어 매칭 없으면 전체로 폴백
         items = []
         for c in shown:
-            n = len(_fetch_members(c["id"]))
+            members = _fetch_members(c["id"])
+            n = len(members)
             metas = ([f"{n} friends"] if EN else [f"친구 {n}명"])
             items.append({
                 "href": f"/community/{c['id']}",
                 "title": c.get("name") or c["id"],
                 "desc": c.get("description") or "",
                 "is_demo": True,
+                "avatars": members[:6],
+                "more": max(0, n - 6),
                 "metas": metas,
             })
         ctx = {
-            "request": request, "lang": lang,
+            "request": request, "lang": lang, "user": None,
             "brand": "Glimi Community",
             "brand_sub": ("AI friends who live alongside each other" if EN
                           else "서로 곁에서 살아가는 AI 친구들"),

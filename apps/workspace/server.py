@@ -305,13 +305,19 @@ class Workspace:
     def card(self) -> dict:
         """The summary shape the home page's cards consume."""
         snap = self.reader().snapshot()
+        agents = snap.get("agents", [])
         return {
             "id": self.id,
             "title": self.title,
             "goal": self.goal,
             "kind": self.kind,
-            "agents": len(snap.get("agents", [])),
+            "agents": len(agents),
             "channels": len(snap.get("channels", [])),
+            "avatars": [
+                {"name": a.get("name") or a.get("id"),
+                 "avatar_url": f"/w/{self.id}/api/avatar?id={a.get('id')}&v={_ASSET_VER}"}
+                for a in agents[:6]
+            ],
             "created_at": self.created_at,
         }
 
@@ -691,6 +697,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                 "title": c["title"],
                 "desc": c.get("goal") or "",
                 "is_demo": (c["kind"] == "demo"),
+                "avatars": c.get("avatars") or [],
+                "more": max(0, c["agents"] - len(c.get("avatars") or [])),
                 "metas": metas,
             })
         create = None
@@ -708,7 +716,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                 "submit": "Create workspace" if EN else "워크스페이스 만들기",
             }
         ctx = {
-            "request": request, "lang": lang,
+            "request": request, "lang": lang, "user": None, "asset_v": _ASSET_VER,
             "brand": "Glimi Workspace",
             "brand_sub": ("specialist teams on one Glimi Core" if EN
                           else "하나의 Glimi Core 위에서 움직이는 전문가 팀"),
