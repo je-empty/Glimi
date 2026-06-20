@@ -210,14 +210,18 @@ def _is_owner(scope) -> bool:
 
 
 def _invite_ok(scope) -> bool:
-    """Whether this request may use the chat-enabled surfaces. No tokens configured
-    → always True (gate off). Else: the owner (CF) or a valid invite token (from
-    ``?invite=`` or the remembered cookie)."""
-    toks = _invite_tokens()
-    if not toks:
-        return True
+    """Whether this request may use the chat-enabled / create surfaces. The owner
+    (CF) always may; a valid invite token (``?invite=`` or remembered cookie) may.
+
+    With NO tokens configured, fail OPEN only for a truly unconfigured (local/dev)
+    deployment — i.e. no owner email set either. A deployment that set an owner email
+    clearly intends gating, so it fails CLOSED (owner-only) rather than handing free
+    chat / workspace creation to anyone (the presenter runs a real, paid/local model)."""
     if _is_owner(scope):
         return True
+    toks = _invite_tokens()
+    if not toks:
+        return not _OWNER_EMAIL  # local/dev → open; public (owner email set) → closed
     tok = (scope.query_params.get("invite") or scope.cookies.get(_INVITE_COOKIE) or "").strip()
     return tok in toks
 

@@ -223,8 +223,18 @@ def test_presenter_ws_accepts_owner_turn(client):
 # ── invite gating (presenter chat + workspace creation) ─────────────────────
 
 def test_invite_gate_off_by_default(client):
-    # No GLIMI_INVITE_TOKENS configured → presenter chat is open (gate disabled).
+    # Truly unconfigured (no tokens AND no owner email) = local/dev → gate open.
     assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live").text)
+
+
+def test_invite_gate_fails_closed_when_owner_email_set(client, monkeypatch):
+    # A public deploy sets GLIMI_OWNER_EMAIL → with no tokens the gate must fail
+    # CLOSED (anon presenter stays read-only), never hand out free real-model chat.
+    monkeypatch.setattr(server, "_INVITE_TOKENS", set())
+    monkeypatch.setattr(server, "_INVITE_TOKENS_FILE", "")
+    monkeypatch.setattr(server, "_OWNER_EMAIL", "owner@example.com")
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live").text)
+    assert client.post("/api/workspaces", json={"name": "X", "goal": "Y"}).status_code == 403
 
 
 def test_invite_gate_blocks_guests_without_token(client, monkeypatch):

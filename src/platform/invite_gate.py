@@ -9,8 +9,14 @@ unlock chat here. **Scope-safe**: every helper takes a Starlette ``Request`` *or
 Tokens come from (live, per request):
   - ``GLIMI_INVITE_TOKENS`` env (comma-separated) — optional static tokens
   - ``glimi.dashboard.invites.token_set(target="community")`` — admin-managed JSON store
-Owner = ``Cf-Access-Authenticated-User-Email`` header == ``GLIMI_OWNER_EMAIL``
-(only meaningful behind Cloudflare Access; harmless elsewhere).
+Owner = ``Cf-Access-Authenticated-User-Email`` header == ``GLIMI_OWNER_EMAIL``.
+SECURITY: this header is only trustworthy when (a) the request actually traversed
+Cloudflare Access (which strips/overwrites client-supplied ``Cf-Access-*``) AND
+(b) the origin is NOT directly reachable (bind 127.0.0.1 behind the tunnel, never
+0.0.0.0 on a shared/exposed host). If the origin is exposed, an attacker can spoof
+the header → owner. Here the owner path only unlocks the demo-live presenter (a clone
+of the already-public demo → cost-abuse at worst, never a private-data leak), but keep
+the localhost bind. Do NOT extend this header-trust to private surfaces.
 
 SECURITY: callers must apply this ONLY to communities where
 ``is_invite_required(cid)`` is true. A community token must never affect a normal
