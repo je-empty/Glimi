@@ -175,8 +175,10 @@ def _invite_tokens() -> set:
     if _INVITE_TOKENS_FILE:
         try:
             with open(_INVITE_TOKENS_FILE, encoding="utf-8") as f:
-                toks.update(ln.strip() for ln in f
-                            if ln.strip() and not ln.lstrip().startswith("#"))
+                for ln in f:
+                    s = ln.strip()
+                    if s and not s.startswith("#"):
+                        toks.add(s.split()[0])  # first field — ignore an inline "# label"
         except OSError:
             pass
     return toks

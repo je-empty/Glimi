@@ -262,13 +262,13 @@ def test_invite_gate_owner_via_cf_header(client, monkeypatch):
 def test_invite_tokens_from_file_live(client, monkeypatch, tmp_path):
     # File-based tokens are re-read per request → issue/revoke with no restart.
     f = tmp_path / "invite_tokens.txt"
-    f.write_text("# issued links\nFILETOKEN\n")
+    f.write_text("# issued links\nFILETOKEN  # alice 2026-06-20\n")   # inline label (helper format)
     monkeypatch.setattr(server, "_INVITE_TOKENS", set())          # env empty
     monkeypatch.setattr(server, "_INVITE_TOKENS_FILE", str(f))
     assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live?invite=FILETOKEN").text)
     assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live?invite=NOPE").text)
     # rotate the file (revoke FILETOKEN, issue OTHER) — no restart
-    f.write_text("OTHER\n")
+    f.write_text("OTHER  # bob\n")
     assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live?invite=FILETOKEN").text)
     assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live?invite=OTHER").text)
 
