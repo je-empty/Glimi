@@ -81,6 +81,13 @@ def _origin(url: str) -> str:
     return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else ""
 
 
+def _community_presenter_url() -> str:
+    """The chat-enabled, invite-gated community presenter (demo-live) chat page —
+    where a community token actually unlocks chatting with the AI friends."""
+    o = _origin(os.environ.get("GLIMI_COMMUNITY_URL", ""))
+    return (o + "/community/demo-live/chat") if o else ""
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Glimi — Landing", docs_url=None, redoc_url=None)
     # Reuse the canonical dashboard static (base.css → tokens + fonts). Single
@@ -135,6 +142,7 @@ def create_app() -> FastAPI:
             "tokens": _invites.list_tokens() if authed else [],
             "ws_base": _origin(os.environ.get("GLIMI_WORKSPACE_URL", "")),
             "community_url": (os.environ.get("GLIMI_COMMUNITY_URL") or "").strip(),
+            "community_presenter": _community_presenter_url(),
             "login_error": request.query_params.get("e") == "1",
             "setup_error": request.query_params.get("e") == "2",
         }

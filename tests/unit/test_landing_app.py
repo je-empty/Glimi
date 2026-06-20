@@ -125,7 +125,7 @@ def test_admin_login_issue_target_and_revoke(monkeypatch, tmp_path):
     tok = toks[0]["token"]
     # the panel renders the community link (built from GLIMI_COMMUNITY_URL), not the workspace one
     panel = c.get("/admin").text
-    assert f"https://glimi-community.example/community/demo?invite={tok}" in panel
+    assert f"https://glimi-community.example/community/demo-live/chat?invite={tok}" in panel
     # revoke → gone
     c.post("/admin/revoke", data={"token": tok})
     assert invites.list_tokens() == []

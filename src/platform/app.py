@@ -47,6 +47,15 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+    # demo-live (초대전용 실모델 시연) — 공개 demo 를 채팅 가능 presenter 로 복제.
+    # 마커와 무관하게 매 기동 보장(기존 배포에도 생기도록) — idempotent: 이미 있으면
+    # .env/registry 만 갱신, demo 가 없는 인스턴스(예: 오너 실사용)에선 no-op.
+    try:
+        from .demo_seed import ensure_demo_live_seeded
+        ensure_demo_live_seeded()
+    except Exception as e:  # startup 보호
+        print(f"[platform] demo-live seed skipped: {e}")
+
     # 구 web_dashboard 의 startup community 개념: 없으면 default 리졸브
     from src import community as _comm
     from .dashboard.context import set_startup_community

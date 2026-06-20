@@ -111,8 +111,7 @@
             {% if t.target == 'workspace' %}
               {% set link = (ws_base ~ '/w/demo-live?invite=' ~ t.token) if t.kind == 'continue' else (ws_base ~ '/?invite=' ~ t.token) %}
             {% else %}
-              {% set sep = '&' if '?' in community_url else '?' %}
-              {% set link = community_url ~ sep ~ 'invite=' ~ t.token %}
+              {% set link = community_presenter ~ '?invite=' ~ t.token %}
             {% endif %}
             <tr>
               <td>{{ t.label }}</td>
@@ -140,7 +139,7 @@
       </div>
 
       <p class="sub muted">공개 읽기전용 데모는 토큰 없이 항상 열려 있어요. 위 링크들은 <b>채팅 켜진 시연</b>용입니다.
-        {% if not community_url %}<br>⚠ 커뮤니티 링크가 비어보이면 서버에 <code>GLIMI_COMMUNITY_URL</code> 설정 필요.{% endif %}</p>
+        {% if not community_presenter %}<br>⚠ 커뮤니티 링크가 비어보이면 서버(landing)에 <code>GLIMI_COMMUNITY_URL</code> 설정 필요.{% endif %}</p>
     {% endif %}
   </div>
 </body>
