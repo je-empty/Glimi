@@ -156,11 +156,30 @@ _PRESENTER_TITLE = "런칭 데모"
 #   • the OWNER, recognized by Cloudflare Access' verified-email header (no token), or
 #   • a guest with ?invite=<token> (a REUSABLE share link; remembered in a cookie).
 # Unset → no gate (fully open: the OSS/local default). The public read-only demo
-# (/w/demo) is NEVER gated. Tokens are read live from the env at import; the owner
-# email is GLIMI_OWNER_EMAIL (the address allowed through CF Access).
+# (/w/demo) is NEVER gated. The owner email is GLIMI_OWNER_EMAIL (the address
+# allowed through CF Access). Tokens come from two sources, unioned and re-read
+# LIVE per request so the owner can ISSUE or REVOKE a token without a restart:
+#   • GLIMI_INVITE_TOKENS      — comma-separated, fixed at startup (simple/CI), and
+#   • GLIMI_INVITE_TOKENS_FILE — a file with one token per line (# comments ok);
+#     issue = `echo <token> >> file`, revoke = delete its line. (per-person links)
 _INVITE_TOKENS = {t.strip() for t in (os.environ.get("GLIMI_INVITE_TOKENS") or "").split(",") if t.strip()}
+_INVITE_TOKENS_FILE = (os.environ.get("GLIMI_INVITE_TOKENS_FILE") or "").strip()
 _OWNER_EMAIL = (os.environ.get("GLIMI_OWNER_EMAIL") or "").strip().lower()
 _INVITE_COOKIE = "glimi_invite"
+
+
+def _invite_tokens() -> set:
+    """The currently-valid invite tokens: the env set ∪ the live token file
+    (re-read each call → issue/revoke with no restart). Empty → gate disabled."""
+    toks = set(_INVITE_TOKENS)
+    if _INVITE_TOKENS_FILE:
+        try:
+            with open(_INVITE_TOKENS_FILE, encoding="utf-8") as f:
+                toks.update(ln.strip() for ln in f
+                            if ln.strip() and not ln.lstrip().startswith("#"))
+        except OSError:
+            pass
+    return toks
 
 
 def _is_owner(scope) -> bool:
@@ -177,12 +196,13 @@ def _invite_ok(scope) -> bool:
     """Whether this request may use the chat-enabled surfaces. No tokens configured
     → always True (gate off). Else: the owner (CF) or a valid invite token (from
     ``?invite=`` or the remembered cookie)."""
-    if not _INVITE_TOKENS:
+    toks = _invite_tokens()
+    if not toks:
         return True
     if _is_owner(scope):
         return True
     tok = (scope.query_params.get("invite") or scope.cookies.get(_INVITE_COOKIE) or "").strip()
-    return tok in _INVITE_TOKENS
+    return tok in toks
 
 
 def _load_i18n(lang: str) -> dict:
@@ -610,7 +630,7 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
     # Remember a valid presenter invite (reusable share link) in a cookie so the
     # chat socket + reloads stay unlocked without re-passing ?invite= each time.
     _tok = (request.query_params.get("invite") or "").strip()
-    if ws.kind == "presenter" and _INVITE_TOKENS and _tok in _INVITE_TOKENS:
+    if ws.kind == "presenter" and _tok and _tok in _invite_tokens():
         resp.set_cookie(_INVITE_COOKIE, _tok, max_age=2592000, httponly=True, samesite="lax")
     return resp
 
@@ -655,6 +675,11 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         resp = _TEMPLATES.TemplateResponse(
             request, "home.html", {"request": request, "lang": lang})
         resp.headers["Cache-Control"] = "no-store"
+        # "start fresh" invite link: /?invite=TOKEN remembers the token (cookie) so
+        # the create form is unlocked (gate otherwise 403s guests).
+        _tok = (request.query_params.get("invite") or "").strip()
+        if _tok and _tok in _invite_tokens():
+            resp.set_cookie(_INVITE_COOKIE, _tok, max_age=2592000, httponly=True, samesite="lax")
         return resp
 
     @app.get("/api/workspaces")

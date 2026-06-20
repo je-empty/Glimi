@@ -259,6 +259,26 @@ def test_invite_gate_owner_via_cf_header(client, monkeypatch):
     assert re.search(r"__GLIMI_READONLY__\s*=\s*true", r2.text)
 
 
+def test_invite_tokens_from_file_live(client, monkeypatch, tmp_path):
+    # File-based tokens are re-read per request → issue/revoke with no restart.
+    f = tmp_path / "invite_tokens.txt"
+    f.write_text("# issued links\nFILETOKEN\n")
+    monkeypatch.setattr(server, "_INVITE_TOKENS", set())          # env empty
+    monkeypatch.setattr(server, "_INVITE_TOKENS_FILE", str(f))
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live?invite=FILETOKEN").text)
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live?invite=NOPE").text)
+    # rotate the file (revoke FILETOKEN, issue OTHER) — no restart
+    f.write_text("OTHER\n")
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live?invite=FILETOKEN").text)
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live?invite=OTHER").text)
+
+
+def test_home_invite_sets_cookie_for_create(client, monkeypatch):
+    # "start fresh" link /?invite=TOKEN remembers the token so create is unlocked.
+    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
+    assert "glimi_invite" in client.get("/?invite=SECRET").headers.get("set-cookie", "")
+
+
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────
 
 def test_dashboard_js_api_base_defaults_empty():
