@@ -26,33 +26,29 @@ You build apps on top of Core. The flagship is **Glimi Community** — a cast of
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
-> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `community/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi/dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e ".[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
+> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `glimi-community/community/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi.dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e "./glimi-core[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
 
 ```
-Glimi/                            single git repo (monorepo) · `glimi` publishes to PyPI
-├── glimi/                        ← Glimi Core — the kernel   ·  pip install "glimi[dashboard]"
-│   ├── runtime.py                · agent runtime, per-agent model swap; store/profile/observer-neutral (DI)
-│   ├── memory.py                 · 5-layer persistent memory (async extraction, fact supersession)
-│   ├── context_budget.py         · Elastic Memory — hardware-aware context budgeting
-│   ├── conversation.py           · autonomous agent-to-agent loop
-│   ├── tools/                    · <tools><call/></tools> protocol + registry
-│   ├── llm/                      · Claude CLI · Ollama · anthropic SDK backends (+ pricing)
-│   ├── store.py · stores/        · KernelStore ABC + in-memory implementation
-│   └── dashboard/                · live observability web UI (graph · memory · tool log · usage)
-├── community/                    ← Glimi Community — the flagship app (Core was extracted FROM here)
-│   ├── platform/                 · FastAPI platform · built-in web chat · dashboard host
-│   ├── adapters/kernel_store.py  · SqliteKernelStore(KernelStore) — wires the app into the kernel (DI)
-│   ├── core/                     · thin shims over glimi (runtime·memory) + community-only modules
-│   └── scenes/ · achievements/ · bot/   · community-specific (scenes, unlocks, Discord adapter)
-├── workspace/                    ← Glimi Workspace — a 2nd app built ON the extracted Core (proof of reuse)
-├── examples/                     · lightweight starters (research_buddies · dev_pair · dashboard_demo)
-├── eval/                         · evaluation harness (golden set · LLM-judge · regression gate)
-├── docs/ · tests/
-├── LICENSE · NOTICE · CITATION.cff   · AGPL-3.0 + authorship/citation
-└── README.md · README.ko.md          · this file + Korean mirror
+Glimi/                           one repo, three self-contained projects (a "workspace" monorepo)
+├── glimi-core/                  ← Glimi Core — the kernel        ·  pip install "glimi[dashboard]"
+│   ├── glimi/                   ·   runtime · memory · context_budget · conversation · tools · llm · stores · dashboard
+│   ├── examples/                ·   library starters (research_buddies · dev_pair · dashboard_demo)
+│   ├── eval/                    ·   evaluation harness (golden set · LLM-judge · regression gate)
+│   └── pyproject.toml           ·   builds the `glimi` / `glimi[dashboard]` wheel (the only PyPI artifact)
+├── glimi-community/             ← Glimi Community — the flagship app (Core was extracted FROM here)
+│   ├── community/               ·   FastAPI platform · built-in web chat · scenes · achievements · Discord adapter
+│   ├── assets/ · i18n/          ·   profile images · localization
+│   └── pyproject.toml · run.sh  ·   depends on glimi[dashboard]
+├── glimi-workspace/             ← Glimi Workspace — a 2nd app built ON the kernel (proof of reuse)
+│   ├── workspace/               ·   a Coordinator delegates to Researcher · Builder · Critic
+│   └── pyproject.toml · run.sh  ·   depends on glimi[dashboard], zero Community imports
+├── docs/ · tests/ · scripts/ · skills/
+├── run.sh · run.bat             ·   dev launcher (bootstraps the shared venv; runs either app)
+├── LICENSE · NOTICE · CITATION.cff  ·  AGPL-3.0 + authorship/citation
+└── README.md · README.ko.md         ·  this file + Korean mirror
 ```
 
-> **Why two different layouts?** Glimi Core (`glimi/`) was **extracted from a working app** — Glimi Community (`community/`) — so the kernel is proven, not theoretical. **Glimi Workspace** (`workspace/`) was then built *entirely on the extracted `glimi` package* (zero `community/` imports) — a second, very different app on one kernel is the proof that Core is genuinely reusable. The `glimi` package builds and publishes to PyPI on its own; the two apps are real applications that consume it.
+> **One repo, three projects.** Glimi Core (`glimi-core/`, the `glimi` package) was **extracted from a working app** — Glimi Community (`glimi-community/`) — so the kernel is proven, not theoretical. **Glimi Workspace** (`glimi-workspace/`) was then built *entirely on the `glimi` package* (zero Community imports) — a second, very different app on one kernel proves Core is genuinely reusable. Each folder is a self-contained project with its own `pyproject.toml`; the two apps depend on `glimi[dashboard]` (the local editable install here; a published PyPI release after launch). `cd` into any one and it stands alone — `glimi` publishes to PyPI on its own.
 
 ---
 
