@@ -703,7 +703,13 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         if lang not in ("ko", "en"):
             lang = "ko"
         resp = _TEMPLATES.TemplateResponse(
-            request, "home.html", {"request": request, "lang": lang})
+            request, "home.html",
+            {"request": request, "lang": lang,
+             # Only owners / valid-token holders see the create form; anon visitors
+             # get an invite-code entry instead (the public subdomain has no CF/login).
+             "can_create": _invite_ok(request),
+             "bad_invite": bool((request.query_params.get("invite") or "").strip())
+                           and not _invite_ok(request)})
         resp.headers["Cache-Control"] = "no-store"
         # "start fresh" invite link: /?invite=TOKEN remembers the token (cookie) so
         # the create form is unlocked (gate otherwise 403s guests).

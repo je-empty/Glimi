@@ -279,6 +279,21 @@ def test_home_invite_sets_cookie_for_create(client, monkeypatch):
     assert "glimi_invite" in client.get("/?invite=SECRET").headers.get("set-cookie", "")
 
 
+def test_home_hides_create_form_for_anon(client, monkeypatch):
+    # With a gate configured, an anon visitor must NOT see the open create form —
+    # only an invite-code entry affordance.
+    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
+    body = client.get("/").text
+    assert 'action="/api/workspaces"' not in body          # create form hidden
+    assert ("초대 코드" in body) or ("Invite code" in body)  # entry shown instead
+
+
+def test_home_shows_create_form_with_token(client, monkeypatch):
+    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
+    body = client.get("/?invite=SECRET").text
+    assert 'action="/api/workspaces"' in body              # token unlocks the form
+
+
 # (Token-admin panel tests moved to test_landing_app.py — the central admin now
 #  lives on the landing app, gating the shared glimi.dashboard.invites store.)
 

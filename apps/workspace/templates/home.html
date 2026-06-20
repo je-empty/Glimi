@@ -121,6 +121,7 @@
       </div>
     </section>
 
+    {% if can_create %}
     <section class="create">
       <h2>{{ 'Or start your own' if EN else '직접 만들어 보기' }}</h2>
       <p class="lede" style="margin:0 0 14px">{{ 'Name yourself, give a goal, and a fresh Coordinator-led team spins up around it.' if EN else '이름을 정하고 목표를 적으면, 코디네이터가 이끄는 새 팀이 그 주위로 꾸려져요.' }}</p>
@@ -137,6 +138,21 @@
         <button class="primary" type="submit">{{ 'Create workspace' if EN else '워크스페이스 만들기' }}</button>
       </form>
     </section>
+    {% else %}
+    <section class="create">
+      <h2>{{ 'Start your own' if EN else '직접 만들어 보기' }}</h2>
+      <p class="lede" style="margin:0 0 14px">{{ 'Creating a workspace needs an invite. The demo above is open to everyone — browse it freely. Have an invite code? Enter it to unlock.' if EN else '새 워크스페이스를 만들려면 초대가 필요해요. 위 데모는 누구나 자유롭게 둘러볼 수 있어요. 초대 코드가 있으면 입력해 잠금을 풀어요.' }}</p>
+      <form method="get" action="/">
+        <input type="hidden" name="lang" value="{{ 'en' if EN else 'ko' }}">
+        <div class="field">
+          <label for="invite">{{ 'Invite code' if EN else '초대 코드' }}</label>
+          <input id="invite" name="invite" type="text" placeholder="{{ 'Paste your invite code' if EN else '초대 코드 붙여넣기' }}" autocomplete="off">
+        </div>
+        {% if bad_invite %}<p class="lede" style="margin:0;color:var(--err,#c0392b)">{{ 'That code is not valid.' if EN else '유효하지 않은 코드예요.' }}</p>{% endif %}
+        <button class="primary" type="submit">{{ 'Enter' if EN else '입장' }}</button>
+      </form>
+    </section>
+    {% endif %}
   </div>
 
   <script>
