@@ -204,7 +204,7 @@ def init_community(community_id: str, copy_assets: bool = True):
     # .env 템플릿
     env_path = cdir / ".env"
     if not env_path.exists():
-        example = PROJECT_ROOT / "communities.example" / ".env.example"
+        example = PROJECT_ROOT / "examples" / "community.example" / ".env.example"
         if example.exists():
             shutil.copy2(example, env_path)
         else:

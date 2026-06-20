@@ -1,4 +1,4 @@
-🇰🇷 [한국어 README](README.ko.md) · 📄 [START HERE — contributor onboarding](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)
+🇰🇷 [한국어 README](README.ko.md) · 📄 [START HERE — contributor onboarding](https://raw.githack.com/jaebinsim/Glimi/main/docs/START_HERE.html)
 
 # Glimi
 
@@ -22,7 +22,7 @@ And you watch the whole thing run: an agent relationship graph, a per-character 
 
 You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends you chat with in a built-in web UI (or Discord): they keep their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** — role-based work agents (a Coordinator delegates to a Researcher, Builder, and Critic), with a live real-time demo — and the starters in `examples/` stand on the same Core.
 
-![Glimi Community](resources/Glimi-Community-banner.svg)
+![Glimi Community](assets/brand/Glimi-Community-banner.svg)
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
@@ -436,7 +436,7 @@ Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `dis
 (Homebrew, Python, Node, Claude CLI), sets up the project, and opens your browser to
 the setup wizard:
 ```bash
-git clone https://github.com/jaebinsim/Glimi.git && cd Glimi && ./bootstrap.sh
+git clone https://github.com/jaebinsim/Glimi.git && cd Glimi && ./scripts/bootstrap.sh
 ```
 Already have Python 3.12+? Skip straight to `./run.sh` below.
 

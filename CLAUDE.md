@@ -6,8 +6,8 @@
 Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리) + AI 친구 커뮤니티 sim (Glimi Community, flagship 앱). 모노레포.
 
 ## 🚨 세션 시작 시 필독
-**처음 들어오는 contributor 라면 `START_HERE.html` (프로젝트 루트) 먼저 열어봐** — 프로젝트 정체, 셋업, 첫 task, 브랜치 전략, 워크플로우 다 거기 있음.
-협업 규약 (영역 오너십·커밋/PR 양식·웹 업로드 금지)은 **`COLLAB_GUIDE.html`** (프로젝트 루트).
+**처음 들어오는 contributor 라면 `docs/START_HERE.html` 먼저 열어봐** — 프로젝트 정체, 셋업, 첫 task, 브랜치 전략, 워크플로우 다 거기 있음.
+협업 규약 (영역 오너십·커밋/PR 양식·웹 업로드 금지)은 **`docs/COLLAB_GUIDE.html`**.
 유지보수 작업 / 스프린트 컨텍스트는 **`docs/dev_guide.md`** — 타깃, 설계 락인, 금지 사항.
 
 ## 🌳 브랜치 전략 — 외부 기여자 포함 모두 적용

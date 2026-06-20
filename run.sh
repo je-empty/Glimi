@@ -120,7 +120,7 @@ if [ ! -d .venv ]; then
         fi
     done
     if [ -z "$PY" ]; then
-        echo -e "${RED}[setup] Python 3.11+ 필요 — 미설치/구버전. macOS 면 ${CYAN}./bootstrap.sh${RED} 가 자동 설치, 아니면 https://www.python.org/downloads/${NC}"; exit 1
+        echo -e "${RED}[setup] Python 3.11+ 필요 — 미설치/구버전. macOS 면 ${CYAN}./scripts/bootstrap.sh${RED} 가 자동 설치, 아니면 https://www.python.org/downloads/${NC}"; exit 1
     fi
     "$PY" -m venv .venv || { echo -e "${RED}[setup] venv 생성 실패 ($PY)${NC}"; exit 1; }
     echo -e "${GREEN}[setup] 가상환경 생성 완료 ($PY)${NC}"

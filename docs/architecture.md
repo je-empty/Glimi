@@ -27,7 +27,7 @@ Glimi/
 │       └── logs/
 ├── data/                   ← 플랫폼 레벨 (계정 DB + secret key)
 │   └── platform.db
-├── communities.example/
+├── examples/community.example/
 ├── assets/
 │   ├── profile_images/
 │   └── sample_profile_images/

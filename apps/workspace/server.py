@@ -98,7 +98,7 @@ _DASH_I18N = _DASH_DIR / "i18n"
 # This app's own dir — the home (workspace picker) page is workspace-local;
 # the dashboard itself is the shared Core template.
 _APP_DIR = Path(__file__).resolve().parent
-_RESOURCES = _APP_DIR.parent.parent / "resources"  # repo-root /resources (logo, etc.)
+_RESOURCES = _APP_DIR.parent.parent / "assets" / "brand"  # repo-root /resources (logo, etc.)
 
 
 def _asset_ver() -> str:
