@@ -51,7 +51,7 @@ def _top(mod: str) -> str:
 def test_kernel_imports_no_app_code():
     bad = [
         f"{p}:{ln} {mod}"
-        for p in _py_files("glimi")
+        for p in _py_files("glimi-core/glimi")
         for ln, mod, _ in _imports(p)
         if _top(mod) in ("community", "workspace")
     ]
@@ -61,7 +61,7 @@ def test_kernel_imports_no_app_code():
 def test_workspace_does_not_import_src():
     bad = [
         f"{p}:{ln} {mod}"
-        for p in _py_files("workspace")
+        for p in _py_files("glimi-workspace/workspace")
         for ln, mod, _ in _imports(p)
         if _top(mod) == "community"
     ]
@@ -71,7 +71,7 @@ def test_workspace_does_not_import_src():
 def test_community_does_not_import_workspace():
     bad = [
         f"{p}:{ln} {mod}"
-        for p in _py_files("community")
+        for p in _py_files("glimi-community/community")
         for ln, mod, _ in _imports(p)
         if _top(mod) == "workspace"
     ]

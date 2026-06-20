@@ -17,6 +17,9 @@ import json
 
 import pytest
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "glimi-core"))
+
 from eval import load_cases
 from eval.schema import CAPABILITIES, GoldenCase, SchemaError, _validate
 from eval.runner import aggregate, run, run_case

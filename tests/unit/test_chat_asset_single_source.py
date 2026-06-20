@@ -43,21 +43,21 @@ def _read(p: str) -> str:
 #   static assets live under static/; i18n dicts under i18n/ (community keeps its
 #   copy at the repo-root i18n/ that its /api/i18n endpoint reads).
 _SYNCED = [
-    ("static/js/chat.js",            "community/platform/static/js/chat.js"),
-    ("static/css/chat.css",          "community/platform/static/css/chat.css"),
-    ("static/js/dashboard.js",       "community/platform/static/js/dashboard.js"),
-    ("static/css/dashboard.css",     "community/platform/static/css/dashboard.css"),
-    ("static/css/dashboard-chat.css", "community/platform/static/css/dashboard-chat.css"),
-    ("static/css/base.css",          "community/platform/static/css/base.css"),
-    ("static/css/tokens.css",        "community/platform/static/css/tokens.css"),
-    ("i18n/dashboard.en.json",       "i18n/dashboard.en.json"),
-    ("i18n/dashboard.ko.json",       "i18n/dashboard.ko.json"),
+    ("static/js/chat.js",            "glimi-community/community/platform/static/js/chat.js"),
+    ("static/css/chat.css",          "glimi-community/community/platform/static/css/chat.css"),
+    ("static/js/dashboard.js",       "glimi-community/community/platform/static/js/dashboard.js"),
+    ("static/css/dashboard.css",     "glimi-community/community/platform/static/css/dashboard.css"),
+    ("static/css/dashboard-chat.css", "glimi-community/community/platform/static/css/dashboard-chat.css"),
+    ("static/css/base.css",          "glimi-community/community/platform/static/css/base.css"),
+    ("static/css/tokens.css",        "glimi-community/community/platform/static/css/tokens.css"),
+    ("i18n/dashboard.en.json", "glimi-community/i18n/dashboard.en.json"),
+    ("i18n/dashboard.ko.json", "glimi-community/i18n/dashboard.ko.json"),
 ]
 
 
 def test_community_assets_match_canonical():
     for rel, comm_rel in _SYNCED:
-        canon = os.path.join(_ROOT, "glimi", "dashboard", rel)
+        canon = os.path.join(_ROOT, "glimi-core", "glimi", "dashboard", rel)
         comm = os.path.join(_ROOT, comm_rel)
         assert os.path.exists(canon), f"canonical missing: glimi/dashboard/{rel}"
         assert os.path.exists(comm), f"community copy missing: {comm_rel}"
@@ -70,12 +70,12 @@ def test_community_assets_match_canonical():
 def test_workspace_keeps_no_asset_copies():
     # The workspace consumes the canonical from the package — it must not vendor
     # its own dashboard/chat assets (no workspace/static at all).
-    ws_static = os.path.join(_ROOT, "workspace", "static")
+    ws_static = os.path.join(_ROOT, "glimi-workspace", "workspace", "static")
     assert not os.path.isdir(ws_static), (
         "workspace/static should not exist — the workspace serves the "
         "canonical assets from /static (glimi/dashboard) via the package."
     )
-    ws_i18n = os.path.join(_ROOT, "workspace", "i18n")
+    ws_i18n = os.path.join(_ROOT, "glimi-workspace", "workspace", "i18n")
     assert not os.path.isdir(ws_i18n), (
         "workspace/i18n should not exist — the workspace loads the canonical "
         "i18n dicts from glimi/dashboard/i18n via the package."
@@ -85,7 +85,7 @@ def test_workspace_keeps_no_asset_copies():
 def test_canonical_templates_present():
     # The shared shell + chat partial must ship from the kernel package.
     for rel in ("templates/dashboard/_core.html", "templates/_chat_shell.html"):
-        p = os.path.join(_ROOT, "glimi", "dashboard", rel)
+        p = os.path.join(_ROOT, "glimi-core", "glimi", "dashboard", rel)
         assert os.path.exists(p), f"canonical template missing: glimi/dashboard/{rel}"
 
 
@@ -93,7 +93,7 @@ def test_workspace_keeps_no_dashboard_template_copy():
     # The workspace renders the canonical dashboard/_core.html AND the shared
     # _demo_list.html home — it must not fork its own copies of these.
     for stray in ("dashboard/_core.html", "dashboard/index.html", "base.html", "_chat_shell.html"):
-        p = os.path.join(_ROOT, "workspace", "templates", stray)
+        p = os.path.join(_ROOT, "glimi-workspace", "workspace", "templates", stray)
         assert not os.path.exists(p), (
             f"workspace/templates/{stray} should not exist — the workspace "
             "renders the canonical shell from glimi/dashboard/templates."

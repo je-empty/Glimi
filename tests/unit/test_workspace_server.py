@@ -32,7 +32,7 @@ from fastapi.testclient import TestClient
 
 # Make the flat-dir app modules (server, demo, run, team) importable like run.py.
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_WS_DIR = os.path.join(_REPO, "workspace")
+_WS_DIR = os.path.join(_REPO, "glimi-workspace", "workspace")
 if _WS_DIR not in sys.path:
     sys.path.insert(0, _WS_DIR)
 
@@ -237,7 +237,7 @@ def test_dashboard_js_api_base_defaults_empty():
     <body data-api-base> is absent — so every single-store dashboard (Community
     Core, the standalone workspace --serve/--demo) keeps its absolute /api/* paths.
     """
-    js_path = os.path.join(_REPO, "glimi", "dashboard", "static", "js", "dashboard.js")
+    js_path = os.path.join(_REPO, "glimi-core", "glimi", "dashboard", "static", "js", "dashboard.js")
     with open(js_path, encoding="utf-8") as f:
         js = f.read()
     # API_BASE reads <body data-api-base> and defaults to "" when absent.

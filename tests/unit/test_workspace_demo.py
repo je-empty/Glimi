@@ -13,7 +13,7 @@ import pytest
 
 # Make the flat-dir app modules (demo, team) importable like run.py does.
 _WS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), "workspace")
+    os.path.abspath(__file__)))), "glimi-workspace", "workspace")
 if _WS_DIR not in sys.path:
     sys.path.insert(0, _WS_DIR)
 

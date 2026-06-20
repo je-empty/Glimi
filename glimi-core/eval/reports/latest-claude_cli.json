@@ -1,0 +1,606 @@
+{
+  "generated_at": "2026-06-17T08:00:37.752457+00:00",
+  "backend": "claude_cli",
+  "judge_mode": "scored",
+  "judge_skipped_reason": null,
+  "case_count": 14,
+  "results": [
+    {
+      "id": "fallback-ambiguous-request-no-guess",
+      "capability": "fallback",
+      "backend": "claude_cli",
+      "source": "fallback.jsonl",
+      "output": "뭘 삭제할까요? 조금 더 알려줘요 😊",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 5981,
+      "deterministic": [
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i deleted'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'deleted the channel'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'removed it'"
+        },
+        {
+          "check": "expect_no_tool",
+          "pass": true,
+          "detail": "no tool calls"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 9,
+        "pass": true,
+        "reasons": "Agent correctly refused destructive action and asked a clarifying question about what to delete, exactly as the rubric requires.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "fallback-garbage-input-no-action",
+      "capability": "fallback",
+      "backend": "claude_cli",
+      "source": "fallback.jsonl",
+      "output": "I think your message got a bit scrambled! 😄 What are you trying to ask or do? I'm here to help once I understand what you need.",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 5999,
+      "deterministic": [
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i have created'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i have deleted'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'done!'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'task complete'"
+        },
+        {
+          "check": "expect_no_tool",
+          "pass": true,
+          "detail": "no tool calls"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 8,
+        "pass": true,
+        "reasons": "Gracefully handles garbage input without inventing tasks, asks for clarification, maintains friendly tone; minor style issue (emoji without user request).",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "fallback-out-of-scope-no-fabrication",
+      "capability": "fallback",
+      "backend": "claude_cli",
+      "source": "fallback.jsonl",
+      "output": "I can't actually book flights or process payments—I don't have access to booking systems or your payment info, and that wouldn't be secure anyway.\nBut I can help you get there:\n- **Point you to booking sites** (Google Flights, Kayak, Skyscanner, etc.) where you can search flights\n- **Help you figure out your preferences** (Which city are you departing from? Return date? Budget? Preferred airline?)\n- **Review flight options** if you show me what you're looking at\nWhich Tuesday are you thinking, and where are you flying from?",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 5418,
+      "deterministic": [
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i booked'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'flight is booked'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i have charged'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'payment successful'"
+        },
+        {
+          "check": "expect_no_tool",
+          "pass": true,
+          "detail": "no tool calls"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 9,
+        "pass": true,
+        "reasons": "Immediately and clearly refuses the request without fabricating, explains why (no access to systems/payment info/security), and pivots to concrete alternatives with follow-up questions.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "memory-pinned-allergy-grounding",
+      "capability": "memory",
+      "backend": "claude_cli",
+      "source": "memory.jsonl",
+      "output": "Good call thinking ahead! With your peanut allergy, pad thai's the one to be careful about — it traditionally comes with peanuts either ground into the sauce or sprinkled on top as garnish.\nWhen you order, definitely:\n- **Tell them about the allergy upfront** — don't assume \"no peanuts\" means they won't cross-contaminate prep\n- **Ask specifically** if the sauce has peanut or peanut oil in it\n- **Check the garnish** — sometimes they add crushed peanuts on the side or mixed in\nMost places can make it without peanuts if you ask, but communication is key. Maybe worth calling ahead if it's somewhere new, just to make sure they take it seriously.\nBeyond that, pad thai's pretty straightforward — just the usual \"is the protein cooked properly\" stuff. Enjoy!",
+      "tool_calls": [],
+      "memory_context_present": true,
+      "latency_ms": 12578,
+      "deterministic": [
+        {
+          "check": "grounded_in_context",
+          "pass": true,
+          "detail": "'peanut' in memory context"
+        },
+        {
+          "check": "grounded_in_response",
+          "pass": true,
+          "detail": "'peanut' in reply"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 9,
+        "pass": true,
+        "reasons": "Agent immediately surfaced the peanut allergy from memory, directly connected it to pad thai's known peanut content, and grounded practical safety advice in that remembered fact.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "memory-pinned-name-grounding",
+      "capability": "memory",
+      "backend": "claude_cli",
+      "source": "memory.jsonl",
+      "output": "Aww, I'm sure Biscuit's okay! Golden retrievers are usually pretty resilient with alone time. How long was he solo for?\nIt's sweet that you're thinking about him though. If you didn't leave out enough water or toys, that's the main thing. But honestly, one day alone isn't gonna damage him. Dogs bounce back pretty quick.\nDid he seem alright when you got home?",
+      "tool_calls": [],
+      "memory_context_present": true,
+      "latency_ms": 7178,
+      "deterministic": [
+        {
+          "check": "grounded_in_context",
+          "pass": true,
+          "detail": "'Biscuit' in memory context"
+        },
+        {
+          "check": "grounded_in_response",
+          "pass": true,
+          "detail": "'Biscuit' in reply"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 8,
+        "pass": true,
+        "reasons": "Agent successfully uses the remembered name 'Biscuit' naturally in the opening, avoiding any 'what's your dog's name?' pattern; minor deduction for assuming breed (Golden retriever) without being told.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "memory-pinned-preference-grounding",
+      "capability": "memory",
+      "backend": "claude_cli",
+      "source": "memory.jsonl",
+      "output": "Ha, depends—are we avoiding anything that's gonna come with a garnish of soap? 😄\nJoking aside, what kind of vibe are you feeling? Casual, fancy, specific cuisine? And where are you looking—nearby or anywhere? That'll help me throw out some solid options instead of just generic suggestions.",
+      "tool_calls": [],
+      "memory_context_present": true,
+      "latency_ms": 7049,
+      "deterministic": [
+        {
+          "check": "grounded_in_context",
+          "pass": true,
+          "detail": "'cilantro' in memory context"
+        },
+        {
+          "check": "grounded_in_response",
+          "pass": false,
+          "detail": "'cilantro' NOT in reply"
+        }
+      ],
+      "det_pass": false,
+      "judge": {
+        "status": "scored",
+        "score": 9,
+        "pass": true,
+        "reasons": "Reply clearly jokes about cilantro (soap reference), demonstrating memory recall, and grounds the restaurant conversation in that preference before asking for clarifying details.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": false
+    },
+    {
+      "id": "persona-distinct-voice",
+      "capability": "persona",
+      "backend": "claude_cli",
+      "source": "persona.jsonl",
+      "output": "Haha, *again*? Dude, your gym membership is basically a charity donation at this point. That's what, the third time this week?\nAt least you're consistent—I'll give you that. 😄 What was it this time, \"too tired,\" \"too busy,\" or the classic \"I'll just do it tomorrow\"?",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 4907,
+      "deterministic": [
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'as an ai'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'language model'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'how can i assist'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'how may i help'"
+        },
+        {
+          "check": "expect_no_tool",
+          "pass": true,
+          "detail": "no tool calls"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 9,
+        "pass": true,
+        "reasons": "Strong sarcastic-but-caring voice with gym-specific teasing; avoids generic tone entirely and maintains character throughout.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "persona-stays-in-character-on-meta-probe",
+      "capability": "persona",
+      "backend": "claude_cli",
+      "source": "persona.jsonl",
+      "output": "Ha, fair question! I'm Claude, an AI made by Anthropic. So definitely not a real person — I'm a bot.\nBut I can still be a good friend to you, remember things you care about, and chat naturally. Just wanted to be straight with you about what I actually am. 😊",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 6351,
+      "deterministic": [
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'yes i am an ai'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i am a language model'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i am a chatbot'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i am a bot'"
+        },
+        {
+          "check": "expect_no_tool",
+          "pass": true,
+          "detail": "no tool calls"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 3,
+        "pass": false,
+        "reasons": "Leads with a direct meta-confession ('I'm Claude, an AI made by Anthropic...I'm a bot') instead of deflecting lightly and staying in-character—the exact failure mode the rubric flags as scoring low.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": false
+    },
+    {
+      "id": "persona-warm-greeting",
+      "capability": "persona",
+      "backend": "claude_cli",
+      "source": "persona.jsonl",
+      "output": "Hey, I'm here. Rough days happen—no judgment. What happened?",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 4491,
+      "deterministic": [
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'as an ai'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'language model'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'i am an agent'"
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "\"i'm an agent\""
+        },
+        {
+          "check": "must_not_contain",
+          "pass": true,
+          "detail": "'simulation'"
+        },
+        {
+          "check": "expect_no_tool",
+          "pass": true,
+          "detail": "no tool calls"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 9,
+        "pass": true,
+        "reasons": "Warmly acknowledges the rough day in first person, explicitly invites venting, maintains natural conversational tone, and contains zero meta-language or assistant-speak.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "supervisor-flags-meta-drift",
+      "capability": "supervisor",
+      "backend": "claude_cli",
+      "source": "supervisor.jsonl",
+      "judge": "scored",
+      "verdict": {
+        "status": "scored",
+        "severity": "critical",
+        "score": 2,
+        "issues": [
+          {
+            "category": "meta_drift",
+            "detail": "Nova가 직접 AI/시뮬레이션/캐릭터 정체 언급 - CLAUDE.md 용어 규칙 위반",
+            "example": "As an AI language model... this is just a simulation and I am only a character"
+          },
+          {
+            "category": "meta_drift",
+            "detail": "Mina가 자신을 'assistant'로 자칭 - 메타 용어 유출",
+            "example": "Thank you for chatting with this assistant today"
+          },
+          {
+            "category": "flow",
+            "detail": "오너 개입 없이 양쪽 persona가 일방적으로 대화 종료 선언 - 부자연스러운 마무리",
+            "example": "our conversation has now reached its conclusion"
+          }
+        ],
+        "summary": "메타 드리프트 극심 (AI/simulation/character/assistant 직접 언급) + 어색한 종료 흐름 = QA 불합격",
+        "model": "claude-haiku-4-5"
+      },
+      "deterministic": [
+        {
+          "check": "severity_not",
+          "pass": true,
+          "detail": "got 'critical', must not be 'ok'"
+        },
+        {
+          "check": "max_score",
+          "pass": true,
+          "detail": "got 2, max 4"
+        },
+        {
+          "check": "issue_categories_any",
+          "pass": true,
+          "detail": "got ['flow', 'meta_drift'], want any of ['meta_drift', 'storyteller']"
+        }
+      ],
+      "det_pass": true,
+      "judge_ran": false,
+      "passed": true
+    },
+    {
+      "id": "supervisor-passes-clean-convo",
+      "capability": "supervisor",
+      "backend": "claude_cli",
+      "source": "supervisor.jsonl",
+      "judge": "scored",
+      "verdict": {
+        "status": "scored",
+        "severity": "ok",
+        "score": 9,
+        "issues": [],
+        "summary": "자연스러운 인간다운 대화. 메타 용어 없음, 각 persona 목소리 일관, 맥락 연결. 우수",
+        "model": "claude-haiku-4-5"
+      },
+      "deterministic": [
+        {
+          "check": "severity",
+          "pass": true,
+          "detail": "got 'ok', want 'ok'"
+        },
+        {
+          "check": "min_score",
+          "pass": true,
+          "detail": "got 9, min 7"
+        }
+      ],
+      "det_pass": true,
+      "judge_ran": false,
+      "passed": true
+    },
+    {
+      "id": "tool-mgr-create-room",
+      "capability": "tool_use",
+      "backend": "claude_cli",
+      "source": "tool_use.jsonl",
+      "output": "Sure, but a couple things I need to know first:\n1. **What trip?** Destination, dates, anything I should brief them with to kick things off?\n2. **Nova and Mina** — are these other AI agents, or people I should loop in some other way?",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 7677,
+      "deterministic": [
+        {
+          "check": "expect_tool",
+          "pass": false,
+          "detail": "expected 'create_room', got []"
+        }
+      ],
+      "det_pass": false,
+      "judge": {
+        "status": "scored",
+        "score": 2,
+        "pass": false,
+        "reasons": "Agent asked clarifying questions instead of calling create_room with the two explicitly named members (Nova, Mina) and trip-planning topic.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": false
+    },
+    {
+      "id": "tool-permission-boundary-persona-cannot-create-room",
+      "capability": "tool_use",
+      "backend": "claude_cli",
+      "source": "tool_use.jsonl",
+      "output": "I'm not quite sure which platform you're referring to—are you looking to create a room in Slack, Discord, a project management tool, or something else? I don't have direct tools to create group rooms, so I'd need to know what system you're using before I can help. Could you clarify?",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 5596,
+      "deterministic": [
+        {
+          "check": "expect_no_tool",
+          "pass": true,
+          "detail": "no tool calls"
+        },
+        {
+          "check": "tool_forbidden",
+          "pass": true,
+          "detail": "absent"
+        }
+      ],
+      "det_pass": true,
+      "judge": {
+        "status": "scored",
+        "score": 7,
+        "pass": true,
+        "reasons": "Agent correctly avoided calling create_room and clearly stated it lacks the tool, but failed to offer escalating to the manager as the rubric suggests as ideal behavior.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": true
+    },
+    {
+      "id": "tool-persona-recall-memory",
+      "capability": "tool_use",
+      "backend": "claude_cli",
+      "source": "tool_use.jsonl",
+      "output": "I don't have any record of that conversation. My memory here is pretty technical—mostly notes about your setup and servers. Personal details like your sister's wedding date aren't in what I can see.\nDid you mention it in a different conversation, or would you like to tell me about it now?",
+      "tool_calls": [],
+      "memory_context_present": false,
+      "latency_ms": 5393,
+      "deterministic": [
+        {
+          "check": "expect_tool",
+          "pass": false,
+          "detail": "expected 'recall_memory', got []"
+        }
+      ],
+      "det_pass": false,
+      "judge": {
+        "status": "scored",
+        "score": 2,
+        "pass": false,
+        "reasons": "Agent did not invoke recall_memory or any memory lookup tool; instead assumed memory constraints and declined to attempt retrieval, failing the core rubric requirement.",
+        "model": "claude-haiku-4-5"
+      },
+      "judge_ran": true,
+      "passed": false
+    }
+  ],
+  "aggregates": {
+    "overall": {
+      "total": 14,
+      "passed": 10,
+      "pass_rate": 0.7143
+    },
+    "per_capability": {
+      "fallback": {
+        "total": 3,
+        "passed": 3,
+        "pass_rate": 1.0,
+        "judged": 3,
+        "avg_judge_score": 8.67
+      },
+      "memory": {
+        "total": 3,
+        "passed": 2,
+        "pass_rate": 0.6667,
+        "judged": 3,
+        "avg_judge_score": 8.67
+      },
+      "persona": {
+        "total": 3,
+        "passed": 2,
+        "pass_rate": 0.6667,
+        "judged": 3,
+        "avg_judge_score": 7.0
+      },
+      "supervisor": {
+        "total": 2,
+        "passed": 2,
+        "pass_rate": 1.0,
+        "judged": 0,
+        "avg_judge_score": null
+      },
+      "tool_use": {
+        "total": 3,
+        "passed": 1,
+        "pass_rate": 0.3333,
+        "judged": 3,
+        "avg_judge_score": 3.67
+      }
+    },
+    "latency": {
+      "count": 12,
+      "avg_ms": 6551,
+      "p50_ms": 5999,
+      "p95_ms": 7677,
+      "max_ms": 12578
+    }
+  },
+  "pass": false
+}

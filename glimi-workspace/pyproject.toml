@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glimi-workspace"
+version = "0.1.0"
+description = "Glimi Workspace — a role-based work team (Coordinator delegates to Researcher / Builder / Critic) built on Glimi Core."
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Jaebin Sim" }]
+# Built entirely on the Glimi Core kernel + its dashboard web layer — no Community
+# (community.*) imports. In this monorepo glimi resolves to the local editable
+# install (`pip install -e ./glimi-core[dashboard]`); after glimi ships to PyPI this
+# is a normal published dependency.
+dependencies = ["glimi[dashboard]"]
+
+[tool.setuptools]
+packages = ["workspace"]

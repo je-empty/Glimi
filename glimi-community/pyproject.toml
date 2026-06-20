@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glimi-community"
+version = "0.1.0"
+description = "Glimi Community — a cast of AI friends with persistent memory, autonomous chatter, and relationships, built on Glimi Core."
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Jaebin Sim" }]
+# Built on the Glimi Core kernel + dashboard web layer, plus the Community-specific
+# stack (Discord adapter, web platform, TUI). In this monorepo `glimi` resolves to
+# the local editable install (`pip install -e ./glimi-core[dashboard]`); after glimi
+# ships to PyPI this is a normal published dependency.
+dependencies = [
+    "glimi[dashboard]",
+    "discord.py>=2.3.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+    "Pillow>=10.0.0",
+    "textual>=0.40.0",
+    "python-multipart>=0.0.9",
+    "itsdangerous>=2.1.0",
+]
+
+[project.optional-dependencies]
+# Local profile-image generation (Animagine XL 4.0 + LoRA). Weights live in
+# community/glimi_imagegen/loras/ (gitignored). Install: pip install -e ".[imagegen]"
+imagegen = [
+    "torch>=2.1", "diffusers>=0.27", "transformers>=4.36", "accelerate",
+    "peft>=0.10", "safetensors", "opencv-python", "numpy",
+]
+
+[tool.setuptools.packages.find]
+include = ["community*"]

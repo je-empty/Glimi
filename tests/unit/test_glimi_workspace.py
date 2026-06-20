@@ -31,7 +31,7 @@ import pytest
 # Worktree root (<wt>/tests/unit/this → up 3) + workspace on sys.path so the
 # app's flat modules (run / team) import the same way the script does.
 _WORKTREE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_APP_DIR = os.path.join(_WORKTREE, "workspace")
+_APP_DIR = os.path.join(_WORKTREE, "glimi-workspace", "workspace")
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 if _WORKTREE not in sys.path:

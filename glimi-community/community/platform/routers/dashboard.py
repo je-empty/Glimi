@@ -157,14 +157,14 @@ async def serve_logo():
     from pathlib import Path
     root = Path(__file__).resolve().parent.parent.parent.parent
     # SVG 우선 (벡터 — 파비콘/레티나 모두 선명), 없으면 구 PNG fallback
-    logo_svg = root / "resources" / "Glimi-logo.svg"
+    logo_svg = root / "assets" / "brand" / "Glimi-logo.svg"
     if logo_svg.exists():
         return Response(
             content=logo_svg.read_bytes(),
             media_type="image/svg+xml",
             headers={"Cache-Control": "public, max-age=3600"},
         )
-    logo_path = root / "resources" / "Glimi-logo.png"
+    logo_path = root / "assets" / "brand" / "Glimi-logo.png"
     if not logo_path.exists():
         return Response(status_code=404)
     return Response(
