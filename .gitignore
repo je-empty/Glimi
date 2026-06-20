@@ -62,7 +62,7 @@ docs/*지시서*.md
 docs/[0-9][0-9]_*
 
 # LoRA 가중치 (각 93MB) — 로컬에만 두고 별도 배포
-community/glimi_imagegen/loras/*.safetensors
+**/glimi_imagegen/loras/*.safetensors
 
 # Glimi Workspace 앱의 first-run 상태 파일 (개인 name/goal — 로컬에만)
 apps/workspace/.workspace_state.json
