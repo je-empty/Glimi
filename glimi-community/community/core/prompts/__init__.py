@@ -68,17 +68,31 @@ def build_system_prompt(agent_id: str, include_profile_image_template: bool = Fa
 
     if agent_type == "persona":
         builder = _get_builder("persona", "build_persona_prompt")
-        return builder(profile)
+        base = builder(profile)
     elif agent_type == "mgr":
         builder = _get_builder("mgr", "build_mgr_prompt")
-        return builder(profile, include_profile_image_template=include_profile_image_template)
+        base = builder(profile, include_profile_image_template=include_profile_image_template)
     elif agent_type == "creator":
         builder = _get_builder("creator", "build_creator_prompt")
-        return builder(profile)
+        base = builder(profile)
     elif agent_type == "dev":
         builder = _get_builder("dev", "build_dev_prompt")
-        return builder(profile)
-    return ""
+        base = builder(profile)
+    else:
+        return ""
+
+    # 공용 스킬 섹션 append — 코어 기본 행동(glimi/skills) + 커뮤니티 도메인(community/skills),
+    # applies-to 로 agent_type 필터링. 71f63e2 도입 → 74a81ac(대시보드 커밋)에서 실수로
+    # 빠진 회귀를 복원. build_skills_section 이 빈 문자열이면 no-op.
+    try:
+        from community.core.skills import build_skills_section
+        skills_text = build_skills_section(agent_type)
+        if skills_text:
+            base = base + "\n\n" + skills_text
+    except Exception as e:
+        print(f"[Prompt] skills 로드 실패 (무시): {e}")
+
+    return base
 
 
 __all__ = ["build_system_prompt", "_get_builder"]

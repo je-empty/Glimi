@@ -85,3 +85,7 @@ packages = ["glimi", "glimi.llm", "glimi.tools", "glimi.dashboard", "glimi.store
     "static/js/*.js",
     "i18n/*.json",
 ]
+# 커널 기본 행동 스킬 (SKILL.md + locale 예시) — 앱이 build_skills_section 으로 주입.
+"glimi" = [
+    "skills/**/*.md",
+]

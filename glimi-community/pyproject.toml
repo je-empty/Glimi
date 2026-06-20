@@ -34,3 +34,9 @@ imagegen = [
 
 [tool.setuptools.packages.find]
 include = ["community*"]
+
+# 도메인 스킬(SKILL.md + locale 예시) + 프로필 자산을 휠에 포함.
+[tool.setuptools.package-data]
+"community" = [
+    "skills/**/*.md",
+]
