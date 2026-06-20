@@ -13,17 +13,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - name: Syntax check
-        run: python -m compileall -q glimi eval community tests
-      - name: Unit tests (kernel + formatting)
+      # Workspace monorepo: install the kernel first (so the apps' `glimi[dashboard]`
+      # dependency resolves to the local editable), then the two apps.
+      - name: Install (editable — kernel + apps)
         run: |
-          pip install -e . pytest
-          python -m pytest tests/unit/ -q --ignore=tests/unit/test_community_isolation.py
-      # 격리 테스트(test_community_isolation)는 별도 DB 셋업 후 추가 (#5)
+          pip install -e "./glimi-core[dashboard]"
+          pip install -e ./glimi-community -e ./glimi-workspace pytest
+      - name: Syntax check
+        run: python -m compileall -q glimi-core/glimi glimi-core/eval glimi-community/community glimi-workspace/workspace tests
+      - name: Unit tests (kernel + apps)
+        # test_community_isolation needs a seeded multi-community DB (shared-state) → run separately (#5)
+        run: python -m pytest tests/unit/ -q --ignore=tests/unit/test_community_isolation.py
       - name: Eval harness structure check (echo, no LLM cost)
-        # echo backend = deterministic, no Claude CLI, no API key. Loads + schema-
-        # validates every golden case, runs each through the real runtime, runs the
-        # deterministic checks, and SKIPS the LLM judge. Scored regression
-        # (`python -m eval run --backend claude_cli` + `eval gate`) is opt-in/manual.
-        run: python -m eval run --backend echo
+        # echo backend = deterministic, no Claude CLI / API key. Loads + schema-validates
+        # every golden case, runs each through the real runtime + deterministic checks,
+        # SKIPS the LLM judge. Scored regression (claude_cli + eval gate) is manual.
+        run: cd glimi-core && python -m eval run --backend echo

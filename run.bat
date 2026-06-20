@@ -119,7 +119,8 @@ if not exist "%MARKER%" (
         echo [setup] pip install failed.
         exit /b 1
     )
-    pip install -q -e . 2>nul
+    pip install -q -e "./glimi-core[dashboard]" 2>nul
+    pip install -q -e ./glimi-community -e ./glimi-workspace 2>nul
     echo. > "%MARKER%"
 )
 

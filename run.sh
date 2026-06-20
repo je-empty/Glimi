@@ -139,7 +139,9 @@ fi
 
 MARKER=".venv/.deps_installed"
 if [ ! -f "$MARKER" ] || [ requirements.txt -nt "$MARKER" ]; then
-    pip install -q -r requirements.txt && pip install -q -e . 2>/dev/null
+    pip install -q -r requirements.txt 2>/dev/null
+    pip install -q -e "./glimi-core[dashboard]" 2>/dev/null
+    pip install -q -e ./glimi-community -e ./glimi-workspace 2>/dev/null
     touch "$MARKER"
 fi
 
@@ -170,7 +172,7 @@ if [ "$IMAGEGEN" = "1" ]; then
     IMAGEGEN_MARKER=".venv/.imagegen_installed"
     if [ ! -f "$IMAGEGEN_MARKER" ]; then
         echo -e "${CYAN}[imagegen] 1회 deps 설치 (torch + diffusers ~수 GB, ~5분)...${NC}"
-        if pip install -q -e ".[imagegen]"; then
+        if pip install -q -e "./glimi-community[imagegen]"; then
             touch "$IMAGEGEN_MARKER"
             echo -e "${GREEN}[imagegen] 활성화 완료. 첫 호출 시 Animagine XL 4.0 (~6.5GB) HF cache 다운로드.${NC}"
         else
