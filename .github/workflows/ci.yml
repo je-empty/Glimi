@@ -12,7 +12,7 @@ jobs:
     # + imports, independent of editable-install finder quirks). Absolute so it holds
     # across a `cd` into a project folder.
     env:
-      PYTHONPATH: ${{ github.workspace }}/glimi-core:${{ github.workspace }}/glimi-community:${{ github.workspace }}/glimi-workspace
+      PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/glimi-core:${{ github.workspace }}/glimi-community:${{ github.workspace }}/glimi-workspace
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,4 +33,4 @@ jobs:
         # echo backend = deterministic, no Claude CLI / API key. Loads + schema-validates
         # every golden case, runs each through the real runtime + deterministic checks,
         # SKIPS the LLM judge. Scored regression (claude_cli + eval gate) is manual.
-        run: cd glimi-core && python -m eval run --backend echo
+        run: python -m eval run --backend echo
