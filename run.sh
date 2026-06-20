@@ -145,6 +145,10 @@ if [ ! -f "$MARKER" ] || [ requirements.txt -nt "$MARKER" ]; then
     touch "$MARKER"
 fi
 
+# Resolve glimi / community / workspace from their project dirs — robust `python -m`
+# execution + imports across the 3-project layout, independent of editable-finder quirks.
+export PYTHONPATH="$PWD/glimi-core:$PWD/glimi-community:$PWD/glimi-workspace${PYTHONPATH:+:$PYTHONPATH}"
+
 # ── 공통 플래그 추출 (모든 mode 공통, 위치 무관) ─────────
 IMAGEGEN=0
 LOCAL_MODELS=0
