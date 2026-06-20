@@ -150,6 +150,40 @@ _DEMO_TITLE = "런칭 데모"
 _PRESENTER_ID = "demo-live"
 _PRESENTER_TITLE = "런칭 데모"
 
+# ── invite gating (presenter chat + workspace creation) ─────────────────────
+# When GLIMI_INVITE_TOKENS is set, the chat-ENABLED surfaces — the presenter
+# (/w/demo-live) and creating a workspace — require either:
+#   • the OWNER, recognized by Cloudflare Access' verified-email header (no token), or
+#   • a guest with ?invite=<token> (a REUSABLE share link; remembered in a cookie).
+# Unset → no gate (fully open: the OSS/local default). The public read-only demo
+# (/w/demo) is NEVER gated. Tokens are read live from the env at import; the owner
+# email is GLIMI_OWNER_EMAIL (the address allowed through CF Access).
+_INVITE_TOKENS = {t.strip() for t in (os.environ.get("GLIMI_INVITE_TOKENS") or "").split(",") if t.strip()}
+_OWNER_EMAIL = (os.environ.get("GLIMI_OWNER_EMAIL") or "").strip().lower()
+_INVITE_COOKIE = "glimi_invite"
+
+
+def _is_owner(scope) -> bool:
+    """True if Cloudflare Access authenticated this request as the owner — CF sets
+    ``Cf-Access-Authenticated-User-Email`` after its email login. Works for a
+    Request or a WebSocket (both carry case-insensitive headers)."""
+    if not _OWNER_EMAIL:
+        return False
+    email = (scope.headers.get("cf-access-authenticated-user-email") or "").strip().lower()
+    return email == _OWNER_EMAIL
+
+
+def _invite_ok(scope) -> bool:
+    """Whether this request may use the chat-enabled surfaces. No tokens configured
+    → always True (gate off). Else: the owner (CF) or a valid invite token (from
+    ``?invite=`` or the remembered cookie)."""
+    if not _INVITE_TOKENS:
+        return True
+    if _is_owner(scope):
+        return True
+    tok = (scope.query_params.get("invite") or scope.cookies.get(_INVITE_COOKIE) or "").strip()
+    return tok in _INVITE_TOKENS
+
 
 def _load_i18n(lang: str) -> dict:
     lang = (lang or "ko").lower()
@@ -559,7 +593,8 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "community_id": None,           # workspace uses api_base, not ?community=
         "community_name": ws.title,
         "language": lang,
-        "read_only": (ws.kind == "demo"),
+        "read_only": (ws.kind == "demo")
+                     or (ws.kind == "presenter" and not _invite_ok(request)),
         "asset_v": _ASSET_VER,
         "chat_channel": "dm-coordinator",
         "chat_agent": "coordinator",
@@ -572,6 +607,11 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
                 else "dashboard/_core.html")
     resp = _TEMPLATES.TemplateResponse(request, template, ctx)
     resp.headers["Cache-Control"] = "no-store"
+    # Remember a valid presenter invite (reusable share link) in a cookie so the
+    # chat socket + reloads stay unlocked without re-passing ?invite= each time.
+    _tok = (request.query_params.get("invite") or "").strip()
+    if ws.kind == "presenter" and _INVITE_TOKENS and _tok in _INVITE_TOKENS:
+        resp.set_cookie(_INVITE_COOKIE, _tok, max_age=2592000, httponly=True, samesite="lax")
     return resp
 
 
@@ -627,8 +667,11 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
         Serialized by the registry's build lock (global-singleton WRITE path).
         Form submits get a 303 redirect to the new dashboard; JSON callers get
-        ``{id, title, goal, kind, ...}``.
+        ``{id, title, goal, kind, ...}``. Gated by invite when GLIMI_INVITE_TOKENS
+        is set (owner via CF, or a valid token) so guests can't spam workspaces.
         """
+        if not _invite_ok(request):
+            raise HTTPException(status_code=403, detail="invite required to create a workspace")
         name = goal = ""
         is_form = False
         ctype = request.headers.get("content-type", "")
@@ -717,7 +760,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         if ws is None:
             await websocket.close(code=1008)
             return
-        read_only = (ws.kind == "demo")
+        read_only = (ws.kind == "demo") or (ws.kind == "presenter" and not _invite_ok(websocket))
         await websocket.accept()
         loop = asyncio.get_event_loop()
         try:

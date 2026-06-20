@@ -220,6 +220,45 @@ def test_presenter_ws_accepts_owner_turn(client):
         assert got_response
 
 
+# ── invite gating (presenter chat + workspace creation) ─────────────────────
+
+def test_invite_gate_off_by_default(client):
+    # No GLIMI_INVITE_TOKENS configured → presenter chat is open (gate disabled).
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live").text)
+
+
+def test_invite_gate_blocks_guests_without_token(client, monkeypatch):
+    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
+    # presenter without a token → read-only (chat locked)
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo-live").text)
+    # with a valid token → chat unlocked (+ cookie remembered)
+    r = client.get("/w/demo-live?invite=SECRET")
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", r.text)
+    assert "glimi_invite" in r.headers.get("set-cookie", "")
+    # the public read-only demo is never affected by the invite gate
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", client.get("/w/demo").text)
+
+
+def test_invite_gate_blocks_create_without_token(client, monkeypatch):
+    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
+    assert client.post("/api/workspaces", json={"name": "X", "goal": "Y"}).status_code == 403
+    assert client.post("/api/workspaces?invite=SECRET",
+                       json={"name": "X", "goal": "Y"}).status_code == 200
+
+
+def test_invite_gate_owner_via_cf_header(client, monkeypatch):
+    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
+    monkeypatch.setattr(server, "_OWNER_EMAIL", "owner@example.com")
+    # CF Access verified the owner's email → chat unlocked without any token
+    r = client.get("/w/demo-live",
+                   headers={"Cf-Access-Authenticated-User-Email": "owner@example.com"})
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*false", r.text)
+    # a different CF email is NOT the owner → still gated
+    r2 = client.get("/w/demo-live",
+                    headers={"Cf-Access-Authenticated-User-Email": "someone@else.com"})
+    assert re.search(r"__GLIMI_READONLY__\s*=\s*true", r2.text)
+
+
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────
 
 def test_dashboard_js_api_base_defaults_empty():
