@@ -117,15 +117,15 @@ Pre-split fixes the script assumes:
 
 ## Ownership model (2026-06-19)
 - **`glimi` (core) + `glimi-workspace` = owner-only** (jbsim). No external contributors.
-- **`glimi-community` = the contributor repo** — heejun (content owner) + owner. All
+- **`glimi-community` = the contributor repo** — content owner + maintainer. All
   collaboration infra lives here only.
-- **Author audit confirms the split achieves this automatically** (no scrub): `git log -- glimi/ eval/` = jbsim alone (32); `apps/workspace/` = jbsim alone (15); heejun's 19 commits are all on the community side (`src/`/docs/content). `git filter-repo` by path keeps heejun's history only in `glimi-community`.
+- **A path-based `git filter-repo` keeps each repo's history scoped to its own tree** — core/workspace and community separate cleanly with no manual scrub.
 - `split.sh` already routes contributor docs (`START_HERE.html`/`COLLAB_GUIDE.html`/`CONTRIBUTING.md`) to community **only**; core/workspace don't get them. ✓
 - ⚠ **Gaps to handle (owner or a follow-up pass):**
   - **Per-repo `CLAUDE.md`**: `split.sh` routes `CLAUDE.md` to **no** repo → all 3 split repos would lack project instructions. Author 3: community = current rules (branch strategy / COLLAB_GUIDE ref / area ownership / design-system / prompts); `glimi` = core-only short version (zero-dep purity, decoupling, prompt rules, commit/author rules) **without the external-contributor section**; `glimi-workspace` = short owner-only version. (`CLAUDE.local.md` stays untracked, never split.)
   - **`COLLAB_GUIDE.html` part-map** currently lists "core / engine / platform" review areas; post-split those aren't in the community repo (it depends on `glimi[dashboard]`). Trim to community-content areas only.
 
 ## Phase 6 — 👤 OWNER actions (after the script)
-- Create the 3 GitHub repos (`glimi` public for OSS; community/workspace per the visibility decision). core + workspace = owner-only access; community = add heejun.
+- Create the 3 GitHub repos (`glimi` public for OSS; community/workspace per the visibility decision). core + workspace = owner-only access; community = add the content contributor.
 - Add remotes, push; enable CI; publish `glimi` to PyPI.
 - Move repo-specific GitHub settings (branch protection on community; secrets).
