@@ -31,11 +31,11 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 **최종 목표는 웹 자체 채팅 + 앱. 디스코드는 현재 채팅 UI 직접 구현 공수 때문에 쓰는 임시 출구.**
 
 - **코어 로직** (에이전트 두뇌·메모리·감정·씬·도구 실행) 은 Discord 를 몰라야 함. 플랫폼 중립 타입만 사용
-- **Discord 는 "출구" 레이어** — `src/bot/` = Discord 어댑터. 나중에 `src/adapters/telegram/`, `src/adapters/web_chat/` 이 붙을 자리
+- **Discord 는 "출구" 레이어** — `community/bot/` = Discord 어댑터. 나중에 `community/adapters/telegram/`, `community/adapters/web_chat/` 이 붙을 자리
 - **새 기능 설계 질문**: "이 로직을 Telegram·웹채팅에서 재사용 가능한가?" NO 면 잘못된 레이어
-- **금지**: `src/core/*` 에서 `import discord` / `Webhook`·`TextChannel`·`guild` 같은 Discord 타입이 코어 시그니처에 새는 것
-- **금지**: 코어 (`src/core/`·`src/llm/`) 에 특정 커뮤니티 콘텐츠 하드코딩 — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터/설정에서 로드. 코어의 예시 텍스트는 가상·중립으로 ("내 커뮤니티에서 잘 돌게" 하는 수정은 데이터 레이어로)
-- **허용 (과도기)**: `src/core/sync.py` 같은 "Discord↔DB 동기화" 는 discord import OK — 어댑터 책임. 추후 `src/adapters/discord/sync.py` 로 이동
+- **금지**: `community/core/*` 에서 `import discord` / `Webhook`·`TextChannel`·`guild` 같은 Discord 타입이 코어 시그니처에 새는 것
+- **금지**: 코어 (`community/core/`·`community/llm/`) 에 특정 커뮤니티 콘텐츠 하드코딩 — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터/설정에서 로드. 코어의 예시 텍스트는 가상·중립으로 ("내 커뮤니티에서 잘 돌게" 하는 수정은 데이터 레이어로)
+- **허용 (과도기)**: `community/core/sync.py` 같은 "Discord↔DB 동기화" 는 discord import OK — 어댑터 책임. 추후 `community/adapters/discord/sync.py` 로 이동
 - **추상화 타깃**: `outbox.send(channel_id, speaker, text, ...)` 추상 인터페이스. 디스코드 webhook / 텔레그램 API / 웹 WebSocket 이 각자 구현
 
 현황 + 분리 공수는 **`analysis/platform_decoupling_review.md`** 참조.
@@ -51,15 +51,15 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 - `docs/execution.md` — 실행 명령 + 플랫폼 CLI + QA 자동화
 - `docs/yuna_knowledge.md` — 유나(mgr) 공개 FAQ (씬/도전과제 추가 시 반드시 갱신)
 - `docs/edge_cases.md` — **특이 케이스 이력** (LLM placebo drift 등 재현 가능한 anomaly 분류 + fix 기록)
-- `src/glimi_imagegen/README.md` + `SKILL_prompts.md` — 로컬 LoRA 프로필 이미지 생성 (Animagine XL 4.0). creator 도구 = `generate_profile_image` (~6분). 브릿지 = `src/core/profile_image.py`. **opt-in**: `./run.sh --imagegen` (= `GLIMI_IMAGEGEN=1`) — 기본 OFF (도구 미노출 + torch 미설치)
+- `community/glimi_imagegen/README.md` + `SKILL_prompts.md` — 로컬 LoRA 프로필 이미지 생성 (Animagine XL 4.0). creator 도구 = `generate_profile_image` (~6분). 브릿지 = `community/core/profile_image.py`. **opt-in**: `./run.sh --imagegen` (= `GLIMI_IMAGEGEN=1`) — 기본 OFF (도구 미노출 + torch 미설치)
 - `analysis/` (.gitignore) — 전략 로드맵 / 경쟁분석 / 사업전략 / 결정 대기 목록
 
 ## ✍️ 프롬프트 작성 — 핵심만 (상세 `docs/prompt_development.md`)
-- **위치 원칙**: 범용 = `src/core/prompts/en/` · scene 전용 = `src/scenes/{scene}/`
-- **언어**: 영어 정본. 한국 특화 (ㅇㅇ/ㅋㅋ/카톡/호칭) = `src/core/prompts/locale.py` helper 로 주입. 구조적으로 다르면 `ko/{module}.py` override
-- **모델 dialect**: `<tools>` / `<call>` 같은 syntax 하드코딩 금지. `src.core.prompts.model.tool_call_syntax_hint()` helper 호출
+- **위치 원칙**: 범용 = `community/core/prompts/en/` · scene 전용 = `community/scenes/{scene}/`
+- **언어**: 영어 정본. 한국 특화 (ㅇㅇ/ㅋㅋ/카톡/호칭) = `community/core/prompts/locale.py` helper 로 주입. 구조적으로 다르면 `ko/{module}.py` override
+- **모델 dialect**: `<tools>` / `<call>` 같은 syntax 하드코딩 금지. `community.core.prompts.model.tool_call_syntax_hint()` helper 호출
 - **레거시 금지**: `[CMD:...]` / `[ACTION:...]` / `[QUERY:...]` 절대 쓰지 말 것 (전수 제거됨, 커밋 756f3b6)
-- **decoupling**: `src/core/*` 에서 `import discord` 금지. `src/core/prompts/` 에서 `src/bot/` import 금지
+- **decoupling**: `community/core/*` 에서 `import discord` 금지. `community/core/prompts/` 에서 `community/bot/` import 금지
 - 상세 + 체크리스트는 `docs/prompt_development.md` 참조
 
 ## 🪶 문서화 원칙 (CLAUDE.md 용량 관리)
@@ -86,4 +86,4 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 - `conversation_engine` 도 `log_user_message=False` (내부 프롬프트가 오너 ID 로 로깅되는 버그 방지)
 - 프로필 수정 시 `invalidate_cache` + `runtime.refresh_agent` 필수
 - `dm-`/`mgr-` 채널은 삭제 보호됨
-- **타임스탬프는 UTC-aware ISO** (`datetime.now(timezone.utc).isoformat()` 또는 `src.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` 는 UTC naive — 둘 다 클라이언트가 로컬 tz 로 렌더
+- **타임스탬프는 UTC-aware ISO** (`datetime.now(timezone.utc).isoformat()` 또는 `community.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` 는 UTC naive — 둘 다 클라이언트가 로컬 tz 로 렌더
