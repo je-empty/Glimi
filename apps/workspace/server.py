@@ -80,12 +80,15 @@ try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
     from run import run_workspace  # type: ignore
     from team import TEAM  # type: ignore
-    import invites as _invites  # type: ignore
 except ImportError:  # imported as apps.workspace.server
     from . import demo as _demo
     from .run import run_workspace
     from .team import TEAM
-    from . import invites as _invites
+
+# Shared invite-token store (the central admin on the landing manages it; this app
+# only gates on tokens whose target is "workspace"). Lives in the kernel's shared
+# web layer so all three apps use one store.
+from glimi.dashboard import invites as _invites
 
 # The Core dashboard ships the canonical rich UI — assets (css/js), the shared
 # templates (dashboard/_core.html + _chat_shell.html), and the i18n dicts. This
@@ -184,7 +187,7 @@ def _invite_tokens() -> set:
                         toks.add(s.split()[0])  # first field — ignore an inline "# label"
         except OSError:
             pass
-    toks |= _invites.token_set()  # admin-panel-managed tokens (JSON store)
+    toks |= _invites.token_set(target="workspace")  # admin-panel-managed (this app's target)
     return toks
 
 
@@ -944,73 +947,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             raise HTTPException(status_code=404, detail="presenter demo not found")
         return JSONResponse({"status": "reset", "id": ws_id})
 
-    # ── web admin panel: issue / list / usage / revoke invite tokens ─────────
-    # Hidden, password-gated (GLIMI_ADMIN_PASSWORD). Lets the owner manage
-    # presenter invites from a browser anywhere — no SSH/scripts.
-    def _admin_authed(request: Request) -> bool:
-        return _invites.admin_enabled() and _invites.valid_session(
-            request.cookies.get("glimi_admin", ""))
-
-    @app.get("/admin", response_class=HTMLResponse)
-    def admin_panel(request: Request):
-        ctx = {
-            "request": request,
-            "enabled": _invites.admin_enabled(),
-            "needs_setup": _invites.needs_setup(),
-            "authed": _admin_authed(request),
-            "tokens": _invites.list_tokens() if _admin_authed(request) else [],
-            "base": str(request.base_url).rstrip("/"),
-            "login_error": request.query_params.get("e") == "1",
-            "setup_error": request.query_params.get("e") == "2",
-        }
-        resp = _TEMPLATES.TemplateResponse(request, "admin.html", ctx)
-        resp.headers["Cache-Control"] = "no-store"
-        return resp
-
-    @app.post("/admin/setup")
-    async def admin_setup(request: Request):
-        """First-run: the owner sets the admin password from the browser (zero SSH).
-        Refused once a password exists (no takeover)."""
-        form = await request.form()
-        if _invites.set_password(str(form.get("password", ""))):
-            resp = RedirectResponse(url="/admin", status_code=303)
-            resp.set_cookie("glimi_admin", _invites.make_session(),
-                            max_age=7 * 24 * 3600, httponly=True, samesite="lax")
-            return resp
-        return RedirectResponse(url="/admin?e=2", status_code=303)
-
-    @app.post("/admin/login")
-    async def admin_login(request: Request):
-        form = await request.form()
-        if _invites.check_password(str(form.get("password", ""))):
-            resp = RedirectResponse(url="/admin", status_code=303)
-            resp.set_cookie("glimi_admin", _invites.make_session(),
-                            max_age=7 * 24 * 3600, httponly=True, samesite="lax")
-            return resp
-        return RedirectResponse(url="/admin?e=1", status_code=303)
-
-    @app.post("/admin/logout")
-    def admin_logout():
-        resp = RedirectResponse(url="/admin", status_code=303)
-        resp.delete_cookie("glimi_admin")
-        return resp
-
-    @app.post("/admin/issue")
-    async def admin_issue(request: Request):
-        if not _admin_authed(request):
-            raise HTTPException(status_code=403, detail="admin auth required")
-        form = await request.form()
-        _invites.issue(str(form.get("label", "")), str(form.get("kind", "continue")))
-        return RedirectResponse(url="/admin", status_code=303)
-
-    @app.post("/admin/revoke")
-    async def admin_revoke(request: Request):
-        if not _admin_authed(request):
-            raise HTTPException(status_code=403, detail="admin auth required")
-        form = await request.form()
-        _invites.revoke(str(form.get("token", "")))
-        return RedirectResponse(url="/admin", status_code=303)
-
+    # (The token-admin panel lives on the landing app — glimi.iruyo.com/admin —
+    #  so one central panel manages both community + workspace invites.)
     return app
 
 

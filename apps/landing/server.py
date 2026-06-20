@@ -23,12 +23,13 @@ import hashlib
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import glimi.dashboard as _dashboard  # canonical static (base.css/tokens) — stdlib-only import
+from glimi.dashboard import invites as _invites  # shared token store (community + workspace)
 
 _APP_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _APP_DIR.parent.parent                 # apps/landing → apps → repo root
@@ -48,6 +49,36 @@ def _asset_ver() -> str:
 
 
 _ASSET_VER = _asset_ver()
+
+
+# ── central admin session (the token panel; signed cookie via itsdangerous) ──
+def _admin_serializer():
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(_invites.admin_secret(), salt="glimi-admin-session")
+
+
+def _make_admin_session() -> str:
+    return _admin_serializer().dumps({"a": 1})
+
+
+def _valid_admin_session(cookie: str) -> bool:
+    if not cookie:
+        return False
+    try:
+        _admin_serializer().loads(cookie, max_age=7 * 24 * 3600)
+        return True
+    except Exception:
+        return False
+
+
+def _admin_authed(request: Request) -> bool:
+    return _invites.admin_enabled() and _valid_admin_session(request.cookies.get("glimi_admin", ""))
+
+
+def _origin(url: str) -> str:
+    from urllib.parse import urlsplit
+    p = urlsplit((url or "").strip())
+    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else ""
 
 
 def create_app() -> FastAPI:
@@ -90,18 +121,69 @@ def create_app() -> FastAPI:
     def healthz() -> dict:
         return {"ok": True}
 
-    @app.get("/admin")
-    def admin_redirect() -> RedirectResponse:
-        """The token-admin panel lives on the Workspace app (where the tokens are);
-        redirect glimi.iruyo.com/admin → there so the front-door URL works too."""
-        ws = (os.environ.get("GLIMI_WORKSPACE_URL") or "").strip()
-        target = "/admin"
-        if ws:
-            from urllib.parse import urlsplit
-            p = urlsplit(ws)
-            if p.scheme and p.netloc:
-                target = f"{p.scheme}://{p.netloc}/admin"
-        return RedirectResponse(url=target, status_code=302)
+    # ── central token-admin panel (community + workspace) ───────────────────
+    # Hidden, password-gated. First visit (no password) → web setup. Manages the
+    # shared store (glimi.dashboard.invites); each token has a target.
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_panel(request: Request):
+        authed = _admin_authed(request)
+        ctx = {
+            "request": request,
+            "enabled": _invites.admin_enabled(),
+            "needs_setup": _invites.needs_setup(),
+            "authed": authed,
+            "tokens": _invites.list_tokens() if authed else [],
+            "ws_base": _origin(os.environ.get("GLIMI_WORKSPACE_URL", "")),
+            "community_url": (os.environ.get("GLIMI_COMMUNITY_URL") or "").strip(),
+            "login_error": request.query_params.get("e") == "1",
+            "setup_error": request.query_params.get("e") == "2",
+        }
+        resp = _TEMPLATES.TemplateResponse(request, "admin.html", ctx)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.post("/admin/setup")
+    async def admin_setup(request: Request):
+        form = await request.form()
+        if _invites.set_password(str(form.get("password", ""))):
+            resp = RedirectResponse(url="/admin", status_code=303)
+            resp.set_cookie("glimi_admin", _make_admin_session(),
+                            max_age=7 * 24 * 3600, httponly=True, samesite="lax")
+            return resp
+        return RedirectResponse(url="/admin?e=2", status_code=303)
+
+    @app.post("/admin/login")
+    async def admin_login(request: Request):
+        form = await request.form()
+        if _invites.check_password(str(form.get("password", ""))):
+            resp = RedirectResponse(url="/admin", status_code=303)
+            resp.set_cookie("glimi_admin", _make_admin_session(),
+                            max_age=7 * 24 * 3600, httponly=True, samesite="lax")
+            return resp
+        return RedirectResponse(url="/admin?e=1", status_code=303)
+
+    @app.post("/admin/logout")
+    def admin_logout():
+        resp = RedirectResponse(url="/admin", status_code=303)
+        resp.delete_cookie("glimi_admin")
+        return resp
+
+    @app.post("/admin/issue")
+    async def admin_issue(request: Request):
+        if not _admin_authed(request):
+            raise HTTPException(status_code=403, detail="admin auth required")
+        form = await request.form()
+        _invites.issue(str(form.get("label", "")), str(form.get("kind", "continue")),
+                       str(form.get("target", "workspace")))
+        return RedirectResponse(url="/admin", status_code=303)
+
+    @app.post("/admin/revoke")
+    async def admin_revoke(request: Request):
+        if not _admin_authed(request):
+            raise HTTPException(status_code=403, detail="admin auth required")
+        form = await request.form()
+        _invites.revoke(str(form.get("token", "")))
+        return RedirectResponse(url="/admin", status_code=303)
 
     return app
 

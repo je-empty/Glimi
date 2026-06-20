@@ -1,6 +1,7 @@
-{# Hidden admin panel (/admin) — invite-token management. Password-gated
-   (GLIMI_ADMIN_PASSWORD); session = signed cookie. Owner-facing → Korean.
-   ctx: enabled, authed, tokens[], base (origin), login_error. #}
+{# Central token-admin panel (glimi.iruyo.com/admin) — manages community + workspace
+   presenter invites from one place. Password-gated; first-run sets the password in
+   the browser. ctx: enabled, needs_setup, authed, tokens[], ws_base, community_url,
+   login_error, setup_error. Korean (owner-facing). #}
 <!doctype html>
 <html lang="ko" data-theme="light">
 <head>
@@ -11,7 +12,7 @@
   <link rel="stylesheet" href="/static/css/base.css">
   <style>
     body { background: var(--bg); color: var(--text); }
-    .wrap { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
     h1 { font-size: 1.4rem; font-weight: 800; margin: 0 0 .25rem; }
     .sub { color: var(--text-dim); font-size: .9rem; margin: 0 0 1.75rem; }
     .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.2rem; margin-bottom: 1.1rem; }
@@ -24,15 +25,16 @@
     .primary:hover { filter: brightness(1.06); }
     .danger { background: transparent; color: var(--err, #c0392b); border: 1px solid var(--border); padding: .3rem .6rem; font-size: .8rem; }
     .danger:hover { border-color: var(--err, #c0392b); }
-    .row { display: flex; gap: .8rem; align-items: end; flex-wrap: wrap; }
-    .kinds { display: flex; gap: 1rem; }
-    .kinds label { display: flex; align-items: center; gap: .35rem; font-weight: 500; color: var(--text); margin: 0; cursor: pointer; }
+    .row { display: flex; gap: 1.1rem; align-items: end; flex-wrap: wrap; }
+    .opts { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .opts label { display: flex; align-items: center; gap: .35rem; font-weight: 500; color: var(--text); margin: 0; cursor: pointer; }
     table { width: 100%; border-collapse: collapse; font-size: .86rem; }
     th { text-align: left; color: var(--text-faint); font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; padding: 0 .5rem .5rem; border-bottom: 1px solid var(--border-soft); }
     td { padding: .6rem .5rem; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
-    .badge { font-size: .7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-    .badge.fresh { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-    .lnk { font-family: var(--font-mono, monospace); font-size: .78rem; color: var(--accent); word-break: break-all; }
+    .badge { font-size: .7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+    .badge.ws { background: color-mix(in srgb, #2a4365 14%, transparent); color: #2a4365; }
+    .badge.comm { background: color-mix(in srgb, #b76e0e 16%, transparent); color: #b76e0e; }
+    .lnk { font-family: var(--font-mono, monospace); font-size: .76rem; color: var(--accent); word-break: break-all; }
     .muted { color: var(--text-faint); }
     .copy { background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); padding: .15rem .5rem; font-size: .72rem; border-radius: 6px; }
     .empty { color: var(--text-faint); padding: 1.5rem; text-align: center; }
@@ -59,7 +61,7 @@
       </div>
     {% elif not authed %}
       <div class="top"><h1>Glimi 관리</h1></div>
-      <p class="sub">시연 초대 토큰 관리. 로그인하세요.</p>
+      <p class="sub">커뮤니티 / 워크스페이스 시연 토큰 관리. 로그인하세요.</p>
       <div class="card" style="max-width:380px">
         <form method="post" action="/admin/login">
           <label for="pw">비밀번호</label>
@@ -70,21 +72,28 @@
       </div>
     {% else %}
       <div class="top">
-        <div><h1>시연 초대 토큰</h1><p class="sub" style="margin:0">발급 / 사용현황 / 회수</p></div>
+        <div><h1>시연 초대 토큰</h1><p class="sub" style="margin:0">커뮤니티 · 워크스페이스 한곳에서 발급/관리</p></div>
         <form method="post" action="/admin/logout"><button class="copy" type="submit">로그아웃</button></form>
       </div>
 
       <div class="card">
         <form method="post" action="/admin/issue" class="row">
-          <div style="flex:1;min-width:200px">
+          <div style="flex:1;min-width:180px">
             <label for="label">누구에게 / 메모</label>
             <input id="label" type="text" name="label" placeholder="예: 면접관 김OO, 트위터 공유">
           </div>
           <div>
-            <label>종류</label>
-            <div class="kinds">
-              <label><input type="radio" name="kind" value="continue" checked> 데모 이어서</label>
-              <label><input type="radio" name="kind" value="fresh"> 빈 거부터</label>
+            <label>대상</label>
+            <div class="opts">
+              <label><input type="radio" name="target" value="community" checked> 커뮤니티</label>
+              <label><input type="radio" name="target" value="workspace"> 워크스페이스</label>
+            </div>
+          </div>
+          <div>
+            <label>방식 (워크스페이스)</label>
+            <div class="opts">
+              <label><input type="radio" name="kind" value="continue" checked> 이어서</label>
+              <label><input type="radio" name="kind" value="fresh"> 빈 거</label>
             </div>
           </div>
           <button class="primary" type="submit">토큰 발급</button>
@@ -95,14 +104,19 @@
         {% if tokens %}
         <table>
           <thead><tr>
-            <th>메모</th><th>종류</th><th>공유 링크</th><th>사용</th><th>마지막 사용</th><th>발급</th><th></th>
+            <th>메모</th><th>대상</th><th>공유 링크</th><th>사용</th><th>마지막</th><th>발급</th><th></th>
           </tr></thead>
           <tbody>
           {% for t in tokens %}
-            {% set link = (base ~ '/w/demo-live?invite=' ~ t.token) if t.kind == 'continue' else (base ~ '/?invite=' ~ t.token) %}
+            {% if t.target == 'workspace' %}
+              {% set link = (ws_base ~ '/w/demo-live?invite=' ~ t.token) if t.kind == 'continue' else (ws_base ~ '/?invite=' ~ t.token) %}
+            {% else %}
+              {% set sep = '&' if '?' in community_url else '?' %}
+              {% set link = community_url ~ sep ~ 'invite=' ~ t.token %}
+            {% endif %}
             <tr>
               <td>{{ t.label }}</td>
-              <td><span class="badge {{ 'fresh' if t.kind == 'fresh' else '' }}">{{ '이어서' if t.kind == 'continue' else '빈 거' }}</span></td>
+              <td><span class="badge {{ 'comm' if t.target == 'community' else 'ws' }}">{{ '커뮤니티' if t.target == 'community' else '워크스페이스' }}{% if t.target == 'workspace' %} · {{ '이어서' if t.kind == 'continue' else '빈 거' }}{% endif %}</span></td>
               <td>
                 <span class="lnk">{{ link }}</span>
                 <button type="button" class="copy" onclick="navigator.clipboard.writeText('{{ link }}');this.textContent='복사됨'">복사</button>
@@ -125,7 +139,8 @@
         {% endif %}
       </div>
 
-      <p class="sub muted">공개 읽기전용 데모(<code>/w/demo</code>)는 토큰 없이 항상 열려 있어요. 위 링크들은 채팅이 켜진 시연용입니다.</p>
+      <p class="sub muted">공개 읽기전용 데모는 토큰 없이 항상 열려 있어요. 위 링크들은 <b>채팅 켜진 시연</b>용입니다.
+        {% if not community_url %}<br>⚠ 커뮤니티 링크가 비어보이면 서버에 <code>GLIMI_COMMUNITY_URL</code> 설정 필요.{% endif %}</p>
     {% endif %}
   </div>
 </body>
