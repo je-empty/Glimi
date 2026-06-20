@@ -1,7 +1,12 @@
 """Table tests for the canonical channel classifier (src/core/channels.py)."""
 import pytest
 
-from community.core.channels import channel_kind, is_user_postable
+from community.core.channels import (
+    channel_kind,
+    is_owner_dm,
+    is_system_channel,
+    is_user_postable,
+)
 
 
 @pytest.mark.parametrize("cid,expected_kind", [
@@ -35,6 +40,10 @@ def test_channel_kind(cid, expected_kind):
     ("dm-mgr", True),
     ("group-main", True),
     ("webchat-owner", True),   # unknown → group default → postable
+    # web model: manager channels are owner↔manager DMs → postable
+    ("mgr-dashboard", True),
+    ("mgr-creator", True),
+    # system/log + degenerate + backchannels are NOT postable
     ("mgr-system-log", False),
     ("mgr", False),
     ("internal-dm-a-b", False),
@@ -42,6 +51,32 @@ def test_channel_kind(cid, expected_kind):
 ])
 def test_is_user_postable(cid, postable):
     assert is_user_postable(cid) is postable
+
+
+@pytest.mark.parametrize("cid,system", [
+    ("mgr-system-log", True),
+    ("mgr", True),
+    ("mgr-dashboard", False),
+    ("mgr-creator", False),
+    ("dm-soeun", False),
+    ("group-main", False),
+])
+def test_is_system_channel(cid, system):
+    assert is_system_channel(cid) is system
+
+
+@pytest.mark.parametrize("cid,owner_dm", [
+    # owner↔manager DMs (the Discord "mgr channel" = a web DM)
+    ("mgr-dashboard", True),
+    ("mgr-creator", True),
+    ("dm-soeun", True),
+    # not owner DMs
+    ("mgr-system-log", False),
+    ("group-main", False),
+    ("internal-dm-a-b", False),
+])
+def test_is_owner_dm(cid, owner_dm):
+    assert is_owner_dm(cid) is owner_dm
 
 
 def test_internal_not_misclassified_as_dm_or_group():

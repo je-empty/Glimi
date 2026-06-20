@@ -445,7 +445,9 @@ body {
   border-radius: var(--r-sm);
   padding: 0 4px;
   font-weight: 500;
+  cursor: pointer;
 }
+.msg .txt .ch:hover { text-decoration: underline; }
 .msg .txt em { color: var(--text-faint); font-style: normal; }
 .msg .chat-img {
   max-width: 100%;

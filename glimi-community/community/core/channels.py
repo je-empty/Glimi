@@ -61,11 +61,44 @@ def channel_kind(channel_id: str) -> ChannelKind:
     return "group"
 
 
+# Genuine system/log ``mgr-*`` channels — NOT owner conversations. The runtime
+# ``<tools>`` log lives here; the degenerate bare ``mgr`` key is treated the same.
+# Everything else ``mgr-*`` (``mgr-dashboard``, ``mgr-creator``, …) is, in the
+# web model, simply a DM with that manager.
+SYSTEM_CHANNELS = frozenset({"mgr-system-log", "mgr"})
+
+
+def is_system_channel(channel_id: str) -> bool:
+    """True for non-conversation system/log channels (e.g. the runtime ``<tools>``
+    log) that must stay hidden from the owner's chat surface."""
+    cid = channel_id or ""
+    return channel_kind(cid) == "mgr" and cid in SYSTEM_CHANNELS
+
+
+def is_owner_dm(channel_id: str) -> bool:
+    """An owner↔single-agent DM.
+
+    Includes ``dm-*`` AND the manager channels (``mgr-dashboard``, ``mgr-creator``,
+    …) which — in the web model — are simply DMs with those managers. The
+    ``mgr-*`` split between *DM* and *system* was a Discord artifact; on the web a
+    manager channel IS a 1:1 DM. Excludes the system log (``is_system_channel``)
+    and agent-to-agent backchannels (``internal-*``).
+    """
+    cid = channel_id or ""
+    k = channel_kind(cid)
+    if k == "dm":
+        return True
+    if k == "mgr" and not is_system_channel(cid):
+        return True
+    return False
+
+
 def is_user_postable(channel_id: str) -> bool:
     """True iff a human user is allowed to post into this channel.
 
-    Only ``dm-*`` and ``group-*`` (and arbitrary user channels that fall back to
-    ``group``) are postable. ``mgr-*`` / ``internal-dm-*`` / ``internal-group-*``
-    are internal plumbing and reject human input.
+    Owner DMs (``dm-*`` and the manager channels ``mgr-dashboard`` / ``mgr-creator``
+    / other non-system ``mgr-*``) and ``group-*`` accept human input. The system
+    log (``mgr-system-log``), bare ``mgr``, and ``internal-*`` backchannels reject
+    it.
     """
-    return channel_kind(channel_id) in ("dm", "group")
+    return is_owner_dm(channel_id) or channel_kind(channel_id) == "group"

@@ -44,7 +44,7 @@ from ..auth import get_current_user
 from ..config import SESSION_COOKIE_NAME
 from ..sessions import verify_session
 from .. import chat_hub
-from community.core.channels import channel_kind, is_user_postable
+from community.core.channels import channel_kind, is_system_channel, is_user_postable
 
 router = APIRouter()
 
@@ -271,22 +271,23 @@ def _agent_exists(community_id: str, agent_id: str) -> bool:
 # ── read APIs (channel list + history) — community-scoped ──────────────
 
 def _list_postable_channels(community_id: str) -> list[dict]:
-    """The owner's user-postable channels for this community.
+    """The owner's conversation channels — DATA-DRIVEN from the channel registry
+    (plus any channel that already has messages), so it works identically for
+    Discord-driven and web-driven communities.
 
-    DMs are synthesized per agent as ``dm-<agent_id>`` (the web convention,
-    matching pages.py / chat.js) with display name + avatar url. Group channels
-    are taken from the registered channel list, filtered to ``group-*`` (the
-    only registered channels a user may post into). ``mgr-*`` / ``internal-*``
-    are EXCLUDED (not user-postable).
+    Each channel resolves by participants: 1 agent → a DM (carrying the agent's
+    name + ``agent_type`` so managers vs personas are distinguishable — in the web
+    model ``mgr-dashboard`` / ``mgr-creator`` are simply DMs with those managers);
+    2+ agents → a group. System (``mgr-system-log``) and agent-to-agent
+    (``internal-*``) channels are hidden. The channel KEY stays the real channel
+    name, so web reads/writes stay in sync with the Discord adapter (bidirectional).
     """
     def _query() -> list[dict]:
         from community import db
         from community.core import monitor
 
         def _last(channel_key: str):
-            """The channel's most recent message, display-ready, for a sidebar
-            preview — so recent activity shows WITHOUT opening each channel
-            (mirrors the per-row shape ``updateChannelPreviewFromHistory`` reads)."""
+            """The channel's most recent message, display-ready, for a sidebar preview."""
             try:
                 recent = monitor.get_recent_messages(limit=1, channel=channel_key)
             except Exception:
@@ -301,48 +302,92 @@ def _list_postable_channels(community_id: str) -> list[dict]:
                 "timestamp": r.get("timestamp") or "",
             }
 
-        out: list[dict] = []
-        # DM-per-agent. Order: mgr → creator → dev → persona, then by id.
+        agents: dict[str, dict] = {}
         try:
-            agents = db.list_agents()
+            for a in db.list_agents():
+                if a.get("id"):
+                    agents[a["id"]] = a
         except Exception:
-            agents = []
-        type_rank = {"mgr": 0, "creator": 1, "dev": 2, "persona": 3}
-        agents.sort(key=lambda a: (type_rank.get(a.get("type", ""), 9), a.get("id", "")))
-        for a in agents:
-            aid = a.get("id")
-            if not aid:
-                continue
-            out.append({
-                "channel": f"dm-{aid}",
-                "kind": "dm",
-                "agent_id": aid,
-                "name": a.get("name") or aid,
+            pass
+
+        def _dm_entry(name: str, agent_id):
+            a = agents.get(agent_id, {}) if agent_id else {}
+            return {
+                "channel": name, "kind": "dm", "agent_id": agent_id,
+                "agent_type": a.get("type", ""),
+                "name": a.get("name") or agent_id or name,
                 "type": a.get("type", ""),
-                "avatar_url": f"/api/avatar?community={community_id}&id={aid}",
-                "last": _last(f"dm-{aid}"),
-            })
-        # Registered group channels (user-postable, multi-agent). Exclude
-        # mgr-/internal-/dm- via is_user_postable + explicit group prefix.
-        try:
-            channels = monitor.get_channels()
-        except Exception:
-            channels = []
-        for ch in channels:
-            name = ch.get("name") or ""
-            if not name.startswith("group-"):
-                continue
-            if not is_user_postable(name):
-                continue
-            out.append({
-                "channel": name,
-                "kind": "group",
-                "agent_id": None,
-                "name": name,
-                "type": "group",
-                "avatar_url": None,
+                "avatar_url": (f"/api/avatar?community={community_id}&id={agent_id}"
+                               if agent_id else None),
                 "last": _last(name),
-            })
+            }
+
+        def _group_entry(name: str):
+            return {
+                "channel": name, "kind": "group", "agent_id": None,
+                "agent_type": "group", "name": name, "type": "group",
+                "avatar_url": None, "last": _last(name),
+            }
+
+        def _hidden(name: str) -> bool:
+            return (channel_kind(name) in ("internal-dm", "internal-group")
+                    or is_system_channel(name))
+
+        out: list[dict] = []
+        seen: set[str] = set()
+
+        # 1) Registered channels carry explicit participant lists — the precise source.
+        try:
+            registered = monitor.get_channels()
+        except Exception:
+            registered = []
+        for ch in registered:
+            name = ch.get("name") or ""
+            if not name or name in seen or _hidden(name):
+                continue
+            seen.add(name)
+            parts = ch.get("participants") or []
+            if channel_kind(name) == "group" or len(parts) >= 2:
+                out.append(_group_entry(name))
+            else:
+                out.append(_dm_entry(name, parts[0] if parts else None))
+
+        # 2) Any channel that already has messages but isn't registered — robustness
+        #    ("show messages regardless of transport"). The DM partner is the most
+        #    frequent agent speaker in that channel.
+        try:
+            conn = db.get_conn()
+            top_rows = conn.execute(
+                "SELECT channel, speaker, COUNT(*) n FROM conversations "
+                "WHERE speaker LIKE 'agent-%' GROUP BY channel, speaker"
+            ).fetchall()
+            all_chans = conn.execute(
+                "SELECT DISTINCT channel FROM conversations"
+            ).fetchall()
+            conn.close()
+        except Exception:
+            top_rows, all_chans = [], []
+        top_agent: dict[str, tuple] = {}
+        for r in top_rows:
+            ch_, sp, n = r["channel"], r["speaker"], r["n"]
+            if ch_ not in top_agent or n > top_agent[ch_][1]:
+                top_agent[ch_] = (sp, n)
+        for r in all_chans:
+            name = r["channel"]
+            if not name or name in seen or _hidden(name):
+                continue
+            seen.add(name)
+            if channel_kind(name) == "group":
+                out.append(_group_entry(name))
+            else:
+                out.append(_dm_entry(name, top_agent.get(name, (None,))[0]))
+
+        type_rank = {"mgr": 0, "creator": 1, "dev": 2, "persona": 3}
+        out.sort(key=lambda c: (
+            0 if c["kind"] == "dm" else 1,
+            type_rank.get(c.get("agent_type", ""), 5),
+            c.get("name", ""),
+        ))
         return out
 
     from community.platform.community_ctx import run_in_community

@@ -146,11 +146,35 @@
     return s
       .replace(/&lt;em&gt;([^]*?)&lt;\/em&gt;/g, '<em>$1</em>')
       .replace(/@([가-힣A-Za-z0-9_]+)/g, '<span class="mention">@$1</span>')
-      .replace(/(^|\s)#([가-힣A-Za-z0-9_\-]+)/g, '$1<span class="ch">#$2</span>');
+      .replace(/(^|\s)#([가-힣A-Za-z0-9_\-]+)/g, '$1<span class="ch" data-ch="$2">#$2</span>');
   }
   function escAttr(s) {
     return esc(s).replace(/"/g, '&quot;');
   }
+
+  // Resolve a #channel mention (raw text after the #) to a loaded channel —
+  // by real channel key, ``dm-<name>``, or display name — so #mgr-creator / #아린
+  // / #윤하나 all land on the right DM. Returns null if no match (stays inert).
+  function resolveChannelMention(raw) {
+    var name = (raw || '').replace(/^#/, '');
+    if (!name) return null;
+    for (var i = 0; i < channels.length; i++) {
+      var c = channels[i];
+      if (c.channel === name) return c;
+      if (c.channel === 'dm-' + name) return c;
+      if ((c.name || '') === name) return c;
+      if ((c.channel || '').replace(/^dm-/, '') === name) return c;
+    }
+    return null;
+  }
+  // Delegated: clicking a #channel mention in any message switches to it
+  // (Discord-style hyperlink, web-native — no <#id> needed).
+  document.addEventListener('click', function (e) {
+    var span = e.target && e.target.closest && e.target.closest('span.ch');
+    if (!span) return;
+    var target = resolveChannelMention(span.getAttribute('data-ch') || span.textContent);
+    if (target) { e.preventDefault(); selectChannel(target); }
+  });
 
   function apiBase() {
     // Workspace: per-workspace prefix (/w/{id}/chat). Community: /community/{cid}/chat.
@@ -832,23 +856,34 @@
       if (!q) return true;
       return (c.name || c.channel || '').toLowerCase().indexOf(q) !== -1;
     };
-    var dms = channels.filter(function (c) { return c.kind === 'dm' && match(c); });
+    // mgr / creator / dev = staff (managers); everyone else (personas) = friends.
+    // Split so the list visibly distinguishes managers from personas (web model:
+    // the old mgr-* channels are just DMs with those managers).
+    var isStaff = function (c) {
+      return c.agent_type === 'mgr' || c.agent_type === 'creator' || c.agent_type === 'dev';
+    };
+    var staff = channels.filter(function (c) { return c.kind === 'dm' && isStaff(c) && match(c); });
+    var friends = channels.filter(function (c) { return c.kind === 'dm' && !isStaff(c) && match(c); });
     var grps = channels.filter(function (c) { return c.kind === 'group' && match(c); });
 
+    var FRIENDS_LABEL = WS_BASE ? (EN ? 'Team' : '팀') : (EN ? 'Friends' : '친구');
     $channelList.innerHTML = '';
-    if (dms.length) {
-      $channelList.appendChild(groupLabel('Direct', dms.length));
-      dms.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
+    if (staff.length) {
+      $channelList.appendChild(groupLabel(EN ? 'Managers' : '매니저', staff.length));
+      staff.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
+    }
+    if (friends.length) {
+      $channelList.appendChild(groupLabel(FRIENDS_LABEL, friends.length));
+      friends.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
     if (grps.length) {
-      $channelList.appendChild(groupLabel('Channels', grps.length));
+      $channelList.appendChild(groupLabel(EN ? 'Groups' : '그룹', grps.length));
       grps.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
 
-    // Sidebar sub-header: derive friend/online counts from /channels (no
-    // presence API → online == DM count as a neutral default).
+    // Sidebar sub-header: friend/member count = personas (managers excluded).
     if ($sideSub) {
-      var n = dms.length;
+      var n = friends.length;
       if (EN) {
         var noun = WS_BASE ? 'members' : 'friends';
         $sideSub.textContent = n + ' ' + noun + ' · ' + n + ' online';
