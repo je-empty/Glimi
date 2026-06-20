@@ -141,6 +141,12 @@ _WS_CAPS = {
 # is the offline echo placeholder. The Demo always stays echo ($0).
 _USER_BACKEND = (os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo"
 
+# Demo-only deployment switch (off by default — OSS users get the full create flow).
+# When GLIMI_DEMO_ONLY is set, the hosted instance shows ONLY the seeded demo: the
+# create form is hidden, the create endpoint 403s, and persisted user workspaces are
+# not restored. Used by the owner's public showcase so visitors can't spin up workspaces.
+_DEMO_ONLY = (os.environ.get("GLIMI_DEMO_ONLY") or "").strip().lower() not in ("", "0", "false", "no")
+
 # Demo identities. Two entries are built from the SAME seeded launch team
 # (``demo.build``):
 #   • ``demo`` (/w/demo)       — public, always exposed, read-only (browse only).
@@ -656,7 +662,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     if with_demo:
         _install_demo(reg, interval=demo_interval)
-    _restore_user_workspaces(reg)  # bring back user-created workspaces across restarts
+    if not _DEMO_ONLY:
+        _restore_user_workspaces(reg)  # bring back user-created workspaces across restarts
 
     def _require(ws_id: str) -> Workspace:
         ws = reg.get(ws_id)
@@ -673,7 +680,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         if lang not in ("ko", "en"):
             lang = "ko"
         resp = _TEMPLATES.TemplateResponse(
-            request, "home.html", {"request": request, "lang": lang})
+            request, "home.html",
+            {"request": request, "lang": lang, "demo_only": _DEMO_ONLY})
         resp.headers["Cache-Control"] = "no-store"
         return resp
 
@@ -700,6 +708,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         Form submits get a 303 redirect to the new dashboard; JSON callers get
         ``{id, title, goal, kind, ...}``.
         """
+        if _DEMO_ONLY:  # public showcase: only the seeded demo exists, no creation
+            raise HTTPException(status_code=403, detail="this is a demo-only instance")
         name = goal = ""
         is_form = False
         ctype = request.headers.get("content-type", "")

@@ -218,6 +218,13 @@ def test_create_workspace_open(client):
     assert created["id"] in [c["id"] for c in client.get("/api/workspaces").json()]
 
 
+def test_demo_only_blocks_create_and_hides_form(client, monkeypatch):
+    # GLIMI_DEMO_ONLY (public showcase): only the seeded demo, no creation.
+    monkeypatch.setattr(server, "_DEMO_ONLY", True)
+    assert client.post("/api/workspaces", json={"name": "X", "goal": "Y"}).status_code == 403
+    assert 'action="/api/workspaces"' not in client.get("/").text  # create form hidden
+
+
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────
 
 def test_dashboard_js_api_base_defaults_empty():

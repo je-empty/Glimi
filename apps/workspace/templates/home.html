@@ -121,6 +121,7 @@
       </div>
     </section>
 
+    {% if not demo_only %}
     <section class="create">
       <h2>{{ 'Or start your own' if EN else '직접 만들어 보기' }}</h2>
       <p class="lede" style="margin:0 0 14px">{{ 'Name yourself, give a goal, and a fresh Coordinator-led team spins up around it.' if EN else '이름을 정하고 목표를 적으면, 코디네이터가 이끄는 새 팀이 그 주위로 꾸려져요.' }}</p>
@@ -137,6 +138,7 @@
         <button class="primary" type="submit">{{ 'Create workspace' if EN else '워크스페이스 만들기' }}</button>
       </form>
     </section>
+    {% endif %}
   </div>
 
   <script>
