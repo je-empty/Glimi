@@ -44,7 +44,19 @@
   <div class="wrap">
     {% if not enabled %}
       <h1>관리 비활성화</h1>
-      <p class="sub">서버에 <code>GLIMI_ADMIN_PASSWORD</code> 를 설정하면 활성화됩니다.</p>
+      <p class="sub">서버에 <code>GLIMI_ADMIN_PW_FILE</code> 또는 <code>GLIMI_ADMIN_PASSWORD</code> 를 설정하면 활성화됩니다.</p>
+    {% elif needs_setup %}
+      <div class="top"><h1>Glimi 관리 — 첫 설정</h1></div>
+      <p class="sub">관리 비밀번호를 정하세요. 처음 한 번만 — 이후 이 비번으로 로그인합니다.</p>
+      <div class="card" style="max-width:380px">
+        <form method="post" action="/admin/setup">
+          <label for="pw">새 비밀번호 (6자 이상)</label>
+          <input id="pw" type="password" name="password" minlength="6" autocomplete="new-password" autofocus required>
+          {% if setup_error %}<div class="err">설정 실패 — 6자 이상이어야 하고, 이미 설정됐으면 불가.</div>{% endif %}
+          <div style="margin-top:.9rem"><button class="primary" type="submit">설정하고 로그인</button></div>
+          <p class="sub muted" style="margin:.8rem 0 0">⚠ 공유 링크 만들기 전에 지금 바로 설정하세요 (먼저 접속한 사람이 비번을 정하게 됨).</p>
+        </form>
+      </div>
     {% elif not authed %}
       <div class="top"><h1>Glimi 관리</h1></div>
       <p class="sub">시연 초대 토큰 관리. 로그인하세요.</p>

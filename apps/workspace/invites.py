@@ -12,6 +12,7 @@ never src / Discord.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -20,9 +21,10 @@ from datetime import datetime, timezone
 
 _STORE_PATH = (os.environ.get("GLIMI_INVITES_STORE") or "").strip()
 _ADMIN_PW = (os.environ.get("GLIMI_ADMIN_PASSWORD") or "").strip()
-# Cookie-signing secret: a dedicated env, else derived from the password (changes
-# if the password changes → old sessions invalidate, which is the safe default).
-_SECRET = (os.environ.get("GLIMI_ADMIN_SECRET") or _ADMIN_PW or "glimi-admin-dev").strip()
+# First-run web setup: when no env password is set, the owner sets one in the
+# browser (POST /admin/setup) and it's stored — pbkdf2-hashed — at GLIMI_ADMIN_PW_FILE.
+# So the admin can be enabled with zero SSH.
+_ADMIN_PW_FILE = (os.environ.get("GLIMI_ADMIN_PW_FILE") or "").strip()
 _SESSION_MAX_AGE = 7 * 24 * 3600  # 7 days
 
 
@@ -108,18 +110,74 @@ def touch(token: str) -> None:
 
 # ── admin session (signed cookie) ────────────────────────────────────────────
 
+def _read_file_pw() -> str:
+    if not _ADMIN_PW_FILE:
+        return ""
+    try:
+        with open(_ADMIN_PW_FILE, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _hash_pw(pw: str, salt: str = "") -> str:
+    salt = salt or secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), bytes.fromhex(salt), 200_000).hex()
+    return f"{salt}${h}"
+
+
 def admin_enabled() -> bool:
-    """The admin panel is active only once the owner sets GLIMI_ADMIN_PASSWORD."""
-    return bool(_ADMIN_PW)
+    """The /admin route is reachable when a password is set OR a setup-file path is
+    configured (so first-run web setup can run). None of these → /admin is off."""
+    return bool(_ADMIN_PW) or bool(_ADMIN_PW_FILE) or bool(_read_file_pw())
+
+
+def needs_setup() -> bool:
+    """No password configured yet → show the first-run 'set a password' form."""
+    return not _ADMIN_PW and not _read_file_pw()
+
+
+def set_password(pw: str) -> bool:
+    """First-run only: store a pbkdf2-hashed password to the file. Refuses if a
+    password already exists (no web takeover) or no file path is configured."""
+    pw = (pw or "").strip()
+    if len(pw) < 6 or not needs_setup() or not _ADMIN_PW_FILE:
+        return False
+    tmp = _ADMIN_PW_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(_hash_pw(pw))
+    os.replace(tmp, _ADMIN_PW_FILE)
+    return True
 
 
 def check_password(pw: str) -> bool:
-    return bool(_ADMIN_PW) and hmac.compare_digest((pw or "").strip(), _ADMIN_PW)
+    pw = (pw or "").strip()
+    if not pw:
+        return False
+    if _ADMIN_PW and hmac.compare_digest(pw, _ADMIN_PW):
+        return True
+    stored = _read_file_pw()
+    if stored and "$" in stored:
+        salt, h = stored.split("$", 1)
+        try:
+            calc = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"),
+                                       bytes.fromhex(salt), 200_000).hex()
+            return hmac.compare_digest(calc, h)
+        except (ValueError, TypeError):
+            return False
+    return False
+
+
+def _secret() -> str:
+    """Cookie-signing secret (read live): a dedicated env, else the password material
+    (env or stored hash) — so changing the password invalidates old sessions."""
+    return (os.environ.get("GLIMI_ADMIN_SECRET") or _ADMIN_PW or _read_file_pw()
+            or "glimi-admin-dev").strip()
 
 
 def _serializer():
     from itsdangerous import URLSafeTimedSerializer
-    return URLSafeTimedSerializer(_SECRET, salt="glimi-admin-session")
+    return URLSafeTimedSerializer(_secret(), salt="glimi-admin-session")
 
 
 def make_session() -> str:

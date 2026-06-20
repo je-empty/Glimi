@@ -309,10 +309,33 @@ def test_admin_panel_login_and_token_crud(client, monkeypatch, tmp_path):
 def test_admin_disabled_without_password(client, monkeypatch):
     import invites
     monkeypatch.setattr(invites, "_ADMIN_PW", "")
+    monkeypatch.setattr(invites, "_ADMIN_PW_FILE", "")
     r = client.get("/admin")
     assert r.status_code == 200 and "비활성화" in r.text
     # issue is rejected when not authed
     assert client.post("/admin/issue", data={"label": "x"}).status_code == 403
+
+
+def test_admin_first_run_web_setup(client, monkeypatch, tmp_path):
+    import invites
+    pwf = tmp_path / "admin_pw"
+    monkeypatch.setattr(invites, "_ADMIN_PW", "")               # no env password
+    monkeypatch.setattr(invites, "_ADMIN_PW_FILE", str(pwf))    # setup file path
+    monkeypatch.setattr(invites, "_STORE_PATH", str(tmp_path / "t.json"))
+    # first visit → first-run setup form (zero SSH)
+    r = client.get("/admin")
+    assert r.status_code == 200 and "첫 설정" in r.text
+    # too-short rejected
+    assert "e=2" in client.post("/admin/setup", data={"password": "abc"},
+                                follow_redirects=False).headers["location"]
+    # valid setup → password file written + session cookie
+    ok = client.post("/admin/setup", data={"password": "secret123"}, follow_redirects=False)
+    assert ok.status_code == 303 and "glimi_admin" in ok.headers.get("set-cookie", "")
+    assert pwf.exists() and invites.needs_setup() is False
+    assert invites.check_password("secret123") is True
+    # re-setup refused (no web takeover once a password exists)
+    assert "e=2" in client.post("/admin/setup", data={"password": "other999"},
+                                follow_redirects=False).headers["location"]
 
 
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────

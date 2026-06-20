@@ -956,14 +956,28 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         ctx = {
             "request": request,
             "enabled": _invites.admin_enabled(),
+            "needs_setup": _invites.needs_setup(),
             "authed": _admin_authed(request),
             "tokens": _invites.list_tokens() if _admin_authed(request) else [],
             "base": str(request.base_url).rstrip("/"),
             "login_error": request.query_params.get("e") == "1",
+            "setup_error": request.query_params.get("e") == "2",
         }
         resp = _TEMPLATES.TemplateResponse(request, "admin.html", ctx)
         resp.headers["Cache-Control"] = "no-store"
         return resp
+
+    @app.post("/admin/setup")
+    async def admin_setup(request: Request):
+        """First-run: the owner sets the admin password from the browser (zero SSH).
+        Refused once a password exists (no takeover)."""
+        form = await request.form()
+        if _invites.set_password(str(form.get("password", ""))):
+            resp = RedirectResponse(url="/admin", status_code=303)
+            resp.set_cookie("glimi_admin", _invites.make_session(),
+                            max_age=7 * 24 * 3600, httponly=True, samesite="lax")
+            return resp
+        return RedirectResponse(url="/admin?e=2", status_code=303)
 
     @app.post("/admin/login")
     async def admin_login(request: Request):
