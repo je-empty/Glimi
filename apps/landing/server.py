@@ -24,7 +24,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -89,6 +89,19 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict:
         return {"ok": True}
+
+    @app.get("/admin")
+    def admin_redirect() -> RedirectResponse:
+        """The token-admin panel lives on the Workspace app (where the tokens are);
+        redirect glimi.iruyo.com/admin → there so the front-door URL works too."""
+        ws = (os.environ.get("GLIMI_WORKSPACE_URL") or "").strip()
+        target = "/admin"
+        if ws:
+            from urllib.parse import urlsplit
+            p = urlsplit(ws)
+            if p.scheme and p.netloc:
+                target = f"{p.scheme}://{p.netloc}/admin"
+        return RedirectResponse(url=target, status_code=302)
 
     return app
 

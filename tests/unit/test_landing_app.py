@@ -70,6 +70,15 @@ def test_healthz(client):
     assert client.get("/healthz").json() == {"ok": True}
 
 
+def test_admin_redirects_to_workspace(monkeypatch):
+    # /admin on the landing redirects to the Workspace app's admin (where tokens live).
+    monkeypatch.setenv("GLIMI_WORKSPACE_URL", "https://glimi-workspace.example/w/demo")
+    c = TestClient(server.create_app())
+    r = c.get("/admin", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "https://glimi-workspace.example/admin"
+
+
 def test_logo_route(client):
     # The repo ships resources/Glimi-logo.svg|png; if present it's served as an
     # image, otherwise the route still answers (404) — never 500.
