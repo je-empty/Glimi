@@ -8,6 +8,11 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # Resolve glimi / community / workspace from their project dirs (robust `python -m`
+    # + imports, independent of editable-install finder quirks). Absolute so it holds
+    # across a `cd` into a project folder.
+    env:
+      PYTHONPATH: ${{ github.workspace }}/glimi-core:${{ github.workspace }}/glimi-community:${{ github.workspace }}/glimi-workspace
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
