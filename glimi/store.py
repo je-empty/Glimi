@@ -7,7 +7,7 @@ app's database layer directly. Instead it talks to this abstract interface, and
 the app provides a concrete implementation (see the SQLite adapter in the app
 layer). This is the seam that lets Glimi Core stay domain- and storage-neutral.
 
-Status: grows as kernel modules migrate off ``src.db`` (conversation → runtime
+Status: grows as kernel modules migrate off ``community.db`` (conversation → runtime
 → memory). The 25 methods below are the direct ``db.*`` calls those modules
 make. A second tranche of higher-level methods (replacing raw-SQL blocks
 currently inlined in runtime/memory — e.g. ``search_memories``,

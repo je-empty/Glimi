@@ -3,12 +3,12 @@
 **원칙:** `communities/{id}/` 는 완전 독립. 한 community 의 agent/profile_image/memory/channel 이 다른 community 요청에서 **절대** 노출되면 안 됨.
 
 ## 전역 state 위험 지점
-- `src.community._current_id` (env `GLIMI_COMMUNITY`)
-- `src.db.DB_PATH` cached
-- `src.core.profile._profile_cache` / `_user_profile_cache` / `_user_summary_cache`
-- `src.bot._webhook_cache`
-- `src.core.memory._extract_queue` (background worker)
-- `src.core.runtime.AgentRuntime._active_agents` / `_pending_tool_results`
+- `community.community._current_id` (env `GLIMI_COMMUNITY`)
+- `community.db.DB_PATH` cached
+- `community.core.profile._profile_cache` / `_user_profile_cache` / `_user_summary_cache`
+- `community.bot._webhook_cache`
+- `community.core.memory._extract_queue` (background worker)
+- `community.core.runtime.AgentRuntime._active_agents` / `_pending_tool_results`
 
 ## 웹 대시보드 방어
 - `_COMMUNITY_LOCK` 로 community 전환 + API 호출 직렬화

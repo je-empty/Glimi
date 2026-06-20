@@ -15,7 +15,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: Syntax check
-        run: python -m compileall -q glimi eval src tests
+        run: python -m compileall -q glimi eval community tests
       - name: Unit tests (kernel + formatting)
         run: |
           pip install -e . pytest

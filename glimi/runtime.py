@@ -121,7 +121,7 @@ CLAUDE_AVAILABLE = _check_claude_cli()
 # Claude CLI subprocess 는 반드시 Glimi 프로젝트 밖에서 실행. 프로젝트 루트 cwd 로 돌면
 # CLAUDE.md 가 로드돼 Claude Code 가 "코딩 작업" 컨텍스트 상속하면서 에이전트가 개인
 # 대화 내용에 대해 clarifying-refusal 을 뱉거나 meta-commentary 를 주입. HOME 은 프로젝트
-# CLAUDE.md 없으니 안전. (src.llm.ClaudeCLIBackend 도 동일 원칙 적용.)
+# CLAUDE.md 없으니 안전. (community.llm.ClaudeCLIBackend 도 동일 원칙 적용.)
 _CLI_CWD = os.path.expanduser("~")
 
 AGENT_MODELS = {
@@ -175,8 +175,8 @@ OPUS_MODEL = "claude-opus-4-8"
 
 
 def _provider_for(agent_type: str, model: str) -> str:
-    """이 호출이 어느 백엔드로 갈지 결정 — 'claude' (직접 CLI) | 'ollama' (src.llm) |
-    그 외 백엔드 이름 (예: 'echo' — src.llm.generate 의 backend= 로 위임).
+    """이 호출이 어느 백엔드로 갈지 결정 — 'claude' (직접 CLI) | 'ollama' (community.llm) |
+    그 외 백엔드 이름 (예: 'echo' — community.llm.generate 의 backend= 로 위임).
 
     우선순위 (src/llm/__init__._select_backend 와 일관):
       1) GLIMI_LLM_AGENT_MAP (agent_type 별 매핑) — 하이브리드 탈출구
@@ -186,7 +186,7 @@ def _provider_for(agent_type: str, model: str) -> str:
       4) AVAILABLE_MODELS 레지스트리의 provider
 
     반환값 규약: 'claude' 면 직접 CLI 경로. 그 외(ollama/echo/…)는 모두
-    src.llm.generate(backend=<반환값>) 의 비-claude 경로로 라우팅된다.
+    community.llm.generate(backend=<반환값>) 의 비-claude 경로로 라우팅된다.
 
     Budget guard (billing): 결정이 'claude' 인데 월 예산 초과 시 → 로컬(ollama)
     가용하면 'ollama', 아니면 sentinel '__capped__' 반환 (호출자가 placeholder +
@@ -244,7 +244,7 @@ def _resolve_provider(agent_type: str, model: str) -> str:
         return "ollama"
     if glob in ("claude_cli", "anthropic_sdk", "claude"):
         return "claude"
-    if glob:  # echo 등 — src.llm.generate(backend=glob) 로 위임
+    if glob:  # echo 등 — community.llm.generate(backend=glob) 로 위임
         return glob
     # 3) model id prefix
     if model.startswith("ollama:"):
@@ -396,7 +396,7 @@ def _backend_available(provider: str) -> bool:
             ok = False
         _OLLAMA_OK["v"] = ok
         return ok
-    # 기타 명시 백엔드 (echo 등) — src.llm 셀렉터에 위임해 available() 질의.
+    # 기타 명시 백엔드 (echo 등) — community.llm 셀렉터에 위임해 available() 질의.
     try:
         from . import llm
         b = llm._get_backend_instance(provider)
@@ -1240,7 +1240,7 @@ class AgentRuntime:
                     model=model, agent_type=atype, timeout=_bt,
                 )
             elif provider != "claude":
-                # 명시 백엔드 (echo 등) — src.llm.generate(backend=) 위임.
+                # 명시 백엔드 (echo 등) — community.llm.generate(backend=) 위임.
                 responses = self._backend_blocking(
                     backend=provider, agent_id=agent_id, name=name,
                     system=force_system, user=full_prompt,
@@ -1393,7 +1393,7 @@ class AgentRuntime:
     def _call_claude_code(self, agent_info: dict, channel: str,
                           recent: list[dict], user_message: str,
                           provider: str = "") -> list[str]:
-        """LLM 호출 (블로킹). provider="ollama" 면 src.llm, 아니면 Claude CLI."""
+        """LLM 호출 (블로킹). provider="ollama" 면 community.llm, 아니면 Claude CLI."""
         profile = agent_info["profile"]
         name = profile["name"]
         agent_id = profile["id"]
@@ -1427,7 +1427,7 @@ class AgentRuntime:
             )
 
         if provider != "claude":
-            # 명시 백엔드 (echo 등) — src.llm.generate(backend=provider) 위임.
+            # 명시 백엔드 (echo 등) — community.llm.generate(backend=provider) 위임.
             _atype = profile.get("type", "persona")
             _observer.agent_thinking(agent_id, f"{provider} 호출")
             return self._backend_blocking(
@@ -1507,13 +1507,13 @@ class AgentRuntime:
         _observer.system(f"❌ CLI 재시도 실패: {last_err}")
         return self._placeholder_response(profile, user_message)
 
-    # ── Ollama (src.llm) blocking ────────────────────
+    # ── Ollama (community.llm) blocking ────────────────────
 
     def _ollama_blocking(
         self, *, agent_id: str, name: str, system: str, user: str,
         model: str, agent_type: str, timeout: int = 120,
     ) -> list[str]:
-        """src.llm.generate (ollama) 블로킹 호출 + <tools> 파싱 + _parse_response.
+        """community.llm.generate (ollama) 블로킹 호출 + <tools> 파싱 + _parse_response.
 
         Claude CLI 경로와 동일한 후처리를 거쳐 메시지 리스트 반환. 실패/빈 응답은
         빈 리스트 — 호출자가 empty 면 송출 skip 또는 placeholder 처리.
@@ -1545,7 +1545,7 @@ class AgentRuntime:
         self, *, backend: str, agent_id: str, name: str, system: str, user: str,
         model: str, agent_type: str, timeout: int = 120,
     ) -> list[str]:
-        """명시 백엔드(echo 등) 블로킹 호출 — src.llm.generate(backend=) 위임 + 공통 후처리.
+        """명시 백엔드(echo 등) 블로킹 호출 — community.llm.generate(backend=) 위임 + 공통 후처리.
 
         ollama 전용 모델 태그 해석 없이 backend 셀렉터에 그대로 위임. Claude CLI 경로와
         동일한 <tools> 파싱 / _parse_response 후처리를 거친다.
@@ -1582,7 +1582,7 @@ class AgentRuntime:
     ) -> tuple[list[str], list[str], Optional[str]]:
         """라인 이터레이터를 소비해 (messages, tool_buffer, stop_reason) 반환.
 
-        백엔드 무관 공유 처리 — claude=process.stdout, ollama=src.llm.stream_lines
+        백엔드 무관 공유 처리 — claude=process.stdout, ollama=community.llm.stream_lines
         둘 다 라인 단위라 동일 로직 적용.
         - <tools> 블록은 tool_buffer 로 분리 (chat 방출 금지)
         - [MSG]/placeholder strip, 이름 prefix 제거, leak 필터, dedup
@@ -1785,7 +1785,7 @@ class AgentRuntime:
         agent_type = profile.get("type", "persona")
         max_messages = MAX_STREAMING_MESSAGES.get(agent_type, 10)
 
-        # ── 비-Claude 스트리밍 분기 (src.llm.stream_lines + 공유 헬퍼) ──
+        # ── 비-Claude 스트리밍 분기 (community.llm.stream_lines + 공유 헬퍼) ──
         # 프로세스가 없으므로 watchdog kill 대신 stream_lines(timeout=...) 으로 종료.
         # ollama: 모델 태그 해석 + backend 미지정(env/셀렉터). echo 등: model 그대로 + backend 명시.
         if provider != "claude":

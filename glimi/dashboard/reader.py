@@ -10,7 +10,7 @@ relationships + channels + coverage), channels, and a connection-graph snapshot.
 
 Design constraints (this is P1.0 of the dashboard decoupling):
 - **Zero-dep**: pure stdlib + the kernel's own ``KernelStore``. No FastAPI /
-  Jinja / pydantic / Discord / ``src.*`` imports. The web layer lands in a later
+  Jinja / pydantic / Discord / ``community.*`` imports. The web layer lands in a later
   slice.
 - **Domain-neutral**: no channel-name conventions are assumed (no ``dm-`` /
   ``mgr-`` / ``internal-`` special-casing). The reader works on whatever the

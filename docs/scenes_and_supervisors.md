@@ -1,6 +1,6 @@
 # Scenes, Achievements, Supervisors
 
-## Scene 시스템 (`src/scenes/`)
+## Scene 시스템 (`community/scenes/`)
 
 **Scene = 세계관 상의 에피소드**. 시작·진행·종료 조건이 명확한 스토리 단위. 강제성 있음 — 진행 중엔 supervisor 가 흐름 감시·복원.
 
@@ -11,10 +11,10 @@
 공통 특성: 여러 에이전트 참여 + 시간축 + 엔딩 조건 + 메모리에 에피소드로 누적
 
 **구조:**
-- `Scene` base (`src/scenes/base.py`) — phase 관리, set_phase 훅, pool 트리거
+- `Scene` base (`community/scenes/base.py`) — phase 관리, set_phase 훅, pool 트리거
 - 씬별 `scene.py` (싱글톤) + `supervisor.py` + `handlers.py` + `prompts.py`
 
-## Achievement 시스템 (`src/achievements/`)
+## Achievement 시스템 (`community/achievements/`)
 
 Scene 과 **완전히 별개 레이어**:
 
@@ -29,7 +29,7 @@ Scene 과 **완전히 별개 레이어**:
 
 **훅:** `db.add_message_hook(engine._on_message)` — 메시지 로깅 시마다 `engine.recompute_all()` (done 은 스킵).
 
-**기본 과제 7개** (`src/achievements/definitions.py`): 튜토리얼 수료 / 첫 대화 / 세 명의 친구 / 단톡방 체험 / 훔쳐보는 재미 / 자율 사교 / 지속되는 관계.
+**기본 과제 7개** (`community/achievements/definitions.py`): 튜토리얼 수료 / 첫 대화 / 세 명의 친구 / 단톡방 체험 / 훔쳐보는 재미 / 자율 사교 / 지속되는 관계.
 
 ---
 
@@ -50,7 +50,7 @@ Scene 과 **완전히 별개 레이어**:
 - id: `scope.role` (scene) / `role:<instance_key>` (channel) / `role` (system)
 - display (KR): `범주 · 서브`
 
-### SupervisorPool (`src/supervisors/base.py`)
+### SupervisorPool (`community/supervisors/base.py`)
 싱글톤 레지스트리. sync 트리거 시점:
 1. 봇 ready
 2. `db.set_channel_status(ch, status)` — running↔idle

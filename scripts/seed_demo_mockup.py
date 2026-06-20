@@ -53,7 +53,7 @@ def _copy_seed_avatars(dest_dir: Path) -> None:
         return
     for src in src_dir.glob("*.png"):
         try:
-            shutil.copy(src, dest_dir / src.name)
+            shutil.copy(src, dest_dir / community.name)
         except OSError:
             pass
 
@@ -64,8 +64,8 @@ def seed(community_id: str = "demo") -> None:
     멱등성: community.db 를 매번 리셋하므로 재호출 시 같은 결과로 덮어쓴다.
     호출 측(ensure_demo_seeded)은 디렉터리 존재 여부로 재시드를 가드한다.
     """
-    from src import community
-    from src import db
+    from community import community
+    from community import db
 
     os.chdir(ROOT)
     if str(ROOT) not in sys.path:

@@ -4,10 +4,10 @@ Before the monorepo splits into `glimi` (kernel) / `glimi-community` (src/) /
 `glimi-workspace` (apps/workspace/), the import boundaries must hold so each
 piece can stand alone depending only on the *published* `glimi` public API:
 
-  - the kernel (`glimi/`) imports no app code (`src.*` / `apps.*`);
+  - the kernel (`glimi/`) imports no app code (`community.*` / `apps.*`);
   - the apps never reach into underscore-private `glimi` internals (those can
     change on any kernel release);
-  - `apps/workspace` never imports `src.*` (and vice-versa).
+  - `apps/workspace` never imports `community.*` (and vice-versa).
 
 These are AST checks (docstring mentions don't count). Keep them green and the
 split stays push-button — see SPLIT_PLAN.md.
@@ -53,7 +53,7 @@ def test_kernel_imports_no_app_code():
         f"{p}:{ln} {mod}"
         for p in _py_files("glimi")
         for ln, mod, _ in _imports(p)
-        if _top(mod) in ("src", "apps")
+        if _top(mod) in ("community", "apps")
     ]
     assert not bad, "glimi/ must not import app code (src/apps):\n" + "\n".join(bad)
 
@@ -63,9 +63,9 @@ def test_workspace_does_not_import_src():
         f"{p}:{ln} {mod}"
         for p in _py_files("apps/workspace")
         for ln, mod, _ in _imports(p)
-        if _top(mod) == "src"
+        if _top(mod) == "community"
     ]
-    assert not bad, "apps/workspace must not import src.* :\n" + "\n".join(bad)
+    assert not bad, "apps/workspace must not import community.* :\n" + "\n".join(bad)
 
 
 def test_community_does_not_import_apps():

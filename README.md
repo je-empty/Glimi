@@ -26,7 +26,7 @@ You build apps on top of Core. The flagship is **Glimi Community** — a cast of
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
-> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `src/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi/dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e ".[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
+> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `community/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi/dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e ".[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
 
 ```
 Glimi/                            single git repo (monorepo) · `glimi` publishes to PyPI
@@ -39,7 +39,7 @@ Glimi/                            single git repo (monorepo) · `glimi` publishe
 │   ├── llm/                      · Claude CLI · Ollama · anthropic SDK backends (+ pricing)
 │   ├── store.py · stores/        · KernelStore ABC + in-memory implementation
 │   └── dashboard/                · live observability web UI (graph · memory · tool log · usage)
-├── src/                          ← Glimi Community — the flagship app (Core was extracted FROM here)
+├── community/                          ← Glimi Community — the flagship app (Core was extracted FROM here)
 │   ├── platform/                 · FastAPI platform · built-in web chat · dashboard host
 │   ├── adapters/kernel_store.py  · SqliteKernelStore(KernelStore) — wires the app into the kernel (DI)
 │   ├── core/                     · thin shims over glimi (runtime·memory) + community-only modules
@@ -52,7 +52,7 @@ Glimi/                            single git repo (monorepo) · `glimi` publishe
 └── README.md · README.ko.md          · this file + Korean mirror
 ```
 
-> **Why two different layouts?** Glimi Core (`glimi/`) was **extracted from a working app** — Glimi Community (`src/`) — so the kernel is proven, not theoretical. **Glimi Workspace** (`apps/workspace/`) was then built *entirely on the extracted `glimi` package* (zero `src/` imports) — a second, very different app on one kernel is the proof that Core is genuinely reusable. The `glimi` package builds and publishes to PyPI on its own; the two apps are real applications that consume it.
+> **Why two different layouts?** Glimi Core (`glimi/`) was **extracted from a working app** — Glimi Community (`community/`) — so the kernel is proven, not theoretical. **Glimi Workspace** (`apps/workspace/`) was then built *entirely on the extracted `glimi` package* (zero `community/` imports) — a second, very different app on one kernel is the proof that Core is genuinely reusable. The `glimi` package builds and publishes to PyPI on its own; the two apps are real applications that consume it.
 
 ---
 
@@ -259,8 +259,8 @@ To plug in your own database, implement `KernelStore` (and optionally
 `glimi.runtime.set_store(...)`, … . A complete production wiring (SQLite + Discord)
 lives in the repo:
 
-- `src/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
-- `src/core/runtime.py` — injects them into the kernel and re-exports the API
+- `community/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
+- `community/core/runtime.py` — injects them into the kernel and re-exports the API
 
 ### Web dashboard (Glimi Core's observability)
 
@@ -467,8 +467,8 @@ run.bat
 ./run.sh --legacy <community>           # legacy single-bot mode (QA / debugging)
 ./scripts/qa.sh                         # E2E QA runner (tmux: Glimi-QA-Runner)
 ./scripts/stop.sh                       # graceful shutdown
-python -m src.platform.accounts list    # list platform accounts
-python -m src.community list            # list communities (CLI)
+python -m community.platform.accounts list    # list platform accounts
+python -m community.community list            # list communities (CLI)
 ```
 
 > 🚀 **Need more detail?** See [`START_HERE.html`](START_HERE.html) for the full cross-platform walkthrough + first-time checklist.
@@ -546,8 +546,8 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 ## Roadmap
 
 **Done — Kernel extraction + packaging**
-- ✅ `src/core/{runtime, tools, memory, llm, conversation}` → top-level `glimi/` — storage/platform-neutral, imports standalone (no Discord/DB)
-- ✅ `KernelStore` ABC + `AgentProfile` / `OwnerContext` / `KernelObserver` protocols; Community wires concrete adapters in `src/adapters/`
+- ✅ `community/core/{runtime, tools, memory, llm, conversation}` → top-level `glimi/` — storage/platform-neutral, imports standalone (no Discord/DB)
+- ✅ `KernelStore` ABC + `AgentProfile` / `OwnerContext` / `KernelObserver` protocols; Community wires concrete adapters in `community/adapters/`
 - ✅ `pyproject`: `pip install glimi` (core, **zero runtime deps**) + extras `glimi[sdk]` (anthropic SDK) and `glimi[dashboard]` (FastAPI web UI) — the kernel builds as a standalone wheel straight from this monorepo; the apps depend on it
 
 **Now — First PyPI release**
@@ -585,9 +585,9 @@ backends, reranker-based memory retrieval, smaller-model tool-call accuracy tuni
 
 ### Other entry points
 
-- **easy**: new `examples/` demos, doc fixes, new Community `src/scenes/`
+- **easy**: new `examples/` demos, doc fixes, new Community `community/scenes/`
 - **medium**: vLLM / llama.cpp backends, dashboard visualizations, new ToolSpecs
-- **hard**: native Windows support (`run.ps1`), Telegram adapter (`src/adapters/telegram/`), `pyproject` packaging split (`pip install glimi`), embedding-based memory retrieval
+- **hard**: native Windows support (`run.ps1`), Telegram adapter (`community/adapters/telegram/`), `pyproject` packaging split (`pip install glimi`), embedding-based memory retrieval
 
 ### Branch strategy
 
@@ -599,9 +599,9 @@ backends, reranker-based memory retrieval, smaller-model tool-call accuracy tuni
 
 ### Code conventions (the easy-to-regress ones)
 
-- **Discord = adapter.** `src/core/*` never imports `discord`. Community-specific code lives under `src/bot/`, `src/scenes/`, `src/achievements/`, etc.
+- **Discord = adapter.** `community/core/*` never imports `discord`. Community-specific code lives under `community/bot/`, `community/scenes/`, `community/achievements/`, etc.
 - **Memory / emotion are user-prompt injections**, never system-prompt baked. `AgentRuntime` assembles them per channel, per turn.
-- **Timestamps are UTC-aware ISO** (`src.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` is naive — don't use it directly.
+- **Timestamps are UTC-aware ISO** (`community.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` is naive — don't use it directly.
 - **Meta words** like "agent" / "bot" / "AI" are forbidden in user-visible text. `<tools>` blocks only surface in `mgr-system-log`.
 - **Profile edits** require `invalidate_cache()` + `runtime.refresh_agent()` paired.
 

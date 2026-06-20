@@ -1,6 +1,6 @@
 """SQLite-layer coverage for reactions + replies/threads + migration (Phase 1-2).
 
-Exercises ``src.db`` directly against a throwaway temp DB:
+Exercises ``community.db`` directly against a throwaway temp DB:
   - log_message returns the new row id (and the existing id on 30s-dedupe)
   - reactions add/remove idempotency + UNIQUE
   - get_reactions / get_reactions_for batch read
@@ -20,12 +20,12 @@ import time
 
 import pytest
 
-from src import db
+from community import db
 
 
 @pytest.fixture()
 def fresh_db(tmp_path):
-    """Point src.db at a fresh temp DB initialized via init_db()."""
+    """Point community.db at a fresh temp DB initialized via init_db()."""
     saved = db.DB_PATH
     path = str(tmp_path / "community.db")
     db.DB_PATH = path

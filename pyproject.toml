@@ -59,7 +59,7 @@ community = [
 
 # 로컬 프로필 이미지 생성 (Animagine XL 4.0 + Glimi Style LoRA).
 # 설치: pip install -e ".[imagegen]"
-# LoRA 가중치는 src/glimi_imagegen/loras/ 에 별도 배치 (gitignore — 93MB × 2).
+# LoRA 가중치는 community/glimi_imagegen/loras/ 에 별도 배치 (gitignore — 93MB × 2).
 imagegen = [
     "torch>=2.1",
     "diffusers>=0.27",
@@ -71,7 +71,7 @@ imagegen = [
     "numpy",
 ]
 
-# 배포 대상은 커널(glimi) 패키지만. 쇼케이스 앱(src/*)은 모노레포 소스에서 실행한다.
+# 배포 대상은 커널(glimi) 패키지만. 쇼케이스 앱(community/*)은 모노레포 소스에서 실행한다.
 [tool.setuptools]
 packages = ["glimi", "glimi.llm", "glimi.tools", "glimi.dashboard", "glimi.stores"]
 

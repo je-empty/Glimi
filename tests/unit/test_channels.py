@@ -1,7 +1,7 @@
 """Table tests for the canonical channel classifier (src/core/channels.py)."""
 import pytest
 
-from src.core.channels import channel_kind, is_user_postable
+from community.core.channels import channel_kind, is_user_postable
 
 
 @pytest.mark.parametrize("cid,expected_kind", [

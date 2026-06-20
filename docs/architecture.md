@@ -5,8 +5,8 @@
 - 에이전트 두뇌: Claude Code CLI (`claude` 명령어) subagent 방식
 - 페르소나/매니저/Creator: claude-sonnet-4-6 / Dev Runner: Opus / Supervisors: Haiku
 - DB: SQLite (`communities/{id}/community.db`)
-- 플랫폼(관리 UI): FastAPI + uvicorn (`src/platform/`, `:8765`)
-- TUI: Textual (`src/tui/`, deprecated — 웹으로 이전 중)
+- 플랫폼(관리 UI): FastAPI + uvicorn (`community/platform/`, `:8765`)
+- TUI: Textual (`community/tui/`, deprecated — 웹으로 이전 중)
 
 ## 디렉토리 구조
 ```
@@ -36,7 +36,7 @@ Glimi/
 │   ├── pending.json        ← 개발 요청
 │   └── result.json
 ├── legacy/
-└── src/
+└── community/
     ├── community.py        ← 커뮤니티 컨텍스트
     ├── db.py               ← SQLite CRUD
     ├── log_writer.py
@@ -81,7 +81,7 @@ Glimi/
 ### core/profile.py
 - DB 기반 프로필 로드/저장 (`_profile_cache`, `invalidate_cache`)
 - `_build_persona_prompt` / `_build_mgr_prompt` / `_build_creator_prompt`
-- **TODO**: `src/core/prompts/{lang}/` 로 분리 예정 (프롬프트 모듈 리팩터)
+- **TODO**: `community/core/prompts/{lang}/` 로 분리 예정 (프롬프트 모듈 리팩터)
 
 ## DB 스키마
 
@@ -120,8 +120,8 @@ Glimi/
 </tools>
 ```
 
-- 도구 정의: `src/core/tools/registry.py`
-- 핸들러: `src/bot/mgr_system.py` 의 `_h_*` 함수
+- 도구 정의: `community/core/tools/registry.py`
+- 핸들러: `community/bot/mgr_system.py` 의 `_h_*` 함수
 - 별칭 해석: 사람 이름 → agent_id 자동 매핑
 - 결과는 자연어 피드백으로 LLM 에 재주입 (연쇄 호출)
 - 주요 도구: `create_room`, `start_conversation`, `delete_channel`, `rename_channel`, `set_topic`, `purge_messages`, `restore_discord`, `set_emotion`, `update_profile`, `update_relationship`, `clear_channel`, `reset_agent`, `dev_request`, `list_channels`, `query_log`, `search`, `get_profile`, `get_relationship`, `list_events`, `set_profile_image`, `recall_memory`, `pin_memory`

@@ -39,7 +39,7 @@
 - 도구 인자 schema validation 부재 → LLM 환각 통과
 
 #### B. Handler 의 silent no-op
-`src/bot/mgr_system.py:yuna_edit_relationship`:
+`community/bot/mgr_system.py:yuna_edit_relationship`:
 ```python
 if field == "intimacy": ... DB UPDATE
 elif field == "type":   ... DB UPDATE
@@ -97,7 +97,7 @@ SELECT * FROM agent_facts WHERE subject='서유나' AND object LIKE '%호감%';
 3. **호감도 시스템 본격 구현**:
    - `intimacy_score` 0-100 → 행동 모더레이터 prompt 주입 helper
    - 100 = 찐사랑 연인 / 0 = 차갑고 거리감
-   - `_affection_behavior_hint(score)` in `src/core/memory.py`
+   - `_affection_behavior_hint(score)` in `community/core/memory.py`
 
 ### 잔여 위험
 - `set_emotion`, `update_profile`, `update_intimacy` 등 다른 update 도구도 동일 패턴 잠재

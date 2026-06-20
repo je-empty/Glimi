@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from src.platform import setup as setup_mod
+from community.platform import setup as setup_mod
 
 
 # ── shared helper: backend_mode_to_env ──────────────────────────────
@@ -169,7 +169,7 @@ def test_apply_setup_steers_when_no_claude_creds(isolated_setup, monkeypatch):
 
 
 def test_community_create_in_accepts_hybrid():
-    from src.platform.routers.communities import CreateCommunityIn, _VALID_MODEL_MODES
+    from community.platform.routers.communities import CreateCommunityIn, _VALID_MODEL_MODES
 
     assert "hybrid" in _VALID_MODEL_MODES
     model = CreateCommunityIn(
@@ -180,7 +180,7 @@ def test_community_create_in_accepts_hybrid():
 
 
 def test_write_community_model_hybrid(tmp_path):
-    from src.platform.routers.communities import _write_community_model
+    from community.platform.routers.communities import _write_community_model
 
     env_path = str(tmp_path / "community.env")
     Path(env_path).touch()

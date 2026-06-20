@@ -1,7 +1,7 @@
 # Ollama 로컬 LLM 백엔드 셋업
 
 `claude -p` (Claude Code 구독) 대신 로컬 GGUF 모델을 Ollama 로 띄워 페르소나 추론에 쓰는 절차.
-`src/llm/ollama.py` 백엔드와 함께 작동.
+`community/llm/ollama.py` 백엔드와 함께 작동.
 
 예시 모델: `gemma-4-26B-A4B-it-abliterated.i1-Q5_K_M` (mradermacher imatrix Q5_K_M 양자화 GGUF).
 다른 GGUF 도 같은 절차로 적용 가능 — 파일명만 교체.
@@ -86,12 +86,12 @@ $env:GLIMI_LLM_AGENT_MAP = '{\"persona\":\"ollama\",\"mgr\":\"claude_cli\",\"cre
 
 ### 재시작 범위
 
-`src/llm/` 수정/연결 → **봇 + 플랫폼 둘 다 재시작 필요** (CLAUDE.md 의 재시작 범위 표 참조).
+`community/llm/` 수정/연결 → **봇 + 플랫폼 둘 다 재시작 필요** (CLAUDE.md 의 재시작 범위 표 참조).
 
 ### 동작 검증
 
 ```powershell
-python -c "from src.llm import generate; r = generate(system='너는 한국 친구', user='안녕', model='dummy', agent_type='persona', timeout=300); print('text:', r.text or r.error)"
+python -c "from community.llm import generate; r = generate(system='너는 한국 친구', user='안녕', model='dummy', agent_type='persona', timeout=300); print('text:', r.text or r.error)"
 ```
 
 `model` 인자는 `GLIMI_OLLAMA_MODEL` 가 override 하므로 dummy OK. 첫 호출은 모델 로딩 때문에 시간 걸리므로 `timeout=300` 권장.
@@ -156,9 +156,9 @@ ollama ps
 
 ## 관련 파일
 
-- `src/llm/base.py` — 백엔드 추상 인터페이스
-- `src/llm/__init__.py` — 백엔드 선택 로직 (`_select_backend`)
-- `src/llm/ollama.py` — Ollama 백엔드 구현 (urllib stdlib only, 외부 의존성 없음)
+- `community/llm/base.py` — 백엔드 추상 인터페이스
+- `community/llm/__init__.py` — 백엔드 선택 로직 (`_select_backend`)
+- `community/llm/ollama.py` — Ollama 백엔드 구현 (urllib stdlib only, 외부 의존성 없음)
 
 ## 환경변수 요약
 

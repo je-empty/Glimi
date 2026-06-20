@@ -44,9 +44,9 @@ def _write_registry(registry_path, *, default="private"):
 
 @pytest.fixture()
 def isolated_registry(monkeypatch, tmp_path):
-    """Point src.community at a tmp communities/ dir with demo(read_only) +
+    """Point community.community at a tmp communities/ dir with demo(read_only) +
     private(normal), both with real dirs so existence checks pass."""
-    from src import community as comm
+    from community import community as comm
 
     cdir = tmp_path / "communities"
     (cdir / "demo").mkdir(parents=True)
@@ -81,7 +81,7 @@ def _fake_request(path="/api/snapshot", query="", cookies=None, accept="applicat
 
 def test_helper_allows_anon_on_read_only(isolated_registry):
     """Anonymous + read_only community → returns None (allowed anon viewer)."""
-    from src.platform.auth import public_readonly_user
+    from community.platform.auth import public_readonly_user
     req = _fake_request()
     assert public_readonly_user(req, "demo") is None
 
@@ -89,7 +89,7 @@ def test_helper_allows_anon_on_read_only(isolated_registry):
 def test_helper_blocks_anon_on_non_read_only_api(isolated_registry):
     """Anonymous + non-read_only community + API request → 401 (same failure as
     require_user for an /api/ path)."""
-    from src.platform.auth import public_readonly_user
+    from community.platform.auth import public_readonly_user
     req = _fake_request(path="/api/snapshot", accept="application/json")
     with pytest.raises(HTTPException) as ei:
         public_readonly_user(req, "private")
@@ -99,7 +99,7 @@ def test_helper_blocks_anon_on_non_read_only_api(isolated_registry):
 def test_helper_blocks_anon_on_non_read_only_html_redirect(isolated_registry):
     """Anonymous + non-read_only + HTML request → 307 redirect to /login (same
     failure as require_user for a browser navigation)."""
-    from src.platform.auth import public_readonly_user
+    from community.platform.auth import public_readonly_user
     req = _fake_request(path="/community/private", query="", accept="text/html")
     with pytest.raises(HTTPException) as ei:
         public_readonly_user(req, "private")
@@ -110,7 +110,7 @@ def test_helper_blocks_anon_on_non_read_only_html_redirect(isolated_registry):
 def test_helper_anon_never_crosses_to_non_read_only(isolated_registry):
     """The predicate binds to the SPECIFIC target community: anon may view demo
     but the SAME anon is rejected for private — no cross-community allowance."""
-    from src.platform.auth import public_readonly_user
+    from community.platform.auth import public_readonly_user
     assert public_readonly_user(_fake_request(), "demo") is None
     with pytest.raises(HTTPException):
         public_readonly_user(_fake_request(), "private")
@@ -119,7 +119,7 @@ def test_helper_anon_never_crosses_to_non_read_only(isolated_registry):
 def test_helper_logged_in_non_member_403_even_on_read_only(isolated_registry, monkeypatch):
     """A logged-in NON-member still gets 403 (unchanged member gate) — read_only
     does not downgrade a real user's access check."""
-    from src.platform import auth
+    from community.platform import auth
 
     fake_user = {"id": 99, "username": "outsider", "role": "user"}
     monkeypatch.setattr(auth, "get_current_user", lambda req: fake_user)
@@ -138,7 +138,7 @@ def client_app(monkeypatch, tmp_path):
     data_dir = tempfile.mkdtemp(prefix="glimi-pubdemo-test-")
     monkeypatch.setenv("GLIMI_DATA_DIR", data_dir)
 
-    from src import community as comm
+    from community import community as comm
     cdir = comm.COMMUNITIES_DIR
 
     demo_pre = (cdir / "demo").exists()
@@ -149,7 +149,7 @@ def client_app(monkeypatch, tmp_path):
     # Flag demo read_only + private normal in the (real) registry, restoring after.
     registry = comm.REGISTRY_PATH
     orig_registry = registry.read_text(encoding="utf-8") if registry.exists() else None
-    from src.platform.demo_seed import _write_registry_block
+    from community.platform.demo_seed import _write_registry_block
     comm._ensure_registry("demo")
     comm._ensure_registry("private")
     _write_registry_block("demo", "데모", "mockup", language="ko", read_only=True)
@@ -158,7 +158,7 @@ def client_app(monkeypatch, tmp_path):
     # Seed a tiny demo DB so snapshot/agent/channel resolve real rows.
     monkeypatch.setenv("GLIMI_COMMUNITY", "demo")
     comm.set_community("demo")
-    import src.db as db
+    import community.db as db
     db.DB_PATH = None
     db.init_db()
     db.save_agent_profile({"id": "mgr", "type": "mgr", "name": "유나"})
@@ -167,7 +167,7 @@ def client_app(monkeypatch, tmp_path):
     db.log_message("dm-agent-persona-001", "owner", "안녕")
     db.log_message("dm-agent-persona-001", "agent-persona-001", "안녕하세요!")
 
-    from src.platform.app import app
+    from community.platform.app import app
     anon = TestClient(app)
     try:
         yield anon, comm
@@ -214,7 +214,7 @@ def test_anon_home_shows_readonly_community_list(client_app, monkeypatch):
     """Anon ``GET /`` renders a read-only community LIST (like the Workspace home),
     not a redirect into the dashboard: only read_only communities show, and the
     management controls (create / start-stop / delete) are gated out."""
-    monkeypatch.setattr("src.platform.setup.is_configured", lambda: True)
+    monkeypatch.setattr("community.platform.setup.is_configured", lambda: True)
     anon, _comm = client_app
     r = anon.get("/")
     assert r.status_code == 200, r.text          # a list page, not a 303 redirect

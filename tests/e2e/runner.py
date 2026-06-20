@@ -48,7 +48,7 @@ def _setup_qa_server(bot_token: str):
     """qa 서버 자동 생성 — 커뮤니티 디렉토리 + .env + DB + 유저 프로필"""
     # 1. 커뮤니티 디렉토리 생성
     sys.path.insert(0, str(PROJECT_ROOT))
-    from src.community import init_community
+    from community.community import init_community
     init_community(QA_COMMUNITY_ID)
 
     # 2. .env에 봇 토큰 쓰기 (기존 설정 보존)
@@ -125,9 +125,9 @@ def _init_qa_db():
     """qa DB 초기화 + 테스트 유저 프로필 삽입"""
     os.environ["GLIMI_COMMUNITY"] = QA_COMMUNITY_ID
 
-    from src.community import set_community
+    from community.community import set_community
     set_community(QA_COMMUNITY_ID)
-    from src import db
+    from community import db
 
     db.init_db()
 
@@ -285,7 +285,7 @@ def _start_glimi_bot() -> subprocess.Popen:
         env["DISCORD_GUILD_ID"] = guild_id
     # 봇이 .env를 읽기 전에 환경변수로 주입
     proc = subprocess.Popen(
-        [sys.executable, "-m", "src.discord_bot"],
+        [sys.executable, "-m", "community.discord_bot"],
         cwd=str(PROJECT_ROOT),
         env=env,
         stdout=subprocess.PIPE,

@@ -18,7 +18,7 @@ load_dotenv(ROOT / "communities" / "test" / ".env")
 load_dotenv(ROOT / ".env")
 
 import discord  # noqa: E402
-from src import db  # noqa: E402
+from community import db  # noqa: E402
 
 AGENT_ID = "agent-persona-002"
 NAME = "아스나"
@@ -87,7 +87,7 @@ def db_purge():
 
 def fs_purge():
     """프로필 이미지 + JSON 파일 정리."""
-    from src import community as _comm
+    from community import community as _comm
     profile_dir = _comm.get_profile_images_dir()
     deleted = []
     for p in profile_dir.glob(f"{AGENT_ID}*"):

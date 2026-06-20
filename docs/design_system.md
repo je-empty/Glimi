@@ -1,7 +1,7 @@
 # Glimi Design System
 
 > Glimi 의 모든 사용자 화면(웹 대시보드 · 첫 실행 setup wizard · 웹챗 MVP)이 공유하는 디자인 언어.
-> 단일 토큰 소스: [`src/platform/static/css/tokens.css`](../src/platform/static/css/tokens.css).
+> 단일 토큰 소스: [`community/platform/static/css/tokens.css`](../community/platform/static/css/tokens.css).
 > 새 화면은 **반드시** 이 문서의 규칙 + 토큰을 따른다. 임의 색/그림자/폰트 하드코딩 금지.
 
 ## 1. 철학 (tone)

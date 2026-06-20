@@ -1,10 +1,10 @@
 """Demo-by-default + read-only mockup gate — focused unit tests.
 
 Covers:
-  (a) src.community.is_read_only + list_communities surfaces `read_only`.
+  (a) community.community.is_read_only + list_communities surfaces `read_only`.
   (b) the seed refactor is import-safe (importing has zero side effects) and
       `seed()` is callable with the documented signature.
-  (c) src.platform.demo_seed.ensure_demo_seeded is idempotent — a second call
+  (c) community.platform.demo_seed.ensure_demo_seeded is idempotent — a second call
       no-ops when communities/demo/ already exists.
 
 All filesystem state is redirected to a tmp dir via monkeypatch so nothing
@@ -20,8 +20,8 @@ import pytest
 
 @pytest.fixture
 def isolated_communities(monkeypatch, tmp_path):
-    """Point src.community at a tmp communities/ dir (+ registry) for the test."""
-    from src import community as comm
+    """Point community.community at a tmp communities/ dir (+ registry) for the test."""
+    from community import community as comm
 
     cdir = tmp_path / "communities"
     cdir.mkdir(parents=True, exist_ok=True)
@@ -122,8 +122,8 @@ def test_ensure_demo_seeded_sets_readonly_on_existing_demo(monkeypatch, tmp_path
     (returns False, seed() never called) but MUST still ensure the registry marks
     demo read_only — so an existing demo (e.g. a live server's) becomes read-only
     on deploy."""
-    from src import community as comm
-    from src.platform import demo_seed
+    from community import community as comm
+    from community.platform import demo_seed
 
     cdir = tmp_path / "communities"
     (cdir / "demo").mkdir(parents=True)
@@ -152,8 +152,8 @@ def test_ensure_demo_seeded_sets_readonly_on_existing_demo(monkeypatch, tmp_path
 def test_ensure_demo_seeded_seeds_then_registers(monkeypatch, tmp_path):
     """First run: demo/ absent → seed() is called, then registry.toml gets the
     demo block with language=ko + read_only=true. Second call no-ops."""
-    from src import community as comm
-    from src.platform import demo_seed
+    from community import community as comm
+    from community.platform import demo_seed
 
     cdir = tmp_path / "communities"
     cdir.mkdir(parents=True)

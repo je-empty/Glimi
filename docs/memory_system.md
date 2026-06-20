@@ -1,4 +1,4 @@
-# 5-Layer Memory System (`src/core/memory.py`)
+# 5-Layer Memory System (`community/core/memory.py`)
 
 ## 설계 원칙
 각 에이전트마다 **통합 메모리 1개** + 엔티티 태그로 "누구에 관한 건지" 관리 (사람처럼). 저장은 영구, 주입만 budget 기반 선별.

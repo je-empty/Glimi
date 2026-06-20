@@ -20,8 +20,8 @@ This test fails the moment a copy drifts, so a change to the dashboard can't
 silently fork again — edit the canonical in ``glimi/dashboard``, then re-sync the
 community copies:
 
-    cp glimi/dashboard/static/js/dashboard.js   src/platform/static/js/dashboard.js
-    cp glimi/dashboard/static/css/dashboard.css src/platform/static/css/dashboard.css
+    cp glimi/dashboard/static/js/dashboard.js   community/platform/static/js/dashboard.js
+    cp glimi/dashboard/static/css/dashboard.css community/platform/static/css/dashboard.css
     cp glimi/dashboard/i18n/dashboard.*.json    i18n/
 
 Run:
@@ -43,13 +43,13 @@ def _read(p: str) -> str:
 #   static assets live under static/; i18n dicts under i18n/ (community keeps its
 #   copy at the repo-root i18n/ that its /api/i18n endpoint reads).
 _SYNCED = [
-    ("static/js/chat.js",            "src/platform/static/js/chat.js"),
-    ("static/css/chat.css",          "src/platform/static/css/chat.css"),
-    ("static/js/dashboard.js",       "src/platform/static/js/dashboard.js"),
-    ("static/css/dashboard.css",     "src/platform/static/css/dashboard.css"),
-    ("static/css/dashboard-chat.css", "src/platform/static/css/dashboard-chat.css"),
-    ("static/css/base.css",          "src/platform/static/css/base.css"),
-    ("static/css/tokens.css",        "src/platform/static/css/tokens.css"),
+    ("static/js/chat.js",            "community/platform/static/js/chat.js"),
+    ("static/css/chat.css",          "community/platform/static/css/chat.css"),
+    ("static/js/dashboard.js",       "community/platform/static/js/dashboard.js"),
+    ("static/css/dashboard.css",     "community/platform/static/css/dashboard.css"),
+    ("static/css/dashboard-chat.css", "community/platform/static/css/dashboard-chat.css"),
+    ("static/css/base.css",          "community/platform/static/css/base.css"),
+    ("static/css/tokens.css",        "community/platform/static/css/tokens.css"),
     ("i18n/dashboard.en.json",       "i18n/dashboard.en.json"),
     ("i18n/dashboard.ko.json",       "i18n/dashboard.ko.json"),
 ]

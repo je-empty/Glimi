@@ -236,8 +236,8 @@ def obs_store(tmp_path):
     """SqliteKernelStore over a fresh temp DB — implements the observability
     methods (the in-memory population store keeps the base no-ops, which the
     degrade tests below exercise separately)."""
-    from src import db
-    from src.adapters.kernel_store import SqliteKernelStore
+    from community import db
+    from community.adapters.kernel_store import SqliteKernelStore
     saved = db.DB_PATH
     db.DB_PATH = str(tmp_path / "obs.db")
     db.init_db()

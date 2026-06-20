@@ -562,8 +562,8 @@ class TestUserBot(discord.Client):
         # GLIMI_COMMUNITY env 는 qa.sh 가 이미 주입 → community 모듈 자동 resolve.
         memory_header = ""
         try:
-            from src.core.memory import get_memory_context
-            from src.core.profile import get_user_id
+            from community.core.memory import get_memory_context
+            from community.core.profile import get_user_id
             owner_id = get_user_id()
             if owner_id:
                 memory_text = get_memory_context(owner_id, target_ch)
@@ -1046,7 +1046,7 @@ class TestUserBot(discord.Client):
     def _count_existing_friends(self) -> int:
         """현재 active 페르소나 수. proactive_reboot 가 친구 부족 여부 판단할 때 사용."""
         try:
-            from src import db
+            from community import db
             conn = db.get_conn()
             n = conn.execute(
                 "SELECT COUNT(*) FROM agents WHERE type='persona' AND status='active'"
@@ -1063,7 +1063,7 @@ class TestUserBot(discord.Client):
         dm-* 채널 결정용. 없으면 빈 문자열.
         """
         try:
-            from src import db
+            from community import db
             conn = db.get_conn()
             rows = conn.execute(
                 "SELECT name FROM agents WHERE type='persona' AND status='active'"
@@ -1103,7 +1103,7 @@ class TestUserBot(discord.Client):
 
         result = {"mode": "tutorial", "hint": ""}
         try:
-            from src.achievements import engine as _eng
+            from community.achievements import engine as _eng
             summary = _eng.dashboard_summary()
             items = summary.get("items", [])
             by_key = {i["key"]: i for i in items}

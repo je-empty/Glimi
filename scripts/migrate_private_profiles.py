@@ -14,9 +14,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 os.environ["GLIMI_COMMUNITY"] = "private"
-from src.community import set_community
+from community.community import set_community
 set_community("private")
-from src import db
+from community import db
 
 
 # 각 에이전트별 (personality, appearance, daily_life, speech) 패키지

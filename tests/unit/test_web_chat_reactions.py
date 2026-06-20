@@ -42,7 +42,7 @@ def seeded_app(monkeypatch):
 
     n = next(_USER_SEQ)
     cid = f"wsreact{n}"
-    from src import community as comm
+    from community import community as comm
     cdir = comm.COMMUNITIES_DIR / cid
     community_preexisted = cdir.exists()
     (cdir / "logs").mkdir(parents=True, exist_ok=True)
@@ -50,7 +50,7 @@ def seeded_app(monkeypatch):
 
     monkeypatch.setenv("GLIMI_COMMUNITY", cid)
     comm.set_community(cid)
-    import src.db as db
+    import community.db as db
     db.DB_PATH = None
     db.init_db()
     db.save_agent_profile({"id": "mgr", "type": "mgr", "name": "유나"})
@@ -61,12 +61,12 @@ def seeded_app(monkeypatch):
     db.log_message("dm-agent-persona-001", "owner", "안녕 소은")
     db.log_message("dm-agent-persona-001", "agent-persona-001", "안녕하세요!")
 
-    from src.platform import accounts, sessions
-    from src.platform.config import SESSION_COOKIE_NAME
+    from community.platform import accounts, sessions
+    from community.platform.config import SESSION_COOKIE_NAME
     uid = accounts.create_account(f"wsreact{n}", "pw-12345", role="admin")
     token = sessions.sign_session(uid)
 
-    from src.platform.app import app
+    from community.platform.app import app
     client = TestClient(app)
     client.cookies.set(SESSION_COOKIE_NAME, token)
     try:
@@ -79,16 +79,16 @@ def seeded_app(monkeypatch):
 
 def _scoped(cid):
     """Context-managed community scope for direct DB assertions in-test."""
-    from src.platform.community_ctx import run_in_community
+    from community.platform.community_ctx import run_in_community
     return run_in_community
 
 
 def _latest_msg_id(cid, channel, speaker, text):
     """Resolve the row id of a seeded/known message for reaction targeting."""
-    from src.platform.community_ctx import run_in_community
+    from community.platform.community_ctx import run_in_community
 
     def _q():
-        from src import db
+        from community import db
         conn = db.get_conn()
         try:
             row = conn.execute(
@@ -161,10 +161,10 @@ def test_ws_add_reaction_persists_broadcasts_and_signals_once(seeded_app, monkey
         assert frame2["count"] == 1  # UNIQUE → still one
 
     # Persisted in the reactions table.
-    from src.platform.community_ctx import run_in_community
+    from community.platform.community_ctx import run_in_community
 
     def _reacts():
-        from src import db
+        from community import db
         return db.get_reactions(target)
 
     reacts = run_in_community(cid, _reacts)
@@ -221,10 +221,10 @@ def test_ws_remove_reaction_toggles_off(seeded_app):
         assert removed["count"] == 0
         assert removed["emoji"] == "👍"
 
-    from src.platform.community_ctx import run_in_community
+    from community.platform.community_ctx import run_in_community
 
     def _reacts():
-        from src import db
+        from community import db
         return db.get_reactions(target)
 
     assert run_in_community(cid, _reacts) == []

@@ -1,6 +1,6 @@
 """End-to-end web-chat seam tests — Phase 2.
 
-Exercises the real FastAPI app (src.platform.app:app) over the Starlette/FastAPI
+Exercises the real FastAPI app (community.platform.app:app) over the Starlette/FastAPI
 TestClient WS + REST transports. A throwaway community is seeded (mgr + persona
 agents, a group channel, and a couple of conversation rows) and a real admin
 session cookie is minted so the connect-time auth gate is satisfied for real.
@@ -56,7 +56,7 @@ def seeded_app(monkeypatch):
     # persists agent replies, which would otherwise leak into later tests).
     n = next(_USER_SEQ)
     cid = f"wschat{n}"
-    from src import community as comm
+    from community import community as comm
     cdir = comm.COMMUNITIES_DIR / cid
     community_preexisted = cdir.exists()
     (cdir / "logs").mkdir(parents=True, exist_ok=True)
@@ -66,7 +66,7 @@ def seeded_app(monkeypatch):
     # Scope + init the community DB and seed agents + a group channel + history.
     monkeypatch.setenv("GLIMI_COMMUNITY", cid)
     comm.set_community(cid)
-    import src.db as db
+    import community.db as db
     db.DB_PATH = None
     db.init_db()
     db.save_agent_profile({"id": "mgr", "type": "mgr", "name": "유나"})
@@ -87,13 +87,13 @@ def seeded_app(monkeypatch):
     # from GLIMI_DATA_DIR, so they are effectively fixed for the test session.
     # Use a unique username per fixture instance to avoid UNIQUE collisions; the
     # signed session stays consistent because the same secret key is reused.
-    from src.platform import accounts, sessions
-    from src.platform.config import SESSION_COOKIE_NAME
+    from community.platform import accounts, sessions
+    from community.platform.config import SESSION_COOKIE_NAME
     uid = accounts.create_account(f"wstester{n}", "pw-12345", role="admin")
     token = sessions.sign_session(uid)
 
     # Import the app AFTER env is set so config/secret-key resolve under data_dir.
-    from src.platform.app import app
+    from community.platform.app import app
 
     # Authenticated client (cookie on the instance — avoids per-request cookie
     # deprecation) + a bare unauthenticated client for the auth-reject test.
@@ -253,7 +253,7 @@ def test_dispatcher_loads_agent_map_config(seeded_app, monkeypatch):
     """
     import json
     import os as _os
-    from src import community as comm
+    from community import community as comm
     client, _anon, cid = seeded_app
     env_path = comm.COMMUNITIES_DIR / cid / ".env"
     # Rewrite the .env to use the agent-map mechanism only (no bare backend line).
@@ -283,7 +283,7 @@ def test_dispatcher_source_has_no_backend_force():
     call the runtime's streaming entry (delegating provider selection to the
     kernel's config-layering)."""
     import inspect
-    from src.platform.routers import chat as chat_mod
+    from community.platform.routers import chat as chat_mod
     src = inspect.getsource(chat_mod)
     assert 'os.environ.setdefault("GLIMI_LLM_BACKEND"' not in src
     assert 'os.environ["GLIMI_LLM_BACKEND"]' not in src

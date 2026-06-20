@@ -259,17 +259,17 @@ mkdir -p dev
 
 # ── 기존 프로세스 정리 ────────────────────────────────
 _cleanup_existing() {
-    pkill -f "src.platform" 2>/dev/null || true
-    pkill -f "src.discord_bot" 2>/dev/null || true
-    pkill -f "src.tui.dashboard" 2>/dev/null || true
-    pkill -f "src.tui.wizard" 2>/dev/null || true
-    pkill -f "src.tools.dev_runner" 2>/dev/null || true
+    pkill -f "community.platform" 2>/dev/null || true
+    pkill -f "community.discord_bot" 2>/dev/null || true
+    pkill -f "community.tui.dashboard" 2>/dev/null || true
+    pkill -f "community.tui.wizard" 2>/dev/null || true
+    pkill -f "community.tools.dev_runner" 2>/dev/null || true
     pkill -f "apps/workspace/run.py" 2>/dev/null || true
     rm -f dev/.bot*.pid dev/.platform.pid 2>/dev/null || true
     sleep 1
-    pkill -9 -f "src.platform" 2>/dev/null || true
-    pkill -9 -f "src.discord_bot" 2>/dev/null || true
-    pkill -9 -f "src.tui.dashboard" 2>/dev/null || true
+    pkill -9 -f "community.platform" 2>/dev/null || true
+    pkill -9 -f "community.discord_bot" 2>/dev/null || true
+    pkill -9 -f "community.tui.dashboard" 2>/dev/null || true
 }
 _cleanup_existing
 
@@ -280,10 +280,10 @@ if [ "$1" = "tui" ]; then
     shift
     if [ -z "$1" ]; then
         echo -e "${YELLOW}  (레거시 TUI wizard — 플랫폼 웹으로 이전됨)${NC}"
-        exec python -m src.tui.wizard
+        exec python -m community.tui.wizard
     else
         echo -e "  TUI dashboard: ${GREEN}$1${NC}"
-        exec python -m src.tui.dashboard "$1"
+        exec python -m community.tui.dashboard "$1"
     fi
 fi
 
@@ -321,7 +321,7 @@ if [ "$1" = "--legacy" ]; then
             while [ -f "$PAUSE_FILE" ]; do sleep 1; done
         fi
         echo -e "${GREEN}[legacy] 봇 시작${NC}"
-        python -m src.discord_bot &
+        python -m community.discord_bot &
         BOT_PID=$!
         echo $BOT_PID > "$PID_FILE"
         wait $BOT_PID
@@ -330,7 +330,7 @@ if [ "$1" = "--legacy" ]; then
 
         if [ $EXIT_CODE -eq 42 ]; then
             echo -e "${CYAN}[legacy] 개발자 에이전트 실행${NC}"
-            python -m src.tools.dev_runner
+            python -m community.tools.dev_runner
             echo -e "${GREEN}[legacy] 봇 재시작${NC}"
             sleep 2
             continue
@@ -447,4 +447,4 @@ fi
 
 # 계정 부트스트랩은 더 이상 여기서 안 함 — 첫 실행은 웹 wizard(/setup), 헤드리스는
 # 플랫폼 lifespan 이 GLIMI_ADMIN_PASSWORD 로 처리.
-exec python -m src.platform --host "$HOST" --port "$PORT"
+exec python -m community.platform --host "$HOST" --port "$PORT"

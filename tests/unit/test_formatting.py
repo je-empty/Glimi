@@ -1,8 +1,8 @@
-"""src/bot/formatting.py 단위 테스트.
+"""community/bot/formatting.py 단위 테스트.
 
 실행: python -m tests.unit.test_formatting (또는 pytest)
 """
-from src.bot.formatting import format_for_discord
+from community.bot.formatting import format_for_discord
 
 
 class _MockCh:

@@ -207,7 +207,7 @@ analyze_run 이 자동 분류. 필요시 조정:
 
 1. 각 BLOCKER/REGRESSION 타스크 `in_progress` → 코드 읽고 근본 원인 파악 → 픽스.
 2. 프롬프트 변경은 `profile.py` + `formatting.py` 위주. LLM 환각은 **예시 오염** 의심 우선 (persona 에게 mgr-* 예시 노출 등).
-3. 도구 관련은 `src/core/tools/validator.py` 에서 강성→관대(type coercion) 조정.
+3. 도구 관련은 `community/core/tools/validator.py` 에서 강성→관대(type coercion) 조정.
 4. 픽스 후 단위 테스트:
    ```bash
    python -m tests.unit.test_formatting

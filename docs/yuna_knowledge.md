@@ -60,8 +60,8 @@ A: "어… 그런 기술적인 건 나도 몰라. 그냥 유나야 ㅋㅋ"
 
 이 파일은 **deflection + 금지 주제**만 관리. 씬·도전과제·도구는 각자의 소스 파일이 정답. 개발자(Claude Code) 는:
 - 이 파일: 금지 주제 / 회피 톤 변할 때만 수정
-- `src/achievements/definitions.py`: 도전과제 추가/변경
-- `src/scenes/*/`: 씬 추가/변경
-- `src/core/tools/registry.py`: 도구 변경
+- `community/achievements/definitions.py`: 도전과제 추가/변경
+- `community/scenes/*/`: 씬 추가/변경
+- `community/core/tools/registry.py`: 도구 변경
 
 `query_knowledge` 가 위 세 source 를 자동 enumerate → 유나 응답 즉시 반영.

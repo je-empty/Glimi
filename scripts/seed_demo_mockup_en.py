@@ -58,7 +58,7 @@ def _copy_seed_avatars(dest_dir: Path) -> None:
         return
     for src in src_dir.glob("*.png"):
         try:
-            shutil.copy(src, dest_dir / src.name)
+            shutil.copy(src, dest_dir / community.name)
         except OSError:
             pass
 
@@ -69,8 +69,8 @@ def seed(community_id: str = "demo-en") -> None:
     Idempotent: the DB is reset each run, so a re-call overwrites with the same
     result. Callers (ensure_demo_seeded) guard re-seeding via directory presence.
     """
-    from src import community
-    from src import db
+    from community import community
+    from community import db
 
     os.chdir(ROOT)
     if str(ROOT) not in sys.path:

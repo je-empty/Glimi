@@ -10,7 +10,7 @@ Ollama, or a graceful placeholder when no local backend exists).
 
 Design rules:
   - **Kernel-pure**: stdlib + ``glimi.store`` aggregation only. Never imports
-    ``src.*`` or any platform/Discord type — the guard must ride along with the
+    ``community.*`` or any platform/Discord type — the guard must ride along with the
     standalone kernel.
   - **Degrade open**: if we can't measure (no store, query error, cap unset),
     ``allow_claude`` returns True. We never block a legitimate call just because

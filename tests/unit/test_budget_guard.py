@@ -293,8 +293,8 @@ def test_was_blocked_persists_in_memory(mem_store):
 
 
 def test_was_blocked_persists_sqlite(tmp_path):
-    from src import db
-    from src.adapters.kernel_store import SqliteKernelStore
+    from community import db
+    from community.adapters.kernel_store import SqliteKernelStore
     saved = db.DB_PATH
     db.DB_PATH = str(tmp_path / "community.db")
     db.init_db()
@@ -313,8 +313,8 @@ def test_was_blocked_persists_sqlite(tmp_path):
 
 def test_was_blocked_column_added_to_pre_feature_db(tmp_path):
     """OLD usage_records without was_blocked → migration adds it (additive)."""
-    from src import db
-    from src.adapters.kernel_store import SqliteKernelStore
+    from community import db
+    from community.adapters.kernel_store import SqliteKernelStore
     saved = db.DB_PATH
     path = str(tmp_path / "old.db")
     db.DB_PATH = path

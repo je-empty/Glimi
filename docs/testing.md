@@ -7,11 +7,11 @@
 
 | 변경한 것 | 필수 | 권장 |
 |---|---|---|
-| `src/core/` · `src/db.py` (global state) | 격리 테스트 | E2E QA 1회 |
-| `src/bot/formatting.py` | 포맷팅 테스트 | |
+| `community/core/` · `community/db.py` (global state) | 격리 테스트 | E2E QA 1회 |
+| `community/bot/formatting.py` | 포맷팅 테스트 | |
 | 씬·튜토리얼·봇 플로우 | E2E QA | |
 | 프롬프트·콘텐츠 (catalog/씬 텍스트) | 실제 대화 1회 이상 | E2E QA |
-| 플랫폼 UI (`src/platform/`) | 브라우저 실확인 | |
+| 플랫폼 UI (`community/platform/`) | 브라우저 실확인 | |
 | 문서만 | 없음 | |
 
 ## 1. 단위 테스트

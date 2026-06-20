@@ -17,7 +17,7 @@ load_dotenv(ROOT / "communities" / "test" / ".env")
 load_dotenv(ROOT / ".env")
 
 import discord  # noqa: E402
-from src import db  # noqa: E402
+from community import db  # noqa: E402
 
 AGENT_ID = "agent-persona-002"
 OLD_NAME = "유키 아스나"

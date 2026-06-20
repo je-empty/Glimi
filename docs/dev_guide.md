@@ -43,7 +43,7 @@
 ### Step 2. 현재 구조 파악
 - [ ] `CLAUDE.md` — 프로젝트 구조·컨벤션 최신판
 - [ ] 관련 디렉터리 README 또는 모듈 docstring
-- [ ] 기존 유사 패턴 검색 (`src/supervisors/`, `src/scenes/tutorial/` 등 레퍼런스)
+- [ ] 기존 유사 패턴 검색 (`community/supervisors/`, `community/scenes/tutorial/` 등 레퍼런스)
 
 ### Step 3. 타깃 B 관점 심사
 - [ ] 이 기능이 20대 여성 감성 유저 첫 5분 / 첫 1일 / 첫 1주 경험에 도움되는가
@@ -62,72 +62,72 @@
 개발할 기능 유형에 따라 어디부터 읽어야 하는지.
 
 ### 에이전트 두뇌·응답 생성
-- `src/core/runtime.py` — `generate_response`, `_call_claude_code`, `_parse_response`
-- `src/core/profile.py` — `_build_persona_prompt`, `_build_mgr_prompt`, `_build_creator_prompt`
-- `src/core/conversation.py` — 에이전트간 자동 대화
+- `community/core/runtime.py` — `generate_response`, `_call_claude_code`, `_parse_response`
+- `community/core/profile.py` — `_build_persona_prompt`, `_build_mgr_prompt`, `_build_creator_prompt`
+- `community/core/conversation.py` — 에이전트간 자동 대화
 - 모델 선택: persona/mgr/creator = Sonnet / dev_runner = Opus / supervisor = Haiku
 
 ### 감정 시스템 (P0 작업 시)
-- `src/db.py` — `agents.current_emotion`, `emotion_intensity`, `conversations.context_emotion`
-- `src/core/runtime.py:201` — 프롬프트 감정 주입 지점
-- 도구: `set_emotion` (`src/bot/tool_handlers.py`, `src/core/tools/registry.py`)
-- **P0 신규 작업**: `src/supervisors/emotion.py` 신설, `profile.py._build_persona_prompt` 감정 강제 섹션 추가
+- `community/db.py` — `agents.current_emotion`, `emotion_intensity`, `conversations.context_emotion`
+- `community/core/runtime.py:201` — 프롬프트 감정 주입 지점
+- 도구: `set_emotion` (`community/bot/tool_handlers.py`, `community/core/tools/registry.py`)
+- **P0 신규 작업**: `community/supervisors/emotion.py` 신설, `profile.py._build_persona_prompt` 감정 강제 섹션 추가
 
 ### 메모리 시스템 (5 레이어)
-- `src/core/memory.py` — 전체 파이프라인
+- `community/core/memory.py` — 전체 파이프라인
 - 테이블: `memories`, `agent_facts`, `relationship_history`, `conversations`
 - 도구: `recall_memory`, `pin_memory`
 - **금지**: 메모리 저장 로직을 system prompt 에 넣지 말 것 (user prompt 에 동적 주입)
 - 장기 관측 필요: L3 rollup (L2 5개 쌓여야 발동)
 
 ### 씬(Scene) 시스템
-- `src/scenes/base.py` — Scene base class, phase 관리, set_phase 훅
-- 레퍼런스 구현: `src/scenes/tutorial/` (scene.py + supervisor.py + handlers.py + prompts.py)
+- `community/scenes/base.py` — Scene base class, phase 관리, set_phase 훅
+- 레퍼런스 구현: `community/scenes/tutorial/` (scene.py + supervisor.py + handlers.py + prompts.py)
 - 신규 씬 추가 시: 위 4개 파일 + `docs/yuna_knowledge.md` 갱신
 - 타깃 B 우선순위: birthday > healing > relationship_milestone > group_outing
 
 ### Supervisor 시스템
-- `src/supervisors/base.py` — SupervisorPool, 3 kind (scene/channel/system)
+- `community/supervisors/base.py` — SupervisorPool, 3 kind (scene/channel/system)
 - 네이밍: `{Scope}{Role}Supervisor` / id = `scope.role` / label = `범주 · 서브`
 - Lifecycle trigger: 봇 ready / `db.set_channel_status` / `Scene.set_phase` / tick loop
 - 신규 system supervisor 추가 시 `SupervisorPool.sync()` 에 등록
 
 ### 도구(`<tools>`) 추가
-- `src/core/tools/registry.py` — 도구 정의 (이름·설명·인자·예시)
-- `src/bot/mgr_system.py` 또는 `src/bot/tool_handlers.py` — 핸들러 구현
-- `src/core/tools/dispatcher.py` — 호출 → 핸들러 연결
+- `community/core/tools/registry.py` — 도구 정의 (이름·설명·인자·예시)
+- `community/bot/mgr_system.py` 또는 `community/bot/tool_handlers.py` — 핸들러 구현
+- `community/core/tools/dispatcher.py` — 호출 → 핸들러 연결
 - **심사 기준**: 타깃 B 감정 접점 있나 / 기존 도구로 대체 불가 / 보안상 파괴적이지 않나
 
 ### 디스코드 봇 레이어
-- `src/discord_bot.py` — 엔트리포인트
-- `src/bot/handlers.py` — DM/그룹 메시지 처리
-- `src/bot/core.py` — Webhook, 채널 매핑
-- `src/bot/formatting.py` — 평문 → 디스코드 네이티브 변환 (`#channel`, `@owner`)
-- `src/bot/tasks.py` — 백그라운드 태스크
+- `community/discord_bot.py` — 엔트리포인트
+- `community/bot/handlers.py` — DM/그룹 메시지 처리
+- `community/bot/core.py` — Webhook, 채널 매핑
+- `community/bot/formatting.py` — 평문 → 디스코드 네이티브 변환 (`#channel`, `@owner`)
+- `community/bot/tasks.py` — 백그라운드 태스크
 
 ### 튜토리얼·온보딩
-- `src/scenes/tutorial/` — 전체 플로우
+- `community/scenes/tutorial/` — 전체 플로우
 - 현재 이슈: `handlers.py:56,106,122` 의 `asyncio.sleep(15)` (침묵 45초) / `prompts.py:67-83` 기계적 프로필 수집
 - 개선 방향: 선택지 UI, 실시간 로딩 피드백, 감정적 훅 삽입
 
 ### Achievement 시스템
-- `src/achievements/definitions.py` — 과제 정의 7개
-- `src/achievements/engine.py` — 자동 갱신 로직
+- `community/achievements/definitions.py` — 과제 정의 7개
+- `community/achievements/engine.py` — 자동 갱신 로직
 - 훅: `db.add_message_hook(engine._on_message)`
 - 신규 과제 추가 시 타깃 B 초기 1일 경험에서 달성 가능한지 확인
 
 ### 커뮤니티·DB·격리
-- `src/community.py` — 커뮤니티 컨텍스트
-- `src/db.py` — SQLite CRUD, 스키마, `_migrate_schema`
+- `community/community.py` — 커뮤니티 컨텍스트
+- `community/db.py` — SQLite CRUD, 스키마, `_migrate_schema`
 - `tests/unit/test_community_isolation.py` — 격리 검증
 - **주의**: `AgentRuntime._pending_tool_results` / `_extract_queue` 등 global state 존재. 1 community/process 전제 깨질 시 `community_id` context 전파 필요.
 
 ### 대시보드
-- `src/platform/` — FastAPI + Jinja2 + static (`:8000`)
-- `src/platform/dashboard/` (api.py, actions.py, context.py) — 로직 계층
-- `src/platform/templates/dashboard/index.html` — HTML 셸 (Jinja)
-- `src/platform/static/css/dashboard.css` + `static/js/dashboard.js` — 프론트엔드
-- `src/core/monitor.py` — `get_snapshot`, `get_agent_detail` 데이터 단일 소스
+- `community/platform/` — FastAPI + Jinja2 + static (`:8000`)
+- `community/platform/dashboard/` (api.py, actions.py, context.py) — 로직 계층
+- `community/platform/templates/dashboard/index.html` — HTML 셸 (Jinja)
+- `community/platform/static/css/dashboard.css` + `static/js/dashboard.js` — 프론트엔드
+- `community/core/monitor.py` — `get_snapshot`, `get_agent_detail` 데이터 단일 소스
 - **필수**: 재시작 시 `--host 0.0.0.0` 옵션 (run.sh 기본값)
 
 ---
@@ -186,12 +186,12 @@ python -m tests.unit.test_formatting
 **목표**: 친구 감정이 실시간으로 반영·변화하는 application layer 구축.
 
 ### P0-1. EmotionSupervisor
-- 파일: `src/supervisors/emotion.py` (신설)
-- 패턴 참조: `src/supervisors/orchestrator.py`, `src/scenes/tutorial/supervisor.py`
+- 파일: `community/supervisors/emotion.py` (신설)
+- 패턴 참조: `community/supervisors/orchestrator.py`, `community/scenes/tutorial/supervisor.py`
 - Haiku 로 감정 감지 → `set_emotion` 자동 호출
 
 ### P0-2. Persona 프롬프트 감정 강제
-- 파일: `src/core/profile.py._build_persona_prompt`
+- 파일: `community/core/profile.py._build_persona_prompt`
 - intensity 구간별 톤 가이드 (1-3 / 4-6 / 7-8 / 9-10) few-shot 추가
 
 ### P0-3. 케어 피드백 루프
@@ -199,7 +199,7 @@ python -m tests.unit.test_formatting
 - Achievement `empathy_conversation` 신규
 
 ### P0-4. 대시보드 감정 뷰
-- 파일: `src/platform/dashboard/` (api.py, actions.py), `src/platform/templates/dashboard/index.html`, `src/platform/static/{css,js}/dashboard.*`, `src/core/monitor.py`
+- 파일: `community/platform/dashboard/` (api.py, actions.py), `community/platform/templates/dashboard/index.html`, `community/platform/static/{css,js}/dashboard.*`, `community/core/monitor.py`
 - 에이전트 노드 감정 뱃지 + 커뮤니티 감정 타임라인
 
 **P0 완료 검증**: 테스트 유저 "힘들어" → 30초 내 친구가 감정 인지 응답 / 오너 위로 3회 누적 → 친구 "좀 나아졌어" 류 반응.

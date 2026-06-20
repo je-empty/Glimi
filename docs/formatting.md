@@ -1,4 +1,4 @@
-# 메시지 포맷팅 (`src/bot/formatting.py`)
+# 메시지 포맷팅 (`community/bot/formatting.py`)
 
 에이전트 응답의 평문 토큰을 디스코드 네이티브 렌더링으로 변환.
 

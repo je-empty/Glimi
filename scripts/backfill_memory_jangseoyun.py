@@ -13,8 +13,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.core import memory as mem  # noqa: E402
-from src import db  # noqa: E402
+from community.core import memory as mem  # noqa: E402
+from community import db  # noqa: E402
 
 
 AGENT_ID = "agent-persona-001"

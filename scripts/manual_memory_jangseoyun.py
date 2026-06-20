@@ -13,7 +13,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src import db  # noqa: E402
+from community import db  # noqa: E402
 
 AGENT = "agent-persona-001"
 CH = "dm-장서윤"

@@ -18,7 +18,7 @@ load_dotenv(ROOT / "communities" / "test" / ".env")
 load_dotenv(ROOT / ".env")
 
 import discord  # noqa: E402
-from src import db  # noqa: E402
+from community import db  # noqa: E402
 
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 CHANNEL = sys.argv[1] if len(sys.argv) > 1 else "dm-장서윤"

@@ -27,8 +27,8 @@ os.environ["GLIMI_DATA_DIR"] = tempfile.mkdtemp(prefix="glimi-qa-platform-")
 
 from fastapi.testclient import TestClient
 
-from src.platform.app import app
-from src.platform import accounts
+from community.platform.app import app
+from community.platform import accounts
 
 
 def _login_admin(client: TestClient) -> TestClient:

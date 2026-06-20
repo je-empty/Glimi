@@ -21,10 +21,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 os.environ["GLIMI_COMMUNITY"] = "private"
-from src.community import set_community
+from community.community import set_community
 set_community("private")
-from src import db
-from src.core.profile import get_user_id
+from community import db
+from community.core.profile import get_user_id
 
 
 def _iso(dt: datetime) -> str:

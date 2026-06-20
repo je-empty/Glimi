@@ -16,8 +16,8 @@ import sqlite3
 
 import pytest
 
-from src import db
-from src.adapters.kernel_store import SqliteKernelStore
+from community import db
+from community.adapters.kernel_store import SqliteKernelStore
 from glimi.store import KernelStore
 
 

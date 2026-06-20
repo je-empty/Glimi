@@ -244,10 +244,10 @@ REM === Legacy TUI mode ===
 if "%~1"=="tui" (
     if "%~2"=="" (
         echo   Legacy TUI wizard ^(moved to web platform^)
-        python -m src.tui.wizard
+        python -m community.tui.wizard
     ) else (
         echo   TUI dashboard: %~2
-        python -m src.tui.dashboard "%~2"
+        python -m community.tui.dashboard "%~2"
     )
     exit /b
 )
@@ -278,12 +278,12 @@ if "%~1"=="--legacy" (
         if exist "!PAUSE_FILE!" goto pause_wait
     )
     echo [legacy] Bot starting
-    python -m src.discord_bot
+    python -m community.discord_bot
     set "EXIT_CODE=!errorlevel!"
 
     if !EXIT_CODE! equ 42 (
         echo [legacy] Running dev agent ^(exit 42^)
-        python -m src.tools.dev_runner
+        python -m community.tools.dev_runner
         echo [legacy] Bot restarting
         timeout /t 2 /nobreak >nul
         goto legacy_loop
@@ -360,7 +360,7 @@ if "%_FIRST_RUN%"=="1" if not defined GLIMI_NO_BROWSER (
 
 REM Account bootstrap no longer here - first run = web wizard (/setup);
 REM headless = platform lifespan via GLIMI_ADMIN_PASSWORD.
-python -m src.platform --host %HOST% --port %PORT%
+python -m community.platform --host %HOST% --port %PORT%
 exit /b %errorlevel%
 
 REM === Glimi Workspace mode body (reached via goto ws_mode) ===

@@ -26,4 +26,4 @@ else
     [ -z "$DESC" ] && echo "취소" && exit 0
 fi
 
-python -m src.tools.dev_runner "$DESC"
+python -m community.tools.dev_runner "$DESC"

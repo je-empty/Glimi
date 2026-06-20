@@ -21,8 +21,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.core import memory as mem  # noqa: E402
-from src import db  # noqa: E402
+from community.core import memory as mem  # noqa: E402
+from community import db  # noqa: E402
 
 
 def main():
@@ -76,7 +76,7 @@ def main():
             pred_updates.append((fid, pred, canon))
         # 5. 자기 자신 profile 중복
         try:
-            from src.core.profile import load_profile
+            from community.core.profile import load_profile
             prof = load_profile(agent_id)
             if prof and prof.get("name") == norm_subj:
                 if mem._profile_has_value(agent_id, canon, obj):
