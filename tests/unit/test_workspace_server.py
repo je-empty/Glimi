@@ -283,8 +283,7 @@ def test_home_invite_sets_cookie_for_create(client, monkeypatch):
 
 def test_admin_panel_login_and_token_crud(client, monkeypatch, tmp_path):
     import invites  # the app's flat-dir module (server imports it as _invites)
-    monkeypatch.setattr(invites, "_ADMIN_PW", "pw123")
-    monkeypatch.setattr(invites, "_SECRET", "test-secret")
+    monkeypatch.setattr(invites, "_ADMIN_PW", "pw123")  # session secret derives from it (live _secret())
     monkeypatch.setattr(invites, "_STORE_PATH", str(tmp_path / "tok.json"))
     # not authed → login form
     r = client.get("/admin")
