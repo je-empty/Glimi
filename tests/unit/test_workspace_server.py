@@ -141,7 +141,21 @@ def test_demo_other_endpoints(client):
     assert ch["name"] == "group-team"
     assert "messages" in ch
     tl = client.get("/w/demo/api/tool_timeline").json()
-    assert isinstance(tl, list)
+    assert isinstance(tl["tool_calls"], list)  # envelope must match dashboard.js (reads d.tool_calls)
+
+
+def test_snapshot_injects_workspace_title(client):
+    # The shared dashboard hero reads community_meta.name → it must carry the workspace
+    # title so the Overview/graph heading isn't blank.
+    snap = client.get("/w/demo/api/snapshot").json()
+    assert (snap.get("community_meta") or {}).get("name")   # non-empty
+
+
+def test_presenter_reset_requires_invite(client, monkeypatch):
+    # A read-only guest must NOT be able to wipe the presenter's seeded state.
+    monkeypatch.setattr(server, "_INVITE_TOKENS", {"SECRET"})
+    assert client.post("/w/demo-live/reset").status_code == 403            # no token → blocked
+    assert client.post("/w/demo-live/reset?invite=SECRET").status_code == 200  # invited → ok
 
 
 def test_dashboard_html_injects_api_base(client):

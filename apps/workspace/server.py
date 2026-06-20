@@ -720,6 +720,8 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "language": lang,
         "read_only": (ws.kind == "demo")
                      or (ws.kind == "presenter" and not _invite_ok(request)),
+        # Only an invited presenter (or owner) sees the destructive Reset control.
+        "can_reset": (ws.kind == "presenter") and _invite_ok(request),
         "asset_v": _ASSET_VER,
         "chat_channel": "dm-coordinator",
         "chat_agent": "coordinator",
@@ -1014,7 +1016,14 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     @app.get("/w/{ws_id}/api/snapshot")
     def w_snapshot(ws_id: str) -> JSONResponse:
         ws = _require(ws_id)
-        return JSONResponse(_snapshot_payload(ws.reader()))
+        payload = _snapshot_payload(ws.reader())
+        # The shared dashboard hero reads community_meta.name → inject the workspace
+        # title so the Overview/graph heading isn't blank (enrich_snapshot leaves it none).
+        cm = dict(payload.get("community_meta") or {})
+        cm["name"] = ws.title
+        payload["community_meta"] = cm
+        payload["community_id"] = ws.id
+        return JSONResponse(payload)
 
     @app.get("/w/{ws_id}/api/agent_detail")
     @app.get("/w/{ws_id}/api/agent")  # rich dashboard.js openAgent() uses /api/agent
@@ -1034,7 +1043,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     @app.get("/w/{ws_id}/api/tool_timeline")
     def w_tool_timeline(ws_id: str, limit: int = 50) -> JSONResponse:
         ws = _require(ws_id)
-        return JSONResponse(ws.reader().tool_timeline(limit=limit))
+        # dashboard.js reads d.tool_calls → must match the community envelope, not a bare list.
+        return JSONResponse({"tool_calls": ws.reader().tool_timeline(limit=limit)})
 
     @app.get("/w/{ws_id}/api/usage")
     def w_usage(ws_id: str) -> JSONResponse:
@@ -1043,14 +1053,16 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     # ── presenter: reset to the initial seeded state ────────────────────────
     @app.post("/w/{ws_id}/reset")
-    def w_reset(ws_id: str) -> JSONResponse:
+    def w_reset(ws_id: str, request: Request) -> JSONResponse:
         """Rebuild the Presenter demo back to the seeded mockup state (clears every
-        message the owner sent during a walkthrough). Presenter-only — the public
-        demo and user workspaces can't be reset (the registry guards on kind)."""
+        message the owner sent during a walkthrough). Presenter-only + invite-gated —
+        a read-only guest must NOT be able to wipe the seeded walkthrough state."""
         ws = _require(ws_id)
         if ws.kind != "presenter":
             raise HTTPException(status_code=403,
                                 detail="reset is only available for the presenter demo")
+        if not _invite_ok(request):  # owner / invited presenter only — not read-only guests
+            raise HTTPException(status_code=403, detail="invite required to reset the presenter")
         out = reg.rebuild(ws_id, lambda: _demo.build(backend=_USER_BACKEND))
         if out is None:
             raise HTTPException(status_code=404, detail="presenter demo not found")
