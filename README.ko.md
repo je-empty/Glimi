@@ -1,4 +1,4 @@
-🇺🇸 [English README](README.md) · 🌐 [**프로젝트 인터랙티브 페이지**](https://raw.githack.com/jaebinsim/Glimi/main/index.html) · 📄 [START HERE — 기여자 온보딩](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)
+🇺🇸 [English README](README.md) · 📄 [START HERE — 기여자 온보딩](https://raw.githack.com/jaebinsim/Glimi/main/START_HERE.html)
 
 # Glimi
 

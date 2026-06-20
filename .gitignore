@@ -66,3 +66,12 @@ src/glimi_imagegen/loras/*.safetensors
 
 # Glimi Workspace 앱의 first-run 상태 파일 (개인 name/goal — 로컬에만)
 apps/workspace/.workspace_state.json
+
+# AI 이미지 생성 드래프트 (브랜드 에셋 Glimi-*.svg/png 만 트래킹, 나머지는 로컬)
+resources/logo/
+resources/Gemini_Generated_Image_*
+resources/ChatGPT Image *
+
+# 개인 보관용 (소개서/제안서/포폴 랜딩 — git 아님)
+proposals/
+/index.html
