@@ -152,9 +152,9 @@
     return esc(s).replace(/"/g, '&quot;');
   }
 
-  // Resolve a #channel mention (raw text after the #) to a loaded channel —
-  // by real channel key, ``dm-<name>``, or display name — so #mgr-creator / #아린
-  // / #윤하나 all land on the right DM. Returns null if no match (stays inert).
+  // Channel-mention system (works for Discord <#id> too): a #name in a message is
+  // clickable and switches to that channel — resolved by real key, dm-<name>, or
+  // the agent's display name, so #아린 / #dm-아린 / #서유나 all land on the right DM.
   function resolveChannelMention(raw) {
     var name = (raw || '').replace(/^#/, '');
     if (!name) return null;
@@ -167,8 +167,6 @@
     }
     return null;
   }
-  // Delegated: clicking a #channel mention in any message switches to it
-  // (Discord-style hyperlink, web-native — no <#id> needed).
   document.addEventListener('click', function (e) {
     var span = e.target && e.target.closest && e.target.closest('span.ch');
     if (!span) return;
@@ -828,6 +826,8 @@
         '<img src="' + escAttr(avatarUrl(c.agent_id)) + '" alt="" ' +
         'onerror="this.replaceWith(document.createTextNode(\'' + esc(initialOf(c.name)) + '\'))">' +
         '<span class="pres online"></span></span>';
+    } else if (c.kind === 'internal') {
+      html += '<i class="ti ti-arrows-left-right hash" aria-hidden="true"></i>';
     } else {
       html += '<i class="ti ti-hash hash" aria-hidden="true"></i>';
     }
@@ -865,6 +865,9 @@
     var staff = channels.filter(function (c) { return c.kind === 'dm' && isStaff(c) && match(c); });
     var friends = channels.filter(function (c) { return c.kind === 'dm' && !isStaff(c) && match(c); });
     var grps = channels.filter(function (c) { return c.kind === 'group' && match(c); });
+    // agent-to-agent backchannels — the owner WATCHES (read-only). Core of Glimi:
+    // friends talking to each other behind the scenes.
+    var internal = channels.filter(function (c) { return c.kind === 'internal' && match(c); });
 
     var FRIENDS_LABEL = WS_BASE ? (EN ? 'Team' : '팀') : (EN ? 'Friends' : '친구');
     $channelList.innerHTML = '';
@@ -879,6 +882,10 @@
     if (grps.length) {
       $channelList.appendChild(groupLabel(EN ? 'Groups' : '그룹', grps.length));
       grps.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
+    }
+    if (internal.length) {
+      $channelList.appendChild(groupLabel(EN ? 'Behind the scenes' : '에이전트끼리', internal.length));
+      internal.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
 
     // Sidebar sub-header: friend/member count = personas (managers excluded).
@@ -919,16 +926,23 @@
     if (c) {
       setChannelLabel(c.name || c.channel);
       if ($headIcon) {
-        $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash' : 'ti ti-hash hash');
+        $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash'
+          : c.kind === 'internal' ? 'ti ti-arrows-left-right hash' : 'ti ti-hash hash');
       }
       if ($input) {
         var nm = c.name || c.channel;
-        $input.setAttribute('data-ph', EN ? ('Message ' + nm + '…') : (nm + '에게 메시지…'));
-        $input.setAttribute('aria-label', EN ? ('Message ' + nm) : (nm + '에게 메시지'));
+        if (c.postable === false) {
+          $input.setAttribute('data-ph', EN ? "Read-only — you're watching" : '관전 전용 — 에이전트끼리 대화');
+          $input.setAttribute('aria-label', EN ? 'Read-only channel' : '관전 전용 채널');
+        } else {
+          $input.setAttribute('data-ph', EN ? ('Message ' + nm + '…') : (nm + '에게 메시지…'));
+          $input.setAttribute('aria-label', EN ? ('Message ' + nm) : (nm + '에게 메시지'));
+        }
       }
     } else {
       setChannelLabel('# ' + CHANNEL);
     }
+    applyChannelComposerState();
   }
 
   function selectChannel(c) {
@@ -1105,8 +1119,34 @@
   }
   function clearField() { $input.innerHTML = ''; syncComposer(); }
 
+  function currentChannelObj() {
+    for (var i = 0; i < channels.length; i++) {
+      if (channels[i].channel === CHANNEL) return channels[i];
+    }
+    return null;
+  }
+  function chanReadonly() {
+    var c = currentChannelObj();
+    return !!(c && c.postable === false);
+  }
+  // Per-channel composer lock — internal (agent-to-agent) channels are watch-only
+  // even in a non-demo community. Distinct from the demo-wide READONLY.
+  function applyChannelComposerState() {
+    if (READONLY) return;  // demo-wide lock already applied
+    var ro = chanReadonly();
+    if ($input) {
+      $input.setAttribute('contenteditable', ro ? 'false' : 'true');
+      if (ro) $input.setAttribute('aria-disabled', 'true');
+      else $input.removeAttribute('aria-disabled');
+    }
+    var composer = $cbox ? $cbox.closest('.composer') : null;
+    if (composer) composer.classList.toggle('readonly', ro);
+    if ($cbox) $cbox.classList.toggle('readonly', ro);
+    syncSendDisabled();
+  }
+
   function syncSendDisabled() {
-    if (READONLY) { if ($send) $send.disabled = true; return; }
+    if (READONLY || chanReadonly()) { if ($send) $send.disabled = true; return; }
     var open = ws && ws.readyState === WebSocket.OPEN;
     var has = fieldText().trim().length > 0;
     if ($send) $send.disabled = !(open && has);

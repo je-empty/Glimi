@@ -563,6 +563,13 @@ body {
 .acts-pop b.fav:hover { color: var(--chat-accent); }
 .acts-pop .sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
 
+/* Touch devices synthesize :hover on tap/scroll, so the hover action-pop flashes
+   up while you're just scrolling messages — jarring on mobile. Disable the
+   hover-reveal on coarse pointers (it stays reachable via :focus-within). */
+@media (hover: none) {
+  .msg:hover .acts-pop { opacity: 0; transform: translateY(3px); pointer-events: none; }
+}
+
 /* ── in-stream typing (reply landing spot) ── */
 .typing {
   display: grid; grid-template-columns: 40px 1fr;

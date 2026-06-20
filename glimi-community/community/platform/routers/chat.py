@@ -316,7 +316,7 @@ def _list_postable_channels(community_id: str) -> list[dict]:
                 "channel": name, "kind": "dm", "agent_id": agent_id,
                 "agent_type": a.get("type", ""),
                 "name": a.get("name") or agent_id or name,
-                "type": a.get("type", ""),
+                "type": a.get("type", ""), "postable": True,
                 "avatar_url": (f"/api/avatar?community={community_id}&id={agent_id}"
                                if agent_id else None),
                 "last": _last(name),
@@ -326,12 +326,30 @@ def _list_postable_channels(community_id: str) -> list[dict]:
             return {
                 "channel": name, "kind": "group", "agent_id": None,
                 "agent_type": "group", "name": name, "type": "group",
-                "avatar_url": None, "last": _last(name),
+                "postable": True, "avatar_url": None, "last": _last(name),
             }
 
-        def _hidden(name: str) -> bool:
-            return (channel_kind(name) in ("internal-dm", "internal-group")
-                    or is_system_channel(name))
+        def _internal_entry(name: str, parts: list):
+            # agent-to-agent backchannel — the owner WATCHES (read-only). The whole
+            # point of Glimi Community: friends talking to each other.
+            names = [agents.get(p, {}).get("name") or p for p in (parts or [])]
+            sep = " ↔ " if channel_kind(name) == "internal-dm" else ", "
+            return {
+                "channel": name, "kind": "internal", "agent_id": None,
+                "agent_type": "internal", "name": (sep.join(names) or name),
+                "type": "internal", "postable": False, "members": parts or [],
+                "avatar_url": (f"/api/avatar?community={community_id}&id={parts[0]}"
+                               if parts else None),
+                "last": _last(name),
+            }
+
+        def _resolve(name: str, parts: list):
+            k = channel_kind(name)
+            if k in ("internal-dm", "internal-group"):
+                return _internal_entry(name, parts)
+            if k == "group" or len(parts) >= 2:
+                return _group_entry(name)
+            return _dm_entry(name, parts[0] if parts else None)
 
         out: list[dict] = []
         seen: set[str] = set()
@@ -343,48 +361,41 @@ def _list_postable_channels(community_id: str) -> list[dict]:
             registered = []
         for ch in registered:
             name = ch.get("name") or ""
-            if not name or name in seen or _hidden(name):
+            if not name or name in seen or is_system_channel(name):
                 continue
             seen.add(name)
-            parts = ch.get("participants") or []
-            if channel_kind(name) == "group" or len(parts) >= 2:
-                out.append(_group_entry(name))
-            else:
-                out.append(_dm_entry(name, parts[0] if parts else None))
+            out.append(_resolve(name, ch.get("participants") or []))
 
         # 2) Any channel that already has messages but isn't registered — robustness
-        #    ("show messages regardless of transport"). The DM partner is the most
-        #    frequent agent speaker in that channel.
+        #    ("show messages regardless of transport"). Agent participants are the
+        #    distinct agent speakers seen in that channel.
         try:
             conn = db.get_conn()
-            top_rows = conn.execute(
+            spk_rows = conn.execute(
                 "SELECT channel, speaker, COUNT(*) n FROM conversations "
-                "WHERE speaker LIKE 'agent-%' GROUP BY channel, speaker"
+                "WHERE speaker LIKE 'agent-%' GROUP BY channel, speaker "
+                "ORDER BY n DESC"
             ).fetchall()
             all_chans = conn.execute(
                 "SELECT DISTINCT channel FROM conversations"
             ).fetchall()
             conn.close()
         except Exception:
-            top_rows, all_chans = [], []
-        top_agent: dict[str, tuple] = {}
-        for r in top_rows:
-            ch_, sp, n = r["channel"], r["speaker"], r["n"]
-            if ch_ not in top_agent or n > top_agent[ch_][1]:
-                top_agent[ch_] = (sp, n)
+            spk_rows, all_chans = [], []
+        speakers_by_ch: dict[str, list] = {}
+        for r in spk_rows:
+            speakers_by_ch.setdefault(r["channel"], []).append(r["speaker"])
         for r in all_chans:
             name = r["channel"]
-            if not name or name in seen or _hidden(name):
+            if not name or name in seen or is_system_channel(name):
                 continue
             seen.add(name)
-            if channel_kind(name) == "group":
-                out.append(_group_entry(name))
-            else:
-                out.append(_dm_entry(name, top_agent.get(name, (None,))[0]))
+            out.append(_resolve(name, speakers_by_ch.get(name, [])))
 
+        kind_rank = {"dm": 0, "group": 1, "internal": 2}
         type_rank = {"mgr": 0, "creator": 1, "dev": 2, "persona": 3}
         out.sort(key=lambda c: (
-            0 if c["kind"] == "dm" else 1,
+            kind_rank.get(c["kind"], 3),
             type_rank.get(c.get("agent_type", ""), 5),
             c.get("name", ""),
         ))

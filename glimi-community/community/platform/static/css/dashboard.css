@@ -98,7 +98,9 @@
     display: grid;
     grid-template-columns: 204px 1fr;
     grid-template-rows: auto 1fr;
-    height: 100vh;
+    /* dvh (dynamic viewport) — on mobile 100vh includes the area behind the URL
+       bar, pushing the chat composer below the fold; dvh tracks the visible area. */
+    height: 100dvh;
   }
 
   header.status {
