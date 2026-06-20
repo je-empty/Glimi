@@ -869,11 +869,13 @@ function openModal(emoji, title, body, agent=null) {
   // 에이전트 모달이면 상단에 전체 페이지 링크 표시 (닫기 옆). 그 외 (채널 등) 는 숨김.
   const detailLink = document.getElementById('d-detail-link');
   if (detailLink) {
-    // The full agent PAGE (/agent/{id}) only exists in the Community app. Workspace
-    // / standalone (no COMMUNITY) have no such route → the modal IS the detail view,
-    // so hide the link there (clicking it 404'd before).
-    if (agent && agent.id && COMMUNITY) {
-      detailLink.href = `/agent/${encodeURIComponent(agent.id)}?community=${encodeURIComponent(COMMUNITY)}`;
+    // Full agent PAGE: Community = /agent/{id}?community=, Workspace = {API_BASE}/agent/{id}.
+    // Standalone kernel demo (neither COMMUNITY nor API_BASE) has no such route → hide
+    // the link (the modal IS the detail view there).
+    if (agent && agent.id && (COMMUNITY || API_BASE)) {
+      detailLink.href = COMMUNITY
+        ? `/agent/${encodeURIComponent(agent.id)}?community=${encodeURIComponent(COMMUNITY)}`
+        : `${API_BASE}/agent/${encodeURIComponent(agent.id)}`;
       detailLink.style.display = '';
     } else {
       detailLink.style.display = 'none';

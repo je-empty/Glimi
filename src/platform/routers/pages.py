@@ -188,6 +188,11 @@ async def agent_detail_page(
             "community_id": community,
             "community_name": target.get("name") or community,
             "language": _lang,
+            # Canonical template params (shared with Workspace). Community uses absolute
+            # /api/* + ?community= → api_base="" ; interactive (model switch) on.
+            "api_base": "",
+            "back_url": f"/community/{community}",
+            "interactive": True,
         },
     )
 

@@ -222,6 +222,17 @@ def test_presenter_ws_accepts_owner_turn(client):
 
 # ── invite gating (presenter chat + workspace creation) ─────────────────────
 
+def test_agent_detail_page(client):
+    # The workspace now has the full per-agent detail page (canonical agent_detail.html,
+    # api_base-retargeted to /w/{id}, read-only → no model switch).
+    r = client.get("/w/demo/agent/coordinator")
+    assert r.status_code == 200
+    body = r.text
+    assert '__GLIMI_API_BASE__ = "/w/demo"' in body      # retargeted to the workspace API
+    assert "__GLIMI_INTERACTIVE__ = false" in body        # read-only (model switch hidden)
+    assert '__GLIMI_BACK__ = "/w/demo"' in body           # back-link to the dashboard
+
+
 def test_invite_gate_off_by_default(client):
     # Truly unconfigured (no tokens AND no owner email) = local/dev → gate open.
     assert re.search(r"__GLIMI_READONLY__\s*=\s*false", client.get("/w/demo-live").text)

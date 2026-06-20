@@ -280,7 +280,7 @@
       <div class="hd-name" id="agent-name">{% if language == 'en' %}Loading agent…{% else %}에이전트 로드 중…{% endif %}</div>
       <div class="hd-sub" id="agent-sub">{{ community_name }} · <span id="agent-type">—</span></div>
     </div>
-    <a class="hd-back" href="/community/{{ community_id }}">{% if language == 'en' %}← Dashboard{% else %}← 대시보드{% endif %}</a>
+    <a class="hd-back" href="{{ back_url }}">{% if language == 'en' %}← Dashboard{% else %}← 대시보드{% endif %}</a>
   </header>
 
   <aside class="side-nav">
@@ -302,11 +302,16 @@
   window.__GLIMI_COMMUNITY__ = {{ community_id|tojson }};
   window.__GLIMI_AGENT_ID__ = {{ agent_id|tojson }};
   window.__GLIMI_LANG__ = {{ language|tojson }};
+  window.__GLIMI_API_BASE__ = {{ api_base|tojson }};        // "" for Community (uses ?community=); "/w/{id}" for Workspace
+  window.__GLIMI_BACK__ = {{ back_url|tojson }};             // dashboard URL to return to
+  window.__GLIMI_INTERACTIVE__ = {{ interactive|tojson }};  // false → read-only (no model switch)
 </script>
 <script>
 (function() {
   const CID = window.__GLIMI_COMMUNITY__;
   const AID = window.__GLIMI_AGENT_ID__;
+  const API_BASE = window.__GLIMI_API_BASE__ || '';           // prepend for Workspace (/w/{id}); "" for Community
+  const INTERACTIVE = window.__GLIMI_INTERACTIVE__ !== false;  // gate write-actions (model switch)
 
   // ── i18n — 커뮤니티 언어(ko/en) 에 따라 라벨 전환 ────────────────
   const LANG = (window.__GLIMI_LANG__ === 'en') ? 'en' : 'ko';
@@ -397,7 +402,8 @@
     return String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
   }
   function q(u) {
-    return CID ? `${u}${u.includes('?') ? '&' : '?'}community=${encodeURIComponent(CID)}` : u;
+    const v = API_BASE + u;  // Workspace prefixes /w/{id}; Community leaves "" and adds ?community=
+    return CID ? `${v}${v.includes('?') ? '&' : '?'}community=${encodeURIComponent(CID)}` : v;
   }
   async function j(u) {
     try {
@@ -442,7 +448,7 @@
     return 'persona';
   }
   function avatarSrc(id) {
-    return `/api/avatar?id=${encodeURIComponent(id)}${CID ? '&community=' + encodeURIComponent(CID) : ''}`;
+    return `${API_BASE}/api/avatar?id=${encodeURIComponent(id)}${CID ? '&community=' + encodeURIComponent(CID) : ''}`;
   }
   function miniAvatarHtml(speakerId, isUser, speakerName) {
     if (isUser) {
@@ -496,8 +502,8 @@
       const icon = _modelKindIcon(p);
       return `<span class="${classes}" title="${esc(title)}">${icon ? icon + ' ' : ''}${esc(p)}</span>`;
     }).join('');
-    // synthetic(유나 합성 카드·test-user)은 전환 불가 — 클릭 비활성
-    if (d.synthetic) return chips;
+    // synthetic(합성 카드·test-user) 또는 read-only(workspace) 는 모델 전환 불가 — 클릭 비활성
+    if (d.synthetic || !INTERACTIVE) return chips;
     return `<span onclick="openAgentModelSwitch(${JSON.stringify(d.model).replace(/"/g,'&quot;')})"
       style="cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="${T.clickToChangeModel}">
       ${chips}<i class="ti ti-pencil" style="font-size:12px;color:var(--text-faint)"></i></span>`;

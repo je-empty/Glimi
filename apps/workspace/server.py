@@ -786,6 +786,31 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         ws = _require(ws_id)
         return _render_core(request, ws, active_tab="chat")
 
+    @app.get("/w/{ws_id}/agent/{agent_id}", response_class=HTMLResponse)
+    def agent_detail(ws_id: str, agent_id: str, request: Request) -> HTMLResponse:
+        """Full per-agent detail page (status / profile / relationships / memory /
+        reasoning / recent chat) — the canonical ``agent_detail.html`` shared with
+        Community, retargeted via api_base=/w/{id} and read-only (no model switch)."""
+        ws = _require(ws_id)
+        lang = (request.query_params.get("lang") or "ko").lower()
+        if lang not in ("ko", "en"):
+            lang = "ko"
+        ctx = {
+            "request": request,
+            "user": None,
+            "agent_id": agent_id,
+            "community_id": None,            # workspace routes via api_base, not ?community=
+            "community_name": ws.title,
+            "language": lang,
+            "api_base": f"/w/{ws.id}",
+            "back_url": f"/w/{ws.id}",
+            "interactive": False,            # read-only: model switch hidden
+            "asset_v": _ASSET_VER,
+        }
+        resp = _TEMPLATES.TemplateResponse(request, "agent_detail.html", ctx)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
     @app.get("/w/{ws_id}/api/i18n")
     def w_i18n(ws_id: str, lang: str = "ko") -> JSONResponse:
         """Dashboard chrome translations for the KO/EN picker (shared dicts)."""
