@@ -291,6 +291,68 @@ def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# ── user-workspace persistence (metadata; re-created deterministically at boot) ──
+
+def _ws_store_path() -> str:
+    """JSON file persisting user-created workspaces. Empty env → no persistence
+    (in-memory only, as before). Read live so deploys/tests can point it anywhere."""
+    return (os.environ.get("GLIMI_WORKSPACES_STORE") or "").strip()
+
+
+def _load_ws_meta() -> list:
+    p = _ws_store_path()
+    if not p:
+        return []
+    try:
+        with open(p, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_ws_meta(items: list) -> None:
+    p = _ws_store_path()
+    if not p:
+        return
+    try:
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(items, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, p)
+    except OSError:
+        pass
+
+
+def _persist_ws_meta(ws_id: str, owner_name: str, goal: str, created_at: str) -> None:
+    items = [it for it in _load_ws_meta() if it.get("id") != ws_id]  # replace by id
+    items.append({"id": ws_id, "owner_name": owner_name, "goal": goal, "created_at": created_at})
+    _save_ws_meta(items)
+
+
+def _restore_user_workspaces(reg: "WorkspaceRegistry") -> None:
+    """Rebuild persisted user workspaces at startup. The default echo backend is
+    deterministic, so re-running ``create`` reproduces each workspace exactly (same
+    id + timestamp). On a REAL backend, re-running would cost calls and drift, so
+    persisted entries are skipped (a store snapshot would be the follow-up)."""
+    meta = _load_ws_meta()
+    if not meta:
+        return
+    if _USER_BACKEND != "echo":
+        print(f"[workspace] {len(meta)} persisted workspace(s) skipped (backend={_USER_BACKEND!r}; "
+              "deterministic re-create needs echo — store-snapshot persistence is a follow-up)")
+        return
+    n = 0
+    for it in sorted(meta, key=lambda x: x.get("created_at", "")):
+        try:
+            reg.create(it.get("owner_name", "Owner"), it.get("goal", ""),
+                       ws_id=it.get("id"), created_at=it.get("created_at"), persist=False)
+            n += 1
+        except Exception as e:  # noqa: BLE001 — one bad entry must not break startup
+            print(f"[workspace] restore skipped {it.get('id')}: {e}")
+    print(f"[workspace] restored {n} user workspace(s) from {_ws_store_path()}")
+
+
 # ── registry ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -355,7 +417,8 @@ class WorkspaceRegistry:
         self._seq += 1
         return f"ws{self._seq}"
 
-    def create(self, name: str, goal: str) -> Workspace:
+    def create(self, name: str, goal: str, *, ws_id: Optional[str] = None,
+               created_at: Optional[str] = None, persist: bool = True) -> Workspace:
         """Build a real-topology workspace under the build lock, on the configured
         backend (``_USER_BACKEND`` — echo by default; a real model when the operator
         sets ``GLIMI_LLM_BACKEND``).
@@ -365,6 +428,10 @@ class WorkspaceRegistry:
         this workspace's store, so only one build may be in flight at a time. On the
         echo backend each build is instant + deterministic; on a real backend the
         create runs the team on the goal (the workspace's first deliverable).
+
+        ``ws_id`` / ``created_at`` / ``persist=False`` are used by restore-on-startup
+        to rebuild a persisted workspace with its original id + timestamp (and not
+        re-persist it).
         """
         owner_name = (name or "Owner").strip() or "Owner"
         goal = (goal or "").strip() or "Plan the public launch of our open-source project"
@@ -374,9 +441,15 @@ class WorkspaceRegistry:
                 g.add_agent(aid, name=disp, persona=persona, agent_type=atype)
             # Real interaction topology (echo) → a genuine interaction web for goal.
             run_workspace(g, owner_name, goal)
-            ws_id = self._next_user_id()
-            ws = Workspace(id=ws_id, glimi=g, title=goal, goal=goal, kind="user")
+            if ws_id is None:
+                ws_id = self._next_user_id()
+            elif ws_id.startswith("ws") and ws_id[2:].isdigit():
+                self._seq = max(self._seq, int(ws_id[2:]))  # keep new ids ahead of restored ones
+            ws = Workspace(id=ws_id, glimi=g, title=goal, goal=goal, kind="user",
+                           created_at=created_at or _now_utc_iso())
             self.register(ws)
+        if persist:
+            _persist_ws_meta(ws_id, owner_name, goal, ws.created_at)
         return ws
 
     def run_in_ws(self, ws: "Workspace", fn):
@@ -691,6 +764,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     if with_demo:
         _install_demo(reg, interval=demo_interval)
         _install_presenter(reg)
+    _restore_user_workspaces(reg)  # bring back user-created workspaces across restarts
 
     def _require(ws_id: str) -> Workspace:
         ws = reg.get(ws_id)

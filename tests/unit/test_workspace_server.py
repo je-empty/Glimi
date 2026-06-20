@@ -222,6 +222,35 @@ def test_presenter_ws_accepts_owner_turn(client):
 
 # ── invite gating (presenter chat + workspace creation) ─────────────────────
 
+def test_created_workspace_persists_across_restart(monkeypatch, tmp_path):
+    # User-created workspaces survive a restart: metadata persisted + deterministically
+    # re-created on the echo backend.
+    monkeypatch.setenv("GLIMI_WORKSPACES_STORE", str(tmp_path / "ws.json"))
+    monkeypatch.setattr(server, "_USER_BACKEND", "echo")
+    reg1 = server.WorkspaceRegistry()
+    ws = reg1.create("수민", "오픈소스 런칭 기획")
+    assert ws.id in [c["id"] for c in reg1.cards()]
+    # simulate restart: a fresh registry restores from the persisted metadata
+    reg2 = server.WorkspaceRegistry()
+    server._restore_user_workspaces(reg2)
+    cards = reg2.cards()
+    restored = next((c for c in cards if c["id"] == ws.id), None)
+    assert restored is not None                       # came back after "restart"
+    assert restored["goal"] == "오픈소스 런칭 기획"
+    assert restored["created_at"] == ws.created_at     # original timestamp preserved
+
+
+def test_created_workspace_not_persisted_without_store(monkeypatch):
+    # No store configured → in-memory only (unchanged default behavior).
+    monkeypatch.delenv("GLIMI_WORKSPACES_STORE", raising=False)
+    monkeypatch.setattr(server, "_USER_BACKEND", "echo")
+    reg = server.WorkspaceRegistry()
+    reg.create("X", "Y")
+    reg2 = server.WorkspaceRegistry()
+    server._restore_user_workspaces(reg2)
+    assert [c for c in reg2.cards() if c["kind"] == "user"] == []
+
+
 def test_agent_detail_page(client):
     # The workspace now has the full per-agent detail page (canonical agent_detail.html,
     # api_base-retargeted to /w/{id}, read-only → no model switch).
