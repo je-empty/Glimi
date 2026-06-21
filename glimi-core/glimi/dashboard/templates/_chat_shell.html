@@ -125,4 +125,22 @@
       <div class="tp-foot" id="chat-thread-foot"></div>
     </aside>
   </section>
+
+  {# Full-body profile / image lightbox. Ships WITH the chat shell so it works on
+     every surface (embedded dashboard tab, standalone /chat, future workspace
+     chat) without depending on dashboard.js / _core.html. chat.js owns the
+     open/close + Esc + backdrop-close wiring; the dashboard's own #lightbox in
+     _core.html is a separate instance for dashboard-tab images. #}
+  <div class="lightbox chat-lightbox" id="chat-lightbox" aria-hidden="true">
+    <div class="lb-panel" role="dialog" aria-modal="true" aria-label="{{ 'Image' if EN else '이미지' }}">
+      <div class="lb-bar">
+        <span class="lb-title" id="chat-lightbox-caption"></span>
+        <button type="button" class="lb-close" id="chat-lightbox-close"
+                aria-label="{{ 'Close' if EN else '닫기' }}"><i class="ti ti-x" aria-hidden="true"></i></button>
+      </div>
+      <div class="lb-stage">
+        <img id="chat-lightbox-img" src="" alt="">
+      </div>
+    </div>
+  </div>
 </div>

@@ -97,6 +97,11 @@
   var $threadSub = document.getElementById('chat-thread-sub');
   var $threadBody = document.getElementById('chat-thread-body');
   var $threadFoot = document.getElementById('chat-thread-foot');
+  // lightbox (ships in _chat_shell.html → present on every chat surface)
+  var $lightbox = document.getElementById('chat-lightbox');
+  var $lightboxImg = document.getElementById('chat-lightbox-img');
+  var $lightboxCap = document.getElementById('chat-lightbox-caption');
+  var $lightboxClose = document.getElementById('chat-lightbox-close');
 
   var ws = null;
   var channels = [];
@@ -198,6 +203,52 @@
       : '/api/avatar?id=' + encodeURIComponent(agentId) +
         (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '') + ver;
   }
+  // Full-body portrait URL (variant=full) — same routing as avatarUrl() but asks
+  // the avatar endpoint for the un-cropped full-body image used by the lightbox.
+  function fullAvatarUrl(agentId) {
+    return avatarUrl(agentId) + '&variant=full';
+  }
+
+  // ==== Lightbox (full-body profile / inline image) ====
+  // Self-contained: depends ONLY on the #chat-lightbox markup shipped in
+  // _chat_shell.html, NOT on dashboard.js / _core.html — so the standalone /chat
+  // page (which loads only chat.js) opens the lightbox too.
+  function openLightbox(src, caption) {
+    if (!$lightbox || !$lightboxImg) return;
+    $lightboxImg.src = src;
+    $lightboxImg.alt = caption || '';
+    if ($lightboxCap) $lightboxCap.textContent = caption || '';
+    $lightbox.classList.add('open');
+    $lightbox.setAttribute('aria-hidden', 'false');
+    document.documentElement.classList.add('lb-open');  // lock body scroll
+  }
+  function closeLightbox() {
+    if (!$lightbox) return;
+    $lightbox.classList.remove('open');
+    $lightbox.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('lb-open');
+    if ($lightboxImg) { $lightboxImg.src = ''; }
+  }
+  // Open the FULL-BODY portrait for an agent. The owner has no portrait → no-op
+  // (the message avatar there is a monogram, not an image).
+  function openProfileLightbox(agentId, name) {
+    if (!agentId) return;
+    openLightbox(fullAvatarUrl(agentId), name || '');
+  }
+  if ($lightboxClose) $lightboxClose.addEventListener('click', closeLightbox);
+  if ($lightbox) {
+    // Click the dimmed backdrop (outside the panel) to close.
+    $lightbox.addEventListener('click', function (e) {
+      var panel = e.target.closest && e.target.closest('.lb-panel');
+      if (!panel) closeLightbox();
+    });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && $lightbox && $lightbox.classList.contains('open')) {
+      e.stopPropagation();
+      closeLightbox();
+    }
+  });
 
   function initialOf(name) {
     var s = (name || '').trim();
@@ -268,13 +319,23 @@
   }
 
   // ==== Avatar markup ====
+  // For the MESSAGE-row avatar (cls 'av') a non-owner image is made clickable —
+  // it opens the full-body portrait lightbox (data-* read by the $stream click
+  // delegation). The owner avatar is a monogram (no portrait) → not clickable.
+  // The sidebar rail avatar (cls 'ava') is NOT tagged here: its row already
+  // routes a click to the DM (selectChannel), which is the right action there.
   function avHtml(speakerId, name, isUser, cls) {
     cls = cls || 'av';
+    var clickable = (cls === 'av') && !isUser && !!speakerId;
+    var dataAttrs = clickable
+      ? ' data-profile-id="' + escAttr(speakerId) + '" data-profile-name="' + escAttr(name || '') +
+        '" role="button" tabindex="0" title="' + escAttr(EN ? 'View profile' : '프로필 보기') + '"'
+      : '';
     if (isUser) {
       return '<span class="' + cls + '" style="background:' + avBg(OWNER_NAME) + '">' + esc(initialOf(OWNER_NAME)) + '</span>';
     }
     if (speakerId) {
-      return '<span class="' + cls + '" style="background:' + avBg(speakerId) + '">' +
+      return '<span class="' + cls + '"' + dataAttrs + ' style="background:' + avBg(speakerId) + '">' +
         '<img src="' + escAttr(avatarUrl(speakerId)) + '" alt="" ' +
         'onerror="this.replaceWith(document.createTextNode(\'' + esc(initialOf(name)) + '\'))"></span>';
     }
@@ -945,9 +1006,12 @@
   }
 
   // ==== Channel list ====
-  function groupLabel(text, count) {
+  // `section` is a stable key ('groups'|'dms'|'internal') the onboarding tour
+  // anchors on (header text is i18n/app-dependent, so never anchor by text).
+  function groupLabel(text, count, section) {
     var li = document.createElement('li');
     li.className = 'grp-l' + (count === 0 || $channelList.children.length === 0 ? ' first' : '');
+    if (section) li.dataset.section = section;
     li.innerHTML = '<span>' + esc(text) + '</span><span class="count">' + count + '</span>';
     return li;
   }
@@ -1029,15 +1093,15 @@
     var DMS_LABEL = WS_BASE ? (EN ? 'Team' : '팀') : (EN ? 'Direct messages' : '다이렉트 메시지');
     $channelList.innerHTML = '';
     if (grps.length) {
-      $channelList.appendChild(groupLabel(ROOMS_LABEL, grps.length));
+      $channelList.appendChild(groupLabel(ROOMS_LABEL, grps.length, 'groups'));
       grps.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
     if (dms.length) {
-      $channelList.appendChild(groupLabel(DMS_LABEL, dms.length));
+      $channelList.appendChild(groupLabel(DMS_LABEL, dms.length, 'dms'));
       dms.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
     if (internal.length) {
-      $channelList.appendChild(groupLabel(EN ? 'Behind the scenes' : '에이전트끼리', internal.length));
+      $channelList.appendChild(groupLabel(EN ? 'Behind the scenes' : '에이전트끼리', internal.length, 'internal'));
       internal.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
 
@@ -1451,6 +1515,22 @@
     if (threadBtn) { openThreadPanel(threadBtn.getAttribute('data-thread')); return; }
     var jump = e.target.closest && e.target.closest('[data-jump]');
     if (jump) { jumpToMessage(jump.getAttribute('data-jump')); return; }
+    // A message-row avatar opens the speaker's FULL-BODY portrait lightbox
+    // (distinct from the sidebar row, which opens the DM).
+    var prof = e.target.closest && e.target.closest('[data-profile-id]');
+    if (prof) {
+      e.preventDefault(); e.stopPropagation();
+      openProfileLightbox(prof.getAttribute('data-profile-id'), prof.getAttribute('data-profile-name'));
+      return;
+    }
+    // An inline content image opens in the lightbox at its own src (real image,
+    // not an avatar → no variant=full upgrade).
+    var cimg = e.target.closest && e.target.closest('img.chat-img');
+    if (cimg) {
+      e.preventDefault(); e.stopPropagation();
+      openLightbox(cimg.getAttribute('src'), cimg.getAttribute('alt') || '');
+      return;
+    }
     // Touch: a bare tap on a message row (not a link/button/image/pill) toggles
     // its action-pop so react/reply/thread are reachable without a hover.
     if (COARSE) {
@@ -1471,6 +1551,12 @@
   }
   $stream.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
+    var prof = e.target.closest && e.target.closest('[data-profile-id]');
+    if (prof) {
+      e.preventDefault();
+      openProfileLightbox(prof.getAttribute('data-profile-id'), prof.getAttribute('data-profile-name'));
+      return;
+    }
     var b = e.target.closest && e.target.closest('[data-react],[data-reply],[data-thread],.react[data-emoji]');
     if (!b) return;
     e.preventDefault();

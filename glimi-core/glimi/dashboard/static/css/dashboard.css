@@ -930,22 +930,12 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     transition: color 0.15s;
   }
-  .rc-line {
-    display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 4px 2px;
-    min-width: 0;
-  }
-  .rc-line .msg-avatar { width: 20px; height: 20px; flex-shrink: 0; align-self: center; }
-  .rc-line .msg-avatar.user { font-size: 9px; }
-  .rc-who { font-weight: 600; color: var(--text); flex-shrink: 0; }
-  .rc-line.user .rc-who { color: var(--user); }
-  .rc-line.mgr .rc-who { color: var(--mgr); }
-  .rc-line.creator .rc-who { color: var(--creator); }
-  .rc-line.persona .rc-who { color: var(--persona); }
-  .rc-text {
-    color: var(--text-dim); flex: 1; min-width: 0;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .rc-ts { color: var(--text-faint); font-size: 10.5px; margin-left: auto; flex-shrink: 0; }
+  /* Overview rows reuse the canonical .msg component inside a .msg-list. The
+     group header already carries the divider, so drop the ledger's own top
+     hairline and the last row's bottom hairline for a clean grouped card. */
+  .rc-group .msg-list { border-top: 0; }
+  .rc-group .msg-list .msg { font-size: 12px; padding: 7px 2px; }
+  .rc-group .msg-list .msg:last-child { border-bottom: 0; }
 
   /* ==== Messages — 헤어라인 레저 행 (je-empty ledger) ==== */
   .msg-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }
@@ -983,26 +973,32 @@
   .msg .ch:hover { color: var(--accent); }
   .msg .ts { color: var(--text-faint); font-size: 10.5px; margin-left: auto; }
   .msg .text { color: var(--text); word-break: break-word; white-space: pre-wrap; }
-  .msg-del-btn {
-    position: absolute; top: 8px; right: 8px;
-    background: transparent; border: 1px solid transparent; color: var(--text-faint);
-    width: 24px; height: 24px; border-radius: 6px; font-size: 12px; cursor: pointer;
-    opacity: 0; transition: opacity 0.15s, border-color 0.15s, color 0.15s;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .msg:hover .msg-del-btn { opacity: 1; }
-  .msg-del-btn:hover { color: var(--err); border-color: var(--err); }
 
   /* ==== Lightbox (full avatar) ==== */
+  /* je-empty paradigm: dimmed backdrop + soft fade, image fits to viewport with
+     object-fit:contain (never cropped). Token-driven (no hardcoded hex). */
   .lightbox {
     display: none; position: fixed !important; inset: 0 !important;
-    background: rgba(0,0,0,0.85);
-    backdrop-filter: blur(10px); z-index: 2147483640 !important;
-    align-items: center; justify-content: center; padding: 40px; cursor: zoom-out;
+    background: rgba(8, 10, 14, 0.74);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    z-index: 2147483640 !important;
+    align-items: center; justify-content: center; padding: 3vh 3vw; cursor: zoom-out;
   }
-  .lightbox.open { display: flex; }
-  .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
-  .lightbox .lb-caption { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 0.3px; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+  .lightbox.open { display: flex; animation: lightboxIn 0.18s ease; }
+  .lightbox img {
+    max-width: 90vw; max-height: 90vh; width: auto; height: auto;
+    object-fit: contain;
+    border-radius: var(--r-lg); border: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .lightbox .lb-caption {
+    position: absolute; bottom: 3vh; left: 50%; transform: translateX(-50%);
+    color: var(--accent-fg); background: rgba(8, 10, 14, 0.6);
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+  }
+  @keyframes lightboxIn { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .lightbox.open { animation: none; } }
 
   /* ==== Events ==== */
   /* 레거시 이벤트 행 — 레저(헤어라인) 문법, 좌측 색 바 금지 */
@@ -1827,3 +1823,100 @@
   white-space: nowrap;
 }
 .tool-row .tc-time { color: var(--text-faint); white-space: nowrap; }
+
+/* ============================================================================
+   Onboarding coachmark tour (community-only). Built by GlimiTour in dashboard.js.
+   Dependency-free spotlight + tooltip. Layers above the community boot/greeting
+   wait overlay (z-index 2147483641) so the offer/tour are reachable during it.
+   ========================================================================== */
+.tour-root {
+  position: fixed; inset: 0; z-index: 2147483646;
+  /* Transparent by default — the spotlight's box-shadow IS the dim (a real cutout
+     around the anchor). When no anchor is measurable the root falls back to a flat
+     scrim via .tour-root.no-spot below. */
+  background: transparent;
+  pointer-events: auto;
+}
+.tour-root.no-spot { background: rgba(10, 12, 18, 0.55); }
+.tour-spot {
+  position: fixed; left: 0; top: 0; width: 0; height: 0;
+  border-radius: var(--r-md);
+  /* Bright accent ring + a 9999px outer shadow that dims the whole viewport
+     EXCEPT the anchor rectangle — the classic coachmark cutout. */
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 9999px rgba(10, 12, 18, 0.55);
+  transition: left 0.22s var(--ease), top 0.22s var(--ease),
+              width 0.22s var(--ease), height 0.22s var(--ease), opacity 0.18s;
+  pointer-events: none;
+}
+.tour-tip {
+  position: fixed; max-width: 320px; min-width: 240px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg); padding: 16px 16px 12px;
+  transition: left 0.22s var(--ease), top 0.22s var(--ease);
+}
+.tour-tip-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.tour-tip-body { font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+.tour-tip-nav { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.tour-tip-spacer { flex: 1; }
+.tour-dots { display: flex; gap: 5px; align-items: center; }
+.tour-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.tour-dot.on { background: var(--accent); }
+.tour-btn {
+  font: inherit; font-size: 12.5px; cursor: pointer;
+  padding: 7px 14px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.tour-btn:hover { color: var(--text); border-color: var(--text-faint); }
+.tour-btn.tour-next, .tour-btn.tour-offer-yes, .tour-btn.tour-greet-jump {
+  background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600;
+}
+.tour-btn.tour-next:hover, .tour-btn.tour-offer-yes:hover, .tour-btn.tour-greet-jump:hover {
+  filter: brightness(1.06);
+}
+.tour-skip { padding-left: 0; padding-right: 0; border: none; color: var(--text-faint); }
+.tour-skip:hover { border: none; color: var(--text-dim); }
+
+/* Offer prompt — shown during the "유나 준비 중" wait, above the boot overlay. */
+.tour-offer {
+  position: fixed; inset: 0; z-index: 2147483645;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(10, 12, 18, 0.4);
+}
+.tour-offer-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg); padding: 24px 26px; max-width: 360px; text-align: center;
+}
+.tour-offer-emoji { font-size: 34px; margin-bottom: 8px; }
+.tour-offer-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+.tour-offer-body { font-size: 13.5px; color: var(--text-dim); line-height: 1.6; }
+.tour-offer-acts { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+
+/* Greeted toast — 유나's first message arrived. */
+.tour-greet-toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  z-index: 2147483645; display: flex; align-items: center; gap: 10px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-pill);
+  box-shadow: var(--shadow-lg); padding: 10px 12px 10px 16px;
+  animation: tour-greet-in 0.3s var(--ease);
+}
+@keyframes tour-greet-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.tour-greet-emoji { font-size: 18px; }
+.tour-greet-text { font-size: 13.5px; font-weight: 600; }
+.tour-greet-jump { padding: 6px 14px; }
+.tour-greet-close {
+  font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+  background: none; border: none; color: var(--text-faint); padding: 0 4px;
+}
+.tour-greet-close:hover { color: var(--text); }
+
+@media (max-width: 720px) {
+  .tour-tip { max-width: calc(100vw - 24px); min-width: 0; }
+  .tour-greet-toast { left: 12px; right: 12px; transform: none; bottom: 16px; }
+  @keyframes tour-greet-in { from { opacity: 0; } to { opacity: 1; } }
+}

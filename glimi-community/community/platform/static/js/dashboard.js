@@ -725,6 +725,12 @@ document.addEventListener('click', (e) => {
   e.stopPropagation();
   openImgLightbox(img.src, img.alt || '');
 });
+// Esc 로 lightbox 닫기 (기존엔 backdrop 클릭만 가능했음).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const box = document.getElementById('lightbox');
+  if (box && box.classList.contains('open')) box.classList.remove('open');
+});
 
 function _fmtMsgTime(iso) {
   // 뷰어 로컬 tz 변환. 오늘 메시지는 HH:MM, 그 외는 "MM-DD HH:MM".
@@ -738,13 +744,22 @@ function _fmtMsgTime(iso) {
   return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function renderMessage(m) {
+// Canonical dashboard message row (avatar + name + #channel + time + text).
+// Shared by the Messages ledger, the channel-detail modal, AND the Overview
+// recent feed (so all three look identical). opts.suppressChannel hides the
+// per-row #channel chip when the rows are already grouped under a channel header
+// (the Overview panel), avoiding a redundant chip on every line.
+function renderMessage(m, opts) {
+  opts = opts || {};
+  const chChip = opts.suppressChannel
+    ? ''
+    : `<span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>`;
   return `<div class="msg ${roleClass(m)}">
     ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
     <div class="msg-body">
       <div class="head">
         <span class="who">${esc(m.speaker)}</span>
-        <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
+        ${chChip}
         <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
       </div>
       <div class="text">${esc(m.message)}</div>
@@ -906,20 +921,19 @@ function renderRecentByChannel(snap) {
   return order.map(chName => {
     const c = chById[chName] || { name: chName, kind: _channelKindOf(chName) };
     const title = channelDisplayName(c, maps);
-    // show the last few lines per channel (compact overview)
-    const lines = byCh[chName].slice(-4).map(m => `
-      <div class="rc-line ${roleClass(m)}">
-        ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
-        <span class="rc-who">${esc(m.speaker)}</span>
-        <span class="rc-text" title="${esc(m.message)}">${esc(m.message)}</span>
-        <span class="rc-ts">${esc(_fmtMsgTime(m.timestamp))}</span>
-      </div>`).join('');
+    // show the last few lines per channel (compact overview), rendered with the
+    // SAME canonical .msg component the Messages tab / channel modal use, wrapped
+    // in .msg-list so the .msg + .msg .msg-avatar protections apply (the avatar
+    // gets the square clip + object-fit:cover for free — no overflow). The
+    // per-row #channel chip is suppressed since the group header already names it.
+    const lines = byCh[chName].slice(-4)
+      .map(m => renderMessage(m, { suppressChannel: true })).join('');
     return `<div class="rc-group">
       <div class="rc-head" onclick="jumpToChat('${esc(chName)}')" title="${esc(chName)}">
         <span class="rc-ch-name">${esc(title)}</span>
         ${_kindBadge(c.kind || _channelKindOf(chName))}
       </div>
-      ${lines}
+      <div class="msg-list">${lines}</div>
     </div>`;
   }).join('');
 }
@@ -1602,7 +1616,6 @@ async function openChannel(name) {
     ${actions}
     <div class="detail-section">
       <h4>All Messages · ${d.message_count}</h4>
-      <div style="color:var(--text-dim);font-size:11px;margin-bottom:8px">각 메시지 우측 🗑 버튼으로 개별 trash 이동</div>
       <div class="msg-list" id="ch-messages-${esc(name)}">${msgs || '<div class="empty">no messages</div>'}</div>
     </div>`;
   openModal(chIcon(name), '#' + name, body);
@@ -1636,21 +1649,15 @@ function jumpToAgentChat(agentId) {
   if (window.GlimiChat) window.GlimiChat.openAgentChannel(agentId);
 }
 
+// Channel-detail message row. The per-message delete (🗑) control was removed
+// from the UI (the backend doTrashMessage + /api/action/trash_message endpoint
+// are kept and callable). This now renders identically to renderMessage.
 function renderMessageWithActions(m, channelName) {
-  return `<div class="msg ${roleClass(m)}" data-msg-id="${m.id || ''}" style="position:relative">
-    ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
-    <div class="msg-body" style="padding-right:28px">
-      <div class="head">
-        <span class="who">${esc(m.speaker)}</span>
-        <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
-        <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
-      </div>
-      <div class="text">${esc(m.message)}</div>
-    </div>
-    ${m.id ? `<button class="msg-del-btn" onclick="event.stopPropagation(); doTrashMessage('${esc(channelName)}', ${m.id}, this)" title="이 메시지 Trash로 이동">🗑</button>` : ''}
-  </div>`;
+  return renderMessage(m);
 }
 
+// Trash a message (move to Trash, recoverable). Backend kept intact — no UI
+// button wires this anymore; callable programmatically / from the console.
 async function doTrashMessage(channel, msgId, btn) {
   if (!confirm('이 메시지를 trash로 옮길까? (복구 가능)')) return;
   const r = await postJson(q('/api/action/trash_message'), {channel, message_id: msgId});
@@ -4056,3 +4063,295 @@ window.addEventListener('pageshow', () => {
   loadCommunities();
   loadAchievements();
 });
+
+// ============================================================================
+// Onboarding coachmark tour (community-only)
+// ----------------------------------------------------------------------------
+// A small, dependency-free, accessible spotlight tour over the REAL chat UI.
+// Offered during the post-create "유나 준비 중" wait (the wait overlay in
+// _community_server_control.html calls GlimiTour.offer()). Steps walk the
+// friends/DM list, group rooms, the read-only "에이전트끼리" section, the
+// relationship graph, and the message composer. When 유나's first message
+// arrives the wait overlay calls GlimiTour.greeted(mgrId) → a toast offering
+// to jump to 유나's DM. A per-community localStorage flag prevents re-show.
+//
+// Gating: community-only. Mounted only when window.__GLIMI_COMMUNITY__ is set
+// (workspace renders the same shell but leaves it null) AND the offer is driven
+// by community-only snapshot signals (meta.tutorial_phase). So it never fires
+// spuriously in the workspace, which has no first-run/greeting gate.
+// ============================================================================
+(function () {
+  const CID = (typeof window !== 'undefined' && window.__GLIMI_COMMUNITY__) || null;
+  const DONE_KEY = CID ? ('glimi-tour-done-' + CID) : null;
+
+  function isDone() {
+    if (!DONE_KEY) return true;            // no CID → workspace/kernel → never run
+    try { return localStorage.getItem(DONE_KEY) === '1'; } catch (e) { return false; }
+  }
+  function markDone() {
+    if (!DONE_KEY) return;
+    try { localStorage.setItem(DONE_KEY, '1'); } catch (e) {}
+  }
+
+  // --- DOM helpers -----------------------------------------------------------
+  function el(tag, cls, html) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+  function tabBtn(name) { return document.querySelector('nav.tabs button[data-tab="' + name + '"]'); }
+  function clickTab(name) { const b = tabBtn(name); if (b) b.click(); }
+
+  // --- Step definitions ------------------------------------------------------
+  // Each step resolves a live anchor at run-time (so we wait for the chat tab to
+  // paint). `optional:true` steps silently skip when their anchor is absent
+  // (e.g. a community with no group rooms or no behind-the-scenes channels).
+  function steps() {
+    return [
+      {
+        tab: 'chat',
+        anchor: () => document.querySelector('#chat-channel-list [data-section="dms"]') ||
+                      document.getElementById('chat-channel-list'),
+        title: () => t('tour_dms_title'),
+        body: () => t('tour_dms_body')
+      },
+      {
+        tab: 'chat',
+        optional: true,
+        anchor: () => document.querySelector('#chat-channel-list [data-section="groups"]'),
+        title: () => t('tour_groups_title'),
+        body: () => t('tour_groups_body')
+      },
+      {
+        tab: 'chat',
+        optional: true,
+        anchor: () => document.querySelector('#chat-channel-list [data-section="internal"]'),
+        title: () => t('tour_internal_title'),
+        body: () => t('tour_internal_body')
+      },
+      {
+        tab: 'overview',
+        anchor: () => document.getElementById('graph-panel') || tabBtn('overview'),
+        title: () => t('tour_graph_title'),
+        body: () => t('tour_graph_body')
+      },
+      {
+        tab: 'chat',
+        anchor: () => document.getElementById('chat-cbox') || document.getElementById('chat-input'),
+        title: () => t('tour_composer_title'),
+        body: () => t('tour_composer_body')
+      }
+    ];
+  }
+
+  // --- Tour runtime ----------------------------------------------------------
+  let _root = null, _spot = null, _tip = null, _seq = [], _i = 0, _onKey = null, _onResize = null;
+
+  function teardown() {
+    if (_onKey) { document.removeEventListener('keydown', _onKey, true); _onKey = null; }
+    if (_onResize) { window.removeEventListener('resize', _onResize); _onResize = null; }
+    if (_root && _root.parentNode) _root.parentNode.removeChild(_root);
+    _root = _spot = _tip = null;
+    _seq = []; _i = 0;
+  }
+
+  function finish() { teardown(); markDone(); }
+
+  function position(target) {
+    const pad = 6;
+    let r;
+    try { r = target.getBoundingClientRect(); } catch (e) { r = null; }
+    if (!r || (r.width === 0 && r.height === 0)) {
+      // Anchor not measurable — flat scrim on the root, hide the spotlight cutout,
+      // center the tooltip.
+      _root.classList.add('no-spot');
+      _spot.style.opacity = '0';
+      _tip.style.left = '50%';
+      _tip.style.top = '50%';
+      _tip.style.transform = 'translate(-50%, -50%)';
+      return;
+    }
+    _root.classList.remove('no-spot');
+    _spot.style.opacity = '1';
+    _spot.style.left = (r.left - pad) + 'px';
+    _spot.style.top = (r.top - pad) + 'px';
+    _spot.style.width = (r.width + pad * 2) + 'px';
+    _spot.style.height = (r.height + pad * 2) + 'px';
+
+    // Place the tooltip: prefer right of the anchor, else below, else above.
+    const tw = _tip.offsetWidth || 300, th = _tip.offsetHeight || 160;
+    const vw = window.innerWidth, vh = window.innerHeight, gap = 14;
+    let left, top;
+    if (r.right + gap + tw <= vw) {           // right
+      left = r.right + gap; top = Math.max(12, Math.min(r.top, vh - th - 12));
+    } else if (r.bottom + gap + th <= vh) {   // below
+      top = r.bottom + gap; left = Math.max(12, Math.min(r.left, vw - tw - 12));
+    } else if (r.top - gap - th >= 0) {       // above
+      top = r.top - gap - th; left = Math.max(12, Math.min(r.left, vw - tw - 12));
+    } else {                                   // fallback: clamp into view
+      left = Math.max(12, Math.min(r.left, vw - tw - 12));
+      top = Math.max(12, Math.min(r.bottom + gap, vh - th - 12));
+    }
+    _tip.style.transform = '';
+    _tip.style.left = left + 'px';
+    _tip.style.top = top + 'px';
+  }
+
+  function render() {
+    const step = _seq[_i];
+    if (!step) { finish(); return; }
+    if (step.tab) clickTab(step.tab);
+
+    // Build tooltip body
+    const last = _i === _seq.length - 1;
+    const first = _i === 0;
+    _tip.innerHTML = '';
+    const h = el('div', 'tour-tip-title', esc(step.title()));
+    const p = el('div', 'tour-tip-body', esc(step.body()));
+    const nav = el('div', 'tour-tip-nav');
+    const skip = el('button', 'tour-btn tour-skip', esc(t('tour_skip')));
+    skip.addEventListener('click', finish);
+    const spacer = el('div', 'tour-tip-spacer');
+    const dots = el('div', 'tour-dots');
+    for (let k = 0; k < _seq.length; k++) {
+      dots.appendChild(el('span', 'tour-dot' + (k === _i ? ' on' : '')));
+    }
+    nav.appendChild(skip);
+    nav.appendChild(spacer);
+    nav.appendChild(dots);
+    if (!first) {
+      const prev = el('button', 'tour-btn tour-prev', esc(t('tour_prev')));
+      prev.addEventListener('click', () => { _i--; afterTabPaint(render); });
+      nav.appendChild(prev);
+    }
+    const next = el('button', 'tour-btn tour-next', esc(last ? t('tour_done') : t('tour_next')));
+    next.addEventListener('click', () => {
+      if (last) { finish(); return; }
+      _i++; afterTabPaint(render);
+    });
+    nav.appendChild(next);
+    _tip.appendChild(h);
+    _tip.appendChild(p);
+    _tip.appendChild(nav);
+
+    // Resolve anchor (skip optional steps whose anchor is missing).
+    const target = step.anchor();
+    if (!target && step.optional) {
+      if (last) { finish(); return; }
+      _i++; afterTabPaint(render); return;
+    }
+    if (target && target.scrollIntoView) {
+      try { target.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
+    }
+    // Position after layout settles.
+    requestAnimationFrame(() => position(target || document.body));
+  }
+
+  // Tab switches re-render #view-chat lazily; give the DOM a beat before measuring.
+  function afterTabPaint(fn) {
+    requestAnimationFrame(() => setTimeout(fn, 60));
+  }
+
+  function start() {
+    if (isDone()) return;
+    teardown();
+    _seq = steps();
+    _i = 0;
+    _root = el('div', 'tour-root');
+    _root.setAttribute('role', 'dialog');
+    _root.setAttribute('aria-modal', 'true');
+    _spot = el('div', 'tour-spot');
+    _tip = el('div', 'tour-tip');
+    _root.appendChild(_spot);
+    _root.appendChild(_tip);
+    document.body.appendChild(_root);
+
+    _onKey = function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(); }
+      else if (e.key === 'ArrowRight') { const b = _tip.querySelector('.tour-next'); if (b) b.click(); }
+      else if (e.key === 'ArrowLeft') { const b = _tip.querySelector('.tour-prev'); if (b) b.click(); }
+    };
+    document.addEventListener('keydown', _onKey, true);
+    _onResize = function () { const s = _seq[_i]; if (s) { const tgt = s.anchor(); position(tgt || document.body); } };
+    window.addEventListener('resize', _onResize);
+
+    // Make sure the chat tab is booted + channels painted before measuring step 1.
+    clickTab('chat');
+    if (window.GlimiChat && window.GlimiChat.init) { try { window.GlimiChat.init(); } catch (e) {} }
+    waitForChannels(() => afterTabPaint(render));
+  }
+
+  // Poll for the channel rail to have painted at least one row (init is async).
+  function waitForChannels(cb) {
+    let tries = 0;
+    (function poll() {
+      const list = document.getElementById('chat-channel-list');
+      if ((list && list.children.length > 0) || tries > 40) { cb(); return; }
+      tries++; setTimeout(poll, 150);
+    })();
+  }
+
+  // --- Offer prompt (shown during the boot/greeting wait) --------------------
+  let _offered = false;
+  function offer() {
+    if (isDone() || _offered || !CID) return;
+    if (document.getElementById('tour-offer')) return;
+    _offered = true;
+    const wrap = el('div', 'tour-offer', '');
+    wrap.id = 'tour-offer';
+    const card = el('div', 'tour-offer-card', '');
+    card.appendChild(el('div', 'tour-offer-emoji', '🧭'));
+    card.appendChild(el('div', 'tour-offer-title', esc(t('tour_offer_title'))));
+    card.appendChild(el('div', 'tour-offer-body', esc(t('tour_offer_body'))));
+    const acts = el('div', 'tour-offer-acts', '');
+    const no = el('button', 'tour-btn tour-offer-no', esc(t('tour_offer_decline')));
+    no.addEventListener('click', () => { wrap.remove(); /* not 'done' — may re-offer next visit */ });
+    const yes = el('button', 'tour-btn tour-offer-yes', esc(t('tour_offer_accept')));
+    yes.addEventListener('click', () => { wrap.remove(); start(); });
+    acts.appendChild(no);
+    acts.appendChild(yes);
+    card.appendChild(acts);
+    wrap.appendChild(card);
+    document.body.appendChild(wrap);
+  }
+
+  // --- 유나 greeted → toast offering to jump to her DM ------------------------
+  let _greeted = false;
+  function greeted(mgrId) {
+    if (_greeted || !CID || CID === 'demo') return;
+    _greeted = true;
+    // Dismiss any pending offer silently (a running tour can coexist with the
+    // non-blocking bottom toast).
+    const off = document.getElementById('tour-offer'); if (off) off.remove();
+    const toast = el('div', 'tour-greet-toast', '');
+    toast.appendChild(el('span', 'tour-greet-emoji', '💌'));
+    const txt = el('span', 'tour-greet-text', esc(t('tour_greeted')));
+    toast.appendChild(txt);
+    if (mgrId) {
+      const jump = el('button', 'tour-btn tour-greet-jump', esc(t('tour_greeted_jump')));
+      jump.addEventListener('click', () => {
+        toast.remove();
+        clickTab('chat');
+        if (window.GlimiChat && window.GlimiChat.openAgentChannel) {
+          try { window.GlimiChat.openAgentChannel(mgrId); } catch (e) {}
+        }
+      });
+      toast.appendChild(jump);
+    }
+    const x = el('button', 'tour-greet-close', '×');
+    x.setAttribute('aria-label', 'close');
+    x.addEventListener('click', () => toast.remove());
+    toast.appendChild(x);
+    document.body.appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 12000);
+  }
+
+  window.GlimiTour = {
+    offer: offer,        // show the "둘러볼까요?" prompt (wait overlay calls this)
+    start: start,        // run the coachmark sequence directly
+    greeted: greeted,    // 유나's first message arrived → toast + jump CTA
+    isDone: isDone,
+    reset: function () { try { if (DONE_KEY) localStorage.removeItem(DONE_KEY); } catch (e) {} _offered = false; _greeted = false; }
+  };
+})();
