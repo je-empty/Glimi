@@ -466,21 +466,22 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
     metrics = _collect_db_metrics()
     result["metrics"] = metrics
 
-    # mgr-creator 채널이 만들어졌는데 test-user 가 거기서 한 마디도 안 함
+    # 크리에이터(윤하나) DM 이 만들어졌는데 test-user 가 거기서 한 마디도 안 함.
+    # 웹 우선 모델: 크리에이터 채널 = dm-윤하나 (구 mgr-creator).
     msgs_by_ch = metrics.get("msgs_by_channel", {})
-    if "mgr-creator" in msgs_by_ch:
+    if "dm-윤하나" in msgs_by_ch:
         try:
             import sqlite3 as _sq
             c = _sq.connect(str(QA_DIR / "community.db"))
             tu_in_creator = c.execute(
                 "SELECT COUNT(*) FROM conversations "
-                "WHERE channel='mgr-creator' AND speaker='test-user'"
+                "WHERE channel='dm-윤하나' AND speaker='test-user'"
             ).fetchone()[0]
             c.close()
         except Exception:
             tu_in_creator = -1
         if tu_in_creator == 0:
-            result["issues"].append("test-user가 mgr-creator 채널에서 한 번도 발화 안 함")
+            result["issues"].append("test-user가 크리에이터(dm-윤하나) DM 에서 한 번도 발화 안 함")
 
     # 유나가 같은 분야 **질문**을 4번 이상 반복 (단순 언급 아님 — 물음표 포함만 집계)
     for kw, n in metrics.get("yuna_questions_per_field", {}).items():
@@ -488,7 +489,7 @@ def _collect_results(run_id: str, elapsed: float) -> dict:
             result["issues"].append(f"유나 '{kw}' 질문 {n}회 (중복 질문 의심)")
 
     # Phase 2 도달했는데 create_agent_profile 한 번도 안 됨
-    if tutorial_complete is False and "mgr-creator" in msgs_by_ch and not metrics.get("agents_created"):
+    if tutorial_complete is False and "dm-윤하나" in msgs_by_ch and not metrics.get("agents_created"):
         result["issues"].append("Phase 2 진입 후 create_agent_profile 호출 0회")
 
     # ── 최종 판정 ─────────────────────────────────────────

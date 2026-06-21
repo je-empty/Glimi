@@ -50,7 +50,7 @@ Personality:
   specific friends. Boredom is failure — if a channel goes quiet, you pivot or move.
 - Owns the tempo: ask favors ("○○이랑 ○○이 좀 친해지게 해줘"), nudge the world
   ("유나 우리 친구들 그룹챗 한번 모이게 해봐"), and when friends are made go
-  immediately to their #dm-이름 to actually chat (not just "갈게" → mgr-dashboard 머무르기).
+  immediately to their #dm-이름 to actually chat (not just "갈게" → 유나 DM 에 머무르기).
 
 Rules:
 - Reply in Korean only
@@ -75,7 +75,7 @@ Character creation constraint (QA-specific):
 Memory & channels:
 - You remember EVERYTHING you said before in this server, across all channels. Don't repeat yourself and don't say "언제 내가 그랬어?" when the log clearly shows you did say it.
 - The conversation log is labeled [#channel] so you know which room each line came from.
-- Multiple channels can be active in parallel — e.g. you may chat with "서유나" in #mgr-dashboard and "윤하나" in #mgr-creator at the same time. Treat them as different rooms/people.
+- Multiple channels can be active in parallel — e.g. you may chat with "서유나" in #dm-서유나 and "윤하나" in #dm-윤하나 at the same time. Treat them as different rooms/people.
 - When someone new greets you in a different channel, respond in THAT channel (the reply will go to the most recent agent's channel automatically). Don't ignore them.
 - If info (MBTI, job, hobby, speech style) was already given earlier, don't re-answer from scratch — reference your earlier answer or push back ("아까 말했잖아 ㅋㅋ").
 
@@ -83,7 +83,7 @@ Reality grounding (CRITICAL):
 - NEVER claim to have done something you haven't actually done in the conversation log.
 - Example WRONG: saying "다녀왔어" / "얘기 잘 됐어" when the log shows no dm-* conversation with that friend.
 - 유나/하나가 "다녀왔어?" 물어도 실제 로그에 해당 dm 대화 기록이 없으면 "아직 안 갔어ㅋㅋ" / "가려고" 로 솔직하게. 거짓말로 상상 대화 지어내는 순간 시스템 깨짐.
-- "지금 가볼게" 같은 말을 했으면 실제로 다음 턴에 그 #dm-이름 채널로 가서 대화해야 함. 말만 하고 mgr-dashboard 계속 머물면서 "다녀왔어" 하는 건 금지.
+- "지금 가볼게" 같은 말을 했으면 실제로 다음 턴에 그 #dm-이름 채널로 가서 대화해야 함. 말만 하고 유나 DM 에 계속 머물면서 "다녀왔어" 하는 건 금지.
 
 Anti ack-echo loop (CRITICAL):
 - 네가 이미 "간다/가볼게" 말했고 상대가 "다녀와~" 로 답했으면, 거기서 대화 끝. "응 ㅋㅋ" / "오케이" 로 재ack 하지 마.
@@ -201,23 +201,25 @@ class TestUserBot(discord.Client):
                 print(f"[TestUser] Glimi 봇 발견: {member.name} (#{member.id})")
                 break
 
-        # mgr-dashboard 채널 찾기 (튜토리얼 시작 채널)
+        # 매니저(유나) DM 채널 찾기 (튜토리얼 시작 채널). 웹 우선 모델에서 매니저는
+        # dm-<이름>(예: dm-서유나) — 더 이상 mgr-dashboard 가 아님. 첫 dm-* 채널 = 유나 DM.
         await self._wait_for_channel(guild)
 
     async def _wait_for_channel(self, guild: discord.Guild):
-        """mgr-dashboard 채널이 생길 때까지 대기 (Glimi 봇이 생성)"""
-        print("[TestUser] mgr-dashboard 채널 대기 중...")
+        """매니저 DM 채널(dm-*)이 생길 때까지 대기 (Glimi 봇이 생성)."""
+        print("[TestUser] 매니저 DM(dm-*) 채널 대기 중...")
         for _ in range(60):  # 최대 60초
-            for ch in guild.text_channels:
-                if ch.name == "mgr-dashboard":
-                    self.target_channel = ch
-                    print(f"[TestUser] 채널 발견: #{ch.name}")
-                    # 유나가 먼저 인사할 때까지 대기
-                    await self._wait_for_first_message()
-                    return
+            # dm-서유나 우선, 없으면 첫 dm-* 채널.
+            cand = [ch for ch in guild.text_channels if ch.name.startswith("dm-")]
+            pick = next((c for c in cand if c.name == "dm-서유나"), cand[0] if cand else None)
+            if pick:
+                self.target_channel = pick
+                print(f"[TestUser] 채널 발견: #{pick.name}")
+                await self._wait_for_first_message()  # 유나 첫 인사 대기
+                return
             await asyncio.sleep(1)
 
-        print("[TestUser] mgr-dashboard 채널 없음 — 타임아웃")
+        print("[TestUser] 매니저 DM 채널 없음 — 타임아웃")
         await self.close()
 
     def _seed_conversation_from_db(self, limit: int = 60):
@@ -233,8 +235,8 @@ class TestUserBot(discord.Client):
                 return
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
-            # 빈이 시점에 의미있는 채널 — mgr-dashboard, mgr-creator, dm-*, group-* 만.
-            # internal-* 는 빈이가 못 보는 영역. mgr-dev-request 도 admin 영역이라 skip.
+            # 빈이 시점에 의미있는 채널 — dm-*(매니저+페르소나 DM), group-* 만.
+            # internal-* 는 빈이가 못 보는 영역(에이전트끼리). 웹 우선 모델에서 매니저도 dm-*.
             rows = conn.execute(
                 "SELECT c.channel, c.speaker, c.message, c.timestamp, "
                 "  COALESCE(a.name, u.name, c.speaker) as speaker_name, "
@@ -242,8 +244,7 @@ class TestUserBot(discord.Client):
                 "FROM conversations c "
                 "LEFT JOIN agents a ON a.id = c.speaker "
                 "LEFT JOIN users u ON u.id = c.speaker "
-                "WHERE (c.channel = 'mgr-dashboard' OR c.channel = 'mgr-creator' "
-                "       OR c.channel LIKE 'dm-%' OR c.channel LIKE 'group-%') "
+                "WHERE (c.channel LIKE 'dm-%' OR c.channel LIKE 'group-%') "
                 "ORDER BY c.id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
@@ -323,15 +324,12 @@ class TestUserBot(discord.Client):
     def _is_allowed_channel(self, channel_name: str) -> bool:
         """테스트 유저가 개입해도 되는 채널 판단.
 
-        허용: mgr-dashboard, mgr-creator, dm-*, group-*
-        차단: internal-* (에이전트 전용), mgr-system-log (시스템 로그 전용),
-             기타 prefix 없는 일반 디스코드 채널
+        허용: dm-* (매니저+페르소나 DM — 웹 우선 모델), group-*
+        차단: internal-* (에이전트 전용), 기타 prefix 없는 일반 디스코드 채널
         """
-        if channel_name in ("mgr-dashboard", "mgr-creator"):
-            return True
         if channel_name.startswith("dm-") or channel_name.startswith("group-"):
             return True
-        # internal-*, mgr-system-log, general 등 모두 차단
+        # internal-*, general 등 모두 차단
         return False
 
     async def on_message(self, message: discord.Message):
@@ -585,7 +583,7 @@ class TestUserBot(discord.Client):
             f"이번 답장은 #{target_ch} 채널로 간다. 오직 그 채널의 사람에게 할 말만 써.\n"
             f"- #{target_ch} 의 가장 최근 에이전트 메시지: {last_agent_in_target or '(없음)'}\n"
             f"- 그 메시지/맥락에 맞춰 답해. 다른 채널 맥락(예: 유나가 \"가봐\"라고 한 말)을\n"
-            f"  이 답에 섞지 마. '가볼게' 같은 말은 그 채널 사람이 아니라 #mgr-dashboard의\n"
+            f"  이 답에 섞지 마. '가볼게' 같은 말은 그 채널 사람이 아니라 유나 DM(#dm-서유나)의\n"
             f"  유나한테 할 말이니까, 여기서 쓰면 엉뚱해짐.\n"
             f"- 이미 네가 한 말/답한 정보는 반복하지 말고 \"아까 말했잖아\" 식으로 받아쳐.\n"
             f"- 이 채널 사람에게 할 말이 딱히 없으면 가볍게 응수만 해 (\"ㅇㅇ\" / \"오케이\").\n"
@@ -887,12 +885,12 @@ class TestUserBot(discord.Client):
         # 들어가는 경로가 없어서 유나 상대로 "다녀왔어" 거짓말하는 회귀.
         target = None
         msg = ""
-        target_channel_name = "mgr-dashboard"
+        target_channel_name = "dm-서유나"  # 유나(매니저) DM — 웹 우선 모델
 
-        # NO_REPLY ack-echo 루프 탈출용 — 현재 채널이 mgr-dashboard 인 상태로 stuck 이면
+        # NO_REPLY ack-echo 루프 탈출용 — 현재 채널이 매니저 DM 인 상태로 stuck 이면
         # 무조건 dm-* 중 아무거나 들어가서 새 대화 시작 (mission 무관).
         cur_ch = self.target_channel.name if self.target_channel else ""
-        if "NO_REPLY" in reason and cur_ch in ("mgr-dashboard", "mgr-creator"):
+        if "NO_REPLY" in reason and cur_ch in ("dm-서유나", "dm-윤하나"):
             for g in self.guilds:
                 for ch in g.text_channels:
                     if ch.name.startswith("dm-"):
@@ -979,7 +977,7 @@ class TestUserBot(discord.Client):
                 msg = "유나야 다음 뭐 할까? 심심하다"
             for g in self.guilds:
                 for ch in g.text_channels:
-                    if ch.name == "mgr-dashboard":
+                    if ch.name == "dm-서유나":
                         target = ch; break
                 if target: break
         if not target:
@@ -1190,7 +1188,7 @@ class TestUserBot(discord.Client):
             return False
         guild = self.guilds[0]
         ch_names = {ch.name for ch in guild.text_channels}
-        has_all = "mgr-dashboard" in ch_names and "mgr-creator" in ch_names and "mgr-system-log" in ch_names
+        has_all = "dm-서유나" in ch_names and "dm-윤하나" in ch_names  # 매니저+크리에이터 DM 생성됨 = phase2 도달
         if not has_all:
             return False
         recent_texts = [m["text"] for m in self.conversation[-5:] if m["role"] == "agent"]
