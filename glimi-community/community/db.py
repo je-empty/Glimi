@@ -763,12 +763,20 @@ def _attach_reactions(conn, rows: list[dict]) -> list[dict]:
     return rows
 
 
-def get_recent_messages(channel: str, limit: int = 20) -> list[dict]:
+def get_recent_messages(channel: str, limit: int = 20, before_id: int = None) -> list[dict]:
     conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM conversations WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
-        (channel, limit)
-    ).fetchall()
+    if before_id is not None:
+        # Backwards page: the newest ``limit`` messages older than ``before_id``.
+        rows = conn.execute(
+            "SELECT * FROM conversations WHERE channel = ? AND id < ? "
+            "ORDER BY timestamp DESC, id DESC LIMIT ?",
+            (channel, before_id, limit)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM conversations WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
+            (channel, limit)
+        ).fetchall()
     out = [dict(r) for r in reversed(rows)]
     _attach_reactions(conn, out)
     conn.close()

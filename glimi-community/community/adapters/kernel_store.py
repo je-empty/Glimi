@@ -24,8 +24,10 @@ class SqliteKernelStore(KernelStore):
     def increment_channel_turn(self, channel: str) -> int:
         return db.increment_channel_turn(channel)
 
-    def get_recent_messages(self, channel: str, limit: int = 20) -> list[dict]:
-        return db.get_recent_messages(channel, limit)
+    def get_recent_messages(
+        self, channel: str, limit: int = 20, before_id: Optional[int] = None
+    ) -> list[dict]:
+        return db.get_recent_messages(channel, limit, before_id=before_id)
 
     def get_messages_by_range(self, channel: str, after_id: int, limit: int = 15) -> list[dict]:
         return db.get_messages_by_range(channel, after_id, limit)

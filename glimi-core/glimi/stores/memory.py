@@ -141,9 +141,13 @@ class InMemoryKernelStore(KernelStore):
             ch["current_turn"] = (ch.get("current_turn") or 0) + 1
             return ch["current_turn"]
 
-    def get_recent_messages(self, channel: str, limit: int = 20) -> list[dict]:
+    def get_recent_messages(
+        self, channel: str, limit: int = 20, before_id: Optional[int] = None
+    ) -> list[dict]:
         with self._lock:
             rows = [m for m in self._conversations if m["channel"] == channel]
+            if before_id is not None:
+                rows = [m for m in rows if m["id"] < before_id]
             out = [dict(r) for r in rows[-limit:]]
             self._attach_reactions(out)
             return out

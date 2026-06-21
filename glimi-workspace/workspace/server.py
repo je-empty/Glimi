@@ -551,22 +551,27 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
                 "last": _last_preview(store, name, owner_ids, names, owner_name),
             })
         elif name.startswith("internal-"):
-            parts = [p for p in name[len("internal-"):].split("-") if p]
-            disp = " ↔ ".join(names.get(p, p) for p in parts) or name
+            # Display the RAW channel id (e.g. "internal-dm-서유나-윤하나") rather than
+            # an "A ↔ B" rephrasing — the owner asked to see the real channel name.
             out.append({
                 "channel": name, "kind": "internal", "agent_id": None,
-                "agent_type": "internal", "name": disp, "type": "internal",
+                "agent_type": "internal", "name": name, "type": "internal",
                 "postable": False, "avatar_url": None,
                 "last": _last_preview(store, name, owner_ids, names, owner_name),
             })
     return out
 
 
-def _chat_history(ws: "Workspace", channel: str, limit: int) -> list[dict]:
+def _chat_history(
+    ws: "Workspace", channel: str, limit: int, before_id: Optional[int] = None,
+) -> list[dict]:
     """Recent messages for ``channel`` (ASC by id), display-ready. Mirrors
     ``chat.py._channel_history``: resolves speaker → display name + is_user,
     passes the store's compact ``reactions`` summary through, and resolves a
     reply quote from the loaded window when the parent is present.
+
+    ``before_id`` pages backwards (the ``limit`` messages older than that id) for
+    "load older on scroll-to-top".
     """
     reader = ws.reader()
     store = ws.store
@@ -574,7 +579,7 @@ def _chat_history(ws: "Workspace", channel: str, limit: int) -> list[dict]:
     names = _agent_name_map(reader)
 
     try:
-        rows = store.get_recent_messages(channel, limit)
+        rows = store.get_recent_messages(channel, limit, before_id=before_id)
     except Exception:
         rows = []
     # get_recent_messages already returns oldest→newest within the window; sort by
@@ -851,7 +856,9 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         return JSONResponse({"channels": _list_chat_channels(ws)})
 
     @app.get("/w/{ws_id}/chat/history")
-    def w_chat_history(ws_id: str, channel: str = "", limit: int = 50) -> JSONResponse:
+    def w_chat_history(
+        ws_id: str, channel: str = "", limit: int = 50, before_id: int = 0,
+    ) -> JSONResponse:
         ws = _require(ws_id)
         channel = (channel or "").strip()
         if not channel:
@@ -860,9 +867,14 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             limit = max(1, min(int(limit), 200))
         except (TypeError, ValueError):
             limit = 50
+        try:
+            before = int(before_id)
+        except (TypeError, ValueError):
+            before = 0
+        before = before if before > 0 else None
         return JSONResponse({
             "channel": channel,
-            "messages": _chat_history(ws, channel, limit),
+            "messages": _chat_history(ws, channel, limit, before_id=before),
         })
 
     @app.websocket("/w/{ws_id}/chat/ws")

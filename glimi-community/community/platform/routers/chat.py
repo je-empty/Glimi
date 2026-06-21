@@ -332,11 +332,11 @@ def _list_postable_channels(community_id: str) -> list[dict]:
         def _internal_entry(name: str, parts: list):
             # agent-to-agent backchannel — the owner WATCHES (read-only). The whole
             # point of Glimi Community: friends talking to each other.
-            names = [agents.get(p, {}).get("name") or p for p in (parts or [])]
-            sep = " ↔ " if channel_kind(name) == "internal-dm" else ", "
+            # Display the RAW channel id (e.g. "internal-dm-서유나-윤하나") rather than
+            # an "A ↔ B" rephrasing — the owner asked to see the real channel name.
             return {
                 "channel": name, "kind": "internal", "agent_id": None,
-                "agent_type": "internal", "name": (sep.join(names) or name),
+                "agent_type": "internal", "name": name,
                 "type": "internal", "postable": False, "members": parts or [],
                 "avatar_url": (f"/api/avatar?community={community_id}&id={parts[0]}"
                                if parts else None),
@@ -405,7 +405,10 @@ def _list_postable_channels(community_id: str) -> list[dict]:
     return run_in_community(community_id, _query)
 
 
-def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dict]:
+def _channel_history(
+    community_id: str, channel_id: str, limit: int,
+    before_id: Optional[int] = None,
+) -> list[dict]:
     """Recent messages for ``channel_id``, ASC (newest-last), display-ready.
 
     Uses the display-resolving read API (``monitor.get_recent_messages``) so the
@@ -415,10 +418,15 @@ def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dic
     the parent row when one is in the loaded window, else ``{id}``) so a
     cold-loaded message shows the SAME affordances as a live frame — ONE client
     contract for history + WS.
+
+    ``before_id`` pages backwards: returns the ``limit`` messages OLDER than that
+    id (for "load older on scroll-to-top"). Reply quotes still resolve only within
+    the returned window (a bare ``{id}`` pointer otherwise) — same contract.
     """
     def _query() -> list[dict]:
         from community.core import monitor
-        rows = monitor.get_recent_messages(limit=limit, channel=channel_id)
+        rows = monitor.get_recent_messages(
+            limit=limit, channel=channel_id, before_id=before_id)
         # Index rows by id so a reply can resolve its parent's preview/author
         # from the already-loaded window (no extra query for the common case).
         by_id = {r.get("id"): r for r in rows if r.get("id") is not None}
@@ -805,12 +813,13 @@ async def chat_channels(cid: str, request: Request):
 @router.get("/community/{cid}/chat/history")
 async def chat_history(
     cid: str, request: Request,
-    channel: str = "", limit: int = 50,
+    channel: str = "", limit: int = 50, before_id: int = 0,
 ):
     """Recent messages for a channel, newest-last, display-ready.
 
     Auth-gated + per-community access. Rejects non-user-postable channels so the
-    history surface matches the postable channel list.
+    history surface matches the postable channel list. ``before_id`` (>0) pages
+    backwards — returns the ``limit`` messages older than that id (scroll-to-top).
     """
     _api_user(request, cid)
     channel = (channel or "").strip()
@@ -823,7 +832,12 @@ async def chat_history(
     except (TypeError, ValueError):
         limit = 50
     try:
-        messages = _channel_history(cid, channel, limit)
+        before = int(before_id)
+    except (TypeError, ValueError):
+        before = 0
+    before = before if before > 0 else None
+    try:
+        messages = _channel_history(cid, channel, limit, before_id=before)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     return JSONResponse({"community_id": cid, "channel": channel, "messages": messages})

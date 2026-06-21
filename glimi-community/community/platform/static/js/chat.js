@@ -112,6 +112,12 @@
   var msgCounter = 0;        // local id source for frame-born messages
   // Message index for this channel render (id → {speakerId, name, text, ...}).
   var msgIndex = {};
+  // ==== Backwards pagination (load older on scroll-to-top) ====
+  // The smallest SERVER id currently loaded — the cursor for the next older page.
+  var oldestLoadedId = null;
+  var loadingOlder = false;  // re-entrancy guard for the scroll-up fetch
+  var noMoreOlder = false;   // the server returned an empty older page → stop
+  var HISTORY_PAGE = 50;     // page size for both cold-load + older pages
   // Reply target captured from a message's reply action.
   var replyTo = null;        // { id, speaker, text }
   // Thread panel state.
@@ -538,6 +544,16 @@
     msgIndex = {};
     typingRows = {};
     pendingByClientId = {};
+    // Reset backwards-pagination cursor for the freshly opened channel.
+    oldestLoadedId = null;
+    loadingOlder = false;
+    noMoreOlder = false;
+  }
+  // Track the smallest server id seen so the next older page can request before it.
+  function noteOldest(id) {
+    if (!isServerId(id)) return;
+    var n = Number(id);
+    if (oldestLoadedId == null || n < oldestLoadedId) oldestLoadedId = n;
   }
 
   // ==== Typing (typefoot + in-stream landing spot) ====
@@ -754,14 +770,17 @@
 
   // ==== History cold-load ====
   function loadHistory() {
-    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=50';
+    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=' + HISTORY_PAGE;
     return fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : { messages: [] }; })
       .then(function (data) {
         clearStream();
         pinned = true;
         var msgs = (data && data.messages) || [];
+        // Fewer than a full page means there's nothing older to fetch.
+        if (msgs.length < HISTORY_PAGE) noMoreOlder = true;
         msgs.forEach(function (row) {
+          noteOldest(row.id);
           // Capture the owner's speaker id once so reaction "mine" state matches.
           if (row.is_user && row.speaker_id && OWNER_ID == null) OWNER_ID = row.speaker_id;
           var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
@@ -790,6 +809,91 @@
       })
       .catch(function () { /* leave whatever is shown */ });
   }
+
+  // ==== Load older (scroll-to-top pagination) ====
+  // Fetch the page of messages OLDER than oldestLoadedId and PREPEND it, keeping
+  // the viewport visually stable (the row the user was looking at stays put).
+  // Grouping is computed WITHIN the older batch (the seam to the existing first
+  // row may show a fresh avatar — honest + cheap, no full re-render).
+  function loadOlder() {
+    if (loadingOlder || noMoreOlder || oldestLoadedId == null || !CHANNEL) return;
+    loadingOlder = true;
+    var cursor = oldestLoadedId;
+    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) +
+      '&limit=' + HISTORY_PAGE + '&before_id=' + encodeURIComponent(cursor);
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { messages: [] }; })
+      .then(function (data) {
+        var msgs = (data && data.messages) || [];
+        // Dedup against what's already rendered (defensive — server pages by id).
+        msgs = msgs.filter(function (row) {
+          return row.id == null || !msgIndex[row.id];
+        });
+        if (!msgs.length) { noMoreOlder = true; return; }
+        if (msgs.length < HISTORY_PAGE) noMoreOlder = true;
+        prependOlder(msgs);
+      })
+      .catch(function () { /* transient — a later scroll-up retries */ })
+      .then(function () { loadingOlder = false; });
+  }
+
+  // Build the older batch into a fragment (own grouping + day dividers) and insert
+  // it before the current first child, then restore scrollTop so the viewport
+  // doesn't jump.
+  function prependOlder(msgs) {
+    var frag = document.createDocumentFragment();
+    var prev = null;  // grouping anchor WITHIN this batch
+    msgs.forEach(function (row) {
+      noteOldest(row.id);
+      if (row.is_user && row.speaker_id && OWNER_ID == null) OWNER_ID = row.speaker_id;
+      var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
+      var m = frameToMsg(
+        row.speaker_id, row.display_name || row.speaker_id || '',
+        !!row.is_user, row.text || '', parseTs(row.timestamp),
+        {
+          id: row.id != null ? row.id : undefined,
+          images: row.images || [], reactions: row.reactions || [],
+          replyTo: rt, replyMeta: row.reply_to || null,
+          threadRoot: row.thread_root != null ? row.thread_root : null
+        }
+      );
+      msgIndex[m.id] = m;
+      // Day divider when the day changes within the batch.
+      var dayChanged = !prev || dateKeyOf(prev.ts) !== dateKeyOf(m.ts);
+      if (dayChanged) {
+        var div = document.createElement('div');
+        div.className = 'daydiv';
+        div.innerHTML = '<span class="ln"></span><span class="lb">' +
+          esc(dayLabelOf(m.ts)) + '</span><span class="ln"></span>';
+        frag.appendChild(div);
+      }
+      var isCont = !!prev && m.kind === 'msg' && prev.kind === 'msg' &&
+        prev.speakerId === m.speakerId && prev.isUser === m.isUser &&
+        (m.ts - prev.ts) <= GROUP_WINDOW && !dayChanged && m.replyTo == null;
+      var el = buildRow(m, !isCont);
+      el.classList.add('in');  // no enter animation on backfill
+      frag.appendChild(el);
+      prev = { speakerId: m.speakerId, isUser: m.isUser, ts: m.ts, kind: m.kind };
+    });
+
+    // Insert at the top + preserve scroll position (anchor on scrollHeight delta).
+    var before = $feed.scrollHeight;
+    var firstChild = $stream.firstChild;
+    $stream.insertBefore(frag, firstChild);
+    var after = $feed.scrollHeight;
+    $feed.scrollTop += (after - before);
+
+    // Now that older rows are indexed, refresh thread affordances on any roots
+    // whose replies were loaded after them in this batch.
+    msgs.forEach(function (row) {
+      if (row.reply_to && row.reply_to.id != null) refreshThreadAffordance(String(row.reply_to.id));
+    });
+  }
+
+  // Trigger an older-page fetch when the feed is scrolled near the very top.
+  $feed.addEventListener('scroll', function () {
+    if ($feed.scrollTop < 120) loadOlder();
+  });
 
   // ==== Live poll ====
   // The WebSocket only carries messages that flow through THIS web process. The
@@ -1311,6 +1415,16 @@
     var row = e.target.closest && e.target.closest('.msg[data-mid]');
     return row ? row.dataset.mid : null;
   }
+  // Coarse pointer (touch): the action-pop is hover-hidden (no flash on scroll),
+  // so reveal it on an explicit TAP of the message row instead. One row open at a
+  // time; tapping elsewhere (or a fresh tap on the same row) closes it.
+  var COARSE = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+  function closeActsOpen(except) {
+    var open = $stream.querySelectorAll('.msg.acts-open');
+    for (var i = 0; i < open.length; i++) {
+      if (open[i] !== except) open[i].classList.remove('acts-open');
+    }
+  }
   $stream.addEventListener('click', function (e) {
     // A reaction pill toggles its own emoji on this row.
     var pill = e.target.closest && e.target.closest('.react[data-emoji]');
@@ -1327,7 +1441,24 @@
     if (threadBtn) { openThreadPanel(threadBtn.getAttribute('data-thread')); return; }
     var jump = e.target.closest && e.target.closest('[data-jump]');
     if (jump) { jumpToMessage(jump.getAttribute('data-jump')); return; }
+    // Touch: a bare tap on a message row (not a link/button/image/pill) toggles
+    // its action-pop so react/reply/thread are reachable without a hover.
+    if (COARSE) {
+      if (e.target.closest && e.target.closest('a, button, b, img, .acts-pop, .react, .quote, .ch, .mention')) return;
+      var row = e.target.closest && e.target.closest('.msg[data-mid]');
+      if (!row || row.classList.contains('sys') || row.classList.contains('err')) { closeActsOpen(null); return; }
+      var wasOpen = row.classList.contains('acts-open');
+      closeActsOpen(row);
+      row.classList.toggle('acts-open', !wasOpen);
+    }
   });
+  // Touch: tapping anywhere outside the message stream closes an open action-pop.
+  if (COARSE) {
+    document.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('#chat-stream .msg')) return;
+      closeActsOpen(null);
+    });
+  }
   $stream.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     var b = e.target.closest && e.target.closest('[data-react],[data-reply],[data-thread],.react[data-emoji]');
@@ -1489,11 +1620,19 @@
   function _boot() {
     setChannelLabel('# ' + CHANNEL);
     loadChannels().then(function () {
-      // If the seeded default channel isn't a real one (e.g. an empty 'dm-mgr'
-      // placeholder), fall back to the first actual channel so the chat opens on
-      // a live conversation instead of a blank pane.
+      // If the seeded default channel isn't a real one (every community seeds the
+      // same 'dm-mgr' default, but a real community's manager DM is keyed by the
+      // manager's id/name — e.g. 'dm-서유나' — so 'dm-mgr' is absent), fall back to
+      // a real channel so the chat opens on a live conversation, not a blank pane.
+      // Prefer the first POSTABLE channel (a DM/group the owner can open) over a
+      // read-only internal backchannel, so high-volume communities whose only
+      // 'dm-mgr' is absent still land on their busiest real DM.
       if (channels.length && !channels.some(function (x) { return x.channel === CHANNEL; })) {
-        var c = channels[0];
+        var c = null;
+        for (var i = 0; i < channels.length; i++) {
+          if (channels[i].postable !== false) { c = channels[i]; break; }
+        }
+        if (!c) c = channels[0];  // all read-only → at least show one
         CHANNEL = c.channel;
         AGENT = c.agent_id || AGENT;
         renderChannels();

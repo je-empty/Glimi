@@ -564,10 +564,13 @@ body {
 .acts-pop .sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
 
 /* Touch devices synthesize :hover on tap/scroll, so the hover action-pop flashes
-   up while you're just scrolling messages — jarring on mobile. Disable the
-   hover-reveal on coarse pointers (it stays reachable via :focus-within). */
+   up while you're just scrolling messages — jarring on mobile. On coarse
+   pointers, suppress the hover-reveal (keeps the no-flash-on-scroll win) and
+   instead reveal the pop on an explicit TAP of the message: a tap toggles the
+   .acts-open class (chat.js) which shows the react/reply/thread buttons. */
 @media (hover: none) {
   .msg:hover .acts-pop { opacity: 0; transform: translateY(3px); pointer-events: none; }
+  .msg.acts-open .acts-pop { opacity: 1; transform: none; pointer-events: auto; }
 }
 
 /* ── in-stream typing (reply landing spot) ── */
