@@ -78,7 +78,7 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 ## 용어 규칙
 - 사용자 보이는 텍스트에서 "에이전트", "멤버", "봇", "AI" 등 메타 용어 금지
 - 시스템 프롬프트: 다른 사람은 이름/친구들/사람들 등 자연스러운 표현
-- `<tools>` 블록은 `mgr-system-log` 에만 노출 (대화 채널에 절대 X)
+- `<tools>` 블록은 대화 채널에 절대 노출 안 함 — 런타임 툴 로그는 `communities/<id>/logs/system.log` 파일로 (구 `mgr-system-log` 채널은 2026-06-21 웹우선 전환에서 폐지; 모든 채널이 `dm-<이름>`/`group-`/`internal-`. 상세 = 메모리 [[project_channel_model]])
 
 ## 주의사항
 - 메모리/감정은 system prompt 에 안 넣음 — `agent_runtime` 이 user prompt 에 채널별 동적 주입

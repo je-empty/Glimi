@@ -131,12 +131,13 @@ Glimi/
 - mgr: `agent-mgr-001` (유나)
 - creator: `agent-creator-001` (하나)
 
-## 채널 구조
-- `dm-{이름}`: 1:1 (`glimi-dm` 카테고리)
+## 채널 구조 (웹 우선 — 2026-06-21 전환)
+- `dm-{이름}`: 오너↔에이전트 1:1 DM (`glimi-dm`). **매니저(유나/하나/세나)도 dm-{이름}** — 구 `mgr-dashboard`/`mgr-creator`/`mgr-dev-request`는 폐지. 웹 채널목록은 에이전트 타입으로 매니저/친구 섹션 구분
 - `group-{이름들}`: 그룹 (`glimi-group`, GROUP_PARTICIPANTS)
-- `internal-dm-{A}-{B}`: 에이전트간 1:1 (`glimi-internal-dm`, 오너 읽기전용)
+- `internal-dm-{A}-{B}`: 에이전트간 1:1 (`glimi-internal-dm`, 웹 "에이전트끼리/Behind the scenes" 읽기전용 섹션)
 - `internal-group-{이름들}`: 에이전트간 그룹 (`glimi-internal-group`)
-- `mgr-dashboard` / `mgr-creator` / `mgr-system-log`: 관리 채널 (`glimi-mgr`)
+- ~~`mgr-system-log`~~: **폐지** — 런타임 `<tools>` 로그는 `logs/system.log` 파일로 (디코 채널 아님)
+- 분류 단일출처 = `community/core/channels.py` (`channel_kind`/`is_owner_dm`/`is_system_channel`). 레거시 mgr-* DB는 `scripts/migrate_mgr_to_dm.py`로 dm-화 (실행 완료). 상세 = 메모리 `project_channel_model`
 
 ## 다국어 에이전트 이름
 - `agents.name_i18n` TEXT (JSON: `{"ko": "서유나", "en": "Yuna"}`)
