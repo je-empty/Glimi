@@ -515,6 +515,13 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     if (btn.dataset.tab === 'tools') {
       loadToolTimeline();
     }
+    if (btn.dataset.tab === 'channels') {
+      // Eager paint from the last snapshot so the grid isn't blank until the next
+      // poll (tick() re-renders on a 1.5s cadence; this fills the gap on click).
+      const snap = window.__GLIMI_LAST_SNAP__;
+      const el = document.getElementById('channels-full');
+      if (snap && el) { el.innerHTML = renderChannelsTab(snap); lastChannelsSig = null; }
+    }
     if (btn.dataset.tab === 'chat' && window.GlimiChat) {
       // First entry boots the embedded chat (channels + history + WS); re-entry
       // only re-pins the feed (the single WS survives tab switches untouched).
@@ -775,6 +782,156 @@ function renderChannelsGrouped(channels) {
     html += `<div class="channel-grid">${groups[k].map(renderChannelCard).join('')}</div>`;
   }
   return html || '<div class="empty">no channels</div>';
+}
+
+// ── Channel display helpers (shared by Channels tab + Overview recent feed) ───
+// Resolve a channel's human-facing title:
+//   dm-<id> / dm-<name>  → the agent's display name (the DM partner)
+//   group-* / internal-* → the channel id with the kind prefix stripped
+// Agents are looked up by id first, then by name (the DM key is opaque — dm-<id>
+// in workspace, dm-<name> in a real community).
+function _agentMaps(snap) {
+  const byId = {}, byName = {};
+  (snap.agents || []).forEach(a => { byId[a.id] = a; if (a.name) byName[a.name] = a; });
+  return { byId, byName };
+}
+function _channelAgent(c, maps) {
+  if (c.kind !== 'dm') return null;
+  const key = (c.name || '').replace(/^dm-/, '');
+  if (maps.byId[key]) return maps.byId[key];
+  if (maps.byName[key]) return maps.byName[key];
+  // fall back to the channel's first participant id
+  const pid = (c.participants || [])[0];
+  return pid ? (maps.byId[pid] || null) : null;
+}
+function channelDisplayName(c, maps) {
+  const ag = _channelAgent(c, maps);
+  if (ag) return ag.name || ag.id;
+  // strip the kind prefix for non-DM channels so the user never sees raw ids
+  const nm = c.name || '';
+  return nm.replace(/^(internal-group-|internal-dm-|group-|mgr-)/, '') || nm;
+}
+const _CH_KIND_BADGE = {
+  'mgr':            { label_en: 'Manager',  label_ko: '매니저',     icon: 'ti-clipboard-text' },
+  'dm':             { label_en: 'Direct',   label_ko: 'DM',         icon: 'ti-at' },
+  'group':          { label_en: 'Room',     label_ko: '단톡',       icon: 'ti-hash' },
+  'internal-dm':    { label_en: 'Backstage',label_ko: '비하인드',   icon: 'ti-arrows-left-right' },
+  'internal-group': { label_en: 'Backstage',label_ko: '비하인드',   icon: 'ti-arrows-left-right' },
+  'other':          { label_en: 'Channel',  label_ko: '채널',       icon: 'ti-hash' },
+};
+function _kindBadge(kind) {
+  const m = _CH_KIND_BADGE[kind] || _CH_KIND_BADGE.other;
+  const label = currentLang() === 'en' ? m.label_en : m.label_ko;
+  return `<span class="ch-kind-badge kind-${kind}"><i class="ti ${m.icon}" aria-hidden="true"></i>${esc(label)}</span>`;
+}
+// Last message per channel, derived from the aggregated recent_messages feed.
+// (The channel object itself carries no preview text.) Returns {speaker, message, ts}.
+function _lastMsgByChannel(snap) {
+  const out = {};
+  (snap.recent_messages || []).forEach(m => { out[m.channel] = m; });  // feed is ASC → last wins
+  return out;
+}
+
+// Channels tab — a clickable card grid grouped by kind. Clicking a card jumps to
+// that channel in the Chat tab. DMs sorted by recency desc.
+function renderChannelCardRich(c, maps, lastMap) {
+  const ag = _channelAgent(c, maps);
+  const title = channelDisplayName(c, maps);
+  const avatar = ag
+    ? avatarHtml({ id: ag.id, name: ag.name, emoji: ag.emoji, emotion: ag.emotion }, '', { clickOpen: false, hideBadge: true })
+    : `<div class="ch-card-icon kind-${c.kind}"><i class="ti ${(_CH_KIND_BADGE[c.kind] || _CH_KIND_BADGE.other).icon}" aria-hidden="true"></i></div>`;
+  const lm = lastMap[c.name];
+  const en = currentLang() === 'en';
+  const preview = lm
+    ? `<div class="ch-card-preview"><b>${esc(lm.speaker)}:</b> ${esc((lm.message || '').slice(0, 80))}</div>`
+    : `<div class="ch-card-preview muted">${en ? 'No messages yet' : '대화 없음'}</div>`;
+  const memberBit = c.kind === 'group'
+    ? `<span class="sep">·</span><span>${c.participant_count}${en ? (c.participant_count === 1 ? ' member' : ' members') : '명'}</span>`
+    : '';
+  return `<div class="ch-card kind-${c.kind}" onclick="jumpToChat('${esc(c.name)}')" title="${esc(c.name)}">
+    <div class="ch-card-head">
+      ${avatar}
+      <div class="ch-card-id">
+        <div class="ch-card-name">${esc(title)}</div>
+        <div class="ch-card-sub">${_kindBadge(c.kind)}<span class="ch-card-meta"><span>${c.msg_count} ${en ? 'msgs' : '개'}</span>${memberBit}<span class="sep">·</span><span>${esc(c.last_ago || '—')}</span></span></div>
+      </div>
+    </div>
+    ${preview}
+  </div>`;
+}
+function renderChannelsTab(snap) {
+  const channels = snap.channels || [];
+  if (!channels.length) return '<div class="empty">no channels</div>';
+  const maps = _agentMaps(snap);
+  const lastMap = _lastMsgByChannel(snap);
+  const en = currentLang() === 'en';
+  // Three buckets matching the chat sidebar order: Groups/Rooms → DMs → Backstage.
+  const groups = channels.filter(c => c.kind === 'group' || c.kind === 'mgr');
+  const dms = channels.filter(c => c.kind === 'dm')
+    .slice().sort((a, b) => String(b.last_ts || '').localeCompare(String(a.last_ts || '')));
+  const internal = channels.filter(c => c.internal || c.kind === 'internal-dm' || c.kind === 'internal-group');
+  const section = (titleEn, titleKo, list) => {
+    if (!list.length) return '';
+    return `<div class="ch-section-title">${en ? titleEn : titleKo} · ${list.length}</div>
+      <div class="ch-card-grid">${list.map(c => renderChannelCardRich(c, maps, lastMap)).join('')}</div>`;
+  };
+  return (
+    section('Groups & rooms', '그룹 · 단톡방', groups) +
+    section('Direct messages', '다이렉트 메시지', dms) +
+    section('Behind the scenes', '비하인드', internal)
+  ) || '<div class="empty">no channels</div>';
+}
+
+// Overview — recent conversations grouped by channel. Compact: a channel
+// sub-header (resolved name + kind badge), then that channel's recent lines.
+// Channels ordered by their most-recent message (newest first).
+function renderRecentByChannel(snap) {
+  const msgs = snap.recent_messages || [];
+  if (!msgs.length) return '<div class="empty">no conversations yet</div>';
+  const maps = _agentMaps(snap);
+  const chById = {};
+  (snap.channels || []).forEach(c => { chById[c.name] = c; });
+  // group preserving order; track each channel's latest ts for sorting
+  const order = [];
+  const byCh = {};
+  msgs.forEach(m => {
+    if (!byCh[m.channel]) { byCh[m.channel] = []; order.push(m.channel); }
+    byCh[m.channel].push(m);
+  });
+  order.sort((a, b) => {
+    const la = byCh[a][byCh[a].length - 1].timestamp || '';
+    const lb = byCh[b][byCh[b].length - 1].timestamp || '';
+    return String(lb).localeCompare(String(la));
+  });
+  return order.map(chName => {
+    const c = chById[chName] || { name: chName, kind: _channelKindOf(chName) };
+    const title = channelDisplayName(c, maps);
+    // show the last few lines per channel (compact overview)
+    const lines = byCh[chName].slice(-4).map(m => `
+      <div class="rc-line ${roleClass(m)}">
+        ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
+        <span class="rc-who">${esc(m.speaker)}</span>
+        <span class="rc-text" title="${esc(m.message)}">${esc(m.message)}</span>
+        <span class="rc-ts">${esc(_fmtMsgTime(m.timestamp))}</span>
+      </div>`).join('');
+    return `<div class="rc-group">
+      <div class="rc-head" onclick="jumpToChat('${esc(chName)}')" title="${esc(chName)}">
+        <span class="rc-ch-name">${esc(title)}</span>
+        ${_kindBadge(c.kind || _channelKindOf(chName))}
+      </div>
+      ${lines}
+    </div>`;
+  }).join('');
+}
+// Mirror of server _channel_kind for channels that appear only in the message feed.
+function _channelKindOf(name) {
+  const n = name || '';
+  if (n.startsWith('internal-dm')) return 'internal-dm';
+  if (n.startsWith('internal-group')) return 'internal-group';
+  if (n.startsWith('dm-')) return 'dm';
+  if (n.startsWith('group-')) return 'group';
+  if (n.startsWith('mgr')) return 'mgr';
+  return 'other';
 }
 
 // 이벤트 타입 → 한글 라벨 + 이모지 매핑.
@@ -1359,7 +1516,23 @@ async function openAgent(id) {
     }
   }
 
+  // "채팅으로 열기" — only when the embedded chat surface is available AND the
+  // agent has a real DM (personas + mgr/creator; supervisors/dev have none).
+  // jumpToAgentChat resolves the opaque DM key (dm-<id> vs dm-<name>) via the
+  // chat client's loaded channel list.
+  const _chatAvailable = !!(window.GlimiChat &&
+    document.querySelector('nav.tabs button[data-tab="chat"]'));
+  const _hasDm = !d.is_supervisor && d.type !== 'dev';
+  const openChatCta = (_chatAvailable && _hasDm)
+    ? `<div class="detail-section" style="margin-top:0">
+         <button class="act-btn primary" style="width:100%" onclick="event.stopPropagation(); jumpToAgentChat('${esc(d.id)}')">
+           <i class="ti ti-message" aria-hidden="true"></i> ${currentLang() === 'en' ? 'Open in chat' : '채팅으로 열기'}
+         </button>
+       </div>`
+    : '';
+
   const body = `
+    ${openChatCta}
     ${supEventsHtml}
     <div class="detail-section" style="margin-top:0">
       <h4>📊 상태</h4>
@@ -1410,7 +1583,7 @@ async function openChannel(name) {
   // is belt-and-suspenders — internal channels carry the `internal-` prefix.
   const postable = (name.startsWith('dm-') || name.startsWith('group-')) && !name.startsWith('internal-');
   const openChatBtn = postable
-    ? `<button class="act-btn small primary" onclick="jumpToChat('${esc(name)}')">💬 채팅 열기</button>`
+    ? `<button class="act-btn small primary" onclick="jumpToChat('${esc(name)}')"><i class="ti ti-message" aria-hidden="true"></i> ${currentLang() === 'en' ? 'Open in chat' : '채팅으로 열기'}</button>`
     : '';
   const actions = `
     <div class="detail-section">
@@ -2849,29 +3022,22 @@ function mountCytoscapeGraph(snap) {
   });
 
   // ===== Interactivity =====
-  // Whether the embedded chat surface is available (apps render the Chat tab;
-  // the kernel-only graph viewer does not). When present, a graph click OPENS the
-  // conversation in chat; otherwise it falls back to the read-only detail modal.
-  const _hasChat = !!(window.GlimiChat &&
-    document.querySelector('nav.tabs button[data-tab="chat"]'));
-  // Node (agent) → open that agent's DM in chat. Sup nodes have no DM → detail.
-  cyInstance.on('tap', 'node.agent', (evt) => {
-    if (_hasChat) jumpToAgentChat(evt.target.id());
-    else openAgent(evt.target.id());
-  });
+  // A graph tap opens a PREVIEW popup (info + an "Open in chat" button) — not a
+  // direct jump. Node → agent detail (with a DM "Open in chat" button), edge →
+  // channel detail (with a "Open in chat" button when the channel is postable).
+  // Node (agent) → agent detail modal. Sup nodes also → detail (no DM).
+  cyInstance.on('tap', 'node.agent', (evt) => openAgent(evt.target.id()));
   cyInstance.on('tap', 'node.sup', (evt) => openAgent(evt.target.id()));
   // 오너 노드 — QA 커뮤니티에서만 clickable (심재빈 = LLM 주도 test user, agent 상세 있음).
   // 일반 커뮤니티의 오너는 실제 사람이라 상세뷰 없음 → 클릭 무반응.
   cyInstance.on('tap', 'node.owner', () => {
     if (COMMUNITY === 'qa') openAgent('test-user-bot');
   });
-  // Edge → open the channel it represents in chat (the edge carries the channel
-  // id). Falls back to the channel detail modal when chat isn't embedded.
+  // Edge → channel detail modal (carries the channel id). The modal's "Open in
+  // chat" button does the actual navigation.
   cyInstance.on('tap', 'edge', (evt) => {
     const ch = evt.target.data('channel');
-    if (!ch) return;
-    if (_hasChat) jumpToChat(ch);
-    else openChannel(ch);
+    if (ch) openChannel(ch);
   });
   // Hover 강조 — 노드 hover → 연결된 엣지 라벨 표시 / 엣지 hover → 본인 라벨 표시
   cyInstance.on('mouseover', 'node', (evt) => {
@@ -3372,7 +3538,7 @@ async function tick() {
   // 헤더 pills/meta는 제거됨 — 모든 정보는 KPI 카드에 있음
 
   document.getElementById('tc-agents').textContent = snap.agents.length;
-  document.getElementById('tc-messages').textContent = snap.recent_messages.length;
+  { const _tcc = document.getElementById('tc-channels'); if (_tcc) _tcc.textContent = (snap.channels || []).length; }
   document.getElementById('tc-scenes').textContent = (snap.scenes || []).filter(s => s.status === 'active').length;
   document.getElementById('tc-events').textContent = snap.events.length;
 
@@ -3463,21 +3629,26 @@ async function tick() {
     lastAgentsSig = aSig;
   }
 
-  // 메시지 — 새 메시지 있을 때만 재렌더 (스크롤 위치 보존)
+  // Overview 최근 대화 — 채널별 그룹핑. 새 메시지 있을 때만 재렌더 (스크롤 위치 보존)
   const ovMsgs = document.getElementById('overview-msgs');
-  const fm = document.getElementById('messages-full');
   const mSig = messagesSignature(snap.recent_messages);
-  if (mSig !== lastMsgSig) {
-    const keepOv = atBottom(ovMsgs), keepFm = atBottom(fm);
-    ovMsgs.innerHTML = snap.recent_messages.slice(-10).map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
-    fm.innerHTML = snap.recent_messages.map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
+  if (ovMsgs && mSig !== lastMsgSig) {
+    const keepOv = atBottom(ovMsgs);
+    ovMsgs.innerHTML = renderRecentByChannel(snap);
     if (keepOv) ovMsgs.scrollTop = ovMsgs.scrollHeight;
-    if (keepFm) fm.scrollTop = fm.scrollHeight;
     lastMsgSig = mSig;
   }
 
-  // 채널 전용 탭은 제거됨 (채팅이 웹에 들어옴) — channelsSignature 는 Sync 탭의
-  // "DB-registered Channels" 섹션(renderChannelsGrouped)에서 계속 쓰임.
+  // Channels 탭 — 카드 그리드 (Groups / DMs / Behind the scenes). 채널 또는
+  // 최근 대화 변화 시 재렌더 (마지막 메시지 미리보기가 recent_messages 에서 옴).
+  const chFull = document.getElementById('channels-full');
+  if (chFull) {
+    const cSig = channelsSignature(snap.channels) + '|' + mSig;
+    if (cSig !== lastChannelsSig) {
+      chFull.innerHTML = renderChannelsTab(snap);
+      lastChannelsSig = cSig;
+    }
+  }
   // Scenes 탭: 각 씬 카드 (active/completed/not_started 상태별 스타일)
   const scenesEl = document.getElementById('scenes-full');
   if (scenesEl) {

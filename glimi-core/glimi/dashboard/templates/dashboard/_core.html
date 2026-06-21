@@ -121,7 +121,7 @@
     <button data-tab="chat" class="{% if (active_tab or 'chat') == 'chat' %}active{% endif %}"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">Chat</span></button>
     <button data-tab="overview" class="{% if active_tab == 'overview' %}active{% endif %}"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
     <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">Agents</span> <span class="count" id="tc-agents">0</span></button>
-    <button data-tab="messages"><i class="ti ti-mail tab-emoji" aria-hidden="true"></i><span class="tab-label">Messages</span> <span class="count" id="tc-messages">0</span></button>
+    <button data-tab="channels"><i class="ti ti-hash tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>
     <button data-tab="scenes"><i class="ti ti-movie tab-emoji" aria-hidden="true"></i><span class="tab-label">Scenes</span> <span class="count" id="tc-scenes">0</span></button>
     <button data-tab="achievements"><i class="ti ti-trophy tab-emoji" aria-hidden="true"></i><span class="tab-label">Achievements</span> <span class="count" id="tc-achievements">—</span></button>
     <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">Events</span> <span class="count" id="tc-events">0</span></button>
@@ -163,7 +163,7 @@
     </div>
 
     <div class="view" id="view-agents"><div class="agent-grid" id="agents-full"></div></div>
-    <div class="view" id="view-messages"><div class="msg-list" id="messages-full"></div></div>
+    <div class="view" id="view-channels"><div id="channels-full"></div></div>
     <div class="view" id="view-scenes"><div id="scenes-full"></div></div>
     <div class="view" id="view-achievements">
       <div class="ach-header">
