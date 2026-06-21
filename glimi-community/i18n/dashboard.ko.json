@@ -6,7 +6,7 @@
   "empty_community_msg": "아직 에이전트나 대화가 없어요. 커뮤니티 서버를 시작하면 데이터가 채워집니다.",
   "empty_community_hint": "서버 시작",
   "kpi_server": "서버 상태",
-  "kpi_bot": "디스코드 봇",
+  "kpi_bot": "가동 상태",
   "kpi_owner": "오너",
   "kpi_scene": "활성 씬",
   "kpi_msgs": "메시지",

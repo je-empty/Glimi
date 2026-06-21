@@ -68,7 +68,7 @@ const I18N_UNUSED_OLD = {
     empty_community_hint: '서버 시작',
     // KPI
     kpi_server: 'Server Status',
-    kpi_bot: 'Discord Bot',
+    kpi_bot: 'Runtime',
     kpi_owner: 'Owner',
     kpi_scene: 'Active Scene',
     kpi_msgs: 'Messages',
@@ -161,7 +161,7 @@ const I18N_UNUSED_OLD = {
     empty_community_title: '📭 This community is empty',
     empty_community_msg: "No agents or conversations yet. Start the community server to populate data.",
     empty_community_hint: 'Start server',
-    kpi_server: 'Server Status', kpi_bot: 'Discord Bot', kpi_owner: 'Owner',
+    kpi_server: 'Server Status', kpi_bot: 'Runtime', kpi_owner: 'Owner',
     kpi_scene: 'Active Scene', kpi_msgs: 'Messages',
     online: '● Online', offline_short: '○ Offline',
     running: '● Running', stopped: '○ Stopped',

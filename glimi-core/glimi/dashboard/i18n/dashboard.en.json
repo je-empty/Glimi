@@ -6,7 +6,7 @@
   "empty_community_msg": "No agents or conversations yet. Start the community server to populate data.",
   "empty_community_hint": "Start server",
   "kpi_server": "Server Status",
-  "kpi_bot": "Discord Bot",
+  "kpi_bot": "Runtime",
   "kpi_owner": "Owner",
   "kpi_scene": "Active Scene",
   "kpi_msgs": "Messages",
