@@ -791,6 +791,44 @@
       .catch(function () { /* leave whatever is shown */ });
   }
 
+  // ==== Live poll ====
+  // The WebSocket only carries messages that flow through THIS web process. The
+  // Discord adapter (and any other transport) writes to the same DB in a separate
+  // process, so those messages never hit the socket. Re-fetch the active channel's
+  // tail on an interval and append only unseen ids (dedup via msgIndex; the owner's
+  // own optimistic rows are already reconciled to their server id by the WS, so
+  // they're skipped). This makes the chat live regardless of who wrote the message.
+  function pollNew() {
+    if (!CHANNEL) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=50';
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { messages: [] }; })
+      .then(function (data) {
+        var msgs = (data && data.messages) || [];
+        var added = false;
+        msgs.forEach(function (row) {
+          if (row.id == null || msgIndex[row.id]) return;  // unseen ids only
+          if (row.is_user && row.speaker_id && OWNER_ID == null) OWNER_ID = row.speaker_id;
+          var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
+          appendMessage(frameToMsg(
+            row.speaker_id, row.display_name || row.speaker_id || '',
+            !!row.is_user, row.text || '', parseTs(row.timestamp),
+            {
+              id: row.id, images: row.images || [], reactions: row.reactions || [],
+              replyTo: rt, replyMeta: row.reply_to || null,
+              threadRoot: row.thread_root != null ? row.thread_root : null
+            }
+          ), true);
+          if (rt != null) refreshThreadAffordance(String(rt));
+          added = true;
+        });
+        if (added) updateChannelPreviewFromHistory(msgs);
+      })
+      .catch(function () { /* transient — next tick retries */ });
+  }
+  setInterval(pollNew, 3000);
+
   // Derive the active channel's last-message preview/time from its history.
   function updateChannelPreviewFromHistory(msgs) {
     if (!msgs || !msgs.length) return;
@@ -870,9 +908,10 @@
     var internal = channels.filter(function (c) { return c.kind === 'internal' && match(c); });
 
     var FRIENDS_LABEL = WS_BASE ? (EN ? 'Team' : '팀') : (EN ? 'Friends' : '친구');
+    var STAFF_LABEL = WS_BASE ? (EN ? 'Coordinator' : '코디네이터') : (EN ? 'Managers' : '매니저');
     $channelList.innerHTML = '';
     if (staff.length) {
-      $channelList.appendChild(groupLabel(EN ? 'Managers' : '매니저', staff.length));
+      $channelList.appendChild(groupLabel(STAFF_LABEL, staff.length));
       staff.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
     if (friends.length) {

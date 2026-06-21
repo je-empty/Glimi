@@ -516,6 +516,8 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
 
     out: list[dict] = []
     # DM-per-agent. reader.agents() is already mgr → creator → dev → persona → id.
+    # ``agent_type`` lets the shared chat.js section the list (coordinator=mgr →
+    # Coordinator/Managers; specialists=persona → Team).
     for a in reader.agents():
         aid = a.get("id")
         if not aid:
@@ -525,30 +527,38 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
             "channel": dm_channel,
             "kind": "dm",
             "agent_id": aid,
+            "agent_type": a.get("type", ""),
             "name": a.get("name") or aid,
             "type": a.get("type", ""),
+            "postable": True,
             "avatar_url": f"/w/{ws.id}/api/avatar?id={aid}&v={_ASSET_VER}",
             "last": _last_preview(store, dm_channel, owner_ids, names, owner_name),
         })
-    # Registered group channels (multi-agent). The overview lists every channel;
-    # keep only ``group-*`` (mgr-/internal-/dm- are excluded by the prefix filter).
+    # group-* (multi-agent rooms) + internal-* (specialist↔specialist A2A — the team
+    # talking to each other, the workspace's whole point). internal-* is READ-ONLY
+    # ("Behind the scenes"): the owner watches, doesn't post.
     try:
         overview = store.get_channel_overview()
     except Exception:
         overview = []
     for c in overview:
         name = c.get("channel") or ""
-        if not name.startswith("group-"):
-            continue
-        out.append({
-            "channel": name,
-            "kind": "group",
-            "agent_id": None,
-            "name": name,
-            "type": "group",
-            "avatar_url": None,
-            "last": _last_preview(store, name, owner_ids, names, owner_name),
-        })
+        if name.startswith("group-"):
+            out.append({
+                "channel": name, "kind": "group", "agent_id": None,
+                "agent_type": "group", "name": name, "type": "group",
+                "postable": True, "avatar_url": None,
+                "last": _last_preview(store, name, owner_ids, names, owner_name),
+            })
+        elif name.startswith("internal-"):
+            parts = [p for p in name[len("internal-"):].split("-") if p]
+            disp = " ↔ ".join(names.get(p, p) for p in parts) or name
+            out.append({
+                "channel": name, "kind": "internal", "agent_id": None,
+                "agent_type": "internal", "name": disp, "type": "internal",
+                "postable": False, "avatar_url": None,
+                "last": _last_preview(store, name, owner_ids, names, owner_name),
+            })
     return out
 
 
