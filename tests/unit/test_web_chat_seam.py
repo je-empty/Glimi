@@ -195,11 +195,25 @@ def test_history_community_scoped_empty_for_unknown_channel(seeded_app):
     assert r.json()["messages"] == []
 
 
-def test_history_rejects_internal_channel(seeded_app):
+def test_history_rejects_system_channel(seeded_app):
+    # The genuine system/log channel (the runtime <tools> log) stays hidden — even
+    # for READING. Everything else (dm/group/internal) is readable.
     client, _anon, cid = seeded_app
     r = client.get(f"/community/{cid}/chat/history?channel=mgr-system-log")
     assert r.status_code == 400
-    assert "not user-postable" in r.json()["error"]
+    assert "not readable" in r.json()["error"]
+
+
+def test_history_allows_reading_internal_channel(seeded_app):
+    # The owner WATCHES the agent-to-agent backchannels ("Behind the scenes"):
+    # READING an internal-* channel is allowed (200), even though POSTING is not.
+    client, _anon, cid = seeded_app
+    r = client.get(
+        f"/community/{cid}/chat/history?channel=internal-group-backchannel&limit=50")
+    assert r.status_code == 200
+    assert r.json()["channel"] == "internal-group-backchannel"
+    # No rows seeded for it → empty, but the read itself is permitted (not a 400).
+    assert r.json()["messages"] == []
 
 
 def test_history_requires_auth(seeded_app):
@@ -211,20 +225,24 @@ def test_history_requires_auth(seeded_app):
 
 # ── Channel list endpoint ───────────────────────────────────────────────
 
-def test_channels_lists_dm_and_group_excludes_internal(seeded_app):
+def test_channels_lists_dm_group_and_internal(seeded_app):
     client, _anon, cid = seeded_app
     r = client.get(f"/community/{cid}/chat/channels")
     assert r.status_code == 200
     chans = r.json()["channels"]
     ids = {c["channel"] for c in chans }
-    # DM-per-agent (web convention dm-<agent_id>) for both seeded agents.
-    assert "dm-mgr" in ids
+    # The seeded persona DM (carries real rows) — present regardless of run order.
     assert "dm-agent-persona-001" in ids
     # Registered user-postable group channel is listed.
     assert "group-cafe" in ids
-    # Internal / mgr-* channels are EXCLUDED from the postable list.
-    assert not any(c["channel"].startswith("internal-") for c in chans)
-    assert not any(c["channel"].startswith("mgr-") for c in chans)
+    # Internal (agent-to-agent) channels ARE listed — the owner watches them
+    # ("Behind the scenes") — but flagged NOT postable so the composer locks.
+    internal = [c for c in chans if c["channel"].startswith("internal-")]
+    assert internal, "internal backchannel should be surfaced for the owner to watch"
+    assert all(c["kind"] == "internal" for c in internal)
+    assert all(c["postable"] is False for c in internal)
+    # Genuine system/log mgr-* channels stay hidden (mgr-system-log / bare mgr).
+    assert not any(c["channel"] in ("mgr-system-log", "mgr") for c in chans)
     # DM entries carry display metadata for rendering.
     dm = next(c for c in chans if c["channel"] == "dm-agent-persona-001")
     assert dm["kind"] == "dm"

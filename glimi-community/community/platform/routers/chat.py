@@ -343,6 +343,14 @@ def _list_postable_channels(community_id: str) -> list[dict]:
                 "last": _last(name),
             }
 
+        # Dev assistant ids/names (한세나) — resolve a dm-<id> OR dm-<name> to its type.
+        _dev_ids = {aid for aid, a in agents.items() if a.get("type") == "dev"}
+        _dev_names = {a.get("name") for a in agents.values()
+                      if a.get("type") == "dev" and a.get("name")}
+
+        def _is_dev_agent(agent_id) -> bool:
+            return bool(agent_id) and agents.get(agent_id, {}).get("type") == "dev"
+
         def _resolve(name: str, parts: list):
             k = channel_kind(name)
             if k in ("internal-dm", "internal-group"):
@@ -350,6 +358,20 @@ def _list_postable_channels(community_id: str) -> list[dict]:
             if k == "group" or len(parts) >= 2:
                 return _group_entry(name)
             return _dm_entry(name, parts[0] if parts else None)
+
+        def _is_dev_channel(name: str, parts: list) -> bool:
+            """The dev assistant (한세나, agent_type='dev') is internal-only — its DM
+            must NOT surface in the owner's chat list. Match a dev participant OR the
+            conventional dm-<dev-id>/dm-<dev-name> channel id (monitor keys owner DMs
+            by the agent's NAME, e.g. ``dm-한세나``)."""
+            if channel_kind(name) != "dm":
+                return False
+            if any(_is_dev_agent(p) for p in (parts or [])):
+                return True
+            if name == "dm-agent-dev-001":
+                return True
+            suffix = name[3:] if name.startswith("dm-") else ""
+            return suffix in _dev_ids or suffix in _dev_names
 
         out: list[dict] = []
         seen: set[str] = set()
@@ -363,8 +385,11 @@ def _list_postable_channels(community_id: str) -> list[dict]:
             name = ch.get("name") or ""
             if not name or name in seen or is_system_channel(name):
                 continue
+            parts = ch.get("participants") or []
+            if _is_dev_channel(name, parts):
+                continue
             seen.add(name)
-            out.append(_resolve(name, ch.get("participants") or []))
+            out.append(_resolve(name, parts))
 
         # 2) Any channel that already has messages but isn't registered — robustness
         #    ("show messages regardless of transport"). Agent participants are the
@@ -389,8 +414,11 @@ def _list_postable_channels(community_id: str) -> list[dict]:
             name = r["channel"]
             if not name or name in seen or is_system_channel(name):
                 continue
+            parts = speakers_by_ch.get(name, [])
+            if _is_dev_channel(name, parts):
+                continue
             seen.add(name)
-            out.append(_resolve(name, speakers_by_ch.get(name, [])))
+            out.append(_resolve(name, parts))
 
         kind_rank = {"dm": 0, "group": 1, "internal": 2}
         type_rank = {"mgr": 0, "creator": 1, "dev": 2, "persona": 3}
@@ -817,16 +845,20 @@ async def chat_history(
 ):
     """Recent messages for a channel, newest-last, display-ready.
 
-    Auth-gated + per-community access. Rejects non-user-postable channels so the
-    history surface matches the postable channel list. ``before_id`` (>0) pages
-    backwards — returns the ``limit`` messages older than that id (scroll-to-top).
+    Auth-gated + per-community access. READING is allowed for any conversation
+    channel — dm/group (postable) AND the agent-to-agent backchannels
+    (``internal-*``) the owner WATCHES ("Behind the scenes"). Only the genuine
+    system/log channels (``mgr-system-log`` / bare ``mgr``) stay hidden. POSTING
+    is still gated separately (the WS ``text``/reaction path rejects
+    non-user-postable channels), so internal channels remain read-only.
+    ``before_id`` (>0) pages backwards — the ``limit`` messages older than that id.
     """
     _api_user(request, cid)
     channel = (channel or "").strip()
     if not channel:
         return JSONResponse({"error": "missing channel"}, status_code=400)
-    if not is_user_postable(channel):
-        return JSONResponse({"error": "channel is not user-postable"}, status_code=400)
+    if is_system_channel(channel):
+        return JSONResponse({"error": "channel is not readable"}, status_code=400)
     try:
         limit = max(1, min(int(limit), 200))
     except (TypeError, ValueError):

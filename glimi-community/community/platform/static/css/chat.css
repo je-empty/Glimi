@@ -369,14 +369,20 @@ body {
 .daydiv .ln { flex: 1; height: 1px; background: var(--border-soft); }
 .daydiv .lb { font-size: var(--fs-xs); font-weight: 600; color: var(--text-faint); letter-spacing: 0.3px; }
 
-.msg {
+/* Chat-feed rows are SCOPED to .chat-shell so the entrance-animation defaults
+   (opacity:0 + grid layout) never leak onto the dashboard's GLOBAL `.msg` ledger
+   (Messages / Overview / Sync / agent-detail lists), which would otherwise render
+   those rows invisible / mis-laid-out — chat.css loads after dashboard.css, so a
+   bare `.msg{opacity:0}` wins on the dashboard. The child/modifier rules below
+   stay unscoped (they only match chat-specific children that the ledger lacks). */
+.chat-shell .msg {
   position: relative;
   display: grid; grid-template-columns: 40px 1fr;
   gap: var(--sp-4);
   padding: 2px var(--sp-5);
   opacity: 0; transform: translateY(5px);
 }
-.msg.in { opacity: 1; transform: none; transition: opacity .24s var(--chat-ease), transform .24s var(--chat-ease); }
+.chat-shell .msg.in { opacity: 1; transform: none; transition: opacity .24s var(--chat-ease), transform .24s var(--chat-ease); }
 .msg.lead { margin-top: var(--sp-5); }
 .msg.cont { padding-top: 1px; padding-bottom: 1px; }
 /* The dashboard 'Messages' ledger styles a global `.msg` with a per-row
@@ -698,16 +704,7 @@ body {
 .reply-cue .x:hover { background: var(--panel-3); color: var(--text); }
 .reply-cue .x:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: -2px; }
 
-.ctop { display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); }
-.ctop .plus {
-  width: 34px; height: 34px;
-  border-radius: var(--r-md);
-  flex: 0 0 auto;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-faint);
-  font-size: var(--fs-xl);
-  background: var(--panel-2);
-}
+.ctop { display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
 .ctop .ta {
   flex: 1 1 auto; min-width: 0;
   min-height: 34px; max-height: 160px;

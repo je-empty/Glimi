@@ -1450,6 +1450,19 @@ function jumpToChat(name) {
   if (window.GlimiChat) window.GlimiChat.selectChannelById(name, agent);
 }
 
+// Graph NODE→chat: open the clicked agent's DM in the Chat tab. The agent id is
+// the node id; GlimiChat resolves it to the right DM channel from its loaded list
+// (the DM key is opaque — dm-<id> vs dm-<name>). Same tab-switch + leave-fullscreen
+// dance as jumpToChat so the chat isn't hidden under the graph overlay.
+function jumpToAgentChat(agentId) {
+  if (!agentId) return;
+  closeModal();
+  document.body.classList.remove('graph-fullscreen');
+  const chatTab = document.querySelector('nav.tabs button[data-tab="chat"]');
+  if (chatTab) chatTab.click();
+  if (window.GlimiChat) window.GlimiChat.openAgentChannel(agentId);
+}
+
 function renderMessageWithActions(m, channelName) {
   return `<div class="msg ${roleClass(m)}" data-msg-id="${m.id || ''}" style="position:relative">
     ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
@@ -2836,16 +2849,29 @@ function mountCytoscapeGraph(snap) {
   });
 
   // ===== Interactivity =====
-  cyInstance.on('tap', 'node.agent', (evt) => openAgent(evt.target.id()));
+  // Whether the embedded chat surface is available (apps render the Chat tab;
+  // the kernel-only graph viewer does not). When present, a graph click OPENS the
+  // conversation in chat; otherwise it falls back to the read-only detail modal.
+  const _hasChat = !!(window.GlimiChat &&
+    document.querySelector('nav.tabs button[data-tab="chat"]'));
+  // Node (agent) → open that agent's DM in chat. Sup nodes have no DM → detail.
+  cyInstance.on('tap', 'node.agent', (evt) => {
+    if (_hasChat) jumpToAgentChat(evt.target.id());
+    else openAgent(evt.target.id());
+  });
   cyInstance.on('tap', 'node.sup', (evt) => openAgent(evt.target.id()));
   // 오너 노드 — QA 커뮤니티에서만 clickable (심재빈 = LLM 주도 test user, agent 상세 있음).
   // 일반 커뮤니티의 오너는 실제 사람이라 상세뷰 없음 → 클릭 무반응.
   cyInstance.on('tap', 'node.owner', () => {
     if (COMMUNITY === 'qa') openAgent('test-user-bot');
   });
+  // Edge → open the channel it represents in chat (the edge carries the channel
+  // id). Falls back to the channel detail modal when chat isn't embedded.
   cyInstance.on('tap', 'edge', (evt) => {
     const ch = evt.target.data('channel');
-    if (ch) openChannel(ch);
+    if (!ch) return;
+    if (_hasChat) jumpToChat(ch);
+    else openChannel(ch);
   });
   // Hover 강조 — 노드 hover → 연결된 엣지 라벨 표시 / 엣지 hover → 본인 라벨 표시
   cyInstance.on('mouseover', 'node', (evt) => {
@@ -3346,7 +3372,6 @@ async function tick() {
   // 헤더 pills/meta는 제거됨 — 모든 정보는 KPI 카드에 있음
 
   document.getElementById('tc-agents').textContent = snap.agents.length;
-  document.getElementById('tc-channels').textContent = snap.channels.length;
   document.getElementById('tc-messages').textContent = snap.recent_messages.length;
   document.getElementById('tc-scenes').textContent = (snap.scenes || []).filter(s => s.status === 'active').length;
   document.getElementById('tc-events').textContent = snap.events.length;
@@ -3451,12 +3476,8 @@ async function tick() {
     lastMsgSig = mSig;
   }
 
-  // 채널 — 구조/카운트 변화 시만
-  const chSig = channelsSignature(snap.channels);
-  if (chSig !== lastChannelsSig) {
-    document.getElementById('channels-full').innerHTML = renderChannelsGrouped(snap.channels);
-    lastChannelsSig = chSig;
-  }
+  // 채널 전용 탭은 제거됨 (채팅이 웹에 들어옴) — channelsSignature 는 Sync 탭의
+  // "DB-registered Channels" 섹션(renderChannelsGrouped)에서 계속 쓰임.
   // Scenes 탭: 각 씬 카드 (active/completed/not_started 상태별 스타일)
   const scenesEl = document.getElementById('scenes-full');
   if (scenesEl) {

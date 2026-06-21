@@ -991,6 +991,20 @@
     return li;
   }
 
+  // Most-recent-activity sort key (DESC) for a channel: prefer the live preview ts
+  // (set as the active channel updates), else the server-seeded last.timestamp.
+  function activityTs(c) {
+    if (c._ts) return c._ts;
+    if (c.last && c.last.timestamp) return parseTs(c.last.timestamp) || 0;
+    return 0;
+  }
+  function byRecencyDesc(a, b) {
+    var d = activityTs(b) - activityTs(a);
+    if (d) return d;
+    // Stable tiebreak so equal-ts rows keep a deterministic order.
+    return (a.name || a.channel || '').localeCompare(b.name || b.channel || '');
+  }
+
   function renderChannels() {
     if (!$channelList) return;
     var q = ($search && $search.value || '').trim().toLowerCase();
@@ -998,42 +1012,38 @@
       if (!q) return true;
       return (c.name || c.channel || '').toLowerCase().indexOf(q) !== -1;
     };
-    // mgr / creator / dev = staff (managers); everyone else (personas) = friends.
-    // Split so the list visibly distinguishes managers from personas (web model:
-    // the old mgr-* channels are just DMs with those managers).
-    var isStaff = function (c) {
-      return c.agent_type === 'mgr' || c.agent_type === 'creator' || c.agent_type === 'dev';
-    };
-    var staff = channels.filter(function (c) { return c.kind === 'dm' && isStaff(c) && match(c); });
-    var friends = channels.filter(function (c) { return c.kind === 'dm' && !isStaff(c) && match(c); });
-    var grps = channels.filter(function (c) { return c.kind === 'group' && match(c); });
+    // Discord/Slack ordering: group channels (rooms) FIRST, then DMs sorted by
+    // most-recent activity, then the agent-to-agent backchannels ("Behind the
+    // scenes"). Managers no longer get a separate pinned section — they sort by
+    // recency like everyone else (the row still carries a manager tag/badge).
+    var grps = channels.filter(function (c) { return c.kind === 'group' && match(c); })
+      .sort(byRecencyDesc);
+    var dms = channels.filter(function (c) { return c.kind === 'dm' && match(c); })
+      .sort(byRecencyDesc);
     // agent-to-agent backchannels — the owner WATCHES (read-only). Core of Glimi:
     // friends talking to each other behind the scenes.
-    var internal = channels.filter(function (c) { return c.kind === 'internal' && match(c); });
+    var internal = channels.filter(function (c) { return c.kind === 'internal' && match(c); })
+      .sort(byRecencyDesc);
 
-    var FRIENDS_LABEL = WS_BASE ? (EN ? 'Team' : '팀') : (EN ? 'Friends' : '친구');
-    var STAFF_LABEL = WS_BASE ? (EN ? 'Coordinator' : '코디네이터') : (EN ? 'Managers' : '매니저');
+    var ROOMS_LABEL = WS_BASE ? (EN ? 'Rooms' : '룸') : (EN ? 'Groups' : '그룹');
+    var DMS_LABEL = WS_BASE ? (EN ? 'Team' : '팀') : (EN ? 'Direct messages' : '다이렉트 메시지');
     $channelList.innerHTML = '';
-    if (staff.length) {
-      $channelList.appendChild(groupLabel(STAFF_LABEL, staff.length));
-      staff.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
-    }
-    if (friends.length) {
-      $channelList.appendChild(groupLabel(FRIENDS_LABEL, friends.length));
-      friends.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
-    }
     if (grps.length) {
-      $channelList.appendChild(groupLabel(EN ? 'Groups' : '그룹', grps.length));
+      $channelList.appendChild(groupLabel(ROOMS_LABEL, grps.length));
       grps.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
+    }
+    if (dms.length) {
+      $channelList.appendChild(groupLabel(DMS_LABEL, dms.length));
+      dms.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
     if (internal.length) {
       $channelList.appendChild(groupLabel(EN ? 'Behind the scenes' : '에이전트끼리', internal.length));
       internal.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
 
-    // Sidebar sub-header: friend/member count = personas (managers excluded).
+    // Sidebar sub-header: friend/member count = persona DMs (managers excluded).
     if ($sideSub) {
-      var n = friends.length;
+      var n = dms.filter(function (c) { return c.agent_type === 'persona'; }).length;
       if (EN) {
         var noun = WS_BASE ? 'members' : 'friends';
         $sideSub.textContent = n + ' ' + noun + ' · ' + n + ' online';
@@ -1665,6 +1675,26 @@
       // channel — that's correct here (the channel is already live; the caller
       // has already shown the tab), so the jump is a safe no-op in that case.
       selectChannel({ channel: channelId, agent_id: resolvedAgent });
+    },
+    // Graph NODE→chat jump: resolve an agent_id to its DM channel from the loaded
+    // channel list (the web DM key is opaque — dm-<id> in workspace, dm-<name> in
+    // community — so match on the channel's agent_id, never reconstruct the key).
+    // Returns the channel id, or null when the agent has no DM listed.
+    channelForAgent: function (agentId) {
+      if (!agentId) return null;
+      for (var i = 0; i < channels.length; i++) {
+        if (channels[i].kind === 'dm' && channels[i].agent_id === agentId) {
+          return channels[i].channel;
+        }
+      }
+      return null;
+    },
+    // Graph NODE→chat jump: open the agent's DM. Resolves the channel from the
+    // loaded list; falls back to dm-<id> if the list isn't loaded yet (boot path).
+    openAgentChannel: function (agentId) {
+      if (!agentId) return;
+      var ch = window.GlimiChat.channelForAgent(agentId) || ('dm-' + agentId);
+      window.GlimiChat.selectChannelById(ch, agentId);
     },
     // Re-entry into the Chat tab: re-pin the feed to bottom (the WS is untouched).
     refit: function () { if ($feed) { pinned = true; $feed.scrollTop = $feed.scrollHeight; } }
