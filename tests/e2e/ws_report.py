@@ -220,17 +220,18 @@ def generate_from_snapshot(snap: dict, *, run_id: str,
     if run_judge is None:
         run_judge = backend not in ("echo", "") and ws_judge.judge_available()
 
+    # The owner-facing deliverable = the Coordinator's substantive synthesis, which is
+    # the LONGEST coordinator message in dm-coordinator (the document). drive_result's
+    # last_deliverable can be a short transition line / stale value, and the served-data
+    # E2E snapshot has no drive_result at all — so judge whichever is the real document
+    # (longest). Matches how the verdict measures the deliverable.
     dr = snap.get("drive_result") or {}
     deliverables = dr.get("deliverables") or []
-    last = dr.get("last_deliverable") or (deliverables[-1] if deliverables else "")
-    if not (last or "").strip():
-        # Served-data E2E snapshot has no drive_result → the owner-facing deliverable
-        # is the Coordinator's substantive synthesis = the LONGEST coordinator message
-        # in dm-coordinator (matches how the verdict measures the real deliverable).
-        _coord = [m.get("message", "") for m in
-                  snap.get("channels", {}).get("dm-coordinator", [])
-                  if m.get("speaker") == "coordinator"]
-        last = max(_coord, key=len, default="")
+    dr_last = dr.get("last_deliverable") or (deliverables[-1] if deliverables else "")
+    _coord = [m.get("message", "") for m in
+              snap.get("channels", {}).get("dm-coordinator", [])
+              if m.get("speaker") == "coordinator"]
+    last = max([max(_coord, key=len, default=""), dr_last or ""], key=len)
 
     if run_judge and (last or "").strip():
         quality = ws_judge.judge_deliverable(
