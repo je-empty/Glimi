@@ -1,0 +1,23 @@
+{
+  "backend": "echo",
+  "generated_at": "2026-06-22T10:21:51.048925+00:00",
+  "goal": "작은 오픈소스 CLI 도구의 첫 공개 런칭 기획",
+  "verdict_status": "PASS",
+  "structure": {
+    "rounds_run": 2,
+    "deliverables_count": 2,
+    "delegation_channels_hit": 3,
+    "a2a_channels_both_spoke": 2,
+    "meta_leaks": 0,
+    "error_leaks": 0,
+    "deliverable_len_last": 89
+  },
+  "quality": {
+    "status": "skipped",
+    "overall": null
+  },
+  "cost": {
+    "total_usd": 0.0,
+    "call_count": 0
+  }
+}

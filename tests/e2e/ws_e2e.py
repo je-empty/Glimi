@@ -276,7 +276,7 @@ def _synthesize_drive_result(channels: dict, owner_id: str,
 def _build_snapshot(base: str, ws_id: str, *, backend: str, goal: str,
                     rounds_requested: int, status: dict, snapshot_payload: dict,
                     usage: dict, channel_names: list[str],
-                    elapsed: float, error: str | None) -> dict:
+                    elapsed: float, error: str | None, context: str = "") -> dict:
     """Assemble the flat snapshot dict that ws_verdict.judge_snapshot consumes,
     entirely from the SERVED endpoints."""
     # owner_id: prefer the snapshot's owner_ids[0]; else infer from is_user rows.
@@ -303,6 +303,7 @@ def _build_snapshot(base: str, ws_id: str, *, backend: str, goal: str,
         "run_id": f"ws-e2e-{ws_id}",
         "backend": backend,
         "goal": goal,
+        "context": context,
         "owner_id": owner_id,
         "owner_name": snapshot_payload.get("owner_name") or OWNER_NAME,
         "channels": channels,
@@ -328,9 +329,15 @@ def _build_snapshot(base: str, ws_id: str, *, backend: str, goal: str,
 
 def run(*, goal: str, context: str, backlog: list, rounds: int, backend: str,
         host: str, port: int, keep_serving: bool, poll_interval: float,
-        wall_clock_cap: float) -> dict:
+        wall_clock_cap: float, report: bool = False,
+        write_baseline: bool = False) -> dict:
     """Full web E2E: start server → create over HTTP → auto-run → poll →
-    harvest served data → judge → write artifacts. Returns the verdict dict."""
+    harvest served data → judge → write artifacts. Returns the verdict dict.
+
+    When ``report`` (or ``write_baseline``) is set, also emit the presentable
+    portfolio report (Markdown + metrics JSON) from the assembled snapshot — the
+    deliverable-quality judge runs only on a real backend, skips cleanly on echo.
+    """
     from tests.e2e import ws_verdict
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -439,10 +446,11 @@ def run(*, goal: str, context: str, backlog: list, rounds: int, backend: str,
     snap = _build_snapshot(
         base, ws_id, backend=backend, goal=goal, rounds_requested=rounds,
         status=status, snapshot_payload=snapshot_payload, usage=usage,
-        channel_names=channel_names, elapsed=elapsed, error=error,
+        channel_names=channel_names, elapsed=elapsed, error=error, context=context,
     ) if ws_id else {
-        "backend": backend, "goal": goal, "channels": {}, "error": error,
-        "drive_result": {}, "usage": [], "elapsed_seconds": round(elapsed, 1),
+        "backend": backend, "goal": goal, "context": context, "channels": {},
+        "error": error, "drive_result": {}, "usage": [],
+        "elapsed_seconds": round(elapsed, 1),
         "owner_id": "owner", "rounds_requested": rounds,
     }
 
@@ -466,6 +474,28 @@ def run(*, goal: str, context: str, backlog: list, rounds: int, backend: str,
     out_path = RESULTS_DIR / f"{run_id}.json"
     out_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2),
                         encoding="utf-8")
+
+    # Portfolio report (Markdown + metrics JSON), reusing the SAME assembled
+    # snapshot — its usage_aggregate carries the served cost/latency/by_agent.
+    if report or write_baseline:
+        try:
+            from tests.e2e import ws_report
+            out = ws_report.generate_from_snapshot(
+                snap, run_id=run_id, write_baseline=write_baseline,
+            )
+            verdict["report_md"] = out["report_paths"]["md"]
+            verdict["report_json"] = out["report_paths"]["json"]
+            q = out["quality"]
+            qs = (f"{q.get('overall')}/10 ({'pass' if q.get('pass') else 'fail'})"
+                  if q.get("status") == "scored" else f"{q.get('status')}")
+            print(f"[ws_e2e] 리포트 — quality: {qs}")
+            print(f"[ws_e2e] 리포트(MD): {out['report_paths']['md']}")
+            if out["report_paths"].get("baseline"):
+                print(f"[ws_e2e] 베이스라인 갱신: {out['report_paths']['baseline']}")
+        except Exception as exc:
+            import traceback
+            print(f"[ws_e2e] 리포트 실패 (verdict 는 완료): {exc}")
+            print(traceback.format_exc())
 
     print("\n" + "=" * 64)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
@@ -525,6 +555,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="seconds between /auto/status polls (default 3)")
     ap.add_argument("--cap", type=float, default=1800.0,
                     help="wall-clock cap in seconds for the auto-run poll loop (default 1800)")
+    ap.add_argument("--report", action="store_true",
+                    help="emit a presentable portfolio report (Markdown + metrics JSON) "
+                         "after the run — quality judge runs only on a real backend")
+    ap.add_argument("--write-baseline", action="store_true",
+                    help="(re)write tests/e2e/ws-baseline.json from this run (implies --report)")
     args = ap.parse_args(argv)
 
     backend = (args.backend or os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo"
@@ -544,6 +579,7 @@ def main(argv: list[str] | None = None) -> int:
         rounds=max(1, min(args.rounds, 10)), backend=backend,
         host=args.host, port=port, keep_serving=args.keep_serving,
         poll_interval=max(0.5, args.poll_interval), wall_clock_cap=max(30.0, args.cap),
+        report=args.report, write_baseline=args.write_baseline,
     )
     status = verdict.get("status", "?")
     return 0 if status in ("PASS", "WARN") else 1

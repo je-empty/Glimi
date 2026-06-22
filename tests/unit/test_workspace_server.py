@@ -154,6 +154,22 @@ def test_demo_other_endpoints(client):
     assert isinstance(tl["tool_calls"], list)  # envelope must match dashboard.js (reads d.tool_calls)
 
 
+def test_avatar_route_returns_role_emoji_svg(client):
+    # The workspace avatar is a role EMOJI on a role-hued disc (not a 2-letter
+    # monogram, not an anime face). Each role renders its own icon; always 200 SVG.
+    for aid, emoji in (("coordinator", "🧭"), ("researcher", "🔬"),
+                       ("builder", "🛠"), ("critic", "🔍")):
+        r = client.get("/w/demo/api/avatar", params={"id": aid})
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("image/svg+xml")
+        body = r.text
+        assert body.lstrip().startswith("<svg")
+        assert emoji in body
+    # An unknown id falls back to the generic teammate emoji (never a bare letter).
+    r = client.get("/w/demo/api/avatar", params={"id": "mystery"})
+    assert r.status_code == 200 and "🧩" in r.text
+
+
 def test_snapshot_injects_workspace_title(client):
     # The shared dashboard hero reads community_meta.name → it must carry the workspace
     # title so the Overview/graph heading isn't blank.
@@ -239,7 +255,7 @@ def test_demo_only_blocks_create_and_hides_form(client, monkeypatch):
 
 def test_chat_channels_surface_internal_owner(client):
     # The demo's chat channel list surfaces internal-owner as a read-only
-    # ("Behind the scenes") channel with the friendly display name.
+    # ("Behind the scenes") channel with the friendly display name + tooltip.
     r = client.get("/w/demo/chat/channels")
     assert r.status_code == 200
     chans = r.json()["channels"]
@@ -247,7 +263,14 @@ def test_chat_channels_surface_internal_owner(client):
     assert owner_ch is not None
     assert owner_ch["kind"] == "internal"
     assert owner_ch["postable"] is False         # read-only: the owner watches itself think
-    assert owner_ch["name"] == "오너의 검토"        # friendly display name, not the raw id
+    assert owner_ch["name"] == "자동 진행 메모"     # friendly display name, not the raw id
+    assert owner_ch["tooltip"] == "자동 진행(오너 대리) 시 매니저 검토 메모"
+
+    # The Coordinator's DM is labelled "매니저" (the owner's single point of contact);
+    # its underlying channel id stays dm-coordinator (load-bearing).
+    coord_dm = next((c for c in chans if c["channel"] == "dm-coordinator"), None)
+    assert coord_dm is not None
+    assert coord_dm["name"] == "매니저"
 
 
 def test_auto_start_403_on_demo(client):

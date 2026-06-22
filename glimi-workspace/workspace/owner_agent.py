@@ -64,13 +64,13 @@ OWNER_REVIEW_CHANNEL = "internal-owner"
 # {"done": bool, "instruction": str, "note": str}. NEVER any meta term — the
 # owner must read as a human delegating work, not a system describing itself.
 OWNER_SYS_KO = (
-    "당신은 이 일의 주인입니다. 코디네이터가 이끄는 팀에게 목표를 주고, 매 라운드 "
+    "당신은 이 일의 주인입니다. 매니저가 이끄는 팀에게 목표를 주고, 매 라운드 "
     "그들이 가져온 결과물을 사람 오너처럼 검토합니다. 좋은 점과 부족한 점을 짧게 "
     "짚고, 다음에 시킬 구체적인 한 가지 지시를 정하거나, 충분하면 끝냅니다. 메타 "
     "용어(에이전트/봇/AI/시뮬레이션/프롬프트/페르소나) 절대 금지 — 그냥 동료에게 "
     "일을 맡기는 사람처럼 말하세요.\n"
     "반드시 JSON 객체 하나로만 답하세요: "
-    '{"done": true/false, "instruction": "코디네이터에게 줄 다음 구체적 지시 '
+    '{"done": true/false, "instruction": "매니저에게 줄 다음 구체적 지시 '
     '(끝났으면 빈 문자열)", "note": "당신만 보는 짧은 검토 메모"}.'
 )
 
@@ -156,7 +156,7 @@ def _build_review_prompt(*, goal: str, context: str, backlog, transcript: list,
 
     if first_round:
         parts.append(
-            "\n아직 아무 작업도 시작되지 않았습니다. 이 목표를 위해 코디네이터에게 줄 "
+            "\n아직 아무 작업도 시작되지 않았습니다. 이 목표를 위해 매니저에게 줄 "
             "첫 지시를 정하세요 — 무엇부터 시작하면 좋을지 구체적으로. (done 은 false)"
         )
     else:

@@ -140,6 +140,112 @@ def _trail_sink(g: Glimi):
     return on_log
 
 
+# A document skeleton for the FINAL deliverable. The Coordinator's synthesis is
+# the workspace's actual work product, so it gets a structured template (clear
+# sections) rather than a free-form chat turn — the difference between a 1-line
+# punchline and a brief the owner can act on. Kept content-neutral (no domain
+# wording) so any goal fills it; the model adapts the headings as needed.
+_DELIVERABLE_TEMPLATE = (
+    "이 결과물을 아래 골격에 맞춰 마크다운으로 작성하세요 — 빈 칸 채우기가 아니라, "
+    "각 절을 팀이 실제로 논의한 구체(이름·수치·트레이드오프)로 채운 진짜 문서로:\n\n"
+    "## 한눈에 보기\n"
+    "(2~3문장: 무엇을 정했고, 왜 그게 답인지.)\n\n"
+    "## 결정 / 방향\n"
+    "(핵심 선택과 그 근거. 검토한 대안과 탈락 이유도 짧게.)\n\n"
+    "## 실행 계획\n"
+    "(번호 매긴 순서 있는 단계. 각 단계에 담당 역할과 대략적 일정/순서를 붙이세요.)\n\n"
+    "## 가장 큰 리스크와 완화책\n"
+    "(크리틱이 짚은 상위 리스크 1~3개 + 각각의 구체적 완화책.)\n\n"
+    "## 다음 한 걸음\n"
+    "(오너가 지금 당장 할 수 있는 단 하나의 행동.)\n"
+)
+
+# Token ceiling for the final deliverable. Far above a chat turn so the document
+# can be a real multi-section brief; echo ignores it (deterministic offline),
+# real backends honor it. Override via env for tuning without a code change.
+_DELIVERABLE_MAX_TOKENS = int(os.environ.get("GLIMI_WS_DELIVERABLE_MAX_TOKENS", "2560") or "2560")
+
+
+def _facade_backend_for(provider: str) -> str:
+    """Map the kernel runtime's provider decision to a ``glimi.llm.generate``
+    ``backend=`` argument. The runtime returns ``'claude'`` for the direct path
+    (NOT a facade backend name) and a budget sentinel for CAPPED — in both cases
+    we pass ``''`` so the facade does its own selection (SDK→CLI) and re-applies
+    the budget guard. Explicit local backends (echo / ollama / SDK / CLI names)
+    pass straight through so the deliverable runs on the SAME backend as the turns."""
+    p = (provider or "").strip().lower()
+    if p in ("echo", "ollama", "claude_cli", "anthropic_sdk"):
+        return p
+    return ""  # 'claude' / CAPPED / unknown → let the facade select + guard
+
+
+def _write_deliverable(g: Glimi, channel: str, prompt: str) -> str:
+    """Generate the FINAL deliverable through the kernel's LLM choke-point
+    (:func:`glimi.llm.generate`) DIRECTLY, with a raised ``max_tokens`` and a
+    document-template skeleton — so the synthesis is a structured brief, not a
+    one-line chat reply (which ``generate_response`` would cap at chat length).
+
+    It still uses the Coordinator's REAL system prompt + the kernel-injected
+    channel context/memory (built via the runtime's own ``_build_prompt``), so the
+    deliverable is grounded in everything the team actually said this round. The
+    result is logged to ``channel`` as the Coordinator (same as a normal turn), so
+    it shows in the dashboard/chat and the HITL gate can wrap it.
+
+    Returns the deliverable text (possibly empty on a capped/failed backend, in
+    which case the caller falls back to a normal gated turn)."""
+    from glimi import llm as _llm  # kernel choke-point (A2A uses the same facade)
+
+    rt = g.runtime
+    if "coordinator" not in rt._active_agents:
+        rt.activate_agent("coordinator")
+    agent_info = rt._active_agents.get("coordinator")
+    if agent_info is None:
+        return ""  # caller falls back to a normal gated turn
+
+    profile = agent_info["profile"]
+    atype = profile.get("type", "mgr")
+    # The user message = the deliverable instruction + the structured skeleton.
+    user_message = f"{prompt}\n\n{_DELIVERABLE_TEMPLATE}"
+    # RAW_WINDOW recent turns so the synthesis sees the round's discussion; the
+    # runtime's _build_prompt folds in memory + the channel transcript + the real
+    # system prompt, and returns the resolved model.
+    try:
+        from glimi.runtime import RAW_WINDOW as _RAW
+    except Exception:
+        _RAW = 15
+    recent = g.store.get_recent_messages(channel, limit=_RAW)
+    full_prompt, system_prompt, model = rt._build_prompt(
+        agent_info, channel, recent, user_message
+    )
+
+    # Which backend the runtime would route to (claude/ollama/echo/CAPPED), mapped
+    # to the facade's backend= contract.
+    try:
+        from glimi.runtime import _provider_for
+        provider = _provider_for(atype, model)
+    except Exception:
+        provider = ""
+    backend = _facade_backend_for(provider)
+
+    g.observer.agent_thinking("coordinator", f"최종 결과물 작성 (max_tokens={_DELIVERABLE_MAX_TOKENS})")
+    resp = _llm.generate(
+        system=system_prompt, user=full_prompt, model=model,
+        agent_type=atype, backend=backend,
+        max_tokens=_DELIVERABLE_MAX_TOKENS, timeout=120,
+    )
+    text = (getattr(resp, "text", "") or "").strip()
+    if not text:
+        return ""
+    # Log the deliverable to the channel as the Coordinator (mirrors a real turn).
+    try:
+        agent_db = g.store.get_agent("coordinator") or {}
+        emotion = agent_db.get("current_emotion")
+        g.store.log_message(channel, "coordinator", text, emotion=emotion)
+    except Exception:
+        g.store.log_message(channel, "coordinator", text)
+    return text
+
+
 def gated_deliver(
     g: Glimi, policy: ApprovalPolicy, *, prompt: str, channel: str,
     kind: str, summary: str, interactive: bool,
@@ -148,8 +254,11 @@ def gated_deliver(
     """Generate a candidate deliverable, then run it through the HITL gate.
 
     The CONSEQUENTIAL action: the Coordinator finalizes the deliverable. We (a)
-    generate the candidate via ``g.reply`` (so it is produced + logged like any
-    turn), (b) wrap it in an :class:`ApprovalAction`, (c) run the gate — AUTO /
+    generate the candidate via :func:`_write_deliverable` — the kernel LLM
+    choke-point called DIRECTLY with a raised ``max_tokens`` + a document skeleton,
+    so it's a real structured brief, not a chat-length one-liner (with a graceful
+    fall back to a normal gated turn if that path returns nothing, e.g. a capped
+    backend) — (b) wrap it in an :class:`ApprovalAction`, (c) run the gate — AUTO /
     non-interactive → auto-approve; REQUIRE_APPROVAL + interactive → owner
     approve/edit/reject; reject → graceful fallback — and (d) return the approved /
     edited / fallback text. The candidate is gated BEFORE it is returned as the
@@ -158,7 +267,11 @@ def gated_deliver(
     A ``web_queue`` (``--serve`` stub) records the action as a PendingApproval and
     auto-approves, so the seam is visible in the dashboard without a web UI.
     """
-    candidate = _gen(g, "coordinator", prompt, channel)
+    candidate = _write_deliverable(g, channel, prompt)
+    if not candidate:
+        # Capped/failed deliverable path → fall back to a normal gated turn so the
+        # round always produces SOMETHING (and the HITL gate still wraps it).
+        candidate = _gen(g, "coordinator", prompt, channel)
     print(f"{LABELS['coordinator']}:\n{candidate}\n")
 
     action = ApprovalAction(kind=kind, summary=summary, proposed_text=candidate,

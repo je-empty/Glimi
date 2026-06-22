@@ -330,6 +330,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip backing up prior run artifacts")
     ap.add_argument("--no-verdict", action="store_true",
                     help="skip running the verdict after the run")
+    ap.add_argument("--report", action="store_true",
+                    help="emit a presentable portfolio report (Markdown + metrics JSON) "
+                         "after the run — quality judge runs only on a real backend")
+    ap.add_argument("--write-baseline", action="store_true",
+                    help="(re)write tests/e2e/ws-baseline.json from this run's metrics "
+                         "(implies --report)")
     ap.add_argument("--goal", default=DEFAULT_GOAL,
                     help="the owner's project goal to drive (default: CLI-launch demo goal)")
     ap.add_argument("--context", default="",
@@ -349,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
     run_id = f"ws-run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     envelope = run(max(1, args.rounds), run_id, args.goal, _ctx, _bl)
 
+    status = "?"
     if not args.no_verdict:
         try:
             from tests.e2e import ws_verdict
@@ -358,14 +365,36 @@ def main(argv: list[str] | None = None) -> int:
             status = verdict.get("status", "?")
             emoji = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}.get(status, "?")
             print(f"\n{emoji} {status}")
-            # Non-zero exit on hard FAIL so CI / tmux surfaces it.
-            return 0 if status in ("PASS", "WARN") else 1
         except Exception as exc:
             import traceback
             print(f"[WS-Runner] 판정 실패 (run 자체는 완료): {exc}")
             print(traceback.format_exc())
-            return 0
 
+    # Portfolio report (Markdown + metrics JSON) — judge runs only on a real backend.
+    if args.report or args.write_baseline:
+        try:
+            from tests.e2e import ws_report
+            snap = json.loads(Path(envelope["store_path"]).read_text(encoding="utf-8"))
+            out = ws_report.generate_from_snapshot(
+                snap, run_id=run_id, write_baseline=args.write_baseline,
+            )
+            q = out["quality"]
+            qs = (f"{q.get('overall')}/10 ({'pass' if q.get('pass') else 'fail'})"
+                  if q.get("status") == "scored" else f"{q.get('status')}")
+            print(f"\n[WS-Runner] 리포트 — quality: {qs}  "
+                  f"overall: {'PASS' if out['metrics']['pass_criteria']['overall_ok'] else 'FAIL'}")
+            print(f"[WS-Runner] 리포트(MD): {out['report_paths']['md']}")
+            print(f"[WS-Runner] 메트릭(JSON): {out['report_paths']['json']}")
+            if out["report_paths"].get("baseline"):
+                print(f"[WS-Runner] 베이스라인 갱신: {out['report_paths']['baseline']}")
+        except Exception as exc:
+            import traceback
+            print(f"[WS-Runner] 리포트 실패 (run/판정은 완료): {exc}")
+            print(traceback.format_exc())
+
+    if not args.no_verdict:
+        # Non-zero exit on hard FAIL so CI / tmux surfaces it.
+        return 0 if status in ("PASS", "WARN") else 1
     return 0 if not envelope.get("error") else 1
 
 

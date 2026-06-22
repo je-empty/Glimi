@@ -175,6 +175,146 @@
     return esc(s).replace(/"/g, '&quot;');
   }
 
+  // ==== GFM-lite markdown renderer (dependency-free, XSS-safe) ====
+  // CONTRACT: callers pass the RAW message text; mdToHtml escapes FIRST (esc),
+  // then formats the escaped string. Because the input is fully entity-escaped
+  // up front, the renderer can only ever emit a CLOSED set of tags it writes
+  // itself (h1-3, strong, em, ul/ol/li, code, pre, a, p, br) plus the spans that
+  // rich() re-introduces (@mention / #channel). No user-supplied markup survives:
+  // a literal "<script>" in the message is "&lt;script&gt;" before any rule runs.
+  // Links additionally pass through safeUrl() so only http(s)/mailto hrefs render.
+  //
+  // Supported: ATX headings (# .. ###), **bold**/__bold__, *italic*/_italic_,
+  // `inline code`, ```fenced code```, - / * / + and 1. lists (one level),
+  // [text](url) links + bare autolinks, blank-line paragraphs + soft line breaks.
+
+  // Allow only safe link schemes; everything else (javascript:, data:, etc.) is
+  // dropped so an [x](javascript:…) can't execute. Operates on the ESCAPED href
+  // (so it sees "&amp;" etc.) and returns it re-quote-escaped for an attribute.
+  function safeUrl(escapedHref) {
+    var raw = (escapedHref || '').trim();
+    // Decode the few entities esc() introduces so the scheme test sees the real
+    // first chars, then re-check. We never inject this decoded form into HTML.
+    var probe = raw.replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    if (/^\s*(https?:|mailto:)/i.test(probe)) return raw.replace(/"/g, '&quot;');
+    if (/^\s*(\/|#|\.\/|\?)/.test(probe)) return raw.replace(/"/g, '&quot;');  // relative/in-page
+    if (/^[^:\s]+$/.test(probe)) return raw.replace(/"/g, '&quot;');           // bare host/path, no scheme
+    return null;  // unsafe scheme → render the link text only, no <a>
+  }
+
+  // Inline formatting on an ALREADY-escaped string. Order matters: pull out
+  // inline-code spans FIRST (placeholder them) so their contents are never
+  // touched by bold/italic/mention rules, restore them last.
+  function mdInline(s) {
+    var codes = [];
+    // `inline code` → placeholder (escaped backticks can't appear post-esc, so a
+    // literal backtick in source is a real backtick here).
+    s = s.replace(/`([^`]+)`/g, function (_m, c) {
+      codes.push('<code class="md-code">' + c + '</code>');
+      return ' ' + (codes.length - 1) + ' ';
+    });
+    // [text](url) links — text gets inline formatting, url is scheme-guarded.
+    // URL part allows one level of balanced parens (e.g. a Wikipedia _(disambig)
+    // link) so the whole "(…)" is consumed — no stray ")" leaks when a link is
+    // dropped for an unsafe scheme.
+    s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, function (m, txt, url) {
+      var href = safeUrl(url);
+      if (!href) return txt;  // unsafe scheme → keep the visible text only
+      return '<a class="md-link" href="' + href + '" target="_blank" rel="noopener noreferrer ugc">' + txt + '</a>';
+    });
+    // Bare autolinks (http/https) not already inside an <a …>.
+    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, function (m, pre, url) {
+      var href = safeUrl(url);
+      if (!href) return m;
+      return pre + '<a class="md-link" href="' + href + '" target="_blank" rel="noopener noreferrer ugc">' + url + '</a>';
+    });
+    // Bold then italic (run bold first so ** isn't eaten by the * rule).
+    s = s.replace(/\*\*([^]+?)\*\*/g, '<strong>$1</strong>')
+         .replace(/__([^]+?)__/g, '<strong>$1</strong>')
+         .replace(/(^|[^\*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, '$1<em class="md-em">$2</em>')
+         .replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_(?![_\w])/g, '$1<em class="md-em">$2</em>');
+    // @mention / #channel (and the legacy <em> marker) — reuse rich() so the
+    // existing affordances keep working inside rendered markdown.
+    s = rich(s);
+    // Restore inline code.
+    s = s.replace(/ (\d+) /g, function (_m, i) { return codes[Number(i)]; });
+    return s;
+  }
+
+  // Block-level pass. ``escaped`` is the WHOLE message already run through esc().
+  // Returns the inner HTML for a rendered markdown block.
+  function mdBlocks(escaped) {
+    var lines = String(escaped == null ? '' : escaped).split('\n');
+    var out = [];
+    var i = 0;
+    var para = [];        // buffered consecutive text lines → one <p>
+    function flushPara() {
+      if (!para.length) return;
+      out.push('<p>' + para.map(mdInline).join('<br>') + '</p>');
+      para = [];
+    }
+    while (i < lines.length) {
+      var line = lines[i];
+      // Fenced code block ``` … ``` (lang tag after the opener is ignored).
+      var fence = line.match(/^\s*```+\s*([^\s`]*)\s*$/);
+      if (fence) {
+        flushPara();
+        var buf = [];
+        i++;
+        while (i < lines.length && !/^\s*```+\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++;  // skip closing fence (or run off the end if unterminated)
+        // Already escaped → emit verbatim, no inline rules inside code.
+        out.push('<pre class="md-pre"><code>' + buf.join('\n') + '</code></pre>');
+        continue;
+      }
+      // ATX heading (# .. ###; 4+ hashes degrade to h3).
+      var h = line.match(/^\s*(#{1,6})\s+(.*)$/);
+      if (h) {
+        flushPara();
+        var lvl = Math.min(h[1].length, 3);
+        out.push('<h' + lvl + ' class="md-h md-h' + lvl + '">' + mdInline(h[2].trim()) + '</h' + lvl + '>');
+        i++;
+        continue;
+      }
+      // Unordered list (-, *, +) — consume the contiguous run.
+      if (/^\s*[-*+]\s+/.test(line)) {
+        flushPara();
+        var ul = [];
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+          ul.push('<li>' + mdInline(lines[i].replace(/^\s*[-*+]\s+/, '')) + '</li>');
+          i++;
+        }
+        out.push('<ul class="md-list">' + ul.join('') + '</ul>');
+        continue;
+      }
+      // Ordered list (1. 2. …) — consume the contiguous run.
+      if (/^\s*\d+[.)]\s+/.test(line)) {
+        flushPara();
+        var ol = [];
+        while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+          ol.push('<li>' + mdInline(lines[i].replace(/^\s*\d+[.)]\s+/, '')) + '</li>');
+          i++;
+        }
+        out.push('<ol class="md-list">' + ol.join('') + '</ol>');
+        continue;
+      }
+      // Blank line → paragraph break.
+      if (/^\s*$/.test(line)) { flushPara(); i++; continue; }
+      // Otherwise a normal text line → buffer into the current paragraph.
+      para.push(line);
+      i++;
+    }
+    flushPara();
+    return out.join('');
+  }
+
+  // Public entry: RAW text → safe rendered-markdown HTML. Escape first (the XSS
+  // boundary), then run the block + inline passes on the escaped text.
+  function mdToHtml(raw) {
+    return mdBlocks(esc(raw));
+  }
+
   // Channel-mention system (works for Discord <#id> too): a #name in a message is
   // clickable and switches to that channel — resolved by real key, dm-<name>, or
   // the agent's display name, so #아린 / #dm-아린 / #서유나 all land on the right DM.
@@ -433,11 +573,20 @@
   }
 
   function linesHtml(m) {
-    var out = m.lines.map(function (l) { return '<div class="txt">' + rich(esc(l)) + '</div>'; }).join('');
+    var out = '';
+    // Normal messages render as GFM-lite markdown (the whole blob is ONE
+    // markdown document so multi-line replies get headings/lists/code/paragraphs).
+    // System / error rows stay a plain pre-wrap line (short notices, no markdown).
+    if (m.kind === 'sys' || m.kind === 'err') {
+      out = m.lines.map(function (l) { return '<div class="txt">' + rich(esc(l)) + '</div>'; }).join('');
+    } else if (m.lines && m.lines.length) {
+      var body = mdToHtml(m.lines.join('\n'));
+      if (body) out = '<div class="txt md">' + body + '</div>';
+    }
     (m.images || []).forEach(function (im) {
       if (im && im.url) {
         out += '<img class="chat-img" src="' + escAttr(im.url) + '" alt="' + escAttr(im.caption || 'image') + '">';
-        if (im.caption) out += '<div class="txt">' + rich(esc(im.caption)) + '</div>';
+        if (im.caption) out += '<div class="txt md">' + mdToHtml(im.caption) + '</div>';
       }
     });
     return out;

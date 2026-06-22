@@ -90,9 +90,12 @@ except ImportError:  # imported as workspace.server
     from .driver import drive_workspace
     from .owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL
 
-# Friendly display name for the owner's read-only reasoning channel in the chat
-# sidebar (KO default; chat.js's i18n can override via the chat.owner_review key).
-_OWNER_REVIEW_NAME = "오너의 검토"
+# Friendly display name + tooltip for the owner's read-only reasoning channel in
+# the chat sidebar (KO default; chat.js's i18n can override via the chat.owner_review
+# key). Renamed "오너의 검토" → "자동 진행 메모": when auto-run drives the workspace
+# on the owner's behalf, the manager's review notes land here.
+_OWNER_REVIEW_NAME = "자동 진행 메모"
+_OWNER_REVIEW_TOOLTIP = "자동 진행(오너 대리) 시 매니저 검토 메모"
 
 # The Core dashboard ships the canonical rich UI — assets (css/js), the shared
 # templates (dashboard/_core.html + _chat_shell.html), and the i18n dicts. This
@@ -172,27 +175,26 @@ def _load_i18n(lang: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-# Workspace chat avatars are role-based MONOGRAMS, not persona/anime faces. The
-# workspace team is functional (Coordinator / Researcher / Builder / Critic), so
-# a clean initial-on-tinted-disc reads better than a stock portrait — and keeps
+# Workspace chat avatars are role EMOJIS on a role-hued disc, not persona/anime
+# faces and not 2-letter monograms. The workspace team is functional (manager /
+# researcher / builder / critic), so a clear role icon reads instantly — and keeps
 # the avatar route dependency-free (no asset pool, always 200).
-_ROLE_MONOGRAM = {
-    "coordinator": "Co", "researcher": "Re", "builder": "Bu", "critic": "Cr",
+#   🧭 manager/coordinator · 🔬 researcher · 🛠 builder · 🔍 critic · ✍️ writer
+# Other ids fall back to 🧩 (generic teammate).
+_ROLE_EMOJI = {
+    "coordinator": "🧭", "manager": "🧭",
+    "researcher": "🔬",
+    "builder": "🛠",
+    "critic": "🔍",
+    "writer": "✍️",
 }
+_GENERIC_EMOJI = "🧩"
 
 
-def _monogram(agent_id: str) -> str:
-    """A 1–2 char monogram for an agent id — role-aware and collision-free
-    (Coordinator→Co, Critic→Cr, so the two C-roles never clash)."""
-    s = (agent_id or "").strip()
-    if not s:
-        return "·"
-    if s.lower() in _ROLE_MONOGRAM:
-        return _ROLE_MONOGRAM[s.lower()]
-    parts = [p for p in s.replace("_", " ").replace("-", " ").split() if p]
-    if len(parts) >= 2:
-        return (parts[0][:1] + parts[1][:1]).upper()
-    return (s[:1].upper() + s[1:2].lower()) if len(s) >= 2 else s[:1].upper()
+def _role_emoji(agent_id: str) -> str:
+    """The role emoji for an agent id — keyed by role/id, with a 🧩 fallback so any
+    id always renders an icon (never a bare letter)."""
+    return _ROLE_EMOJI.get((agent_id or "").strip().lower(), _GENERIC_EMOJI)
 
 
 # Role-specific hues so the team reads as branded, distinct discs (not random):
@@ -201,13 +203,13 @@ _ROLE_HUE = {"coordinator": 35, "researcher": 212, "builder": 265, "critic": 350
 
 
 def _avatar_svg(agent_id: str) -> str:
-    """Inline SVG avatar: the agent's monogram on a soft vertical-gradient disc,
-    tinted by ROLE (Coordinator/Researcher/Builder/Critic) for a branded, less-flat
-    look. Always renders — no external asset, so the avatar route is always 200."""
-    mono = _monogram(agent_id)
+    """Inline SVG avatar: the agent's ROLE EMOJI (🧭/🔬/🛠/🔍/✍️, 🧩 fallback) on a
+    soft vertical-gradient disc, tinted by ROLE (manager/researcher/builder/critic)
+    for a branded, less-flat look. Always renders — no external asset, so the avatar
+    route is always 200."""
+    emoji = _role_emoji(agent_id)
     aid = (agent_id or "").strip().lower()
     hue = _ROLE_HUE.get(aid, int(hashlib.sha1(aid.encode("utf-8")).hexdigest(), 16) % 360)
-    fs = 38 if len(mono) >= 2 else 46
     gid = f"g{hue}"
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" '
@@ -216,9 +218,10 @@ def _avatar_svg(agent_id: str) -> str:
         f'<stop offset="0" stop-color="hsl({hue},60%,90%)"/>'
         f'<stop offset="1" stop-color="hsl({hue},52%,78%)"/></linearGradient></defs>'
         f'<rect width="96" height="96" rx="48" fill="url(#{gid})"/>'
-        f'<text x="48" y="51" font-family="-apple-system,Segoe UI,Roboto,sans-serif" '
-        f'font-size="{fs}" font-weight="700" fill="hsl({hue},55%,30%)" '
-        f'text-anchor="middle" dominant-baseline="central">{_esc(mono)}</text>'
+        '<text x="48" y="52" font-family="-apple-system,Segoe UI,Roboto,'
+        '\'Apple Color Emoji\',\'Segoe UI Emoji\',sans-serif" '
+        'font-size="50" text-anchor="middle" dominant-baseline="central">'
+        f'{_esc(emoji)}</text>'
         '</svg>'
     )
 
@@ -690,13 +693,16 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
         elif name.startswith("internal-"):
             # ``internal-owner`` is the read-only channel where the autonomous owner
             # logs its per-round reasoning (the "owner thinking" the web shows). Give
-            # it a friendly display name; all other internal-* show the RAW channel id
-            # (e.g. "internal-researcher-critic") — the owner asked to see real names.
-            disp = _OWNER_REVIEW_NAME if name == _OWNER_REVIEW_CHANNEL else name
+            # it a friendly display name + tooltip; all other internal-* show the RAW
+            # channel id (e.g. "internal-researcher-critic") — the owner asked to see
+            # real names.
+            is_owner_review = (name == _OWNER_REVIEW_CHANNEL)
+            disp = _OWNER_REVIEW_NAME if is_owner_review else name
             out.append({
                 "channel": name, "kind": "internal", "agent_id": None,
                 "agent_type": "internal", "name": disp, "type": "internal",
                 "postable": False, "avatar_url": None,
+                "tooltip": _OWNER_REVIEW_TOOLTIP if is_owner_review else None,
                 "last": _last_preview(store, name, owner_ids, names, owner_name),
             })
     return out
@@ -875,8 +881,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             create = {
                 "action": "/api/workspaces",
                 "heading": "Or start your own" if EN else "직접 만들어 보기",
-                "lede": ("Name yourself, give a goal, and a fresh Coordinator-led team spins up around it."
-                         if EN else "이름을 정하고 목표를 적으면, 코디네이터가 이끄는 새 팀이 그 주위로 꾸려져요."),
+                "lede": ("Name yourself, give a goal, and a fresh manager-led team spins up around it."
+                         if EN else "이름을 정하고 목표를 적으면, 매니저가 이끄는 새 팀이 그 주위로 꾸려져요."),
                 "name_label": "Your name" if EN else "이름",
                 "name_ph": "Owner" if EN else "예: 수민",
                 "goal_label": "Goal" if EN else "목표",
@@ -889,10 +895,10 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             "brand": "Glimi Workspace",
             "brand_sub": ("specialist teams on one Glimi Core" if EN
                           else "하나의 Glimi Core 위에서 움직이는 전문가 팀"),
-            "lede": ("Give a goal and a team forms around it — a Coordinator that delegates to "
+            "lede": ("Give a goal and a team forms around it — a manager that delegates to "
                      "Researcher, Builder, and Critic, who talk to each other and report back. "
                      "Open the demo to watch one in motion. No login needed." if EN
-                     else "목표를 주면 그 주위로 팀이 꾸려져요 — 코디네이터가 리서처·빌더·크리틱에게 일을 나눠주고, "
+                     else "목표를 주면 그 주위로 팀이 꾸려져요 — 매니저가 리서처·빌더·크리틱에게 일을 나눠주고, "
                           "서로 이야기하며 결과를 가져옵니다. 데모를 열어 직접 보세요. 로그인은 필요 없어요."),
             "items": items,
             "create": create,
