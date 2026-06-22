@@ -50,6 +50,12 @@ TEAM: list[tuple[str, str, str, str]] = [
 # The three specialists, in their contribution order each round.
 SPECIALISTS: list[str] = ["researcher", "builder", "critic"]
 
+# Workspace = real work → every team agent runs on Sonnet (not the persona-default
+# Haiku — quality over latency, since work output matters more than chat speed).
+# Seeded as a per-agent model override at add_agent; the Coordinator (mgr) and the
+# owner-agent already resolve to Sonnet, so this lifts the three specialists too.
+WS_AGENT_MODEL = "claude-sonnet-4-6"
+
 # ── the interaction topology ────────────────────────────────────────────────
 # The team doesn't work in one round-robin room — it works the way a real team
 # does, across several channels with distinct interaction shapes. These constants

@@ -115,11 +115,12 @@ def _build_workspace(goal: str):
     """
     os.environ.setdefault("GLIMI_LANG", "en")
     from glimi import Glimi
-    from team import TEAM
+    from team import TEAM, WS_AGENT_MODEL
 
     g = Glimi(backend=_backend(), owner_name=OWNER_NAME, owner_id=OWNER_ID)
     for aid, name, agent_type, persona in TEAM:
-        g.add_agent(aid, name=name, persona=persona, agent_type=agent_type)
+        g.add_agent(aid, name=name, persona=persona, agent_type=agent_type,
+                    model=WS_AGENT_MODEL)
     return g
 
 
@@ -219,7 +220,8 @@ def _snapshot_store(g) -> dict:
     }
 
 
-def run(rounds: int, run_id: str) -> dict:
+def run(rounds: int, run_id: str, goal: str = DEFAULT_GOAL,
+        context: str = DEFAULT_CONTEXT, backlog: list | None = None) -> dict:
     """Drive a fresh workspace for ``rounds`` rounds and write the artifacts.
 
     Returns the runner's result envelope (backend, rounds_run, stopped_reason,
@@ -227,6 +229,7 @@ def run(rounds: int, run_id: str) -> dict:
     verdict's job (run separately or via the --verdict flag).
     """
     backend = _backend()
+    bl = list(backlog) if backlog is not None else list(DEFAULT_BACKLOG)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     print("=" * 64)
@@ -235,14 +238,14 @@ def run(rounds: int, run_id: str) -> dict:
     print(f"  run_id  : {run_id}")
     print(f"  backend : {backend}")
     print(f"  rounds  : {rounds}")
-    print(f"  goal    : {DEFAULT_GOAL}")
+    print(f"  goal    : {goal}")
     print("=" * 64 + "\n")
 
     log_path = RESULTS_DIR / f"{run_id}.log"
     store_path = RESULTS_DIR / f"ws-store-{run_id[len('ws-run-'):] if run_id.startswith('ws-run-') else run_id}.json"
     result_path = RESULTS_DIR / f"{run_id}.json"
 
-    g = _build_workspace(DEFAULT_GOAL)
+    g = _build_workspace(goal)
     # Each fresh echo store gets its own scripted-review counter; reset to be safe.
     try:
         import owner_agent
@@ -260,9 +263,9 @@ def run(rounds: int, run_id: str) -> dict:
         try:
             drive_result = asyncio.run(driver.drive_workspace(
                 g,
-                goal=DEFAULT_GOAL,
-                context=DEFAULT_CONTEXT,
-                backlog=list(DEFAULT_BACKLOG),
+                goal=goal,
+                context=context,
+                backlog=list(bl),
                 owner_name=OWNER_NAME,
                 max_rounds=rounds,
                 round_delay=0.0,  # QA: no inter-round pause
@@ -279,9 +282,9 @@ def run(rounds: int, run_id: str) -> dict:
     snapshot = _snapshot_store(g)
     snapshot["run_id"] = run_id
     snapshot["backend"] = backend
-    snapshot["goal"] = DEFAULT_GOAL
-    snapshot["context"] = DEFAULT_CONTEXT
-    snapshot["backlog"] = list(DEFAULT_BACKLOG)
+    snapshot["goal"] = goal
+    snapshot["context"] = context
+    snapshot["backlog"] = list(bl)
     snapshot["drive_result"] = drive_result
     snapshot["elapsed_seconds"] = round(elapsed, 1)
     snapshot["error"] = err
@@ -327,13 +330,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip backing up prior run artifacts")
     ap.add_argument("--no-verdict", action="store_true",
                     help="skip running the verdict after the run")
+    ap.add_argument("--goal", default=DEFAULT_GOAL,
+                    help="the owner's project goal to drive (default: CLI-launch demo goal)")
+    ap.add_argument("--context", default="",
+                    help="optional owner context/brief; ignored unless --goal is custom")
     args = ap.parse_args(argv)
 
     if not args.no_backup:
         _backup_prior_runs()
 
+    # Default goal keeps its hand-tuned context/backlog; a custom --goal drives from
+    # the goal (+ optional --context) alone so launch-specific brief doesn't mislead.
+    if args.goal == DEFAULT_GOAL:
+        _ctx, _bl = DEFAULT_CONTEXT, list(DEFAULT_BACKLOG)
+    else:
+        _ctx, _bl = (args.context or ""), []
+
     run_id = f"ws-run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    envelope = run(max(1, args.rounds), run_id)
+    envelope = run(max(1, args.rounds), run_id, args.goal, _ctx, _bl)
 
     if not args.no_verdict:
         try:

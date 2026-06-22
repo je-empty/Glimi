@@ -80,13 +80,13 @@ from glimi.dashboard import (
 try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
     from run import run_workspace  # type: ignore
-    from team import TEAM  # type: ignore
+    from team import TEAM, WS_AGENT_MODEL  # type: ignore
     from driver import drive_workspace  # type: ignore
     from owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL  # type: ignore
 except ImportError:  # imported as workspace.server
     from . import demo as _demo
     from .run import run_workspace
-    from .team import TEAM
+    from .team import TEAM, WS_AGENT_MODEL
     from .driver import drive_workspace
     from .owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL
 
@@ -438,7 +438,8 @@ class WorkspaceRegistry:
         with self._lock:
             g = Glimi(backend=_USER_BACKEND, owner_name=owner_name)
             for aid, disp, atype, persona in TEAM:
-                g.add_agent(aid, name=disp, persona=persona, agent_type=atype)
+                g.add_agent(aid, name=disp, persona=persona, agent_type=atype,
+                            model=WS_AGENT_MODEL)
             # Real interaction topology (echo) → a genuine interaction web for goal.
             run_workspace(g, owner_name, goal)
             if ws_id is None:
