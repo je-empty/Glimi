@@ -488,12 +488,23 @@ def enrich_snapshot(reader: "DashboardReader") -> dict:
         try:
             for m in (reader.store.get_recent_messages(c["name"], limit=8) or []):
                 spk = m.get("speaker") or m.get("agent_id") or ""
+                is_user = spk in owner_id_set
+                disp = owner_name if is_user else names.get(spk, spk)
+                # The store row carries the body under "message" (see store schema /
+                # workspace server _channel_history). Mirror Community's
+                # monitor.snapshot() recent_messages shape EXACTLY so the shared
+                # dashboard.js renders both: speaker_id=raw id (avatar lookup),
+                # speaker=display name (the .who line), message=body. ("text"/
+                # "display_name" kept as aliases for any legacy reader.)
+                body = m.get("message") or m.get("text") or m.get("content") or ""
                 recent.append({
                     "channel": c["name"],
-                    "speaker": spk,
-                    "display_name": owner_name if spk in owner_id_set else names.get(spk, spk),
-                    "is_user": spk in owner_id_set,
-                    "text": m.get("text") or m.get("content") or "",
+                    "speaker_id": spk,
+                    "speaker": disp,
+                    "display_name": disp,
+                    "is_user": is_user,
+                    "message": body,
+                    "text": body,
                     "timestamp": m.get("timestamp") or m.get("ts") or "",
                 })
         except Exception:

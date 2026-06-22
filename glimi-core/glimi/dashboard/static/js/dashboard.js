@@ -857,12 +857,44 @@ function _channelAgent(c, maps) {
   const pid = (c.participants || [])[0];
   return pid ? (maps.byId[pid] || null) : null;
 }
+// Resolve a single agent id to its display name (falls back to the id). Used to
+// turn the raw sides of an internal pair channel into friendly names.
+function _resolveAgentName(id, maps) {
+  if (!id) return id;
+  const a = maps.byId[id] || maps.byName[id];
+  return (a && (a.name || a.id)) || id;
+}
 function channelDisplayName(c, maps) {
   const ag = _channelAgent(c, maps);
   if (ag) return ag.name || ag.id;
-  // strip the kind prefix for non-DM channels so the user never sees raw ids
-  const nm = c.name || '';
-  return nm.replace(/^(internal-group-|internal-dm-|group-|mgr-)/, '') || nm;
+  const nm = c.name || c.channel || '';
+  // internal-owner — the read-only autonomous-owner review channel. Mirror the
+  // server label (KO "자동 진행 메모" / EN "Owner's review") so the chrome reads
+  // friendly, never the raw slug.
+  if (nm === 'internal-owner') {
+    return currentLang() === 'en' ? "Owner's review" : '자동 진행 메모';
+  }
+  // internal-<a>-<b> — a behind-the-scenes pair (coordinator↔specialist or
+  // specialist↔specialist). Resolve each side to its display name and join with
+  // " ↔ ". Mirrors server _internal_pair_label: prefer the channel's two stored
+  // participants (robust to ids that contain hyphens, e.g. 'culture-coach'),
+  // then fall back to a naive split of the slug. Generic — no role names
+  // hardcoded (these files are shared with Community).
+  if (nm.indexOf('internal-') === 0) {
+    const parts = (c.participants || []).filter(Boolean);
+    if (parts.length >= 2) {
+      return parts.slice(0, 2).map(p => _resolveAgentName(p, maps)).join(' ↔ ');
+    }
+    const rest = nm.slice('internal-'.length);
+    const bits = rest.split('-', 2);
+    if (bits.length === 2 && bits[0] && bits[1]) {
+      return bits.map(b => _resolveAgentName(b, maps)).join(' ↔ ');
+    }
+    return rest || nm;
+  }
+  // strip the kind prefix for the remaining non-DM channels so the user never
+  // sees raw ids
+  return nm.replace(/^(group-|mgr-)/, '') || nm;
 }
 const _CH_KIND_BADGE = {
   'mgr':            { label_en: 'Manager',  label_ko: '매니저',     icon: 'ti-clipboard-text' },
