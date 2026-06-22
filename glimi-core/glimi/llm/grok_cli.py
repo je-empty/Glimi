@@ -111,6 +111,9 @@ class GrokCLIBackend(LLMBackend):
     ) -> LLMResponse:
         # grok 은 자체 모델만 쓴다 → 응답 model 라벨도 실제 grok 모델로 기록.
         used_model = _grok_model()
+        # grok streaming is slow (often 2-4 min for a full reply); honor a longer,
+        # env-tunable ceiling so real persona replies aren't cut off (default 420s).
+        eff_timeout = max(timeout, int(os.environ.get("GLIMI_GROK_TIMEOUT", "420")))
         args = self._base_args(system, user)
         # HOME 에서 실행: grok 은 agentic CLI 라 repo 루트에서 돌면 CLAUDE.md/git/파일을
         # 컨텍스트로 흡수해 페르소나 응답이 오염된다. HOME 엔 프로젝트 메타 없으니 안전.
@@ -118,7 +121,7 @@ class GrokCLIBackend(LLMBackend):
         try:
             result = subprocess.run(
                 args,
-                capture_output=True, text=True, timeout=timeout,
+                capture_output=True, text=True, timeout=eff_timeout,
                 env={**os.environ},
                 cwd=effective_cwd,
                 stdin=subprocess.DEVNULL,  # headless — TTY 대기 방지
