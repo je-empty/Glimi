@@ -62,9 +62,13 @@ SPECIALISTS = ["researcher", "builder", "critic"]
 # Meta-keyword scan — mirrors analyze_run._analyze_meta's leak patterns, plus the
 # explicit terms the spec calls out (에이전트 / 봇 / AI / <tools>). The owner text
 # especially must read as a human delegating, never as a system describing itself.
+# NOTE: the Workspace domain is *building software*, so "시뮬레이션"(env/test
+# simulation), "프롬프트"(command/shell prompt), "설계된"(software design), and
+# "예측 가능"(predictable behavior) are LEGITIMATE work vocabulary — they are NOT
+# meta-leaks here (unlike the Community social-persona domain, analyze_run._analyze_meta).
+# Only unambiguous AI-self-reveal terms count.
 META_PATTERNS = [
-    "에이전트", "페르소나", "시뮬레이션", "프롬프트", "설계된", "예측 가능",
-    "<tools>", "<call", "봇", "인공지능",
+    "에이전트", "페르소나", "<tools>", "<call", "봇", "인공지능",
     "language model", "system prompt",
 ]
 # "AI" as a standalone token (avoid matching inside words like "rAIse" / "메인").
