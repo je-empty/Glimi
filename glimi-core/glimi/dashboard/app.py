@@ -117,6 +117,7 @@ def create_app(reader: DashboardReader) -> FastAPI:
             "api_base": "",
             "caps_json": json.dumps(_KERNEL_CAPS),
             "community_chrome": False,
+            "app_name": "Glimi Core",
             "active_tab": "overview",
             "user": None,
             "community_id": None,

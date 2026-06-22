@@ -165,6 +165,7 @@ async def community_dashboard(
             # api_base="" → dashboard.js 가 절대 /api/* + ?community= 로 라우팅 (data-api-base
             # 없음). caps_json 미전달 → CAPS=null → 모든 탭 노출.
             "community_chrome": True,
+            "app_name": "Glimi Community",
             "static_base": "/static",
             "api_base": "",
             "active_tab": "chat",

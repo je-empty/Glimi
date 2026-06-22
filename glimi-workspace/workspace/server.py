@@ -645,6 +645,7 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "api_base": f"/w/{ws.id}",
         "caps_json": json.dumps(_WS_CAPS),
         "community_chrome": False,
+        "app_name": "Glimi Workspace",
         "brand_logo": True,            # show the Glimi logo (served at /logo) in the brand
         "active_tab": active_tab,
         "user": None,
