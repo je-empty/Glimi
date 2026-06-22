@@ -410,10 +410,15 @@ def run_round(
     final = gated_deliver(
         g, policy,
         prompt=(
-            f"As {owner_name}'s Coordinator, you've heard from the whole team "
-            f"across the workspace. Deliver the result for {owner_name}: a clear, "
-            f"organized synthesis toward \"{instruction}\" — the decision, the "
-            f"plan, and the top risk to watch. This is the deliverable."
+            f"As {owner_name}'s Coordinator, you've heard the whole team across the "
+            f"workspace. Now write the actual DELIVERABLE for {owner_name} on "
+            f"\"{instruction}\" — NOT a one-line takeaway, but the complete work "
+            f"product they can act on directly. Synthesize the team's real findings "
+            f"into clear sections: the decision/direction, the concrete plan or next "
+            f"steps (specific, ordered), and the top risk — pulling in the actual "
+            f"specifics raised in the discussion (names, numbers, trade-offs). Make "
+            f"it substantial: a tight structured brief (several short sections or a "
+            f"detailed list), not a summary sentence."
         ),
         channel=COORDINATOR_DM,
         kind="final_deliverable",

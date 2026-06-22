@@ -486,7 +486,14 @@ def run(*, goal: str, context: str, backlog: list, rounds: int, backend: str,
         print(f"    home : {base}/")
         print(f"  stop it:  kill {proc.pid}")
         print("─" * 64)
-        # Detach: do NOT close the log fh / kill the server.
+        # BLOCK here so the child server stays up — if we returned, the parent would
+        # exit and the tmux session would reap the server's process group (the bug
+        # that killed the watch URL). The verdict JSON is already written above; the
+        # owner stops it via the printed PID or by killing the tmux session.
+        try:
+            proc.wait()
+        except KeyboardInterrupt:
+            _stop_server(proc)
     else:
         _stop_server(proc)
         try:

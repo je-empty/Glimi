@@ -59,20 +59,24 @@ A2A_PAIRS = [
 ]
 SPECIALISTS = ["researcher", "builder", "critic"]
 
-# Meta-keyword scan — mirrors analyze_run._analyze_meta's leak patterns, plus the
-# explicit terms the spec calls out (에이전트 / 봇 / AI / <tools>). The owner text
-# especially must read as a human delegating, never as a system describing itself.
-# NOTE: the Workspace domain is *building software*, so "시뮬레이션"(env/test
-# simulation), "프롬프트"(command/shell prompt), "설계된"(software design), and
-# "예측 가능"(predictable behavior) are LEGITIMATE work vocabulary — they are NOT
-# meta-leaks here (unlike the Community social-persona domain, analyze_run._analyze_meta).
-# Only unambiguous AI-self-reveal terms count.
+# Meta-leak scan. CRITICAL DOMAIN NOTE: the Workspace is a team *building/analyzing
+# software*, so "AI", "에이전트"(agent), "봇"(bot), "인공지능", "페르소나"(user persona
+# in UX!), "시뮬레이션"(env/test), "프롬프트"(shell prompt), "설계"(design) are ALL
+# legitimate PRODUCT/market/architecture vocabulary — a human colleague says them
+# constantly. So bare keywords are NOT leaks here (unlike the Community social-persona
+# domain). We only flag (a) system-mechanic syntax a human would never emit, and
+# (b) explicit SELF-reveal phrases where a speaker describes ITSELF as an AI/model.
 META_PATTERNS = [
-    "에이전트", "페르소나", "<tools>", "<call", "봇", "인공지능",
-    "language model", "system prompt",
+    "<tools>", "<call", "language model", "system prompt",
 ]
-# "AI" as a standalone token (avoid matching inside words like "rAIse" / "메인").
-_AI_TOKEN = re.compile(r"(?<![A-Za-z가-힣])AI(?![A-Za-z가-힣])")
+# Self-reveal phrases (speaker describing ITSELF as AI), distinct from discussing AI
+# as a topic. e.g. "저는 AI라서", "as an AI", "언어모델로서" — real leaks.
+_SELF_REVEAL = re.compile(
+    r"(저는|제가|나는|난)\s*(인공지능|ai|언어\s*모델|챗?봇)\b"
+    r"|\bas an ai\b|\bi'?m an ai\b|\bi am an ai\b"
+    r"|(인공지능|ai|언어\s*모델)\s*(어시스턴트|모델)?\s*(이?라서|로서|로써|입니다|이에요|예요|이야)",
+    re.I,
+)
 
 # Error / failure markers that must never leak into a chat channel.
 ERROR_MARKERS = ["[오류]", "Traceback", "turn failed", "에이전트간 대화 오류",
@@ -122,8 +126,9 @@ def _jaccard(a: set, b: set) -> float:
 
 def _meta_hits(text: str) -> list[str]:
     hits = [p for p in META_PATTERNS if p.lower() in (text or "").lower()]
-    if _AI_TOKEN.search(text or ""):
-        hits.append("AI")
+    m = _SELF_REVEAL.search(text or "")
+    if m:
+        hits.append(f"self-reveal:{m.group(0)[:24]}")
     return hits
 
 
