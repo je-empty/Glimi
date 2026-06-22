@@ -384,9 +384,16 @@ def _verdict_line(status: str, issues: list) -> str:
     return "✅ PASS — 자율 루프 정상 (모든 체크 통과)"
 
 
-def judge_run(run_id: str) -> dict:
-    """Judge a workspace run from its store snapshot → verdict dict, and persist it."""
-    snap = _load_snapshot(run_id)
+def judge_snapshot(snap: dict, run_id: str = "ws-run-adhoc") -> dict:
+    """Judge an already-loaded snapshot dict → verdict dict (no disk read).
+
+    This is the storage-agnostic core: it runs the same eight checks the
+    file-based :func:`judge_run` does, but on a snapshot that the caller already
+    holds. The headless runner reads its ``ws-store-<ts>.json`` from disk via
+    ``judge_run``; the web E2E harness (``tests.e2e.ws_e2e``) assembles the SAME
+    snapshot shape from the SERVED HTTP endpoints and passes it straight here, so
+    both paths reuse identical criteria. Does NOT persist — the caller decides.
+    """
     rounds_requested = (snap.get("drive_result") or {}).get("rounds", 0)
     # Requested round count for "deliverable each round": prefer the runner's
     # rounds_requested if present, else fall back to rounds run.
@@ -408,7 +415,7 @@ def judge_run(run_id: str) -> dict:
     _check_goal_advanced(snap, issues, metrics)
 
     status = _status_from_issues(issues)
-    verdict = {
+    return {
         "run_id": run_id,
         "status": status,
         "verdict": _verdict_line(status, issues),
@@ -419,6 +426,12 @@ def judge_run(run_id: str) -> dict:
         "issues": issues,
         "metrics": metrics,
     }
+
+
+def judge_run(run_id: str) -> dict:
+    """Judge a workspace run from its store snapshot → verdict dict, and persist it."""
+    snap = _load_snapshot(run_id)
+    verdict = judge_snapshot(snap, run_id=run_id)
 
     # Persist the judged verdict to ws-run-<ts>.json (overwrites the runner's
     # provisional envelope), matching the Community runner→analyze_run handoff.
