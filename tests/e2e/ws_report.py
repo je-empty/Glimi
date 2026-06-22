@@ -115,10 +115,14 @@ def render_markdown(metrics: dict, trend: Optional[dict] = None) -> str:
     L.append(f"- Deliverables: **{s.get('deliverables_count')}** "
              f"(last {s.get('deliverable_len_last')} chars, "
              f"first {s.get('deliverable_len_first')})")
-    L.append(f"- Delegation: manager spoke into **{s.get('delegation_channels_hit')}/3** "
-             f"specialist channels")
-    L.append(f"- Agent↔agent (A2A): **{s.get('a2a_channels_both_spoke')}/2** "
-             f"internal channels had both sides speak")
+    # Denominators are the DYNAMIC roster's channel counts (derived from the
+    # snapshot), not the old fixed 3/2 — the manager builds a goal-fit team.
+    deleg_total = len(s.get("delegation_by_channel") or {})
+    a2a_total = len(s.get("a2a_by_channel") or {})
+    L.append(f"- Delegation: manager spoke into **{s.get('delegation_channels_hit')}/"
+             f"{deleg_total}** specialist channels")
+    L.append(f"- Agent↔agent (A2A): **{s.get('a2a_channels_both_spoke')}/"
+             f"{a2a_total}** internal channels had both sides speak")
     L.append(f"- Distinct owner instructions: **{s.get('owner_instructions_distinct')}**")
     L.append(f"- Meta leaks: **{s.get('meta_leaks')}**  ·  Error leaks: **{s.get('error_leaks')}**")
     if v.get("issues"):

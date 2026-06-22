@@ -553,8 +553,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="leave the server running after the run (for external watching via a tunnel)")
     ap.add_argument("--poll-interval", type=float, default=3.0,
                     help="seconds between /auto/status polls (default 3)")
-    ap.add_argument("--cap", type=float, default=1800.0,
-                    help="wall-clock cap in seconds for the auto-run poll loop (default 1800)")
+    ap.add_argument("--wall-cap", "--cap", dest="cap", type=float, default=None,
+                    help="wall-clock cap in seconds for the auto-run poll loop "
+                         "(default: env GLIMI_WS_E2E_WALL_CAP or 3600). A dynamic-team "
+                         "+ all-Sonnet + document-deliverable run can take ~40min, so "
+                         "the floor is higher than a single-round smoke test — but the "
+                         "cap stays (it just won't cut off a healthy long run).")
     ap.add_argument("--report", action="store_true",
                     help="emit a presentable portfolio report (Markdown + metrics JSON) "
                          "after the run — quality judge runs only on a real backend")
@@ -564,6 +568,19 @@ def main(argv: list[str] | None = None) -> int:
 
     backend = (args.backend or os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo"
     port = args.port or _free_port()
+
+    # Wall-clock cap precedence: --wall-cap/--cap > env GLIMI_WS_E2E_WALL_CAP > 3600.
+    # Kept (never removed) so a stuck run still terminates — just a sane higher
+    # default: a dynamic-team, all-Sonnet, document-deliverable run took ~37min and
+    # the old 1800s cap cut it off mid-flight.
+    DEFAULT_WALL_CAP = 3600.0
+    if args.cap is not None:
+        wall_cap = args.cap
+    else:
+        try:
+            wall_cap = float(os.environ.get("GLIMI_WS_E2E_WALL_CAP", "") or DEFAULT_WALL_CAP)
+        except ValueError:
+            wall_cap = DEFAULT_WALL_CAP
 
     # Default goal keeps its tuned context/backlog; a custom goal drives from the
     # goal (+ optional --context) alone — same policy as the headless runner.
@@ -578,7 +595,7 @@ def main(argv: list[str] | None = None) -> int:
         goal=args.goal, context=context, backlog=backlog,
         rounds=max(1, min(args.rounds, 10)), backend=backend,
         host=args.host, port=port, keep_serving=args.keep_serving,
-        poll_interval=max(0.5, args.poll_interval), wall_clock_cap=max(30.0, args.cap),
+        poll_interval=max(0.5, args.poll_interval), wall_clock_cap=max(30.0, wall_cap),
         report=args.report, write_baseline=args.write_baseline,
     )
     status = verdict.get("status", "?")

@@ -23,7 +23,7 @@ import json
 
 import pytest
 
-from tests.e2e import ws_judge, ws_metrics, ws_report
+from tests.e2e import ws_judge, ws_metrics, ws_report, ws_verdict
 
 
 # ── a minimal echo-shaped snapshot the runner would dump ────────────────────────
@@ -260,3 +260,129 @@ def test_generate_from_snapshot_echo_skips_judge(tmp_path):
     assert out["quality"]["status"] == "skipped"
     assert "echo" in out["quality"]["rationale"]
     assert out["metrics"]["pass_criteria"]["overall_ok"] is True
+
+
+# ── DYNAMIC roster (manager proposes a goal-fit team, not researcher/builder/critic) ─
+def _dynamic_roster_snapshot() -> dict:
+    """A claude_cli run where the manager built a CUSTOM roster (culture-coach /
+    dev-lead / hr-designer) with goal-fit channel names. The verdict must DERIVE
+    the delegation/A2A channels + specialists from the snapshot, not the old fixed
+    researcher/builder/critic roster. The real deliverable is the LONGEST
+    coordinator message in dm-coordinator (a structured document); the synthesized
+    drive_result.last_deliverable is a short ack the verdict must NOT use as 'last'.
+    """
+    coord = "coordinator"
+    n = [0]
+
+    def msg(speaker, text):
+        n[0] += 1
+        return {"id": n[0], "speaker": speaker, "message": text,
+                "timestamp": "2026-06-22T00:00:00+00:00"}
+
+    doc = ("# 온보딩 체크리스트\n\n## 첫날\n- 계정 발급\n- 장비 세팅\n"
+           "1. 팀 소개\n2. 코드베이스 투어\n\n## 첫주\n- 첫 PR 머지\n" + "추가 설명 " * 80)
+    return {
+        "run_id": "ws-e2e-dyn",
+        "backend": "claude_cli",
+        "goal": "신입 온보딩 체크리스트",
+        "context": "맥락",
+        "owner_id": "owner",
+        "elapsed_seconds": 120.0,
+        "error": None,
+        "rounds_requested": 2,
+        # served path → in-memory rows unreachable; aggregate carries spend.
+        "usage": [],
+        "usage_aggregate": {"spend_month": 0.05, "call_count_month": 30,
+                            "input_tokens_month": 3000, "output_tokens_month": 1500,
+                            "estimated_count_month": 30, "avg_latency_ms": 1500,
+                            "by_agent": []},
+        "channels": {
+            "dm-coordinator": [
+                msg("owner", "온보딩 체크리스트 만들어줘"),
+                msg(coord, "네, 계획 세울게요"),          # short ack
+                msg("owner", "이제 문서로 정리해줘"),
+                msg(coord, doc),                            # the REAL deliverable (longest)
+            ],
+            "dm-culture-coach": [msg(coord, "문화 관점 정리 부탁"), msg("culture-coach", "ok 문화 부분")],
+            "dm-dev-lead": [msg(coord, "개발 환경 항목 부탁"), msg("dev-lead", "ok 개발 부분")],
+            "dm-hr-designer": [msg(coord, "행정 항목 부탁"), msg("hr-designer", "ok 행정 부분")],
+            "internal-culture-coach-hr-designer": [
+                msg("culture-coach", "이건 어때요"), msg("culture-coach", "보강했어요"),
+                msg("hr-designer", "좋아요"), msg("hr-designer", "추가할게요")],
+            "internal-dev-lead-culture-coach": [
+                msg("dev-lead", "환경 부분"), msg("dev-lead", "정리됨"),
+                msg("culture-coach", "맞춰볼게요"), msg("culture-coach", "반영함")],
+            "internal-owner": [msg("owner", "검토 1"), msg("owner", "검토 2")],
+        },
+        # The served harness synthesizes this; last_deliverable is the LAST coord
+        # message which happens to be the long doc here, but the verdict measures
+        # the LONGEST coordinator message regardless.
+        "drive_result": {
+            "rounds": 2,
+            "deliverables": ["네, 계획 세울게요", doc],
+            "last_deliverable": doc,
+            "done": False,
+            "stopped_reason": "max_rounds",
+        },
+    }
+
+
+def test_verdict_dynamic_roster_delegation_and_a2a_derived():
+    # The verdict must NOT FAIL just because the roster isn't researcher/builder/critic.
+    snap = _dynamic_roster_snapshot()
+    v = ws_verdict.judge_snapshot(snap, run_id="ws-e2e-dyn")
+    m = v["metrics"]
+    # delegation derived from dm-* (≠ dm-coordinator) — coordinator spoke into all 3.
+    assert set(m["delegation_by_channel"]) == {
+        "dm-culture-coach", "dm-dev-lead", "dm-hr-designer"}
+    assert all(c > 0 for c in m["delegation_by_channel"].values())
+    assert not any(i["category"] == "delegation" for i in v["issues"])
+    # a2a derived from internal-* (≠ internal-owner): both internal channels have
+    # ≥2 distinct non-owner speakers each ≥2 messages (claude_cli → min_each=2).
+    assert set(m["a2a_by_channel"]) == {
+        "internal-culture-coach-hr-designer", "internal-dev-lead-culture-coach"}
+    assert not any(i["category"] == "a2a" for i in v["issues"])
+    assert m["a2a_min_each_required"] == 2
+
+
+def test_verdict_dynamic_roster_deliverable_is_longest_coord_msg():
+    # The REAL deliverable = LONGEST coordinator message in dm-coordinator (the doc),
+    # NOT the short ack at index 0. goal_advanced True (substantial + structured).
+    snap = _dynamic_roster_snapshot()
+    v = ws_verdict.judge_snapshot(snap, run_id="ws-e2e-dyn")
+    m = v["metrics"]
+    assert m["deliverable_len_first"] < 50            # the short ack
+    assert m["deliverable_len_last"] > 400            # the long structured doc
+    assert m["deliverable_has_structure"] is True
+    assert m["goal_advanced"] is True
+    assert v["status"] in ("PASS", "WARN")            # never FAIL on a great run
+
+
+def test_verdict_wall_cap_envelope_is_soft_not_blocker():
+    # A wall-clock-cap timeout in snap['error'] is a runner-ENVELOPE condition →
+    # soft DRIFT, never a BLOCKER (a real run can still be excellent).
+    snap = _dynamic_roster_snapshot()
+    snap["error"] = "wall_clock_cap 1800.0s exceeded"
+    v = ws_verdict.judge_snapshot(snap, run_id="ws-e2e-dyn")
+    envelope = [i for i in v["issues"] if i["category"] == "runner_envelope"]
+    assert len(envelope) == 1
+    assert envelope[0]["severity"] == "DRIFT"
+    assert not any(i["severity"] == "BLOCKER" for i in v["issues"])
+    assert v["status"] == "WARN"
+
+    # A genuine runner crash is still a BLOCKER → FAIL.
+    snap["error"] = "RuntimeError: boom"
+    v2 = ws_verdict.judge_snapshot(snap, run_id="ws-e2e-dyn")
+    assert any(i["severity"] == "BLOCKER" and i["category"] == "error"
+               for i in v2["issues"])
+    assert v2["status"] == "FAIL"
+
+
+def test_metrics_dynamic_roster_structure_counts():
+    # ws_metrics folds the derived structure correctly for a 3-specialist roster.
+    m = ws_metrics.build_metrics(_dynamic_roster_snapshot(), run_id="ws-e2e-dyn")
+    s = m["structure"]
+    assert s["delegation_channels_hit"] == 3
+    assert s["a2a_channels_both_spoke"] == 2
+    assert s["deliverable_len_last"] > 400
+    assert s["goal_advanced"] is True

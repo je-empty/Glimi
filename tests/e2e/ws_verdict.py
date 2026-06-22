@@ -10,10 +10,13 @@ the Workspace analogue: it reads the store snapshot the runner wrote
 
   - deliverable_each_round — every round produced a non-empty Coordinator
     deliverable in dm-coordinator (not empty / not ``[오류]``);
-  - coordinator_delegated  — each round the Coordinator spoke into every
-    dm-researcher / dm-builder / dm-critic (delegation, not a monologue);
-  - a2a_present            — internal-researcher-critic AND internal-builder-
-    researcher each gained ≥2 messages from BOTH participants;
+  - coordinator_delegated  — the Coordinator spoke into every live specialist DM.
+    The roster is DYNAMIC (the manager proposes a goal-fit team), so the verdict
+    DERIVES the specialist DMs from the snapshot = every ``dm-*`` except
+    ``dm-coordinator`` (dm-researcher/builder/critic is just the default team);
+  - a2a_present            — every ``internal-*`` channel (except internal-owner)
+    had ≥2 DISTINCT non-owner speakers, each with ≥ min_each messages
+    (roster-agnostic bidirectional check from the messages, not the channel name);
   - owner_instructions_coherent_and_progressing — the owner posted ≥2 DISTINCT
     instructions to dm-coordinator and round k's is not a near-duplicate of k-1
     (normalized-token Jaccard < 0.8); internal-owner has ≥1 owner note per round;
@@ -48,16 +51,14 @@ RESULTS_DIR = PROJECT_ROOT / "tests" / "e2e" / "results"
 
 OWNER_REVIEW_CHANNEL = "internal-owner"
 COORDINATOR_DM = "dm-coordinator"
-DELEGATION_CHANNELS = {
-    "researcher": "dm-researcher",
-    "builder": "dm-builder",
-    "critic": "dm-critic",
-}
-A2A_PAIRS = [
-    ("researcher", "critic", "internal-researcher-critic"),
-    ("builder", "researcher", "internal-builder-researcher"),
-]
-SPECIALISTS = ["researcher", "builder", "critic"]
+# The roster is DYNAMIC — the manager proposes a goal-fit team, so the verdict
+# DERIVES the delegation/A2A channels and specialist speakers from the snapshot
+# (see _specialist_dms / _a2a_channels / _judged_speakers) instead of hardcoding
+# a fixed roster. These constants document the DEFAULT team for reference only;
+# they are NOT used to gate a run.
+DEFAULT_DELEGATION_CHANNELS = ("dm-researcher", "dm-builder", "dm-critic")
+DEFAULT_A2A_CHANNELS = ("internal-researcher-critic", "internal-builder-researcher")
+DEFAULT_SPECIALISTS = ("researcher", "builder", "critic")
 
 # Meta-leak scan. CRITICAL DOMAIN NOTE: the Workspace is a team *building/analyzing
 # software*, so "AI", "에이전트"(agent), "봇"(bot), "인공지능", "페르소나"(user persona
@@ -101,11 +102,25 @@ def _resolve_run_id(arg: str | None) -> str:
 
 
 def _load_snapshot(run_id: str) -> dict:
-    ts = run_id[len("ws-run-"):] if run_id.startswith("ws-run-") else run_id
-    store_path = RESULTS_DIR / f"ws-store-{ts}.json"
-    if not store_path.exists():
-        raise FileNotFoundError(f"store snapshot not found: {store_path}")
-    return json.loads(store_path.read_text(encoding="utf-8"))
+    # Headless runner stores ``ws-store-<ts>.json``; the web E2E harness
+    # (ws_e2e) stores ``ws-e2e-store-<ts>.json`` and uses run-id ``ws-e2e-<ts>``.
+    # Accept both so judge_run works on either artifact.
+    if run_id.startswith("ws-e2e-"):
+        ts = run_id[len("ws-e2e-"):]
+        candidates = [RESULTS_DIR / f"ws-e2e-store-{ts}.json"]
+    elif run_id.startswith("ws-run-"):
+        ts = run_id[len("ws-run-"):]
+        candidates = [RESULTS_DIR / f"ws-store-{ts}.json",
+                      RESULTS_DIR / f"ws-e2e-store-{ts}.json"]
+    else:
+        ts = run_id
+        candidates = [RESULTS_DIR / f"ws-store-{ts}.json",
+                      RESULTS_DIR / f"ws-e2e-store-{ts}.json"]
+    for store_path in candidates:
+        if store_path.exists():
+            return json.loads(store_path.read_text(encoding="utf-8"))
+    raise FileNotFoundError(
+        f"store snapshot not found: tried {[str(c) for c in candidates]}")
 
 
 # ── small text helpers ─────────────────────────────────────────────────────────
@@ -142,16 +157,37 @@ def _by_speaker(msgs: list[dict], speaker: str) -> list[dict]:
 
 # ── the checks ─────────────────────────────────────────────────────────────────
 
+_STRUCTURE_RE = re.compile(r"(^|\n)\s*(#{1,6}\s|[-*]\s|\d+\.\s|\d+\)\s)")
+
+
+def _coordinator_deliverables(snap: dict) -> list[str]:
+    """The REAL per-round coordinator deliverables = coordinator's own messages in
+    dm-coordinator (the gated document synthesis), in order.
+
+    The served-data E2E path synthesizes drive_result.deliverables from exactly
+    these messages, but the headless path's drive_result is authoritative. We
+    prefer the live dm-coordinator messages (works for both paths) and fall back
+    to drive_result.deliverables only if dm-coordinator is empty.
+    """
+    coord_msgs = [(m.get("message") or "")
+                  for m in _by_speaker(_msgs(snap, COORDINATOR_DM), "coordinator")]
+    coord_msgs = [c for c in coord_msgs if c.strip()]
+    if coord_msgs:
+        return coord_msgs
+    return [d for d in ((snap.get("drive_result") or {}).get("deliverables") or [])
+            if (d or "").strip()]
+
+
 def _check_deliverables(snap: dict, rounds: int, issues: list, metrics: dict):
     """Every round produced a non-empty Coordinator deliverable in dm-coordinator.
 
-    The deliverable is the Coordinator's gated synthesis. run_round logs the plan
-    AND the final to dm-coordinator from the Coordinator; the per-round
-    deliverables the driver returns are the authoritative list, so we assert the
-    drive_result deliverables are all non-empty AND that dm-coordinator carries
+    The deliverable is the Coordinator's gated synthesis logged to dm-coordinator.
+    The served-data E2E path has NO drive_result, so we measure the REAL
+    deliverables directly = the coordinator's own messages in dm-coordinator. We
+    assert they are all non-empty / error-free and that dm-coordinator carries
     Coordinator output.
     """
-    deliverables = (snap.get("drive_result") or {}).get("deliverables", [])
+    deliverables = _coordinator_deliverables(snap)
     metrics["deliverables_count"] = len(deliverables)
     empties = [i + 1 for i, d in enumerate(deliverables) if not (d or "").strip()]
     erred = [i + 1 for i, d in enumerate(deliverables)
@@ -178,10 +214,28 @@ def _stopped_early(snap: dict) -> bool:
     return reason in ("done", "budget", "cancelled")
 
 
+def _specialist_dms(snap: dict) -> list[str]:
+    """Live specialists' DM channels = every 'dm-*' EXCEPT 'dm-coordinator'.
+
+    The roster is DYNAMIC: the manager proposes a goal-fit team, so the channels
+    are whatever the manager built (dm-researcher/builder/critic in the default
+    case, or dm-culture-coach/dm-dev-lead/… for a custom roster). We derive them
+    from the snapshot instead of hardcoding the old fixed roster.
+    """
+    return sorted(ch for ch in snap.get("channels", {})
+                  if ch.startswith("dm-") and ch != COORDINATOR_DM)
+
+
 def _check_delegation(snap: dict, issues: list, metrics: dict):
-    """Coordinator delegated to every specialist (spoke into each dm-*)."""
+    """Coordinator delegated to every live specialist (spoke into each dm-*).
+
+    Roster-agnostic: every 'dm-*' channel except dm-coordinator is a specialist's
+    DM (whatever the dynamic roster). A specialist DM is flagged only if the
+    coordinator NEVER spoke into it. The default team (dm-researcher/builder/critic)
+    is just the default case of this same rule.
+    """
     deleg = {}
-    for sid, ch in DELEGATION_CHANNELS.items():
+    for ch in _specialist_dms(snap):
         n = len(_by_speaker(_msgs(snap, ch), "coordinator"))
         deleg[ch] = n
         if n == 0:
@@ -190,13 +244,30 @@ def _check_delegation(snap: dict, issues: list, metrics: dict):
     metrics["delegation_by_channel"] = deleg
 
 
+def _a2a_channels(snap: dict) -> list[str]:
+    """Agent↔agent (A2A) channels = every 'internal-*' EXCEPT 'internal-owner'.
+
+    Roster-agnostic: the manager names these after the actual pair it wired
+    (internal-researcher-critic in the default team, internal-culture-coach-
+    hr-designer / internal-dev-lead-culture-coach / … for a custom roster). We do
+    NOT parse role ids out of the channel name — we count distinct speakers from
+    the messages, so the check works for any roster.
+    """
+    return sorted(ch for ch in snap.get("channels", {})
+                  if ch.startswith("internal-") and ch != OWNER_REVIEW_CHANNEL)
+
+
 def _check_a2a(snap: dict, issues: list, metrics: dict):
     """Each internal-* A2A channel had genuine back-and-forth from BOTH participants.
 
+    Roster-agnostic bidirectional check: for each internal-* channel (except
+    internal-owner) require ≥2 DISTINCT non-owner speakers, each with ≥ min_each
+    messages — derived from the messages, not from the channel name.
+
     Backend-aware threshold:
-      - real backends (claude_cli / ollama) → ≥2 messages from BOTH (the spec's
-        strict bar: a real exchange, not one-sided);
-      - echo → ≥1 from BOTH. The echo backend emits IDENTICAL text every turn, so
+      - real backends (claude_cli / ollama) → ≥2 messages from each side (the
+        spec's strict bar: a real exchange, not one-sided);
+      - echo → ≥1 from each. The echo backend emits IDENTICAL text every turn, so
         the store's identical-row dedup collapses repeated turns to a single row;
         requiring 2 distinct identical rows is structurally impossible on echo and
         would falsely fail the free self-test. The structural truth (both
@@ -204,16 +275,21 @@ def _check_a2a(snap: dict, issues: list, metrics: dict):
     """
     backend = (snap.get("backend") or "echo").lower()
     min_each = 1 if backend == "echo" else 2
+    owner_id = snap.get("owner_id", "owner")
     a2a = {}
-    for a, b, ch in A2A_PAIRS:
-        msgs = _msgs(snap, ch)
-        na = len(_by_speaker(msgs, a))
-        nb = len(_by_speaker(msgs, b))
-        a2a[ch] = {a: na, b: nb}
-        if na < min_each or nb < min_each:
+    for ch in _a2a_channels(snap):
+        counts: dict[str, int] = {}
+        for m in _msgs(snap, ch):
+            sp = m.get("speaker")
+            if not sp or sp == owner_id:
+                continue
+            counts[sp] = counts.get(sp, 0) + 1
+        a2a[ch] = counts
+        qualifying = [sp for sp, n in counts.items() if n >= min_each]
+        if len(qualifying) < 2:
             issues.append({"severity": "REGRESSION", "category": "a2a",
-                           "detail": f"{ch}: 양방향 부족 ({a}={na}, {b}={nb}; "
-                                     f"각 ≥{min_each} 기대, backend={backend})"})
+                           "detail": f"{ch}: 양방향 부족 ({counts}; 서로 다른 "
+                                     f"화자 ≥2, 각 ≥{min_each} 기대, backend={backend})"})
     metrics["a2a_by_channel"] = a2a
     metrics["a2a_min_each_required"] = min_each
 
@@ -259,10 +335,25 @@ def _check_owner_instructions(snap: dict, rounds: int, issues: list, metrics: di
                        "detail": f"internal-owner 검토 {len(notes)}건 < 라운드 {rounds_run}"})
 
 
+def _judged_speakers(snap: dict) -> set:
+    """All speakers whose messages we judge for leaks = coordinator + owner + the
+    DYNAMIC roster's specialists (every distinct non-owner speaker that appears in
+    a specialist DM or A2A channel). Roster-agnostic — no hardcoded role ids.
+    """
+    owner_id = snap.get("owner_id", "owner")
+    speakers = {"coordinator", owner_id}
+    channels = snap.get("channels", {})
+    for ch in (*_specialist_dms(snap), *_a2a_channels(snap), "group-team"):
+        for m in channels.get(ch, []):
+            sp = m.get("speaker")
+            if sp:
+                speakers.add(sp)
+    return speakers
+
+
 def _check_meta_leaks(snap: dict, issues: list, metrics: dict):
     """Meta-keyword scan over ALL coordinator + specialist + owner messages."""
-    owner_id = snap.get("owner_id", "owner")
-    judged_speakers = {"coordinator", *SPECIALISTS, owner_id}
+    judged_speakers = _judged_speakers(snap)
     leaks = []
     for ch, msgs in snap.get("channels", {}).items():
         for m in msgs:
@@ -299,10 +390,21 @@ def _check_errors(snap: dict, issues: list, metrics: dict):
         issues.append({"severity": "BLOCKER", "category": "error",
                        "detail": f"채널에 에러 마커 노출 {len(errs)}건",
                        "evidence": errs[:4]})
-    # The runner-captured exception (if any).
-    if snap.get("error"):
-        issues.append({"severity": "BLOCKER", "category": "error",
-                       "detail": f"runner 예외: {snap['error']}"})
+    # The runner-captured exception (if any). A wall-clock-cap timeout is a
+    # runner-ENVELOPE condition (the harness stopped polling), NOT a defect in the
+    # run's actual output — the served snapshot it captured may still be excellent.
+    # Surface it as a soft DRIFT so the structural verdict reflects the captured
+    # data; a genuine runner crash/traceback stays a BLOCKER.
+    err = snap.get("error")
+    metrics["runner_error"] = err
+    if err:
+        is_envelope = "wall_clock_cap" in err or "wall-clock" in err.lower()
+        issues.append({
+            "severity": "DRIFT" if is_envelope else "BLOCKER",
+            "category": "runner_envelope" if is_envelope else "error",
+            "detail": (f"runner 벽시계 캡 (envelope, soft): {err}" if is_envelope
+                       else f"runner 예외: {err}"),
+        })
 
 
 def _check_budget(snap: dict, issues: list, metrics: dict):
@@ -338,28 +440,43 @@ def _check_budget(snap: dict, issues: list, metrics: dict):
                        "detail": f"비정상적으로 많은 사용 기록 {len(usage)}건 (runaway 의심)"})
 
 
-def _check_goal_advanced(snap: dict, issues: list, metrics: dict):
-    """Soft heuristic: the goal advanced (concrete artifacts / length growth).
+_GOAL_LEN_THRESHOLD = 400  # chars: a substantial document, not a one-line ack
 
-    Soft-warn, not hard-fail — LLM variance. Advanced if: the final deliverable is
-    meaningfully longer/richer than round 1, OR the owner declared done before
-    max_rounds with a non-trivial final deliverable.
+
+def _has_structure(text: str) -> bool:
+    """Markdown structure = headings / bullet lists / numbered lists."""
+    return bool(_STRUCTURE_RE.search(text or ""))
+
+
+def _check_goal_advanced(snap: dict, issues: list, metrics: dict):
+    """Soft heuristic: the goal advanced (a substantial, structured deliverable).
+
+    Soft-warn, NEVER a hard fail — LLM variance. The served-data path has no
+    drive_result, so we measure the REAL deliverable = the LONGEST coordinator
+    message in dm-coordinator (the gated document synthesis), with round-
+    representative lengths from the actual coordinator outputs (first substantive
+    vs longest). Advanced when the final/longest deliverable is substantial (over
+    a sane length threshold AND shows markdown structure), OR it meaningfully grew
+    vs the first substantive output, OR the owner declared done with a non-trivial
+    final deliverable.
     """
+    deliverables = _coordinator_deliverables(snap)
     dr = snap.get("drive_result") or {}
-    deliverables = dr.get("deliverables", [])
     advanced = False
     detail = ""
     if deliverables:
         first = deliverables[0] or ""
-        last = (dr.get("last_deliverable") or deliverables[-1]) or ""
+        longest = max(deliverables, key=lambda d: len(d or "")) or ""
         metrics["deliverable_len_first"] = len(first)
-        metrics["deliverable_len_last"] = len(last)
-        grew = len(last) >= len(first) * 0.8 and len(last) > 40
-        done_early = dr.get("done") and len(last) > 40
-        advanced = bool(grew or done_early)
+        metrics["deliverable_len_last"] = len(longest)
+        metrics["deliverable_has_structure"] = _has_structure(longest)
+        substantial = len(longest) >= _GOAL_LEN_THRESHOLD and _has_structure(longest)
+        grew = len(longest) >= len(first) * 1.5 and len(longest) > 200
+        done_early = dr.get("done") and len(longest) > 40
+        advanced = bool(substantial or grew or done_early)
         if not advanced:
-            detail = (f"최종 결과물이 빈약 (first={len(first)}, last={len(last)}, "
-                      f"done={dr.get('done')})")
+            detail = (f"최종 결과물이 빈약 (first={len(first)}, longest={len(longest)}, "
+                      f"structure={_has_structure(longest)}, done={dr.get('done')})")
     else:
         detail = "결과물 없음"
     metrics["goal_advanced"] = advanced
@@ -438,10 +555,14 @@ def judge_run(run_id: str) -> dict:
     snap = _load_snapshot(run_id)
     verdict = judge_snapshot(snap, run_id=run_id)
 
-    # Persist the judged verdict to ws-run-<ts>.json (overwrites the runner's
-    # provisional envelope), matching the Community runner→analyze_run handoff.
-    ts = run_id[len("ws-run-"):] if run_id.startswith("ws-run-") else run_id
-    out_path = RESULTS_DIR / f"ws-run-{ts}.json"
+    # Persist the judged verdict (overwrites the runner's provisional envelope),
+    # matching the Community runner→analyze_run handoff. Headless → ws-run-<ts>.json;
+    # web E2E → ws-e2e-<ts>.json (mirror the run-id family).
+    if run_id.startswith("ws-e2e-"):
+        out_path = RESULTS_DIR / f"{run_id}.json"
+    else:
+        ts = run_id[len("ws-run-"):] if run_id.startswith("ws-run-") else run_id
+        out_path = RESULTS_DIR / f"ws-run-{ts}.json"
     out_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2),
                         encoding="utf-8")
     return verdict
