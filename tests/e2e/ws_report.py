@@ -223,6 +223,14 @@ def generate_from_snapshot(snap: dict, *, run_id: str,
     dr = snap.get("drive_result") or {}
     deliverables = dr.get("deliverables") or []
     last = dr.get("last_deliverable") or (deliverables[-1] if deliverables else "")
+    if not (last or "").strip():
+        # Served-data E2E snapshot has no drive_result → the owner-facing deliverable
+        # is the Coordinator's substantive synthesis = the LONGEST coordinator message
+        # in dm-coordinator (matches how the verdict measures the real deliverable).
+        _coord = [m.get("message", "") for m in
+                  snap.get("channels", {}).get("dm-coordinator", [])
+                  if m.get("speaker") == "coordinator"]
+        last = max(_coord, key=len, default="")
 
     if run_judge and (last or "").strip():
         quality = ws_judge.judge_deliverable(
