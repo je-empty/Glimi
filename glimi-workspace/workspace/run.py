@@ -118,13 +118,15 @@ def _label(g: Glimi, speaker_id: str) -> str:
     return LABELS.get(speaker_id, speaker_id)
 
 
-def dm(g: Glimi, agent_id: str, prompt: str, channel: str) -> str:
-    """The owner prompts an agent in a DM channel; the agent reads the channel out
-    of injected memory and replies back into it. (``g.reply`` logs the owner's
-    prompt + the agent's reply to ``channel``.)"""
-    reply = g.reply(agent_id, prompt, channel=channel)
-    print(f"{LABELS[agent_id]}:\n{reply}\n")
-    return reply
+def _gen(g: Glimi, agent_id: str, guidance: str, channel: str) -> str:
+    """Generate an agent's reply using ``guidance`` as the prompt WITHOUT logging the
+    guidance as a visible message — only the agent's reply is stored. The owner's
+    real instruction (posted once by the caller — run_workspace / driver) stays the
+    single owner message; the per-turn framing ('You are X's Coordinator, restate
+    it…') is generation context only and never leaks into the chat transcript."""
+    return "\n".join(
+        g.runtime.generate_response(agent_id, channel, guidance, log_user_message=False)
+    )
 
 
 def _trail_sink(g: Glimi):
@@ -156,7 +158,7 @@ def gated_deliver(
     A ``web_queue`` (``--serve`` stub) records the action as a PendingApproval and
     auto-approves, so the seam is visible in the dashboard without a web UI.
     """
-    candidate = g.reply("coordinator", prompt, channel=channel)
+    candidate = _gen(g, "coordinator", prompt, channel)
     print(f"{LABELS['coordinator']}:\n{candidate}\n")
 
     action = ApprovalAction(kind=kind, summary=summary, proposed_text=candidate,
@@ -328,15 +330,16 @@ def run_round(
 
     # 1) Coordinator reads dm-coordinator (the instruction is already there) and
     #    greets / restates / lays out who it will hand which angle to.
-    plan = dm(
+    plan = _gen(
         g, "coordinator",
         f"You are {owner_name}'s Coordinator. Read dm-coordinator: {owner_name} "
         f"just brought this directive: \"{instruction}\".\nGreet {owner_name} by "
         f"name, restate it in one crisp sentence, then lay out the plan: which "
         f"angle you'll hand the Researcher, the Builder, and the Critic. Keep it "
         f"tight.",
-        channel=COORDINATOR_DM,
+        COORDINATOR_DM,
     )
+    print(f"{LABELS['coordinator']}:\n{plan}\n")
     _emit(on_event, COORDINATOR_DM, "coordinator", plan, g)
 
     # 2) Coordinator ↔ each specialist (per-specialist DMs): real delegation. The
@@ -360,12 +363,12 @@ def run_round(
         print(f"Coordinator → {LABELS[sid]} ({ch}):\n"
               f"  your angle is to {angles[sid]}.\n")
         # The specialist reads the delegation from the channel and responds.
-        reply = g.reply(
-            sid,
+        reply = _gen(
+            g, sid,
             f"Your Coordinator just gave you an angle on \"{instruction}\". "
             f"Read the channel and respond with your first concrete take: "
             f"what you'll dig into and one substantive starting point.",
-            channel=ch,
+            ch,
         )
         _emit(on_event, ch, sid, reply, g)
         print(f"{LABELS[sid]}:\n{reply}\n")
@@ -381,21 +384,21 @@ def run_round(
     print(f"--- The team converges ({GROUP_CHANNEL}) ---\n")
     g.store.set_channel_participants(
         GROUP_CHANNEL, [owner_id, "coordinator", *SPECIALISTS])
-    call = g.reply(
-        "coordinator",
+    call = _gen(
+        g, "coordinator",
         f"Open the group room for the team on \"{instruction}\". In one or two "
         f"lines, call the team together and ask each specialist to drop their "
         f"single most important point.",
-        channel=GROUP_CHANNEL,
+        GROUP_CHANNEL,
     )
     _emit(on_event, GROUP_CHANNEL, "coordinator", call, g)
     print(f"Coordinator ({GROUP_CHANNEL}):\n  (called the team together)\n")
     for sid in SPECIALISTS:
-        reply = g.reply(
-            sid,
+        reply = _gen(
+            g, sid,
             f"You're in the group room with the whole team on \"{instruction}\". "
             f"Read the room and drop your single most important point for the group.",
-            channel=GROUP_CHANNEL,
+            GROUP_CHANNEL,
         )
         _emit(on_event, GROUP_CHANNEL, sid, reply, g)
         print(f"{LABELS[sid]}:\n{reply}\n")
