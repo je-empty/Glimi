@@ -22,7 +22,7 @@ And you watch the whole thing run: an agent relationship graph, a per-character 
 
 You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends you chat with in a built-in web UI (or Discord): they keep their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** — role-based work agents (a Coordinator delegates to a Researcher, Builder, and Critic), with a live real-time demo — and the starters in `examples/` stand on the same Core.
 
-![Glimi Community](assets/brand/Glimi-Community-banner.svg)
+![Glimi Community](glimi-community/assets/brand/Glimi-Community-banner.svg)
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
@@ -441,8 +441,8 @@ Already have Python 3.12+? Skip straight to `./run.sh` below.
 git clone https://github.com/jaebinsim/Glimi.git
 cd Glimi
 ./run.sh                    # platform + dashboard → http://localhost:8000
-                            # first run prompts for an admin password
-                            # (or set GLIMI_ADMIN_PASSWORD for non-interactive)
+                            # first run opens the browser /setup wizard to set the admin password
+                            # (or set GLIMI_ADMIN_PASSWORD for headless/non-interactive)
 ```
 
 **Windows** (native):
@@ -520,9 +520,9 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 
 | Example | What it shows |
 |---|---|
-| `examples/research_buddies/` | Two agents collaborate on a research topic, take turns reading and summarizing, build up shared notes |
-| `examples/dev_pair/` | Planner + executor pattern — one agent breaks the task into steps, the other carries them out, both share a memory store |
-| `examples/dashboard_demo/` | Seed a small population on an in-memory store and serve it in the read-only Core dashboard (`glimi[dashboard]`) |
+| `glimi-core/examples/research_buddies/` | Two agents collaborate on a research topic, take turns reading and summarizing, build up shared notes |
+| `glimi-core/examples/dev_pair/` | Planner + executor pattern — one agent breaks the task into steps, the other carries them out, both share a memory store |
+| `glimi-core/examples/dashboard_demo/` | Seed a small population on an in-memory store and serve it in the read-only Core dashboard (`glimi[dashboard]`) |
 
 ---
 
@@ -550,7 +550,7 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 - First `pip install glimi` alpha (0.1.0) on PyPI
 
 **Next — Examples + docs**
-- `examples/research_buddies/` and `examples/dev_pair/`
+- `glimi-core/examples/research_buddies/` and `glimi-core/examples/dev_pair/`
 - English architecture deep-dive (blog post)
 - `kernel.tests/` unit coverage
 

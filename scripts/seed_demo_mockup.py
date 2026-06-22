@@ -74,7 +74,11 @@ def seed(community_id: str = "demo") -> None:
     community.set_community(community_id)
 
     # ── 0. 디렉터리 + DB 리셋 ─────────────────────────────────
-    demo_dir = ROOT / "communities" / community_id
+    # 3-repo split 후 정본 communities 디렉터리는 community.COMMUNITIES_DIR
+    # (= glimi-community/communities, db.get_db_path 가 읽는 곳). ROOT/"communities"
+    # 는 split 이전 repo-root 경로라, 신선한 클론에서 시더가 엉뚱한 dir 를 만들고
+    # init_db() 가 FileNotFoundError 로 죽었다 (데모가 첫 실행에 안 뜸). 정본 dir 사용.
+    demo_dir = community.get_community_dir()
     demo_dir.mkdir(parents=True, exist_ok=True)
     for suffix in ("", "-shm", "-wal"):
         p = demo_dir / f"community.db{suffix}"
