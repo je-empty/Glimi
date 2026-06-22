@@ -352,6 +352,141 @@ def test_auto_run_full_loop_echo(monkeypatch, tmp_path):
     assert len(hist["messages"]) >= 1
 
 
+# ── dynamic team: manager-proposed roster + runtime add + /team/add ──────────
+
+def test_propose_roster_echo_returns_default():
+    # On echo, the manager does NOT call the LLM — it returns the DEFAULT
+    # researcher/builder/critic so create stays deterministic + backward-compat.
+    import team
+    from glimi import Glimi
+    g = Glimi(backend="echo", owner_name="Owner")
+    roster = team.propose_roster(g, "any goal", "Owner")
+    ids = [r[0] for r in roster]
+    assert ids == ["researcher", "builder", "critic"]
+
+
+def test_seed_team_echo_is_default_team():
+    # seed_team on echo builds exactly coordinator + the default 3 specialists —
+    # the same topology the static TEAM produced (the backward-compat anchor).
+    import run, team
+    from glimi import Glimi
+    g = Glimi(backend="echo", owner_name="Owner")
+    added = run.seed_team(g, "Plan the launch", "Owner")
+    assert added == ["researcher", "builder", "critic"]
+    assert {a["id"] for a in g.store.list_agents()} == {
+        "coordinator", "researcher", "builder", "critic"}
+    # Default A2A pairs are byte-identical to the historical COLLAB_PAIRS topology.
+    pairs = [(p[0], p[1], p[2]) for p in team.derive_pairs(g, added)]
+    assert pairs == [
+        ("researcher", "critic", "internal-researcher-critic"),
+        ("builder", "researcher", "internal-builder-researcher"),
+    ]
+
+
+def test_propose_roster_dynamic_on_stubbed_backend(monkeypatch):
+    # A stubbed real backend → the manager proposes a goal-appropriate roster, and
+    # the orchestration derives dm-<role> channels + internal-* pairs for those ids.
+    import run, team
+    import glimi.llm as _llm
+    import glimi.runtime as _rt
+    from glimi import Glimi
+
+    roster_json = (
+        '[{"id":"researcher","name":"Researcher","role":"researcher","persona":"Finds facts."},'
+        '{"id":"designer","name":"Designer","role":"designer","persona":"Owns the look."},'
+        '{"id":"marketer","name":"Marketer","role":"marketing","persona":"Owns the message."}]'
+    )
+
+    class _Resp:
+        text = roster_json
+        error = None
+
+    # The model/provider resolvers are MODULE-LEVEL functions; stub them so the
+    # proposal takes the real path with a deterministic provider (claude → direct).
+    monkeypatch.setattr(_rt, "_resolve_agent_model", lambda aid, atype: "claude-sonnet-4-6")
+    monkeypatch.setattr(_rt, "_provider_for", lambda atype, model: "claude")
+    monkeypatch.setattr(_llm, "generate", lambda **kw: _Resp())
+
+    g = Glimi(backend="claude_cli", owner_name="Owner")
+    added = run.seed_team(g, "Launch a design-heavy product", "Owner")
+    assert added == ["researcher", "designer", "marketer"]
+    assert {a["id"] for a in g.store.list_agents()} == {
+        "coordinator", "researcher", "designer", "marketer"}
+    # The live roster drives the derived delegation channels + A2A pairs.
+    assert team.live_specialists(g) == ["researcher", "designer", "marketer"]
+    assert team.delegation_channel_for("designer") == "dm-designer"
+    pair_channels = {p[2] for p in team.derive_pairs(g, added)}
+    assert "internal-researcher-designer" in pair_channels
+    # The dynamic role's avatar emoji comes from its stored role keyword.
+    assert (g.store.get_agent("designer") or {}).get("role_keyword") == "designer"
+    assert server._role_emoji("designer", "designer") == "🎨"
+
+
+def test_add_team_member_joins_next_round_echo():
+    # add_team_member adds a specialist that (a) shows in the live roster and (b)
+    # gets a dm-<id> channel + an emoji avatar on the next run_round.
+    import run, team
+    from glimi import Glimi
+    g = Glimi(backend="echo", owner_name="Owner")
+    run.seed_team(g, "Plan the launch", "Owner")
+    assert run.add_team_member(g, "writer", "Writer", "Owns the words.", "writer") is True
+    assert "writer" in team.live_specialists(g)
+    # A reserved id or a collision is a no-op (never clobbers the manager/an id).
+    assert run.add_team_member(g, "coordinator", "X", "Y", "") is False
+    assert run.add_team_member(g, "writer", "X", "Y", "") is False
+    # The next round wires the new specialist's delegation channel + group seat.
+    run.run_round(g, "follow up", "Owner")
+    overview = {c["channel"] for c in g.store.get_channel_overview()}
+    assert "dm-writer" in overview
+
+
+def test_team_add_endpoint_happy_path(client):
+    # POST /w/{id}/team/add on a writable workspace adds a specialist + returns its
+    # card; the new agent then appears in /chat/channels with an emoji avatar.
+    created = client.post("/api/workspaces",
+                          json={"name": "Dana", "goal": "Ship the beta"}).json()
+    wid = created["id"]
+    r = client.post(f"/w/{wid}/team/add",
+                    json={"role": "designer", "name": "디자이너",
+                          "persona": "Owns the visual identity.",
+                          "role_keyword": "designer"})
+    assert r.status_code == 200
+    card = r.json()
+    assert card["id"] == "designer" and card["channel"] == "dm-designer"
+    # It shows up as a DM channel in the chat list.
+    chans = client.get(f"/w/{wid}/chat/channels").json()["channels"]
+    assert any(c["channel"] == "dm-designer" for c in chans)
+    # Its avatar route renders the role emoji (🎨 from the stored keyword).
+    av = client.get(f"/w/{wid}/api/avatar", params={"id": "designer"})
+    assert av.status_code == 200 and "🎨" in av.text
+
+
+def test_team_add_endpoint_gating(client):
+    # 403 on the read-only demo; 409 on a reserved id / collision; 400 missing role.
+    assert client.post("/w/demo/team/add", json={"role": "designer"}).status_code == 403
+    created = client.post("/api/workspaces",
+                          json={"name": "Lee", "goal": "Write docs"}).json()
+    wid = created["id"]
+    assert client.post(f"/w/{wid}/team/add", json={"role": "coordinator"}).status_code == 409
+    assert client.post(f"/w/{wid}/team/add", json={"role": "researcher"}).status_code == 409  # already on team
+    assert client.post(f"/w/{wid}/team/add", json={}).status_code == 400
+    assert client.post(f"/w/nope/team/add", json={"role": "x"}).status_code == 404
+
+
+def test_manager_add_agent_gate_auto_approves():
+    # The manager's mid-run +1 request is gated via approval.run_gate with the new
+    # "add_agent" kind; under auto-run (non-interactive) it AUTO-approves, so the
+    # add proceeds without a live owner. (The driver path; verified at the gate.)
+    import driver
+    from approval import ApprovalAction, ApprovalPolicy, run_gate, AUTO_APPROVED
+    action = ApprovalAction(kind=driver.ADD_AGENT_KIND, summary="add designer",
+                            proposed_text="Owns the look.", channel="internal-owner",
+                            metadata={"role": "designer", "name": "Designer"})
+    outcome = run_gate(action, ApprovalPolicy.auto_approve_all(), interactive=False)
+    assert outcome.decision == AUTO_APPROVED
+    assert outcome.final_text == "Owns the look."
+
+
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────
 
 def test_dashboard_js_api_base_defaults_empty():

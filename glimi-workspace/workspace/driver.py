@@ -47,12 +47,14 @@ from glimi import Glimi
 
 try:  # script / flat-dir on sys.path
     from owner_agent import OWNER_REVIEW_CHANNEL, owner_review
-    from run import run_round
-    from team import COORDINATOR_DM
+    from run import add_team_member, run_round
+    from team import COORDINATOR_DM, live_specialists, propose_new_member
+    from approval import ApprovalAction, ApprovalPolicy, run_gate
 except ImportError:  # imported as workspace.driver
     from .owner_agent import OWNER_REVIEW_CHANNEL, owner_review
-    from .run import run_round
-    from .team import COORDINATOR_DM
+    from .run import add_team_member, run_round
+    from .team import COORDINATOR_DM, live_specialists, propose_new_member
+    from .approval import ApprovalAction, ApprovalPolicy, run_gate
 
 # Default pause between rounds (seconds). Cancellable — split into short waits so
 # /auto/stop interrupts a sleeping driver promptly. Tests pass round_delay=0.
@@ -85,6 +87,95 @@ def _fire(on_event: Optional[Callable], frame: dict) -> None:
 def _cancelled(cancel) -> bool:
     """True if a cancellation Event was supplied and is set."""
     return bool(cancel is not None and cancel.is_set())
+
+
+# The HITL kind for the manager's mid-run request to grow the team. Auto-approved
+# under auto-run (non-interactive / web-queue), surfaced for owner approval on a
+# live/interactive path.
+ADD_AGENT_KIND = "add_agent"
+
+
+def _maybe_grow_team(g: Glimi, *, goal: str, owner_name: str,
+                     last_deliverable: str, on_event: Optional[Callable]) -> Optional[str]:
+    """The manager-initiated +1-agent ask, gated by owner approval.
+
+    Mid-run, the manager may realize it needs a role the team lacks
+    (:func:`team.propose_new_member` — echo → never, so the test loop stays a fixed
+    4-agent team; real backend → a conservative LLM judgment). When it does:
+
+      1. Build an :class:`ApprovalAction(kind="add_agent")` and run it through the
+         HITL gate. The driver is NON-INTERACTIVE (auto-run, no live owner input),
+         so :func:`approval.run_gate` AUTO-approves (the same discipline as the
+         deliverable gate) — under a live/interactive owner it would prompt.
+      2. On approval, add the teammate via :func:`run.add_team_member` (it joins the
+         NEXT round because run_round re-derives the live roster each call).
+      3. Log the decision to the read-only ``internal-owner`` channel (the
+         "자동 진행 메모" the web shows) so the owner sees the team grew.
+
+    Returns the added role id (for an event frame), or ``None`` if no role was
+    needed / the add was withheld. Never raises into the loop.
+    """
+    try:
+        have = live_specialists(g)
+        proposal = propose_new_member(
+            g, goal=goal, have_roles=have, recent_work=last_deliverable,
+            owner_name=owner_name,
+        )
+    except Exception:
+        return None
+    if not proposal:
+        return None
+
+    role_id = proposal["id"]
+    name = proposal["name"]
+    persona = proposal["persona"]
+    reason = proposal.get("reason") or ""
+
+    action = ApprovalAction(
+        kind=ADD_AGENT_KIND,
+        summary=f"매니저 요청: 팀에 '{name}'({role_id}) 합류 — {reason or '역할 보강'}",
+        proposed_text=persona,
+        channel=OWNER_REVIEW_CHANNEL,
+        metadata={"role": role_id, "name": name,
+                  "role_keyword": proposal.get("role_keyword", "")},
+    )
+    # The manager-ask is gated for the OWNER; under auto-run there's no live input,
+    # so run_gate AUTO-approves (interactive=False). A future live owner path would
+    # pass a policy that requires approval + an interactive prompt.
+    outcome = run_gate(action, ApprovalPolicy.auto_approve_all(), interactive=False)
+    decision = outcome.decision
+
+    owner_id = g.owner.id()
+    if decision in ("AUTO_APPROVED", "APPROVED", "EDITED"):
+        try:
+            ok = add_team_member(
+                g, role_id, name, outcome.final_text or persona,
+                proposal.get("role_keyword", ""),
+            )
+        except Exception:
+            ok = False
+        if not ok:
+            return None
+        note = (f"팀에 '{name}'({role_id}) 합류 — 매니저 요청, "
+                f"{'자동 승인' if decision == 'AUTO_APPROVED' else '오너 승인'}. "
+                f"이유: {reason or '역할 보강'}")
+        try:
+            g.store.set_channel_participants(OWNER_REVIEW_CHANNEL, [owner_id])
+            g.store.log_message(OWNER_REVIEW_CHANNEL, owner_id, note)
+        except Exception:
+            pass
+        _fire(on_event, {"type": "auto", "phase": "team_grew",
+                         "role": role_id, "name": name, "reason": reason})
+        return role_id
+    # Rejected → log the withheld decision so the owner sees the manager asked.
+    try:
+        g.store.set_channel_participants(OWNER_REVIEW_CHANNEL, [owner_id])
+        g.store.log_message(
+            OWNER_REVIEW_CHANNEL, owner_id,
+            f"매니저가 '{name}'({role_id}) 합류를 요청했지만 보류함.")
+    except Exception:
+        pass
+    return None
 
 
 async def _sleep_cancellable(delay: float, cancel) -> bool:
@@ -229,6 +320,14 @@ async def drive_workspace(
             "type": "auto", "phase": "round_done", "round": rnd,
             "deliverable_preview": (deliverable or "")[:200],
         })
+
+        # 5b) Manager may ask the owner to grow the team (HITL gate; auto-approved
+        #     under auto-run, logged to internal-owner). echo → never (the test
+        #     loop stays a fixed team). Scoped so the add/log hits THIS ws's store.
+        await _scoped(lambda: _maybe_grow_team(
+            g, goal=goal, owner_name=owner_name,
+            last_deliverable=last_deliverable, on_event=on_event,
+        ))
 
         # 6) Cancellable inter-round pause.
         if await _sleep_cancellable(round_delay, cancel):

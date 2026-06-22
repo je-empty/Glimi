@@ -79,14 +79,14 @@ from glimi.dashboard import (
 # whether loaded as ``workspace.server`` or from a flat dir on sys.path.
 try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
-    from run import run_workspace  # type: ignore
-    from team import TEAM, WS_AGENT_MODEL  # type: ignore
+    from run import add_team_member, run_workspace, seed_team  # type: ignore
+    from team import RESERVED_IDS  # type: ignore
     from driver import drive_workspace  # type: ignore
     from owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL  # type: ignore
 except ImportError:  # imported as workspace.server
     from . import demo as _demo
-    from .run import run_workspace
-    from .team import TEAM, WS_AGENT_MODEL
+    from .run import add_team_member, run_workspace, seed_team
+    from .team import RESERVED_IDS
     from .driver import drive_workspace
     from .owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL
 
@@ -180,21 +180,33 @@ def _load_i18n(lang: str) -> dict:
 # researcher / builder / critic), so a clear role icon reads instantly — and keeps
 # the avatar route dependency-free (no asset pool, always 200).
 #   🧭 manager/coordinator · 🔬 researcher · 🛠 builder · 🔍 critic · ✍️ writer
-# Other ids fall back to 🧩 (generic teammate).
+# A manager-proposed DYNAMIC role maps via its role keyword (designer→🎨, …); any
+# unknown id/keyword falls back to 🧩 (generic teammate), so the route is always 200.
 _ROLE_EMOJI = {
-    "coordinator": "🧭", "manager": "🧭",
-    "researcher": "🔬",
-    "builder": "🛠",
-    "critic": "🔍",
-    "writer": "✍️",
+    "coordinator": "🧭", "manager": "🧭", "lead": "🧭", "strategist": "🧭",
+    "researcher": "🔬", "research": "🔬", "analyst": "📊", "data": "📊",
+    "builder": "🛠", "engineer": "🛠", "developer": "🛠", "maker": "🛠",
+    "critic": "🔍", "reviewer": "🔍", "qa": "🔍", "tester": "🔍",
+    "writer": "✍️", "editor": "✍️", "copywriter": "✍️",
+    "designer": "🎨", "design": "🎨",
+    "marketer": "📣", "marketing": "📣", "growth": "📣",
+    "planner": "🗂", "pm": "🗂", "product": "🗂",
+    "advisor": "🧠", "expert": "🧠", "specialist": "🧩",
 }
 _GENERIC_EMOJI = "🧩"
 
 
-def _role_emoji(agent_id: str) -> str:
-    """The role emoji for an agent id — keyed by role/id, with a 🧩 fallback so any
-    id always renders an icon (never a bare letter)."""
-    return _ROLE_EMOJI.get((agent_id or "").strip().lower(), _GENERIC_EMOJI)
+def _role_emoji(agent_id: str, role_keyword: str = "") -> str:
+    """The role emoji for an agent — keyed by id first, then a role keyword (for a
+    dynamic role whose id isn't in the static map), with a 🧩 fallback so any id
+    always renders an icon (never a bare letter)."""
+    aid = (agent_id or "").strip().lower()
+    if aid in _ROLE_EMOJI:
+        return _ROLE_EMOJI[aid]
+    kw = (role_keyword or "").strip().lower()
+    if kw in _ROLE_EMOJI:
+        return _ROLE_EMOJI[kw]
+    return _GENERIC_EMOJI
 
 
 # Role-specific hues so the team reads as branded, distinct discs (not random):
@@ -202,12 +214,13 @@ def _role_emoji(agent_id: str) -> str:
 _ROLE_HUE = {"coordinator": 35, "researcher": 212, "builder": 265, "critic": 350}
 
 
-def _avatar_svg(agent_id: str) -> str:
+def _avatar_svg(agent_id: str, role_keyword: str = "") -> str:
     """Inline SVG avatar: the agent's ROLE EMOJI (🧭/🔬/🛠/🔍/✍️, 🧩 fallback) on a
     soft vertical-gradient disc, tinted by ROLE (manager/researcher/builder/critic)
-    for a branded, less-flat look. Always renders — no external asset, so the avatar
+    for a branded, less-flat look. A dynamic role's emoji comes from ``role_keyword``
+    when its id isn't a known role. Always renders — no external asset, so the avatar
     route is always 200."""
-    emoji = _role_emoji(agent_id)
+    emoji = _role_emoji(agent_id, role_keyword)
     aid = (agent_id or "").strip().lower()
     hue = _ROLE_HUE.get(aid, int(hashlib.sha1(aid.encode("utf-8")).hexdigest(), 16) % 360)
     gid = f"g{hue}"
@@ -440,9 +453,12 @@ class WorkspaceRegistry:
         goal = (goal or "").strip() or "Plan the public launch of our open-source project"
         with self._lock:
             g = Glimi(backend=_USER_BACKEND, owner_name=owner_name)
-            for aid, disp, atype, persona in TEAM:
-                g.add_agent(aid, name=disp, persona=persona, agent_type=atype,
-                            model=WS_AGENT_MODEL)
+            # Manager proposes a goal-appropriate roster (real backend), else the
+            # DEFAULT researcher/builder/critic (echo → deterministic). The roster
+            # proposal runs HERE, inside the build lock, AFTER Glimi() so the kernel
+            # globals already point at this ws's store (propose_roster → llm.generate
+            # writes the process-global store). seed_team adds coordinator + roster.
+            seed_team(g, goal, owner_name)
             # Real interaction topology (echo) → a genuine interaction web for goal.
             run_workspace(g, owner_name, goal)
             if ws_id is None:
@@ -1255,14 +1271,77 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             "max_rounds": int(ws.max_rounds),
         })
 
+    # ── dynamic team: add a specialist (owner-initiated) ────────────────────
+    # The OWNER-initiated path to grow the team — the owner IS the approver by
+    # calling this, so no HITL gate (the gate is for the MANAGER's mid-run ask,
+    # which the driver auto-approves under auto-run). The add is serialized +
+    # scoped through reg.run_in_ws so the global-singleton WRITE path stays pointed
+    # at THIS workspace (every ws reuses ids like 'coordinator'). The new agent
+    # appears in /chat/channels immediately; it SPEAKS from the next round/turn on
+    # (run_round re-derives the live roster each call).
+    @app.post("/w/{ws_id}/team/add", response_model=None)
+    async def team_add(ws_id: str, request: Request):
+        """Add a specialist to a writable workspace's team.
+
+        Body JSON: ``{role:str, name?:str, persona?:str, role_keyword?:str}`` —
+        ``role`` is the role id (slugged server-side). Gating: 404 unknown · 403 on
+        the read-only Demo · 400 missing role · 409 on a reserved/collision id.
+        Returns the new agent's card on success.
+        """
+        ws = _require(ws_id)
+        if ws.kind == "demo":
+            raise HTTPException(status_code=403, detail="demo is read-only")
+        body = {}
+        try:
+            if "application/json" in (request.headers.get("content-type", "")):
+                body = await request.json()
+        except Exception:
+            body = {}
+        role = str((body or {}).get("role", "") or "").strip().lower()
+        # Slug the role id the same way the manager's proposal is sanitized.
+        role = "".join(ch if (ch.isalnum() or ch == "-") else "-" for ch in role)
+        role = "-".join(p for p in role.split("-") if p)[:32]
+        if not role:
+            raise HTTPException(status_code=400, detail="role required")
+        if role in RESERVED_IDS:
+            raise HTTPException(status_code=409, detail=f"reserved id: {role}")
+        if ws.store.get_agent(role):
+            raise HTTPException(status_code=409, detail=f"id already on team: {role}")
+        name = str((body or {}).get("name", "") or "").strip() or role
+        persona = str((body or {}).get("persona", "") or "").strip()
+        if not persona:
+            persona = f"{name} is the team's {role}."
+        role_keyword = str((body or {}).get("role_keyword", "") or "").strip() or role
+
+        def _add():
+            return add_team_member(ws.glimi, role, name, persona, role_keyword)
+
+        ok = await asyncio.get_event_loop().run_in_executor(
+            None, reg.run_in_ws, ws, _add)
+        if not ok:
+            raise HTTPException(status_code=409, detail=f"could not add: {role}")
+        return JSONResponse({
+            "id": role,
+            "name": name,
+            "agent_type": "persona",
+            "avatar_url": f"/w/{ws.id}/api/avatar?id={role}&v={_ASSET_VER}",
+            "channel": f"dm-{role}",
+        })
+
     # ── per-workspace chat avatars (workspace layer; no kernel image field) ──
     @app.get("/w/{ws_id}/api/avatar")
     def w_avatar(ws_id: str, id: str = "") -> Response:
-        """Role-based monogram avatar (inline SVG). The workspace team is
-        functional (Coordinator/Researcher/Builder/Critic) — no persona/anime
-        portraits here. Always 200."""
-        _require(ws_id)
-        return Response(content=_avatar_svg(id), media_type="image/svg+xml",
+        """Role-based emoji avatar (inline SVG). The workspace team is functional
+        (Coordinator/Researcher/Builder/Critic + any manager-proposed role) — no
+        persona/anime portraits. A dynamic role's emoji comes from its stored
+        ``role_keyword`` when its id isn't a known role. Always 200."""
+        ws = _require(ws_id)
+        role_keyword = ""
+        try:
+            role_keyword = (ws.store.get_agent(id) or {}).get("role_keyword") or ""
+        except Exception:
+            role_keyword = ""
+        return Response(content=_avatar_svg(id, role_keyword), media_type="image/svg+xml",
                         headers={"Cache-Control": "no-cache"})
 
     @app.get("/w/{ws_id}/api/snapshot")

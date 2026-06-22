@@ -93,8 +93,36 @@ TEAM: list[tuple[str, str, str, str]] = [
     for aid, name, atype, persona in _TEAM_RAW
 ]
 
-# The three specialists, in their contribution order each round.
+# The DEFAULT three specialists, in their contribution order each round. This is
+# the fallback roster — used on the offline ``echo`` backend, when the manager's
+# roster proposal fails/empties, and as the backward-compat anchor (the demo +
+# echo create reproduce exactly this team + topology). ``SPECIALISTS`` is kept as
+# an alias so existing importers (run.py / demo.py) keep working unchanged; the
+# LIVE roster is derived from the store at runtime (see :func:`live_specialists`).
 SPECIALISTS: list[str] = ["researcher", "builder", "critic"]
+
+# The default specialists as (role_id, role_keyword) — keyword drives the avatar
+# emoji (server._role_emoji) and a generic angle for a dynamic role. The default
+# ids ARE their own keyword, so the static avatar map already covers them.
+DEFAULT_SPECIALISTS: list[tuple[str, str]] = [
+    ("researcher", "researcher"),
+    ("builder", "builder"),
+    ("critic", "critic"),
+]
+
+# How many specialists the manager may propose (kept small so a real-backend run
+# stays bounded — more roles = more delegation + A2A turns + cost).
+MIN_ROSTER = 2
+MAX_ROSTER = 4
+
+# Per-default-role delegation angle (researcher/builder/critic). Keyed by id so
+# the DEFAULT team's delegation messages stay byte-identical to before. A dynamic
+# role with no entry falls back to a generic, persona-derived brief.
+DEFAULT_ANGLES: dict[str, str] = {
+    "researcher": "gather the facts, options, and trade-offs the decision needs",
+    "builder": "turn the direction into concrete, ordered next steps",
+    "critic": "stress-test the emerging plan and name the biggest risk",
+}
 
 # Workspace = real work → every team agent runs on Sonnet (not the persona-default
 # Haiku — quality over latency, since work output matters more than chat speed).
@@ -140,8 +168,379 @@ COLLAB_TURNS = 4
 # The whole team converges here for one shared round.
 GROUP_CHANNEL = "group-team"
 
-# Display labels (id → name), plus the owner's seat.
+# Display labels (id → name) for the DEFAULT team, plus the owner's seat. NOTE:
+# this static map only knows the default ids — a DYNAMIC roster's ids are NOT in
+# here, so every run-time label lookup goes through :func:`label_for`, which
+# consults the live store first and falls back to this map / the raw id.
 LABELS: dict[str, str] = {aid: name for aid, name, _, _ in TEAM}
+
+# ── dynamic roster: deriving the LIVE team from the store ────────────────────
+# The team is no longer hard-fixed to researcher/builder/critic. At build time the
+# manager may PROPOSE a goal-appropriate roster (:func:`propose_roster`); the
+# proposed specialists are created via ``g.add_agent`` and become the LIVE roster.
+# Everything that orchestrates a round (delegation channels, A2A pairs, the group
+# round, relationship edges) derives from the live roster — these helpers are the
+# single place that reads it, so run.py never re-hardcodes the team.
+
+# Ids that can never be a specialist (would shadow the manager / the owner seat,
+# breaking dm-coordinator routing + owner edges).
+RESERVED_IDS = frozenset({"coordinator", "owner", "mgr"})
+
+
+def live_specialists(g) -> list[str]:
+    """The specialist ids actually on THIS workspace's team, in add order.
+
+    Reads the store's agents (the live roster), drops the coordinator/manager and
+    the owner seat. This is the source of truth the orchestration derives from —
+    so a freshly added agent joins the next round automatically, and a dynamic
+    roster needs no constant to update. Falls back to :data:`SPECIALISTS` only if
+    the store can't be read (defensive)."""
+    try:
+        agents = g.store.list_agents()
+    except Exception:
+        try:
+            agents = [a for a in g.reader().agents()]  # type: ignore[attr-defined]
+        except Exception:
+            return list(SPECIALISTS)
+    out: list[str] = []
+    for a in agents:
+        aid = (a.get("id") if isinstance(a, dict) else getattr(a, "id", None))
+        atype = (a.get("agent_type") or a.get("type") if isinstance(a, dict)
+                 else getattr(a, "agent_type", "")) or ""
+        if not aid or aid in RESERVED_IDS:
+            continue
+        if str(atype).lower() == "mgr":
+            continue
+        out.append(aid)
+    return out or list(SPECIALISTS)
+
+
+def label_for(g, agent_id: str) -> str:
+    """Display name for an id, resolved from the LIVE store first (so dynamic-roster
+    ids work), then the static :data:`LABELS`, then the raw id."""
+    try:
+        row = g.store.get_agent(agent_id)
+        if row and row.get("name"):
+            return row["name"]
+    except Exception:
+        pass
+    return LABELS.get(agent_id, agent_id)
+
+
+def delegation_channel_for(sid: str) -> str:
+    """The per-specialist delegation DM channel for a role id (``dm-<id>``) — the
+    convention DELEGATION_CHANNELS encoded statically, now derived for any id."""
+    return f"dm-{sid}"
+
+
+def angle_for(g, sid: str) -> str:
+    """The delegation angle (one-line brief) for a specialist. Default ids keep
+    their exact wording (so default delegation is byte-identical); a dynamic role
+    gets a generic, persona-grounded brief derived from its display name."""
+    if sid in DEFAULT_ANGLES:
+        return DEFAULT_ANGLES[sid]
+    label = label_for(g, sid)
+    return (f"take your angle as the team's {label} on this goal and report back "
+            f"with your first concrete take")
+
+
+def derive_pairs(g, specialists: list[str]) -> list[tuple[str, str, str, str]]:
+    """The specialist↔specialist A2A pairs for the LIVE roster.
+
+    For the DEFAULT 3-role team, reproduce EXACTLY today's two pairs (researcher↔
+    critic, builder↔researcher) on their original channels + briefs, so the default
+    topology is unchanged. For any other roster, pair adjacent specialists
+    round-robin (``(s[i], s[i+1])``) on ``internal-<a>-<b>`` with a generic brief,
+    capped at the number of specialists to keep runtime bounded.
+
+    Returns ``(a, b, channel, brief)`` tuples, same shape as COLLAB_PAIRS.
+    """
+    ids = list(specialists)
+    if ids == list(SPECIALISTS):
+        return list(COLLAB_PAIRS)  # the default team → byte-identical pairs
+    if len(ids) < 2:
+        return []
+    pairs: list[tuple[str, str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for i in range(len(ids)):
+        a, b = ids[i], ids[(i + 1) % len(ids)]
+        if a == b:
+            continue
+        key = tuple(sorted((a, b)))
+        if key in seen:
+            continue
+        seen.add(key)
+        brief = (
+            f"{label_for(g, a)} and {label_for(g, b)}, work this goal together: "
+            f"compare what each of you found, push back where warranted, and move "
+            f"toward something the team can use."
+        )
+        pairs.append((a, b, f"internal-{a}-{b}", brief))
+        if len(pairs) >= len(ids):  # cap so a big roster can't explode A2A turns
+            break
+    return pairs
+
+
+# ── manager-proposes-the-roster (build time) ────────────────────────────────
+# The manager (Coordinator), given the goal, designs a goal-appropriate set of
+# specialists instead of always researcher/builder/critic. A single structured
+# LLM call (the SAME glimi.llm.generate choke-point the deliverable + A2A use)
+# returns a small JSON roster; we sanitize it into add-able tuples. ECHO / no
+# backend / any failure → the DEFAULT roster, so echo + tests stay deterministic.
+
+_ROSTER_SYS = (
+    "You are the manager assembling a small specialist team for a work goal. "
+    "Given the goal, choose the 2-4 specialists that goal actually needs — each a "
+    "distinct, complementary role (e.g. researcher, builder, critic, designer, "
+    "analyst, writer, strategist). Do NOT include yourself (the manager) or the "
+    "owner. For each, give: a short id (lowercase, a-z and hyphens only), a short "
+    "human display name, a one-word role keyword (for the icon), and a 1-2 "
+    "sentence persona describing what they own and how they work.\n"
+    "Respond with ONE JSON array only, no prose:\n"
+    '[{"id":"researcher","name":"리서처","role":"researcher","persona":"..."}, ...]'
+)
+
+
+def _slug_id(raw: str) -> str:
+    """Sanitize a proposed id → lowercase a-z/0-9/hyphen slug."""
+    s = "".join(ch if (ch.isalnum() or ch == "-") else "-" for ch in str(raw).lower())
+    s = "-".join(p for p in s.split("-") if p)  # collapse repeats / strip edges
+    return s[:32]
+
+
+def _parse_roster_json(text: str) -> list[dict]:
+    """Pull the first JSON array of role objects out of model text (tolerant)."""
+    import json as _json
+    import re as _re
+    if not text:
+        return []
+    candidates = [text.strip()]
+    m = _re.search(r"\[.*\]", text, _re.DOTALL)
+    if m:
+        candidates.append(m.group(0))
+    for cand in candidates:
+        try:
+            obj = _json.loads(cand)
+        except Exception:
+            continue
+        if isinstance(obj, list):
+            return [r for r in obj if isinstance(r, dict)]
+    return []
+
+
+def _sanitize_roster(raw: list[dict]) -> list[tuple[str, str, str, str]]:
+    """Sanitize parsed role dicts → ``(role_id, display, role_keyword, persona)``,
+    collision-safe within the roster and never a reserved id. Empty → caller falls
+    back to the default. Caps at :data:`MAX_ROSTER`."""
+    out: list[tuple[str, str, str, str]] = []
+    used: set[str] = set(RESERVED_IDS)
+    for r in raw:
+        rid = _slug_id(r.get("id") or r.get("role") or r.get("name") or "")
+        if not rid:
+            continue
+        if rid in used:  # de-dupe within the roster (and never a reserved id)
+            base, n = rid, 2
+            while f"{base}-{n}" in used:
+                n += 1
+            rid = f"{base}-{n}"
+        used.add(rid)
+        name = str(r.get("name") or rid).strip() or rid
+        keyword = _slug_id(r.get("role") or rid) or rid
+        persona = str(r.get("persona") or "").strip()
+        if not persona:
+            persona = f"{name} is the team's {keyword}."
+        out.append((rid, name, keyword, persona))
+        if len(out) >= MAX_ROSTER:
+            break
+    return out
+
+
+def propose_roster(g, goal: str, owner_name: str = "") -> list[tuple[str, str, str, str]]:
+    """The manager proposes a goal-appropriate roster of 2-4 specialists.
+
+    Returns ``(role_id, display, role_keyword, persona)`` tuples WITHOUT the
+    READABILITY clause (the caller appends it when it adds each agent, mirroring
+    TEAM). Hard guarantees for backward-compat + determinism:
+
+    - ECHO / no backend → the DEFAULT roster (researcher/builder/critic), NO LLM
+      call, so the create path stays deterministic and the tests/demo are stable.
+    - Real backend → ONE structured ``glimi.llm.generate`` call (modeled on
+      ``owner_agent._complete``); parse + sanitize the JSON. Any parse/empty/
+      exception/CAPPED → the DEFAULT roster. Result is 2-4 sanitized specialists.
+
+    The default roster is returned as full persona tuples (the rich _TEAM_RAW
+    personas) so a fallback build is identical to the historical static TEAM.
+    """
+    if getattr(g, "_backend", None) in (None, "", "echo"):
+        return list(_default_roster_tuples())
+
+    # The model/provider resolvers are MODULE-LEVEL functions in glimi.runtime
+    # (not methods on the runtime instance) — call them on the module, mirroring
+    # how owner_agent resolves the manager tier.
+    try:
+        from glimi import runtime as _rt
+    except Exception:
+        return list(_default_roster_tuples())
+
+    try:
+        model = _rt._resolve_agent_model("__roster__", "mgr")
+        provider = _rt._provider_for("mgr", model)
+    except Exception:
+        return list(_default_roster_tuples())
+
+    if provider == getattr(_rt, "CAPPED", "__capped__"):
+        return list(_default_roster_tuples())
+
+    if provider == "claude":
+        gen_model, gen_backend = model, ""
+    elif provider == "ollama":
+        try:
+            gen_model = _rt._ollama_model_arg(model, "mgr")
+        except Exception:
+            gen_model = model
+        gen_backend = ""
+    else:
+        gen_model, gen_backend = model, provider
+
+    user = (
+        f"Owner: {owner_name or 'the owner'}\n"
+        f"Goal: {goal}\n\n"
+        f"Assemble the {MIN_ROSTER}-{MAX_ROSTER} specialists this goal needs."
+    )
+    try:
+        from glimi import llm
+        resp = llm.generate(
+            system=_ROSTER_SYS, user=user, model=gen_model,
+            agent_type="mgr", backend=gen_backend,
+            max_tokens=768, timeout=120,
+        )
+    except Exception:
+        return list(_default_roster_tuples())
+    if getattr(resp, "error", None):
+        return list(_default_roster_tuples())
+
+    text = (getattr(resp, "text", "") or "").strip()
+    roster = _sanitize_roster(_parse_roster_json(text))
+    if len(roster) < MIN_ROSTER:
+        return list(_default_roster_tuples())
+    return roster
+
+
+def _default_roster_tuples() -> list[tuple[str, str, str, str]]:
+    """The default specialists as ``(role_id, display, role_keyword, persona)`` —
+    the rich _TEAM_RAW personas (NO readability clause; caller appends it), so a
+    fallback build is identical to the historical static TEAM specialists."""
+    by_id = {aid: (name, persona) for aid, name, _atype, persona in _TEAM_RAW}
+    out: list[tuple[str, str, str, str]] = []
+    for sid, keyword in DEFAULT_SPECIALISTS:
+        name, persona = by_id.get(sid, (sid, f"{sid} is a teammate."))
+        out.append((sid, name, keyword, persona))
+    return out
+
+
+# ── manager-requests-+1-agent (mid-run) ─────────────────────────────────────
+# Mid-project, the manager may realize it needs a role the team doesn't have. This
+# returns ONE proposed new member (or None = no new role needed). The driver
+# surfaces it to the OWNER for approval (HITL), auto-approving under auto-run.
+
+_NEW_MEMBER_SYS = (
+    "You are the manager running a specialist team toward a goal. Looking at the "
+    "work so far and the roles you already have, decide whether the team is missing "
+    "ONE specialist whose absence is actually holding the work back. Be "
+    "conservative — only ask for a new teammate when there's a real gap, not just a "
+    "nice-to-have. If the team is fine, say so.\n"
+    "Respond with ONE JSON object only, no prose: "
+    '{"need": true/false, "id": "short-id", "name": "display name", '
+    '"role": "one-word role keyword", "persona": "1-2 sentence persona", '
+    '"reason": "why this role is needed now"}.'
+
+
+)
+
+
+def propose_new_member(g, goal: str, have_roles: list[str],
+                       recent_work: str = "", owner_name: str = "") -> Optional[dict]:
+    """The manager proposes ONE new specialist mid-run, or ``None`` if no gap.
+
+    Returns ``{"id","name","role_keyword","persona","reason"}`` for a needed role,
+    or ``None``. Hard-gated like :func:`propose_roster`:
+
+    - ECHO / no backend → ``None`` (the echo loop's team stays fixed +
+      deterministic — the demo showcases growth via its scripted unfold instead).
+    - Real backend → ONE structured ``glimi.llm.generate`` call; parse + sanitize.
+      Any parse/empty/exception/CAPPED/``need:false`` → ``None``. A proposed id
+      that's reserved or already on the team → ``None`` (no clobber).
+    """
+    if getattr(g, "_backend", None) in (None, "", "echo"):
+        return None
+    try:
+        from glimi import runtime as _rt
+        model = _rt._resolve_agent_model("__newrole__", "mgr")
+        provider = _rt._provider_for("mgr", model)
+    except Exception:
+        return None
+    if provider == getattr(_rt, "CAPPED", "__capped__"):
+        return None
+    if provider == "claude":
+        gen_model, gen_backend = model, ""
+    elif provider == "ollama":
+        try:
+            gen_model = _rt._ollama_model_arg(model, "mgr")
+        except Exception:
+            gen_model = model
+        gen_backend = ""
+    else:
+        gen_model, gen_backend = model, provider
+
+    user = (
+        f"Owner: {owner_name or 'the owner'}\n"
+        f"Goal: {goal}\n"
+        f"Roles already on the team: {', '.join(have_roles) or '(none)'}\n"
+        + (f"Recent work:\n{recent_work[:1200]}\n" if recent_work else "")
+        + "\nIs the team missing one specialist that's actually holding the work back?"
+    )
+    try:
+        from glimi import llm
+        resp = llm.generate(
+            system=_NEW_MEMBER_SYS, user=user, model=gen_model,
+            agent_type="mgr", backend=gen_backend, max_tokens=384, timeout=90,
+        )
+    except Exception:
+        return None
+    if getattr(resp, "error", None):
+        return None
+
+    import json as _json
+    import re as _re
+    text = (getattr(resp, "text", "") or "").strip()
+    candidates = [text]
+    m = _re.search(r"\{.*\}", text, _re.DOTALL)
+    if m:
+        candidates.append(m.group(0))
+    obj = None
+    for cand in candidates:
+        try:
+            o = _json.loads(cand)
+        except Exception:
+            continue
+        if isinstance(o, dict):
+            obj = o
+            break
+    if not obj or not obj.get("need"):
+        return None
+    rid = _slug_id(obj.get("id") or obj.get("role") or obj.get("name") or "")
+    if not rid or rid in RESERVED_IDS:
+        return None
+    have = {(r or "").strip().lower() for r in have_roles}
+    if rid in have:
+        return None
+    name = str(obj.get("name") or rid).strip() or rid
+    keyword = _slug_id(obj.get("role") or rid) or rid
+    persona = str(obj.get("persona") or "").strip() or f"{name} is the team's {keyword}."
+    reason = str(obj.get("reason") or "").strip()
+    return {"id": rid, "name": name, "role_keyword": keyword,
+            "persona": persona, "reason": reason}
+
 
 # Sensible non-interactive defaults — used when there is no TTY to prompt on.
 DEFAULT_OWNER_NAME = "오너"

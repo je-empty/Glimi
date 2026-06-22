@@ -59,9 +59,10 @@ from glimi import Glimi
 # kernel boundary holds: ``team`` imports nothing from glimi/src/discord.
 try:  # script / flat-dir on sys.path
     from team import (
-        COLLAB_PAIRS, COLLAB_TURNS, COORDINATOR_DM, DEFAULT_GOAL,
-        DELEGATION_CHANNELS, GROUP_CHANNEL, LABELS, SPECIALISTS, TEAM,
-        resolve_setup,
+        COLLAB_TURNS, COORDINATOR_DM, DEFAULT_GOAL, GROUP_CHANNEL,
+        READABILITY, RESERVED_IDS, TEAM, WS_AGENT_MODEL,
+        angle_for, delegation_channel_for, derive_pairs, label_for,
+        live_specialists, propose_roster, resolve_setup,
     )
     from approval import (
         APPROVALS_CHANNEL, ApprovalAction, ApprovalPolicy, WebApprovalQueue,
@@ -69,9 +70,10 @@ try:  # script / flat-dir on sys.path
     )
 except ImportError:  # imported as workspace.run
     from .team import (
-        COLLAB_PAIRS, COLLAB_TURNS, COORDINATOR_DM, DEFAULT_GOAL,
-        DELEGATION_CHANNELS, GROUP_CHANNEL, LABELS, SPECIALISTS, TEAM,
-        resolve_setup,
+        COLLAB_TURNS, COORDINATOR_DM, DEFAULT_GOAL, GROUP_CHANNEL,
+        READABILITY, RESERVED_IDS, TEAM, WS_AGENT_MODEL,
+        angle_for, delegation_channel_for, derive_pairs, label_for,
+        live_specialists, propose_roster, resolve_setup,
     )
     from .approval import (
         APPROVALS_CHANNEL, ApprovalAction, ApprovalPolicy, WebApprovalQueue,
@@ -112,10 +114,14 @@ def banner(backend: str, owner_name: str, goal: str, approve_mode: str) -> None:
 
 
 def _label(g: Glimi, speaker_id: str) -> str:
-    """Display name for a speaker id (agent label, or the owner's name)."""
+    """Display name for a speaker id (agent label, or the owner's name).
+
+    Resolves dynamic-roster ids via the live store (``label_for``), then the
+    static LABELS, then the raw id — so a manager-proposed specialist renders its
+    real display name, not its slug."""
     if speaker_id == g.owner.id():
         return g.owner.name()
-    return LABELS.get(speaker_id, speaker_id)
+    return label_for(g, speaker_id)
 
 
 def _gen(g: Glimi, agent_id: str, guidance: str, channel: str) -> str:
@@ -272,7 +278,7 @@ def gated_deliver(
         # Capped/failed deliverable path → fall back to a normal gated turn so the
         # round always produces SOMETHING (and the HITL gate still wraps it).
         candidate = _gen(g, "coordinator", prompt, channel)
-    print(f"{LABELS['coordinator']}:\n{candidate}\n")
+    print(f"{_label(g, 'coordinator')}:\n{candidate}\n")
 
     action = ApprovalAction(kind=kind, summary=summary, proposed_text=candidate,
                             channel=channel, metadata={"agent": "coordinator"})
@@ -333,16 +339,16 @@ def a2a_exchange(g: Glimi, a: str, b: str, channel: str, brief: str,
     Returns the number of turns that actually produced output.
     """
     g.store.set_channel_participants(channel, [a, b])
-    print(f"--- {LABELS[a]} ↔ {LABELS[b]}  ({channel}) ---\n")
+    print(f"--- {_label(g, a)} ↔ {_label(g, b)}  ({channel}) ---\n")
     spoken = 0
     pair = (a, b)
     for i in range(turns):
         speaker = pair[i % 2]
         listener = pair[(i + 1) % 2]
         ctx = (
-            f"You and {LABELS[listener]} are working the goal together — {brief}"
+            f"You and {_label(g, listener)} are working the goal together — {brief}"
             if i == 0 else
-            f"Continue with {LABELS[listener]}: build on what was just said, "
+            f"Continue with {_label(g, listener)}: build on what was just said, "
             f"push back where warranted, and move toward something usable."
         )
         lines = g.runtime.generate_agent_to_agent(speaker, listener, channel, context=ctx)
@@ -350,7 +356,7 @@ def a2a_exchange(g: Glimi, a: str, b: str, channel: str, brief: str,
             spoken += 1
             text = "\n".join(lines)
             _emit(on_event, channel, speaker, text, g)
-            print(f"{LABELS[speaker]}:\n" + text + "\n")
+            print(f"{_label(g, speaker)}:\n" + text + "\n")
     return spoken
 
 
@@ -363,6 +369,9 @@ def form_relationships(g: Glimi, collab_turns: dict[tuple[str, str], int]) -> No
     - Coordinator ↔ each specialist → ``manages``
     - specialist ↔ specialist → ``collaborator``, intimacy ∝ how much they talked
 
+    Iterates the LIVE roster (``live_specialists``), not the static SPECIALISTS, so
+    a dynamic / mid-run-grown team gets the right manages-edges + display names.
+
     A real backend also grows these organically through memory extraction over the
     same channels; setting them structurally guarantees the graph is populated on
     *any* backend — the structural truth of who worked with whom.
@@ -372,16 +381,16 @@ def form_relationships(g: Glimi, collab_turns: dict[tuple[str, str], int]) -> No
                              intimacy=INTIMACY_LEAD,
                              dynamics="Runs the workspace for the owner; takes the "
                                       "goal and delivers the synthesis.")
-    for sid in SPECIALISTS:
+    for sid in live_specialists(g):
         g.store.set_relationship("coordinator", sid, rel_type="manages",
                                  intimacy=INTIMACY_MANAGES,
-                                 dynamics=f"Delegates an angle to {LABELS[sid]} and "
-                                          f"folds the result into the plan.")
+                                 dynamics=f"Delegates an angle to {label_for(g, sid)} "
+                                          f"and folds the result into the plan.")
     for (a, b), n in collab_turns.items():
         # intimacy grows with how much the pair actually talked (clamped 40–90).
         intimacy = max(40, min(90, 40 + n * 12))
         g.store.set_relationship(a, b, rel_type="collaborator", intimacy=intimacy,
-                                 dynamics=f"{LABELS[a]} and {LABELS[b]} worked the "
+                                 dynamics=f"{label_for(g, a)} and {label_for(g, b)} worked the "
                                           f"goal together over {n} exchange(s).")
 
 
@@ -404,6 +413,119 @@ def _emit(on_event, channel: str, speaker_id: str, text: str,
         })
     except Exception:
         pass
+
+
+# ── team seeding + runtime mutation ─────────────────────────────────────────
+
+def seed_team(g: Glimi, goal: str, owner_name: str = "") -> list[str]:
+    """Build the workspace's team on ``g``: the coordinator (manager) + a roster
+    of specialists. The manager PROPOSES a goal-appropriate roster (2-4 roles) on
+    a real backend; on echo / no-backend / a failed proposal it falls back to the
+    DEFAULT researcher/builder/critic — so echo create + the tests are
+    deterministic and byte-identical to the historical static TEAM.
+
+    Each specialist is created via ``add_agent`` with its proposed persona + the
+    shared READABILITY clause + the Sonnet model override (quality over latency),
+    exactly like the static seed used to. The role keyword rides into the store as
+    the agent row's ``role_keyword`` extra so the avatar route can pick a sensible
+    emoji for a dynamic role. Returns the specialist ids added (the live roster).
+
+    MUST be called with the kernel globals already pointed at ``g`` (it calls
+    ``propose_roster`` → ``llm.generate`` on a real backend): in server.create
+    that's true because the Glimi was just constructed (last-wins), and the create
+    body runs inside the build lock.
+    """
+    # Coordinator (manager) — always TEAM[0], its id/persona load-bearing.
+    cid, cname, ctype, cpersona = TEAM[0]
+    g.add_agent(cid, name=cname, persona=cpersona, agent_type=ctype,
+                model=WS_AGENT_MODEL)
+
+    roster = propose_roster(g, goal, owner_name)
+    added: list[str] = []
+    for role_id, display, role_keyword, persona in roster:
+        if role_id in RESERVED_IDS or g.store.get_agent(role_id):
+            continue  # never shadow the manager/owner or clobber an existing id
+        g.add_agent(role_id, name=display, persona=persona + READABILITY,
+                    agent_type="persona", model=WS_AGENT_MODEL)
+        _stamp_role_keyword(g, role_id, role_keyword)
+        added.append(role_id)
+    return added
+
+
+def _stamp_role_keyword(g: Glimi, agent_id: str, role_keyword: str) -> None:
+    """Record a role keyword on the agent's store row (best-effort) so the avatar
+    route can map a DYNAMIC role to a sensible emoji. ``upsert_agent`` accepts
+    ``**extra`` (setdefault), so we re-upsert with the existing fields + the
+    keyword; a store without the field just ignores it."""
+    if not role_keyword:
+        return
+    try:
+        row = g.store.get_agent(agent_id) or {}
+        g.store.upsert_agent(
+            agent_id, name=row.get("name") or agent_id,
+            agent_type=row.get("type", "persona"),
+            model_override=row.get("model_override"),
+            role_keyword=role_keyword,
+        )
+    except Exception:
+        pass
+
+
+def add_team_member(g: Glimi, role_id: str, name: str, persona: str,
+                    role_keyword: str = "") -> bool:
+    """Add ONE specialist to the live team at runtime, safely.
+
+    The brief's "invalidate_cache + refresh_agent" comes from the Community's
+    DB-backed provider; THIS kernel uses ``SimpleProfileProvider`` (no cache) and
+    has NO ``runtime.invalidate_cache``. The correct refresh here is:
+
+      1. ``g.add_agent`` → ``profiles.add`` + ``store.upsert_agent`` (one call);
+      2. drop any stale ``_active_agents[role_id]`` so the next ``generate_*``
+         re-activates it from the freshly-written profile/store;
+      3. (defensive) honor the CLAUDE.md phrasing IF the provider ever grows a
+         cache — guarded by ``hasattr`` so it's a no-op on this kernel.
+
+    Returns False (no-op) on a reserved id or an id already on the team (so a
+    double-add / collision can't clobber the manager or an existing specialist).
+
+    MUST be called with the kernel globals scoped to ``g`` (under the server's
+    ``run_in_ws`` for the live path) — every generate_* + add writes the
+    process-global store, so an unscoped add would leak across workspaces.
+    """
+    role_id = (role_id or "").strip().lower()
+    if not role_id or role_id in RESERVED_IDS:
+        return False
+    try:
+        if g.store.get_agent(role_id):
+            return False
+    except Exception:
+        return False
+
+    g.add_agent(role_id, name=(name or role_id), persona=(persona or "") + READABILITY,
+                agent_type="persona", model=WS_AGENT_MODEL)
+    _stamp_role_keyword(g, role_id, role_keyword or role_id)
+
+    rt = getattr(g, "runtime", None)
+    if rt is not None:
+        try:
+            rt._active_agents.pop(role_id, None)  # force lazy re-activation
+        except Exception:
+            pass
+        # Community DB provider exposes invalidate_cache; SimpleProfileProvider
+        # does not — guard so this stays correct if the provider is ever swapped.
+        if hasattr(rt, "invalidate_cache"):
+            try:
+                rt.invalidate_cache(role_id)
+            except Exception:
+                pass
+        # refresh_agent only matters for an ALREADY-active id whose prompt changed;
+        # for a brand-new id it's a no-op, but call it if the id somehow re-activated.
+        if role_id in getattr(rt, "_active_agents", {}):
+            try:
+                rt.refresh_agent(role_id)
+            except Exception:
+                pass
+    return True
 
 
 def run_round(
@@ -441,6 +563,13 @@ def run_round(
         interactive = sys.stdin.isatty()
     owner_id = g.owner.id()
 
+    # Derive the LIVE roster ONCE at the top — the specialists actually on THIS
+    # team's store (the default 3, a manager-proposed roster, or a roster grown
+    # mid-run). Everything below (delegation, A2A pairs, the group round) keys off
+    # this, so a freshly added agent joins the next round with no constant to edit.
+    specialists = live_specialists(g)
+    roster_names = ", ".join(label_for(g, s) for s in specialists)
+
     # 1) Coordinator reads dm-coordinator (the instruction is already there) and
     #    greets / restates / lays out who it will hand which angle to.
     plan = _gen(
@@ -448,33 +577,29 @@ def run_round(
         f"You are {owner_name}'s Coordinator. Read dm-coordinator: {owner_name} "
         f"just brought this directive: \"{instruction}\".\nGreet {owner_name} by "
         f"name, restate it in one crisp sentence, then lay out the plan: which "
-        f"angle you'll hand the Researcher, the Builder, and the Critic. Keep it "
+        f"angle you'll hand each of your specialists ({roster_names}). Keep it "
         f"tight.",
         COORDINATOR_DM,
     )
-    print(f"{LABELS['coordinator']}:\n{plan}\n")
+    print(f"{_label(g, 'coordinator')}:\n{plan}\n")
     _emit(on_event, COORDINATOR_DM, "coordinator", plan, g)
 
     # 2) Coordinator ↔ each specialist (per-specialist DMs): real delegation. The
     #    Coordinator speaks into each specialist's channel; the specialist replies.
     print("--- The Coordinator delegates ---\n")
-    angles = {
-        "researcher": "gather the facts, options, and trade-offs the decision needs",
-        "builder": "turn the direction into concrete, ordered next steps",
-        "critic": "stress-test the emerging plan and name the biggest risk",
-    }
-    for sid in SPECIALISTS:
-        ch = DELEGATION_CHANNELS[sid]
+    for sid in specialists:
+        ch = delegation_channel_for(sid)
+        angle = angle_for(g, sid)
         # The Coordinator's delegating message, logged to the specialist's channel.
         g.store.set_channel_participants(ch, [owner_id, "coordinator", sid])
         delegation = (
-            f"{LABELS[sid]}, on \"{instruction}\": your angle is to {angles[sid]}. "
+            f"{label_for(g, sid)}, on \"{instruction}\": your angle is to {angle}. "
             f"Take it and report back."
         )
         g.store.log_message(ch, "coordinator", delegation)
         _emit(on_event, ch, "coordinator", delegation, g)
-        print(f"Coordinator → {LABELS[sid]} ({ch}):\n"
-              f"  your angle is to {angles[sid]}.\n")
+        print(f"Coordinator → {label_for(g, sid)} ({ch}):\n"
+              f"  your angle is to {angle}.\n")
         # The specialist reads the delegation from the channel and responds.
         reply = _gen(
             g, sid,
@@ -484,19 +609,21 @@ def run_round(
             ch,
         )
         _emit(on_event, ch, sid, reply, g)
-        print(f"{LABELS[sid]}:\n{reply}\n")
+        print(f"{label_for(g, sid)}:\n{reply}\n")
 
     # 3) Specialist ↔ specialist (A2A): pairs who should collaborate actually do.
+    #    Pairs are DERIVED from the live roster (default team → today's two pairs;
+    #    a dynamic roster → round-robin adjacent pairs, capped).
     print("--- The specialists collaborate (agent-to-agent) ---\n")
     collab_turns: dict[tuple[str, str], int] = {}
-    for a, b, channel, brief in COLLAB_PAIRS:
+    for a, b, channel, brief in derive_pairs(g, specialists):
         n = a2a_exchange(g, a, b, channel, brief, COLLAB_TURNS, on_event=on_event)
         collab_turns[(a, b)] = n
 
     # 4) Group round: the whole team converges on one channel.
     print(f"--- The team converges ({GROUP_CHANNEL}) ---\n")
     g.store.set_channel_participants(
-        GROUP_CHANNEL, [owner_id, "coordinator", *SPECIALISTS])
+        GROUP_CHANNEL, [owner_id, "coordinator", *specialists])
     call = _gen(
         g, "coordinator",
         f"Open the group room for the team on \"{instruction}\". In one or two "
@@ -506,7 +633,7 @@ def run_round(
     )
     _emit(on_event, GROUP_CHANNEL, "coordinator", call, g)
     print(f"Coordinator ({GROUP_CHANNEL}):\n  (called the team together)\n")
-    for sid in SPECIALISTS:
+    for sid in specialists:
         reply = _gen(
             g, sid,
             f"You're in the group room with the whole team on \"{instruction}\". "
@@ -514,7 +641,7 @@ def run_round(
             GROUP_CHANNEL,
         )
         _emit(on_event, GROUP_CHANNEL, sid, reply, g)
-        print(f"{LABELS[sid]}:\n{reply}\n")
+        print(f"{label_for(g, sid)}:\n{reply}\n")
 
     # 5) Coordinator delivers the synthesis — back in the owner DM. THIS is the
     #    consequential action: gated by the HITL approval policy, so the owner
@@ -730,10 +857,12 @@ def main(argv: list[str] | None = None) -> int:
     setup = resolve_setup(name_flag=args.name, goal_flag=args.goal)
     banner(backend, setup.owner_name, setup.goal, args.approve)
 
-    # One Glimi instance == one shared store for the whole team.
+    # One Glimi instance == one shared store for the whole team. The manager
+    # proposes a goal-appropriate roster on a real backend; echo → the default
+    # researcher/builder/critic (deterministic). seed_team adds coordinator + the
+    # roster (each on Sonnet, persona+READABILITY, an emoji-keyword + memory).
     g = Glimi(backend=backend, owner_name=setup.owner_name)
-    for aid, name, agent_type, persona in TEAM:
-        g.add_agent(aid, name=name, persona=persona, agent_type=agent_type)
+    seed_team(g, setup.goal, setup.owner_name)
 
     # HITL approval gate. The owner can interactively approve/edit/reject the
     # consequential finalization only on a real TTY; non-TTY (CI, pipes, echo
