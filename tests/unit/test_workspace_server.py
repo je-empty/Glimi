@@ -69,9 +69,11 @@ def test_home_lists_demo(client):
     cards = r.json()
     assert any(c["id"] == "demo" and c["kind"] == "demo" for c in cards)
     demo = next(c for c in cards if c["id"] == "demo")
-    # Card carries the counts the home page renders.
+    # Card carries the counts the home page renders. 9 channels: the 4 DMs, the
+    # 2 specialist-A2A internal channels, group-team, mgr-approvals, AND the
+    # autonomous owner's read-only internal-owner reasoning channel.
     assert demo["agents"] == 4
-    assert demo["channels"] == 8
+    assert demo["channels"] == 9
 
 
 def test_home_page_renders(client):
@@ -130,7 +132,10 @@ def test_demo_snapshot_shape_matches_core(client):
     # Same shape as glimi/dashboard/app.py's /api/snapshot (graph + owner identity).
     assert set(["agents", "channels", "relationships", "owner_name", "owner_ids"]) <= set(snap.keys())
     assert len(snap["agents"]) == 4
-    assert len(snap["channels"]) == 8
+    # 9 channels — see test_home_lists_demo (now includes internal-owner, the
+    # autonomous owner's read-only reasoning channel).
+    assert len(snap["channels"]) == 9
+    assert any((c.get("channel") or c.get("name")) == "internal-owner" for c in snap["channels"])
     assert snap["owner_name"]   # seeded owner identity present (content-agnostic)
 
 
@@ -228,6 +233,100 @@ def test_demo_only_blocks_create_and_hides_form(client, monkeypatch):
     monkeypatch.setattr(server, "_DEMO_ONLY", True)
     assert client.post("/api/workspaces", json={"name": "X", "goal": "Y"}).status_code == 403
     assert 'action="/api/workspaces"' not in client.get("/").text  # create form hidden
+
+
+# ── autonomous owner-driver (auto-run) endpoints + channel surfacing ─────────
+
+def test_chat_channels_surface_internal_owner(client):
+    # The demo's chat channel list surfaces internal-owner as a read-only
+    # ("Behind the scenes") channel with the friendly display name.
+    r = client.get("/w/demo/chat/channels")
+    assert r.status_code == 200
+    chans = r.json()["channels"]
+    owner_ch = next((c for c in chans if c["channel"] == "internal-owner"), None)
+    assert owner_ch is not None
+    assert owner_ch["kind"] == "internal"
+    assert owner_ch["postable"] is False         # read-only: the owner watches itself think
+    assert owner_ch["name"] == "오너의 검토"        # friendly display name, not the raw id
+
+
+def test_auto_start_403_on_demo(client):
+    # The public demo is read-only — it showcases the loop via the scripted unfold,
+    # never the live driver. /auto/start must 403.
+    r = client.post("/w/demo/auto/start", json={})
+    assert r.status_code == 403
+
+
+def test_auto_endpoints_404_on_unknown(client):
+    assert client.post("/w/nope/auto/start", json={}).status_code == 404
+    assert client.post("/w/nope/auto/stop").status_code == 404
+    assert client.get("/w/nope/auto/status").status_code == 404
+
+
+def test_auto_status_defaults_for_user_workspace(client):
+    # A freshly created (writable) workspace reports auto-run OFF, no run in flight.
+    created = client.post("/api/workspaces",
+                          json={"name": "Ravi", "goal": "Plan the launch"}).json()
+    wid = created["id"]
+    st = client.get(f"/w/{wid}/auto/status").json()
+    assert st["running"] is False
+    assert st["auto_run"] is False
+    assert st["rounds_run"] == 0
+    assert st["reason"] is None
+    assert st["max_rounds"] == 5
+
+
+def test_auto_stop_idempotent_when_not_running(client):
+    # /auto/stop on a workspace with no run in flight is a no-op, still ok.
+    created = client.post("/api/workspaces",
+                          json={"name": "Noa", "goal": "Ship it"}).json()
+    wid = created["id"]
+    r = client.post(f"/w/{wid}/auto/stop")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "running": False}
+
+
+def test_snapshot_exposes_auto_block(client):
+    # The snapshot carries an `auto` block so the chat UI can restore the toggle.
+    created = client.post("/api/workspaces",
+                          json={"name": "Ivy", "goal": "Write docs"}).json()
+    wid = created["id"]
+    auto = client.get(f"/w/{wid}/api/snapshot").json()["auto"]
+    assert auto["writable"] is True
+    assert auto["auto_run"] is False and auto["running"] is False
+    # Demo snapshot reports writable False (read-only showcase).
+    demo_auto = client.get("/w/demo/api/snapshot").json()["auto"]
+    assert demo_auto["writable"] is False
+
+
+def test_auto_run_full_loop_echo(monkeypatch, tmp_path):
+    # End-to-end: arming auto-run on an echo workspace runs the bounded loop to
+    # completion ($0), advancing rounds_run and recording a terminal reason. Driven
+    # through the real /auto/start task (no chat WS needed — fan-out tolerates zero
+    # subscribers), then polled to quiescence via /auto/status.
+    import time
+    monkeypatch.setattr(server, "_USER_BACKEND", "echo")
+    app = server.create_app(demo_interval=3600.0)
+    c = TestClient(app)
+    created = c.post("/api/workspaces", json={"name": "수민", "goal": "오픈소스 런칭 기획"}).json()
+    wid = created["id"]
+    r = c.post(f"/w/{wid}/auto/start", json={"max_rounds": 3, "context": "정직한 기조"})
+    assert r.status_code == 200
+    assert r.json()["running"] is True and r.json()["max_rounds"] == 3
+    # A second start while running → 409.
+    # (race-tolerant: only assert if still running)
+    for _ in range(100):
+        st = c.get(f"/w/{wid}/auto/status").json()
+        if not st["running"]:
+            break
+        time.sleep(0.05)
+    st = c.get(f"/w/{wid}/auto/status").json()
+    assert st["running"] is False
+    assert st["rounds_run"] >= 1
+    assert st["reason"] in ("done", "max_rounds")
+    # The owner's reasoning landed in the read-only internal-owner channel.
+    hist = c.get("/w/{}/chat/history".format(wid), params={"channel": "internal-owner"}).json()
+    assert len(hist["messages"]) >= 1
 
 
 # ── the JS data-api-base default keeps the standalone dashboard unchanged ─────

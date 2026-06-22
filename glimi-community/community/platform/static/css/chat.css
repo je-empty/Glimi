@@ -973,3 +973,132 @@ html.lb-open, html.lb-open body { overflow: hidden; }
 
 :focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 2px; }
 .ctop .ta:focus-visible { outline: none; }
+
+/* ============================================================
+   auto-run (workspace autonomous owner-driver) — toggle + status pill + brief
+   modal. Workspace-only: the toggle button ships hidden and chat.js reveals it
+   only when WS_BASE is truthy AND the surface isn't read-only. Tokens only.
+   ============================================================ */
+/* The toggle reuses .head .ib (hover/focus/.on already defined). While running
+   the .on state (amber) signals the live loop; the icon flips play↔stop in JS. */
+.head .ib.ws-only[hidden] { display: none; }
+
+/* Status pill — shown in the header while the loop runs (round count) or briefly
+   on a terminal phase. amber accent track, compact. */
+.chat-autorun-pill {
+  display: none;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: var(--sp-2);
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--chat-accent-deep);
+  background: var(--chat-accent-soft);
+  border: 1px solid var(--chat-accent-line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.chat-autorun-pill.show { display: inline-flex; }
+.chat-autorun-pill[hidden] { display: none; }
+
+/* Brief modal — same backdrop discipline as the chat lightbox. */
+.ws-brief-modal {
+  display: none; position: fixed; inset: 0; z-index: 2147483641;
+  align-items: center; justify-content: center;
+  padding: 4vh 4vw;
+  background: rgba(8, 10, 14, 0.74);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.ws-brief-modal:not([hidden]) { display: flex; }
+.ws-brief-modal .wbm-panel {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg, var(--r-md));
+  box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translateY(8px) scale(.98);
+  transition: opacity var(--dur) var(--chat-ease), transform var(--dur) var(--chat-ease);
+}
+.ws-brief-modal.open .wbm-panel { opacity: 1; transform: none; }
+.ws-brief-modal .wbm-head {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ws-brief-modal .wbm-title {
+  font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.3px;
+  color: var(--text); flex: 1 1 auto;
+}
+.ws-brief-modal .wbm-close {
+  width: 30px; height: 30px; flex: 0 0 auto;
+  border: none; background: transparent; cursor: pointer;
+  border-radius: var(--r-sm);
+  color: var(--text-dim); font-size: var(--fs-lg);
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease);
+}
+.ws-brief-modal .wbm-close:hover { background: var(--panel-2); color: var(--text); }
+.ws-brief-modal .wbm-body {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+.ws-brief-modal .wbm-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.ws-brief-modal .wbm-field-row {
+  flex-direction: row; align-items: center; justify-content: space-between;
+}
+.ws-brief-modal .wbm-lbl {
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.2px;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.ws-brief-modal .wbm-input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit; font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur) var(--chat-ease), background var(--dur) var(--chat-ease);
+}
+.ws-brief-modal .wbm-input:focus {
+  outline: none;
+  border-color: var(--chat-accent-line);
+  background: var(--panel);
+}
+.ws-brief-modal .wbm-input::placeholder { color: var(--text-faint); }
+.ws-brief-modal .wbm-input[readonly] {
+  color: var(--text-dim);
+  background: var(--panel-2);
+  cursor: default;
+}
+.ws-brief-modal .wbm-area { resize: vertical; min-height: 56px; line-height: 1.5; }
+.ws-brief-modal .wbm-num { width: 5.5em; text-align: center; }
+.ws-brief-modal .wbm-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+.ws-brief-modal .wbm-btn {
+  padding: var(--sp-2) var(--sp-4);
+  font: inherit; font-size: var(--fs-sm); font-weight: 600;
+  border-radius: var(--r-md); cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text);
+  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease),
+              border-color var(--dur) var(--chat-ease);
+}
+.ws-brief-modal .wbm-btn:hover { background: var(--panel-3); }
+.ws-brief-modal .wbm-go {
+  border-color: transparent;
+  background: var(--chat-accent); color: var(--chat-accent-ink);
+}
+.ws-brief-modal .wbm-go:hover { background: var(--chat-accent-deep); }
+.ws-brief-modal .wbm-go:disabled { opacity: .6; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .ws-brief-modal .wbm-panel { transition: none; }
+}

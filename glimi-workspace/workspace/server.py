@@ -81,10 +81,18 @@ try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
     from run import run_workspace  # type: ignore
     from team import TEAM  # type: ignore
+    from driver import drive_workspace  # type: ignore
+    from owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL  # type: ignore
 except ImportError:  # imported as workspace.server
     from . import demo as _demo
     from .run import run_workspace
     from .team import TEAM
+    from .driver import drive_workspace
+    from .owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL
+
+# Friendly display name for the owner's read-only reasoning channel in the chat
+# sidebar (KO default; chat.js's i18n can override via the chat.owner_review key).
+_OWNER_REVIEW_NAME = "오너의 검토"
 
 # The Core dashboard ships the canonical rich UI — assets (css/js), the shared
 # templates (dashboard/_core.html + _chat_shell.html), and the i18n dicts. This
@@ -252,9 +260,19 @@ def _save_ws_meta(items: list) -> None:
         pass
 
 
-def _persist_ws_meta(ws_id: str, owner_name: str, goal: str, created_at: str) -> None:
+def _persist_ws_meta(ws_id: str, owner_name: str, goal: str, created_at: str, *,
+                     auto_run: bool = False, context: str = "",
+                     backlog: Optional[list] = None, max_rounds: int = 5) -> None:
+    """Persist a user workspace's metadata, replacing any prior entry by id. The
+    autonomous-loop brief (``auto_run`` / ``context`` / ``backlog`` / ``max_rounds``)
+    rides along so the toggle's state + brief survive a restart (the loop itself is
+    NOT auto-resumed — see ``_restore_user_workspaces``)."""
     items = [it for it in _load_ws_meta() if it.get("id") != ws_id]  # replace by id
-    items.append({"id": ws_id, "owner_name": owner_name, "goal": goal, "created_at": created_at})
+    items.append({
+        "id": ws_id, "owner_name": owner_name, "goal": goal, "created_at": created_at,
+        "auto_run": bool(auto_run), "context": context or "",
+        "backlog": list(backlog or []), "max_rounds": int(max_rounds),
+    })
     _save_ws_meta(items)
 
 
@@ -262,7 +280,14 @@ def _restore_user_workspaces(reg: "WorkspaceRegistry") -> None:
     """Rebuild persisted user workspaces at startup. The default echo backend is
     deterministic, so re-running ``create`` reproduces each workspace exactly (same
     id + timestamp). On a REAL backend, re-running would cost calls and drift, so
-    persisted entries are skipped (a store snapshot would be the follow-up)."""
+    persisted entries are skipped (a store snapshot would be the follow-up).
+
+    The autonomous-loop brief (``auto_run`` / ``context`` / ``backlog`` /
+    ``max_rounds``) is restored onto each Workspace, BUT the driver is deliberately
+    NOT auto-resumed: restore leaves ``_driver_task=None`` (running=False). A run
+    that the process lost mid-flight must not silently re-spend budget on boot — the
+    owner re-arms via the /auto/start toggle. (``auto_run=True`` here is just the
+    last-saved toggle state for the UI, not a live run.)"""
     meta = _load_ws_meta()
     if not meta:
         return
@@ -274,7 +299,11 @@ def _restore_user_workspaces(reg: "WorkspaceRegistry") -> None:
     for it in sorted(meta, key=lambda x: x.get("created_at", "")):
         try:
             reg.create(it.get("owner_name", "Owner"), it.get("goal", ""),
-                       ws_id=it.get("id"), created_at=it.get("created_at"), persist=False)
+                       ws_id=it.get("id"), created_at=it.get("created_at"), persist=False,
+                       auto_run=bool(it.get("auto_run", False)),
+                       context=it.get("context", "") or "",
+                       backlog=list(it.get("backlog", []) or []),
+                       max_rounds=int(it.get("max_rounds", 5) or 5))
             n += 1
         except Exception as e:  # noqa: BLE001 — one bad entry must not break startup
             print(f"[workspace] restore skipped {it.get('id')}: {e}")
@@ -285,7 +314,20 @@ def _restore_user_workspaces(reg: "WorkspaceRegistry") -> None:
 
 @dataclass
 class Workspace:
-    """One hosted workspace: its Glimi (→ store) plus display metadata."""
+    """One hosted workspace: its Glimi (→ store) plus display metadata.
+
+    The autonomous owner-driver loop (``workspace/driver.py``) adds a few fields:
+
+    - ``auto_run`` / ``context`` / ``backlog`` / ``max_rounds`` are the persisted
+      brief for the loop (round-tripped through ``_persist_ws_meta`` /
+      ``_restore_user_workspaces``). ``auto_run`` is opt-in (default False) so a
+      real-backend workspace never spends a cent unless the owner flips it on.
+    - ``rounds_run`` / ``driver_reason`` are live run state, surfaced by
+      ``GET /auto/status`` (not persisted — they reset per process).
+    - ``_driver_task`` / ``_driver_cancel`` / ``_subscribers`` are non-serializable
+      runtime handles (the asyncio task, its cancel Event, and the set of connected
+      chat WebSockets for live fan-out); kept off persistence (compare=False).
+    """
 
     id: str
     glimi: Glimi
@@ -294,9 +336,30 @@ class Workspace:
     kind: str  # "demo" (public read-only) | "user" (created workspace)
     created_at: str = field(default_factory=_now_utc_iso)
 
+    # ── autonomous owner-driver brief (persisted) ──
+    auto_run: bool = False
+    context: str = ""
+    backlog: list = field(default_factory=list)
+    max_rounds: int = 5
+
+    # ── live run state (not persisted; reset per process) ──
+    rounds_run: int = 0
+    driver_reason: str = ""  # last terminal reason: done|max_rounds|cancelled|budget
+
+    # ── non-serializable runtime handles ──
+    _driver_task: object = field(default=None, repr=False, compare=False)    # asyncio.Task|None
+    _driver_cancel: object = field(default=None, repr=False, compare=False)  # threading.Event|None
+    _subscribers: set = field(default_factory=set, repr=False, compare=False)  # chat WS fan-out
+
     @property
     def store(self):
         return self.glimi.store
+
+    @property
+    def driver_running(self) -> bool:
+        """True while the owner-driver background task is in flight."""
+        t = self._driver_task
+        return bool(t is not None and not getattr(t, "done", lambda: True)())
 
     def reader(self) -> DashboardReader:
         """A fresh store-explicit reader for this workspace (read path is safe)."""
@@ -350,7 +413,9 @@ class WorkspaceRegistry:
         return f"ws{self._seq}"
 
     def create(self, name: str, goal: str, *, ws_id: Optional[str] = None,
-               created_at: Optional[str] = None, persist: bool = True) -> Workspace:
+               created_at: Optional[str] = None, persist: bool = True,
+               auto_run: bool = False, context: str = "",
+               backlog: Optional[list] = None, max_rounds: int = 5) -> Workspace:
         """Build a real-topology workspace under the build lock, on the configured
         backend (``_USER_BACKEND`` — echo by default; a real model when the operator
         sets ``GLIMI_LLM_BACKEND``).
@@ -363,7 +428,10 @@ class WorkspaceRegistry:
 
         ``ws_id`` / ``created_at`` / ``persist=False`` are used by restore-on-startup
         to rebuild a persisted workspace with its original id + timestamp (and not
-        re-persist it).
+        re-persist it). ``auto_run`` / ``context`` / ``backlog`` / ``max_rounds`` are
+        the autonomous-loop brief, stamped onto the Workspace (restore carries the
+        last-saved toggle state). The one-time ``run_workspace`` at create still runs
+        round 1; the multi-round driver is a SEPARATE opt-in via /auto/start.
         """
         owner_name = (name or "Owner").strip() or "Owner"
         goal = (goal or "").strip() or "Plan the public launch of our open-source project"
@@ -378,10 +446,15 @@ class WorkspaceRegistry:
             elif ws_id.startswith("ws") and ws_id[2:].isdigit():
                 self._seq = max(self._seq, int(ws_id[2:]))  # keep new ids ahead of restored ones
             ws = Workspace(id=ws_id, glimi=g, title=goal, goal=goal, kind="user",
-                           created_at=created_at or _now_utc_iso())
+                           created_at=created_at or _now_utc_iso(),
+                           auto_run=bool(auto_run), context=context or "",
+                           backlog=list(backlog or []),
+                           max_rounds=max(1, min(int(max_rounds or 5), 10)))
             self.register(ws)
         if persist:
-            _persist_ws_meta(ws_id, owner_name, goal, ws.created_at)
+            _persist_ws_meta(ws_id, owner_name, goal, ws.created_at,
+                             auto_run=ws.auto_run, context=ws.context,
+                             backlog=ws.backlog, max_rounds=ws.max_rounds)
         return ws
 
     def run_in_ws(self, ws: "Workspace", fn):
@@ -458,6 +531,69 @@ def _ws_speaker_name(ws: "Workspace", agent_id: str) -> str:
         return (ws.store.get_agent(agent_id) or {}).get("name") or agent_id
     except Exception:
         return agent_id
+
+
+def _make_ws_broadcaster(ws: "Workspace", loop: "asyncio.AbstractEventLoop"):
+    """Build the driver's ``on_event`` sink: fan a frame out to every chat WS
+    currently subscribed to ``ws``.
+
+    The driver runs on its own background thread, so we can't ``await`` here — we
+    hop onto the SERVER's event loop (``loop``, the one the WebSockets live on) with
+    ``run_coroutine_threadsafe`` and ``send_json`` to each subscriber. A send to a
+    dead socket is swallowed + the socket dropped, so a disconnect can't stall the
+    loop. Best-effort: never raises into the driver, and tolerates zero subscribers
+    (a headless run / a test with no chat WS connected just no-ops)."""
+    def _emit(frame: dict) -> None:
+        if loop is None or not ws._subscribers:
+            return
+        async def _fanout():
+            for sock in list(ws._subscribers):
+                try:
+                    await sock.send_json(frame)
+                except Exception:
+                    ws._subscribers.discard(sock)
+        try:
+            asyncio.run_coroutine_threadsafe(_fanout(), loop)
+        except Exception:
+            pass
+    return _emit
+
+
+class _DriverHandle:
+    """A thread-backed handle for one autonomous owner-driver run.
+
+    The driver loop is an ``async`` coroutine, but anchoring it to a request's
+    asyncio task (``asyncio.create_task``) is fragile — anyio/Starlette cancel
+    child tasks when the spawning request scope exits, so the loop would die the
+    moment ``/auto/start`` returns. Instead we run it on a dedicated DAEMON THREAD
+    with its own private event loop, fully decoupled from any request and from the
+    server's loop. Cancellation flows through the shared ``threading.Event`` the
+    driver already polls (set by ``cancel()``); ``done()`` reports liveness so
+    ``driver_running`` + ``/auto/status`` work without touching the server loop."""
+
+    def __init__(self, coro_factory, cancel: "threading.Event", *, name: str) -> None:
+        self._cancel = cancel
+        self._done = threading.Event()
+
+        def _runner() -> None:
+            try:
+                asyncio.run(coro_factory())
+            finally:
+                self._done.set()
+
+        self._thread = threading.Thread(target=_runner, daemon=True, name=name)
+        self._thread.start()
+
+    def done(self) -> bool:
+        return self._done.is_set()
+
+    def cancel(self) -> None:
+        # The driver polls this Event at the top of each round + during its sleep,
+        # so setting it stops a sleeping or between-rounds driver promptly.
+        try:
+            self._cancel.set()
+        except Exception:
+            pass
 
 
 # ── chat read-APIs (per-workspace) — mirror src/platform/routers/chat.py shapes ─
@@ -551,11 +687,14 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
                 "last": _last_preview(store, name, owner_ids, names, owner_name),
             })
         elif name.startswith("internal-"):
-            # Display the RAW channel id (e.g. "internal-dm-서유나-윤하나") rather than
-            # an "A ↔ B" rephrasing — the owner asked to see the real channel name.
+            # ``internal-owner`` is the read-only channel where the autonomous owner
+            # logs its per-round reasoning (the "owner thinking" the web shows). Give
+            # it a friendly display name; all other internal-* show the RAW channel id
+            # (e.g. "internal-researcher-critic") — the owner asked to see real names.
+            disp = _OWNER_REVIEW_NAME if name == _OWNER_REVIEW_CHANNEL else name
             out.append({
                 "channel": name, "kind": "internal", "agent_id": None,
-                "agent_type": "internal", "name": name, "type": "internal",
+                "agent_type": "internal", "name": disp, "type": "internal",
                 "postable": False, "avatar_url": None,
                 "last": _last_preview(store, name, owner_ids, names, owner_name),
             })
@@ -676,8 +815,21 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     thread. The server owns serving; the demo loop only mutates its own store.
     """
     reg = registry or WorkspaceRegistry()
-    app = FastAPI(title="Glimi Workspace — Server", docs_url=None, redoc_url=None)
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        # The autonomous driver runs on its OWN background thread (decoupled from any
+        # request scope), but its WS fan-out must post onto the SERVER's event loop.
+        # Capture it here so the broadcaster always targets the live socket loop.
+        app.state.main_loop = asyncio.get_running_loop()
+        yield
+
+    app = FastAPI(title="Glimi Workspace — Server", docs_url=None, redoc_url=None,
+                  lifespan=_lifespan)
     app.state.registry = reg
+    app.state.main_loop = None  # the server's event loop, captured at startup (WS fan-out)
 
     # All dashboard assets (css / js) are the canonical Core ones, served from the
     # installed glimi[dashboard] package — single source, no workspace-local copy.
@@ -896,6 +1048,10 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         read_only = (ws.kind == "demo")
         await websocket.accept()
         loop = asyncio.get_event_loop()
+        # Subscribe this socket to the workspace's live fan-out so the autonomous
+        # owner-driver's per-turn + lifecycle frames stream to it (the same channel
+        # the demo's scripted loop can use). Discarded on disconnect (finally).
+        ws._subscribers.add(websocket)
         try:
             while True:
                 frame = await websocket.receive_json() or {}
@@ -958,6 +1114,139 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         except Exception:
             # Malformed frame / client gone — close quietly, never crash.
             pass
+        finally:
+            ws._subscribers.discard(websocket)
+
+    # ── autonomous owner-driver (auto-run) ──────────────────────────────────
+    # The work-clone analogue of the Community's autonomous social-sim: the
+    # owner-agent runs the goal → review → assign loop a human normally runs by hand.
+    # COST-safe: opt-in (auto_run default False), bounded by max_rounds AND the
+    # monthly budget cap (enforced inside the loop), externally cancellable, and on
+    # the offline echo backend entirely free. The public Demo NEVER starts a live
+    # run (kind=='demo' → 403); it showcases the loop via demo.py's scripted unfold.
+    @app.post("/w/{ws_id}/auto/start", response_model=None)
+    async def auto_start(ws_id: str, request: Request):
+        """Arm + launch the autonomous owner-driver loop for a writable workspace.
+
+        Body JSON (all optional): ``{context?:str, backlog?:[str]|str,
+        max_rounds?:int}`` — ``max_rounds`` is clamped 1..10 (default 5). Gating:
+        404 unknown · 403 on the read-only Demo · 409 if a run is already in flight.
+        The loop streams its turns + lifecycle frames to every connected chat WS via
+        the per-ws fan-out; budget is enforced INSIDE the loop (not at start) so a
+        mid-run cap trips cleanly."""
+        ws = _require(ws_id)
+        if ws.kind == "demo":
+            raise HTTPException(status_code=403, detail="demo is read-only")
+        if ws.driver_running:
+            raise HTTPException(status_code=409, detail="auto-run already in progress")
+
+        body = {}
+        try:
+            if "application/json" in (request.headers.get("content-type", "")):
+                body = await request.json()
+        except Exception:
+            body = {}
+        context = str((body or {}).get("context", "") or "").strip()
+        backlog_raw = (body or {}).get("backlog", None)
+        if isinstance(backlog_raw, str):
+            backlog = [ln.strip() for ln in backlog_raw.splitlines() if ln.strip()]
+        elif isinstance(backlog_raw, list):
+            backlog = [str(x).strip() for x in backlog_raw if str(x).strip()]
+        else:
+            backlog = []
+        try:
+            max_rounds = max(1, min(int((body or {}).get("max_rounds", ws.max_rounds or 5)), 10))
+        except (TypeError, ValueError):
+            max_rounds = 5
+
+        # Stamp + persist the brief (so the toggle + brief survive a restart; the
+        # loop itself is not auto-resumed on boot — see _restore_user_workspaces).
+        ws.auto_run = True
+        ws.context = context
+        ws.backlog = backlog
+        ws.max_rounds = max_rounds
+        ws.rounds_run = 0
+        ws.driver_reason = ""
+        _persist_ws_meta(ws.id, ws.glimi.owner.name(), ws.goal, ws.created_at,
+                         auto_run=True, context=context, backlog=backlog,
+                         max_rounds=max_rounds)
+
+        # The WS fan-out targets the SERVER's event loop (captured at startup), NOT
+        # the driver thread's private loop — that's where the chat WebSockets live.
+        server_loop = app.state.main_loop
+        cancel = threading.Event()
+        ws._driver_cancel = cancel
+        broadcaster = _make_ws_broadcaster(ws, server_loop)
+
+        # run_scoped routes every kernel-touching step through the registry's
+        # per-workspace scoping lock (reg.run_in_ws) so the global-singleton WRITE
+        # path stays serialized + pointed at THIS workspace, exactly like a chat turn.
+        def _run_scoped(fn):
+            return reg.run_in_ws(ws, fn)
+
+        async def _drive():
+            try:
+                result = await drive_workspace(
+                    ws.glimi, goal=ws.goal, context=ws.context, backlog=ws.backlog,
+                    owner_name=ws.glimi.owner.name(), max_rounds=ws.max_rounds,
+                    on_event=broadcaster, cancel=cancel, run_scoped=_run_scoped,
+                )
+                ws.rounds_run = int(result.get("rounds", 0))
+                ws.driver_reason = str(result.get("stopped_reason", "") or "")
+            except Exception as e:  # noqa: BLE001 — never crash the server thread
+                ws.driver_reason = "error"
+                broadcaster({"type": "auto", "phase": "error", "message": str(e)})
+            finally:
+                ws.auto_run = False
+                ws._driver_task = None
+                # Persist the toggle back OFF so a restart doesn't show it armed.
+                _persist_ws_meta(ws.id, ws.glimi.owner.name(), ws.goal, ws.created_at,
+                                 auto_run=False, context=ws.context,
+                                 backlog=ws.backlog, max_rounds=ws.max_rounds)
+
+        # Run on a dedicated daemon thread (decoupled from the request scope) so the
+        # loop survives /auto/start returning; cancellation flows via the Event.
+        ws._driver_task = _DriverHandle(
+            _drive, cancel, name=f"glimi-ws-driver-{ws.id}",
+        )
+        return JSONResponse({"ok": True, "running": True, "max_rounds": max_rounds})
+
+    @app.post("/w/{ws_id}/auto/stop", response_model=None)
+    async def auto_stop(ws_id: str):
+        """Cancel the autonomous loop (idempotent). 404 unknown; otherwise always
+        ``{ok:true, running:false}`` — sets the cancel Event + cancels the task so a
+        sleeping or mid-round driver stops promptly."""
+        ws = _require(ws_id)
+        if ws._driver_cancel is not None:
+            try:
+                ws._driver_cancel.set()
+            except Exception:
+                pass
+        t = ws._driver_task
+        if t is not None:
+            try:
+                t.cancel()
+            except Exception:
+                pass
+        ws.auto_run = False
+        _persist_ws_meta(ws.id, ws.glimi.owner.name(), ws.goal, ws.created_at,
+                         auto_run=False, context=ws.context,
+                         backlog=ws.backlog, max_rounds=ws.max_rounds)
+        return JSONResponse({"ok": True, "running": False})
+
+    @app.get("/w/{ws_id}/auto/status")
+    def auto_status(ws_id: str) -> JSONResponse:
+        """Reflect the loop's state so the toggle can restore on page load + poll:
+        ``{running, auto_run, rounds_run, reason, max_rounds}``. Reads ws fields; no
+        lock needed."""
+        ws = _require(ws_id)
+        return JSONResponse({
+            "running": ws.driver_running,
+            "auto_run": bool(ws.auto_run),
+            "rounds_run": int(ws.rounds_run),
+            "reason": ws.driver_reason or None,
+            "max_rounds": int(ws.max_rounds),
+        })
 
     # ── per-workspace chat avatars (workspace layer; no kernel image field) ──
     @app.get("/w/{ws_id}/api/avatar")
@@ -979,6 +1268,16 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         cm["name"] = ws.title
         payload["community_meta"] = cm
         payload["community_id"] = ws.id
+        # Surface the autonomous-loop state so the chat UI can restore the toggle
+        # on load (writable workspaces only — the demo is read-only).
+        payload["auto"] = {
+            "running": ws.driver_running,
+            "auto_run": bool(ws.auto_run),
+            "rounds_run": int(ws.rounds_run),
+            "reason": ws.driver_reason or None,
+            "max_rounds": int(ws.max_rounds),
+            "writable": (ws.kind != "demo"),
+        }
         return JSONResponse(payload)
 
     @app.get("/w/{ws_id}/api/agent_detail")

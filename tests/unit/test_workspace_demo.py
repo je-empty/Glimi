@@ -36,12 +36,13 @@ def test_build_population(built):
     assert len(snap["agents"]) == 4
     ids = {a["id"] for a in snap["agents"]}
     assert ids == {"coordinator", "researcher", "builder", "critic"}
-    # The full interaction web: 3 DMs + owner DM + 2 A2A + group + approvals = 8.
+    # The full interaction web: 3 DMs + owner DM + 2 A2A + group + approvals +
+    # the owner-agent's read-only reasoning channel (internal-owner) = 9.
     channels = {c["channel"] for c in snap["channels"]}
     assert channels == {
         "dm-coordinator", "dm-researcher", "dm-builder", "dm-critic",
         "internal-researcher-critic", "internal-builder-researcher",
-        "group-team", "mgr-approvals",
+        "group-team", "mgr-approvals", "internal-owner",
     }
     # Every relationship edge the graph draws (lead + 3 manages + 2 collaborator).
     assert len(snap["relationships"]) == 6

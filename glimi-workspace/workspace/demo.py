@@ -52,6 +52,11 @@ A2A_RC = "internal-researcher-critic"
 A2A_BR = "internal-builder-researcher"
 GROUP = "group-team"
 APPROVALS = "mgr-approvals"  # mgr-* system log convention (never a chat channel)
+# The read-only channel where the autonomous owner logs its per-round reasoning
+# (the "owner thinking out loud" the web shows). The demo seeds + unfolds believable
+# owner-review lines here so a visitor watches the FULL goal→work→review→next loop —
+# scripted + echo + store-only → $0, exactly how the demo already fakes liveness.
+OWNER_REVIEW = "internal-owner"
 
 # ── the seeded transcript (hand-authored, believable — the finished work) ─────
 # (channel, speaker_id, text). speaker "owner" == 수민.
@@ -251,6 +256,32 @@ CONTINUATION: list[tuple[str, str, str]] = [
     (DM_COORDINATOR, "coordinator", "전부 준비됐어요, 수민님. 진행 신호만 기다릴게요."),
 ]
 
+# The owner's reasoning for the FINISHED first round — seeded into internal-owner so
+# the channel isn't empty on first load (a visitor switching to "오너의 검토" sees the
+# owner already reviewed round 1). Logged from OWNER_ID (read-only channel).
+OWNER_REVIEW_SEED: list[str] = [
+    "팀이 가져온 방향 좋아요 — 정직한 런칭 기조 맞고. 다만 '깨끗한 환경 퀵스타트'가 "
+    "진짜 통과하는지 확인이 빠졌네. 다음 라운드에 그거 검증부터 시켜야겠다.",
+]
+
+# The autonomous owner-driver loop, scripted for the demo ($0). Interleaved with the
+# CONTINUATION (team work) by the activity loop so a viewer watches the genuine
+# cycle: owner posts a new instruction to dm-coordinator → team turns appear → an
+# owner review lands in internal-owner. (channel, speaker_id, text). speaker == OWNER_ID
+# for both the instruction (to the Coordinator) and the review (to internal-owner).
+OWNER_TURNS: list[tuple[str, str, str]] = [
+    # Round 2 instruction — the owner hands down the next concrete ask, as a human would.
+    (DM_COORDINATOR, OWNER_ID,
+     "퀵스타트 검증이 통과했다니 좋네요. 이제 화요일에 실제로 굴릴 수 있게 일정과 담당자까지 "
+     "박은 실행 계획으로 마무리해 줘요 — 당장 시작할 수 있게."),
+    # Round 2 owner review — lands in internal-owner after the team's round-2 work shows.
+    (OWNER_REVIEW, OWNER_ID,
+     "퀵스타트 검증 통과 확인했고 데모 길이도 잡혔어요. 일정·담당까지 들어오면 화요일 진행 "
+     "충분합니다 — 거의 다 왔다."),
+    (OWNER_REVIEW, OWNER_ID,
+     "실행 계획까지 다 잡혔어요. 이 정도면 화요일 진행 충분합니다 — 여기서 마무리."),
+]
+
 # Emotions the continuation nudges as the work lands (speaker → new emotion).
 _CONT_EMOTION: dict[str, tuple[str, int]] = {
     "builder": ("활기", 8),
@@ -311,11 +342,17 @@ def seed(g: Glimi) -> None:
     store.set_channel_participants(A2A_BR, ["builder", "researcher"])
     store.set_channel_participants(GROUP, [OWNER_ID, "coordinator", *SPECIALISTS])
     store.set_channel_participants(APPROVALS, ["coordinator"])
+    # internal-owner: the owner's read-only reasoning channel (only the owner posts).
+    store.set_channel_participants(OWNER_REVIEW, [OWNER_ID])
 
     # The transcript (+ honest echo usage per agent turn).
     for channel, speaker, text in TRANSCRIPT:
         store.log_message(channel, speaker, text)
         _record_turn_usage(g, speaker, text)
+
+    # The owner's reasoning for the finished round 1 (so internal-owner isn't empty).
+    for line in OWNER_REVIEW_SEED:
+        store.log_message(OWNER_REVIEW, OWNER_ID, line)
 
     # The HITL approval trail (system-log channel).
     for line in APPROVAL_TRAIL:
@@ -379,19 +416,49 @@ class _Heartbeat:
             pass
 
 
+def _demo_script() -> list[tuple[str, str, str]]:
+    """The merged, ordered live script the activity loop unfolds one turn per tick.
+
+    Interleaves the autonomous owner-driver loop (OWNER_TURNS) with the team's work
+    (CONTINUATION) so a viewer watches the FULL cycle, not just the team talking:
+
+      owner instruction → team works → owner review → (loops)
+
+    Concretely: the round-2 owner instruction first (the owner hands down the next
+    ask in dm-coordinator), then the team's continuation turns (their round-2 work),
+    with the two owner reviews dropped in at natural beats so the owner's "thinking"
+    in internal-owner lands AFTER the work it's reacting to."""
+    instr2 = OWNER_TURNS[0]
+    reviews = OWNER_TURNS[1:]
+    cont = list(CONTINUATION)
+    script: list[tuple[str, str, str]] = [instr2]   # owner posts the next instruction
+    # Spread the work, slipping an owner review in mid-stream and one near the end so
+    # the review reads as a reaction to the work just shown (goal→work→review).
+    mid = max(1, len(cont) // 2)
+    script.extend(cont[:mid])
+    if reviews:
+        script.append(reviews[0])                   # interim review after the first half
+    script.extend(cont[mid:])
+    if len(reviews) > 1:
+        script.append(reviews[1])                   # final "충분합니다 — 마무리" review
+    return script
+
+
 def activity_loop(g: Glimi, stop: threading.Event, interval: float = 6.0) -> None:
-    """Unfold the launch-prep continuation one turn per tick, then heartbeat forever.
+    """Unfold the launch-prep + owner-driver continuation one turn per tick, then
+    heartbeat forever.
 
     Genuine store mutations on a timer → the auto-refreshing dashboard shows new
-    activity without a reload. All offline (echo), so it never costs anything.
-    """
-    # Phase 1 — unfold the continuation (one believable new turn per tick).
-    for channel, speaker, text in CONTINUATION:
+    activity without a reload. All offline (echo), so it never costs anything. The
+    script interleaves the autonomous owner loop (instruction → work → review) so
+    the demo VISIBLY showcases the owner-driver cycle, $0, no Claude calls."""
+    # Phase 1 — unfold the merged owner-driver + team script (one turn per tick).
+    for channel, speaker, text in _demo_script():
         if stop.wait(interval):
             return
         try:
             g.store.log_message(channel, speaker, text)
-            _record_turn_usage(g, speaker, text)
+            _record_turn_usage(g, speaker, text)  # skips OWNER_ID (owner turns are free)
             emo = _CONT_EMOTION.get(speaker)
             if emo:
                 g.store.set_agent_emotion(speaker, emo[0], emo[1])

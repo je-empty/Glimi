@@ -120,5 +120,13 @@
   "tour_composer_title": "메시지 보내기",
   "tour_composer_body": "여기에 적어서 친구에게 말을 걸어 보세요. 진짜 대화가 시작돼요.",
   "tour_greeted": "유나가 인사를 보냈어요!",
-  "tour_greeted_jump": "보러 가기"
+  "tour_greeted_jump": "보러 가기",
+  "chat.autorun": "자동 진행",
+  "chat.autorun_running": "자동 진행 중",
+  "chat.autorun_stop": "중지",
+  "chat.brief_title": "자동 진행 설정",
+  "chat.brief_context": "컨텍스트",
+  "chat.brief_backlog": "백로그",
+  "chat.brief_max_rounds": "최대 라운드",
+  "chat.owner_review": "오너의 검토"
 }

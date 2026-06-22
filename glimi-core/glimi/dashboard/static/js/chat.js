@@ -102,6 +102,18 @@
   var $lightboxImg = document.getElementById('chat-lightbox-img');
   var $lightboxCap = document.getElementById('chat-lightbox-caption');
   var $lightboxClose = document.getElementById('chat-lightbox-close');
+  // auto-run (workspace-only — toggle + status pill + brief modal). All inert
+  // unless WS_BASE is truthy AND the surface isn't read-only (the demo).
+  var $autorunToggle = document.getElementById('ws-autorun-toggle');
+  var $autorunPill = document.getElementById('ws-autorun-pill');
+  var $briefModal = document.getElementById('ws-brief-modal');
+  var $briefClose = document.getElementById('ws-brief-close');
+  var $briefCancel = document.getElementById('ws-brief-cancel');
+  var $briefStart = document.getElementById('ws-brief-start');
+  var $briefGoal = document.getElementById('ws-brief-goal');
+  var $briefContext = document.getElementById('ws-brief-context');
+  var $briefBacklog = document.getElementById('ws-brief-backlog');
+  var $briefMaxRounds = document.getElementById('ws-brief-max-rounds');
 
   var ws = null;
   var channels = [];
@@ -288,6 +300,15 @@
     if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
     if (diff < 172800000) return 'yesterday';
     return Math.floor(diff / 86400000) + 'd';
+  }
+
+  // Display name for a channel. The server names internal-owner "오너의 검토"
+  // (KO source); on the EN UI swap to "Owner's review" so the chrome stays
+  // English. All other channels use the server-provided name verbatim.
+  function channelDisplayName(c) {
+    if (!c) return '';
+    if (EN && c.channel === 'internal-owner') return "Owner's review";
+    return c.name || c.channel || '';
   }
 
   // Role tag for the active channel's type (DM) / owner.
@@ -716,6 +737,13 @@
       case 'thread':
         renderThreadFromServer(frame.root, frame.messages || []);
         break;
+      case 'auto':
+        // Autonomous owner-driver lifecycle (workspace only). The owner
+        // instruction + reasoning arrive as ordinary {type:'text'} frames and
+        // render in their channels with zero extra logic; this just keeps the
+        // toggle + status pill in sync with the loop's phase.
+        handleAutoFrame(frame);
+        break;
       case 'interrupted':
         showTyping(false);
         appendMessage(frameToMsg('', '', false, (frame.speaker || 'Someone') + "'s reply was interrupted.", Date.now(), { kind: 'sys' }));
@@ -1038,7 +1066,7 @@
       html += '<i class="ti ti-hash hash" aria-hidden="true"></i>';
     }
     var preview = c._preview ? '<span class="p">' + esc(c._preview) + '</span>' : '';
-    html += '<span class="meta"><span class="t">' + esc(c.name || c.channel) + '</span>' + preview + '</span>';
+    html += '<span class="meta"><span class="t">' + esc(channelDisplayName(c)) + '</span>' + preview + '</span>';
 
     // Right-edge slot: exactly one of pill > time > lock.
     if (u > 0) {
@@ -1141,13 +1169,13 @@
   function syncHead() {
     var c = channels.filter(function (x) { return x.channel === CHANNEL; })[0];
     if (c) {
-      setChannelLabel(c.name || c.channel);
+      setChannelLabel(channelDisplayName(c));
       if ($headIcon) {
         $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash'
           : c.kind === 'internal' ? 'ti ti-arrows-left-right hash' : 'ti ti-hash hash');
       }
       if ($input) {
-        var nm = c.name || c.channel;
+        var nm = channelDisplayName(c);
         if (c.postable === false) {
           $input.setAttribute('data-ph', EN ? "Read-only — you're watching" : '관전 전용 — 에이전트끼리 대화');
           $input.setAttribute('aria-label', EN ? 'Read-only channel' : '관전 전용 채널');
@@ -1707,6 +1735,250 @@
     });
   })();
 
+  // ==== Auto-run (workspace autonomous owner-driver) ====
+  // The work-clone analogue of the Community's autonomous social sim: the owner
+  // hands the team a goal + brief, then the loop runs goal→work→review→next on
+  // its own. This UI half is the toggle (header), the brief modal, and a status
+  // pill. EVERYTHING here is inert unless WS_BASE is truthy AND the surface isn't
+  // read-only — chat.js keys app mode off WS_BASE (Community/kernel never see it),
+  // and the demo (READONLY) never exposes it (the demo showcases via a scripted
+  // loop, never the live driver — POST /auto/start 403s there anyway).
+  var AUTORUN_ENABLED = !!WS_BASE && !READONLY;
+  var autoState = { running: false, auto_run: false, rounds_run: 0, max_rounds: 5, goal: '' };
+  var autoPollTimer = null;
+
+  function autorunUrl(path) { return WS_BASE + '/auto/' + path; }
+
+  // Reveal the toggle for the workspace surface only. Called once after boot.
+  function initAutorunUi() {
+    if (!AUTORUN_ENABLED) return;  // toggle stays hidden (default) everywhere else
+    if ($autorunToggle) {
+      $autorunToggle.hidden = false;
+      $autorunToggle.addEventListener('click', onToggleClick);
+    }
+    bindBriefModal();
+    // Restore state on load (toggle reflects auto_run; pill shows if running).
+    refreshAutoStatus();
+    // Light poll so the toggle/pill recover if the loop ends while the owner is
+    // on another channel (the per-ws WS fan-out also pushes {type:'auto'} frames,
+    // but the poll is the belt-and-suspenders restore on tab re-entry / reconnect).
+    if (autoPollTimer) clearInterval(autoPollTimer);
+    autoPollTimer = setInterval(function () {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshAutoStatus();
+    }, 5000);
+  }
+
+  function onToggleClick() {
+    if (!AUTORUN_ENABLED) return;
+    if (autoState.running) {
+      stopAutorun();
+    } else {
+      openBriefModal();
+    }
+  }
+
+  // GET /auto/status → reflect running/auto_run/rounds into the toggle + pill.
+  // The status endpoint is the source of truth for the terminal reset: a
+  // max_rounds exit fires NO {type:'auto'} WS frame (the loop just ends), so the
+  // poll is what flips the toggle back off. A running→idle edge also refreshes
+  // the channel list (the loop may have created internal-owner).
+  function refreshAutoStatus() {
+    if (!AUTORUN_ENABLED) return;
+    fetch(autorunUrl('status'), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var wasRunning = autoState.running;
+        autoState.running = !!d.running;
+        autoState.auto_run = !!d.auto_run;
+        autoState.rounds_run = d.rounds_run || 0;
+        autoState.max_rounds = d.max_rounds || autoState.max_rounds;
+        renderAutoToggle();
+        // Edge transition (idle→running OR running→idle): the loop created
+        // internal-owner on round 1 and may have ended — re-pull the channel
+        // list so "오너의 검토" appears / preview updates without a manual refresh.
+        if (wasRunning !== autoState.running) loadChannels();
+      })
+      .catch(function () { /* transient — next tick retries */ });
+  }
+
+  // Pull goal + a persisted brief from the snapshot so the modal prefills.
+  function loadAutoBrief() {
+    fetch(WS_BASE + '/api/snapshot', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var a = d.auto || {};
+        var cm = d.community_meta || {};
+        autoState.goal = a.goal || cm.name || '';
+        if ($briefGoal) $briefGoal.value = autoState.goal;
+        if ($briefMaxRounds && a.max_rounds) $briefMaxRounds.value = a.max_rounds;
+        if ($briefContext && a.context && !$briefContext.value) $briefContext.value = a.context;
+        if ($briefBacklog && a.backlog && a.backlog.length && !$briefBacklog.value) {
+          $briefBacklog.value = a.backlog.join('\n');
+        }
+      })
+      .catch(function () { /* leave the modal defaults */ });
+  }
+
+  // Toggle visual state: pressed + accent while running, plain otherwise. The
+  // header icon flips play↔stop; the pill shows the live round count.
+  function renderAutoToggle() {
+    if (!$autorunToggle) return;
+    var running = autoState.running;
+    $autorunToggle.setAttribute('aria-pressed', running ? 'true' : 'false');
+    $autorunToggle.classList.toggle('on', running);
+    var ico = $autorunToggle.querySelector('i');
+    if (ico) ico.className = (running ? 'ti ti-player-stop' : 'ti ti-player-play');
+    var lbl = running ? (EN ? 'Stop' : '중지') : (EN ? 'Auto-run' : '자동 진행');
+    $autorunToggle.setAttribute('aria-label', lbl);
+    $autorunToggle.setAttribute('title', lbl);
+    renderAutoPill();
+  }
+  function renderAutoPill() {
+    if (!$autorunPill) return;
+    if (autoState.running) {
+      var n = autoState.rounds_run || 0;
+      $autorunPill.hidden = false;
+      $autorunPill.classList.add('show');
+      $autorunPill.textContent = EN
+        ? ('Running' + (n ? ' · round ' + n : '…'))
+        : ('자동 진행 중' + (n ? ' · 라운드 ' + n : '…'));
+    } else {
+      $autorunPill.classList.remove('show');
+      $autorunPill.hidden = true;
+      $autorunPill.textContent = '';
+    }
+  }
+
+  // {type:'auto', phase} frames from the live driver fan-out. round_done bumps
+  // the pill; terminal phases flip the toggle off + surface a brief status.
+  function handleAutoFrame(frame) {
+    if (!AUTORUN_ENABLED) return;
+    var phase = frame && frame.phase;
+    switch (phase) {
+      case 'round_done':
+        autoState.running = true;
+        autoState.rounds_run = frame.round || autoState.rounds_run;
+        renderAutoToggle();
+        break;
+      case 'done':
+      case 'cancelled':
+      case 'budget_exhausted':
+      case 'error':
+        autoState.running = false;
+        autoState.auto_run = false;
+        renderAutoToggle();
+        flashAutoStatus(phase);
+        loadChannels();  // refresh previews / surface internal-owner
+        break;
+      default:
+        // Any other auto phase still means the loop is live — keep the pill on.
+        autoState.running = true;
+        renderAutoToggle();
+        break;
+    }
+  }
+  // A brief, self-clearing pill message on terminal phases (no toast dependency).
+  function flashAutoStatus(phase) {
+    if (!$autorunPill) return;
+    var msg = phase === 'done' ? (EN ? 'Done' : '완료')
+      : phase === 'budget_exhausted' ? (EN ? 'Budget reached' : '예산 한도')
+      : phase === 'error' ? (EN ? 'Stopped' : '중단됨')
+      : (EN ? 'Stopped' : '중지됨');
+    $autorunPill.hidden = false;
+    $autorunPill.classList.add('show');
+    $autorunPill.textContent = msg;
+    setTimeout(function () {
+      if (!autoState.running) { $autorunPill.classList.remove('show'); $autorunPill.hidden = true; }
+    }, 4000);
+  }
+
+  // ==== Brief modal ====
+  function bindBriefModal() {
+    if ($briefClose) $briefClose.addEventListener('click', closeBriefModal);
+    if ($briefCancel) $briefCancel.addEventListener('click', closeBriefModal);
+    if ($briefStart) $briefStart.addEventListener('click', submitBrief);
+    if ($briefModal) {
+      // Click the dimmed backdrop (outside the panel) to close.
+      $briefModal.addEventListener('click', function (e) {
+        var panel = e.target.closest && e.target.closest('.wbm-panel');
+        if (!panel) closeBriefModal();
+      });
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && $briefModal && !$briefModal.hidden) {
+        e.stopPropagation();
+        closeBriefModal();
+      }
+    });
+  }
+  function openBriefModal() {
+    if (!$briefModal) return;
+    loadAutoBrief();  // prefill goal + any persisted brief
+    $briefModal.hidden = false;
+    $briefModal.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(function () { $briefModal.classList.add('open'); });
+    if ($briefContext) { try { $briefContext.focus(); } catch (e) {} }
+  }
+  function closeBriefModal() {
+    if (!$briefModal) return;
+    $briefModal.classList.remove('open');
+    $briefModal.setAttribute('aria-hidden', 'true');
+    setTimeout(function () { if (!$briefModal.classList.contains('open')) $briefModal.hidden = true; }, 200);
+  }
+
+  // POST /auto/start with the brief. Body matches the server contract:
+  // {context?, backlog?:[str]|str, max_rounds?} — goal lives on the workspace.
+  function submitBrief() {
+    if (!AUTORUN_ENABLED) return;
+    var context = $briefContext ? $briefContext.value.trim() : '';
+    var backlog = $briefBacklog
+      ? $briefBacklog.value.split('\n').map(function (s) { return s.trim(); })
+          .filter(function (s) { return s.length; })
+      : [];
+    var maxRounds = 5;
+    if ($briefMaxRounds) {
+      var v = parseInt($briefMaxRounds.value, 10);
+      if (!isNaN(v)) maxRounds = Math.max(1, Math.min(v, 10));
+    }
+    if ($briefStart) $briefStart.disabled = true;
+    fetch(autorunUrl('start'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: context, backlog: backlog, max_rounds: maxRounds })
+    })
+      .then(function (r) { return r.ok ? r.json() : r.json().catch(function () { return { ok: false }; }); })
+      .then(function (d) {
+        if (d && d.ok) {
+          autoState.running = true;
+          autoState.auto_run = true;
+          autoState.rounds_run = 0;
+          autoState.max_rounds = d.max_rounds || maxRounds;
+          renderAutoToggle();
+          closeBriefModal();
+          // The driver creates internal-owner on round 1 — re-pull the channel
+          // list shortly after so "오너의 검토" appears in the sidebar.
+          setTimeout(loadChannels, 1500);
+        }
+      })
+      .catch(function () { /* leave the modal open so the owner can retry */ })
+      .then(function () { if ($briefStart) $briefStart.disabled = false; });
+  }
+
+  // POST /auto/stop (idempotent). Optimistically flip off; status reconciles.
+  function stopAutorun() {
+    if (!AUTORUN_ENABLED) return;
+    autoState.running = false;
+    autoState.auto_run = false;
+    renderAutoToggle();
+    fetch(autorunUrl('stop'), { method: 'POST', credentials: 'same-origin' })
+      .catch(function () { /* the loop is also externally bounded; status reconciles */ })
+      .then(function () { refreshAutoStatus(); });
+  }
+
   // ==== Boot / public API ====
   // The DOM consts + listener bindings above run ONCE at load (idempotent, bind
   // to the single #view-chat / chat.html instance). Only the data-loading boot
@@ -1736,6 +2008,9 @@
       }
       loadHistory().then(function () { connect(); });
     });
+    // Workspace-only: reveal + wire the auto-run toggle / brief modal (no-op
+    // everywhere else — Community/kernel never have WS_BASE, the demo is read-only).
+    initAutorunUi();
   }
   window.GlimiChat = {
     // Idempotent: first call boots (channels + history + WS); later calls no-op.

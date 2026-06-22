@@ -204,7 +204,7 @@ def _approval_banner(approve_mode: str) -> str:
 
 
 def a2a_exchange(g: Glimi, a: str, b: str, channel: str, brief: str,
-                 turns: int) -> int:
+                 turns: int, *, on_event=None) -> int:
     """Run a genuine agent-to-agent exchange between ``a`` and ``b`` on ``channel``.
 
     Drives the kernel's ``runtime.generate_agent_to_agent`` directly, alternating
@@ -233,7 +233,9 @@ def a2a_exchange(g: Glimi, a: str, b: str, channel: str, brief: str,
         lines = g.runtime.generate_agent_to_agent(speaker, listener, channel, context=ctx)
         if lines:
             spoken += 1
-            print(f"{LABELS[speaker]}:\n" + "\n".join(lines) + "\n")
+            text = "\n".join(lines)
+            _emit(on_event, channel, speaker, text, g)
+            print(f"{LABELS[speaker]}:\n" + text + "\n")
     return spoken
 
 
@@ -268,38 +270,74 @@ def form_relationships(g: Glimi, collab_turns: dict[tuple[str, str], int]) -> No
                                           f"goal together over {n} exchange(s).")
 
 
-def run_workspace(
-    g: Glimi, owner_name: str, goal: str, *,
+def _emit(on_event, channel: str, speaker_id: str, text: str,
+          g: Glimi | None = None, *, is_user: bool = False) -> None:
+    """Fire the optional per-turn ``on_event`` callback for live streaming.
+
+    Default ``None`` → silent, so the CLI + create paths behave exactly as before
+    and existing tests are unaffected. The driver/WS pass a callback to stream
+    each turn to the web as a ``{type:'text', ...}`` frame.
+    """
+    if on_event is None:
+        return
+    speaker = _label(g, speaker_id) if g is not None else speaker_id
+    try:
+        on_event({
+            "type": "text", "channel": channel,
+            "speaker_id": speaker_id, "speaker": speaker,
+            "text": text, "is_user": is_user,
+        })
+    except Exception:
+        pass
+
+
+def run_round(
+    g: Glimi, instruction: str, owner_name: str, *,
     policy: ApprovalPolicy | None = None,
     interactive: bool | None = None,
     web_queue: WebApprovalQueue | None = None,
+    on_event=None,
 ) -> str:
-    """Drive the full interaction topology on one shared store; return the
-    final deliverable. Records relationships as the interactions form them.
+    """One re-callable work round, keyed off ``instruction`` (the round's directive).
 
-    The Coordinator's FINALIZATION of the deliverable is gated by the HITL
-    :class:`~approval.ApprovalPolicy` (approve / edit / reject + fallback).
-    Defaults keep existing callers behaviorally unchanged: ``policy=None`` →
-    auto-approve-all, ``interactive=None`` → ``sys.stdin.isatty()``, so a
-    non-interactive run never blocks and the deliverable is still produced.
+    ASSUMES the round's instruction is ALREADY in ``dm-coordinator`` (the human —
+    or, in the autonomous loop, the owner-agent driver — posts it first). The
+    round then runs the full interaction topology, starting at "the Coordinator
+    reads dm-coordinator and plans":
+
+      1. Coordinator reads ``dm-coordinator`` and lays out the plan.
+      2. Coordinator delegates an angle to each specialist (per-specialist DMs).
+      3. Specialist ↔ specialist A2A exchanges on the ``internal-*`` channels.
+      4. The group round on ``group-team``.
+      5. Coordinator delivers the synthesis back in ``dm-coordinator`` — the
+         consequential action, gated by the HITL :class:`~approval.ApprovalPolicy`.
+
+    Then records the relationships the round's interactions formed. Returns the
+    gated deliverable (the round's result).
+
+    ``instruction`` is the round's directive (the goal on round 1, then each
+    owner follow-up). The optional ``on_event`` callback fires after each turn so
+    the driver/WS can stream live; default ``None`` keeps the CLI + create path
+    silent and existing tests unchanged.
     """
     if policy is None:
         policy = ApprovalPolicy.auto_approve_all()
     if interactive is None:
         interactive = sys.stdin.isatty()
     owner_id = g.owner.id()
-    print("--- The workspace opens ---\n")
 
-    # 1) Owner ↔ Coordinator (DM): the owner gives the goal; the Coordinator
-    #    greets, restates it, and lays out who it will hand which angle to.
-    dm(
+    # 1) Coordinator reads dm-coordinator (the instruction is already there) and
+    #    greets / restates / lays out who it will hand which angle to.
+    plan = dm(
         g, "coordinator",
-        f"You are {owner_name}'s Coordinator. {owner_name} brings this goal: "
-        f"\"{goal}\".\nGreet {owner_name} by name, restate the goal in one crisp "
-        f"sentence, then lay out the plan: which angle you'll hand the Researcher, "
-        f"the Builder, and the Critic. Keep it tight.",
+        f"You are {owner_name}'s Coordinator. Read dm-coordinator: {owner_name} "
+        f"just brought this directive: \"{instruction}\".\nGreet {owner_name} by "
+        f"name, restate it in one crisp sentence, then lay out the plan: which "
+        f"angle you'll hand the Researcher, the Builder, and the Critic. Keep it "
+        f"tight.",
         channel=COORDINATOR_DM,
     )
+    _emit(on_event, COORDINATOR_DM, "coordinator", plan, g)
 
     # 2) Coordinator ↔ each specialist (per-specialist DMs): real delegation. The
     #    Coordinator speaks into each specialist's channel; the specialist replies.
@@ -313,74 +351,117 @@ def run_workspace(
         ch = DELEGATION_CHANNELS[sid]
         # The Coordinator's delegating message, logged to the specialist's channel.
         g.store.set_channel_participants(ch, [owner_id, "coordinator", sid])
-        g.store.log_message(
-            ch, "coordinator",
-            f"{LABELS[sid]}, on \"{goal}\": your angle is to {angles[sid]}. "
-            f"Take it and report back.",
+        delegation = (
+            f"{LABELS[sid]}, on \"{instruction}\": your angle is to {angles[sid]}. "
+            f"Take it and report back."
         )
+        g.store.log_message(ch, "coordinator", delegation)
+        _emit(on_event, ch, "coordinator", delegation, g)
         print(f"Coordinator → {LABELS[sid]} ({ch}):\n"
               f"  your angle is to {angles[sid]}.\n")
         # The specialist reads the delegation from the channel and responds.
         reply = g.reply(
             sid,
-            f"Your Coordinator just gave you an angle on the goal \"{goal}\". "
+            f"Your Coordinator just gave you an angle on \"{instruction}\". "
             f"Read the channel and respond with your first concrete take: "
             f"what you'll dig into and one substantive starting point.",
             channel=ch,
         )
+        _emit(on_event, ch, sid, reply, g)
         print(f"{LABELS[sid]}:\n{reply}\n")
 
     # 3) Specialist ↔ specialist (A2A): pairs who should collaborate actually do.
     print("--- The specialists collaborate (agent-to-agent) ---\n")
     collab_turns: dict[tuple[str, str], int] = {}
     for a, b, channel, brief in COLLAB_PAIRS:
-        n = a2a_exchange(g, a, b, channel, brief, COLLAB_TURNS)
+        n = a2a_exchange(g, a, b, channel, brief, COLLAB_TURNS, on_event=on_event)
         collab_turns[(a, b)] = n
 
     # 4) Group round: the whole team converges on one channel.
     print(f"--- The team converges ({GROUP_CHANNEL}) ---\n")
     g.store.set_channel_participants(
         GROUP_CHANNEL, [owner_id, "coordinator", *SPECIALISTS])
-    g.reply(
+    call = g.reply(
         "coordinator",
-        f"Open the group room for the team on \"{goal}\". In one or two lines, "
-        f"call the team together and ask each specialist to drop their single most "
-        f"important point.",
+        f"Open the group room for the team on \"{instruction}\". In one or two "
+        f"lines, call the team together and ask each specialist to drop their "
+        f"single most important point.",
         channel=GROUP_CHANNEL,
     )
+    _emit(on_event, GROUP_CHANNEL, "coordinator", call, g)
     print(f"Coordinator ({GROUP_CHANNEL}):\n  (called the team together)\n")
     for sid in SPECIALISTS:
         reply = g.reply(
             sid,
-            f"You're in the group room with the whole team on \"{goal}\". Read the "
-            f"room and drop your single most important point for the group.",
+            f"You're in the group room with the whole team on \"{instruction}\". "
+            f"Read the room and drop your single most important point for the group.",
             channel=GROUP_CHANNEL,
         )
+        _emit(on_event, GROUP_CHANNEL, sid, reply, g)
         print(f"{LABELS[sid]}:\n{reply}\n")
 
-    # 5) Coordinator delivers the final synthesis — back in the owner DM. THIS is
-    #    the consequential action: it is gated by the HITL approval policy, so the
-    #    owner stays in the loop (approve / edit / reject) before it is committed
-    #    as the owner-facing deliverable.
+    # 5) Coordinator delivers the synthesis — back in the owner DM. THIS is the
+    #    consequential action: gated by the HITL approval policy, so the owner
+    #    stays in the loop (approve / edit / reject) before it is committed.
     print("--- The Coordinator delivers ---\n")
     final = gated_deliver(
         g, policy,
         prompt=(
             f"As {owner_name}'s Coordinator, you've heard from the whole team "
-            f"across the workspace. Deliver the final result for {owner_name}: a "
-            f"clear, organized synthesis toward the goal \"{goal}\" — the decision, "
-            f"the plan, and the top risk to watch. This is the deliverable."
+            f"across the workspace. Deliver the result for {owner_name}: a clear, "
+            f"organized synthesis toward \"{instruction}\" — the decision, the "
+            f"plan, and the top risk to watch. This is the deliverable."
         ),
         channel=COORDINATOR_DM,
         kind="final_deliverable",
-        summary=f"final deliverable for {owner_name} — goal: {goal}",
+        summary=f"deliverable for {owner_name} — {instruction}",
         interactive=interactive,
         web_queue=web_queue,
     )
+    _emit(on_event, COORDINATOR_DM, "coordinator", final, g)
 
-    # Record the relationships these interactions formed → dashboard graph edges.
+    # Record the relationships this round's interactions formed → graph edges.
     form_relationships(g, collab_turns)
     return final
+
+
+def run_workspace(
+    g: Glimi, owner_name: str, goal: str, *,
+    policy: ApprovalPolicy | None = None,
+    interactive: bool | None = None,
+    web_queue: WebApprovalQueue | None = None,
+    on_event=None,
+) -> str:
+    """Drive the full interaction topology ONCE on one shared store; return the
+    final deliverable. Records relationships as the interactions form them.
+
+    This is the one-time orchestration the create/CLI paths use: it posts the
+    owner's goal to ``dm-coordinator`` (the owner's opening turn) then runs a
+    single :func:`run_round` keyed off that goal. The autonomous multi-round loop
+    lives in ``workspace/driver.py``, which posts each follow-up itself and calls
+    :func:`run_round` per round.
+
+    The Coordinator's FINALIZATION is gated by the HITL
+    :class:`~approval.ApprovalPolicy` (approve / edit / reject + fallback).
+    Defaults keep existing callers behaviorally unchanged: ``policy=None`` →
+    auto-approve-all, ``interactive=None`` → ``sys.stdin.isatty()``, so a
+    non-interactive run never blocks and the deliverable is still produced.
+    """
+    owner_id = g.owner.id()
+    print("--- The workspace opens ---\n")
+
+    # Owner ↔ Coordinator (DM): the owner gives the goal. We log it as the owner's
+    # own message into dm-coordinator (same as a human typing), then run_round
+    # starts at "the Coordinator reads dm-coordinator and plans".
+    g.store.set_channel_participants(COORDINATOR_DM, [owner_id, "coordinator"])
+    g.store.log_message(COORDINATOR_DM, owner_id, goal)
+    _emit(on_event, COORDINATOR_DM, owner_id, goal, g, is_user=True)
+
+    return run_round(
+        g, goal, owner_name,
+        policy=policy, interactive=interactive, web_queue=web_queue,
+        on_event=on_event,
+    )
 
 
 def summary(g: Glimi, owner_name: str, goal: str, final: str) -> None:
