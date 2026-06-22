@@ -967,9 +967,13 @@ function renderChannelsTab(snap) {
   ) || '<div class="empty">no channels</div>';
 }
 
-// Overview — recent conversations grouped by channel. Compact: a channel
-// sub-header (resolved name + kind badge), then that channel's recent lines.
-// Channels ordered by their most-recent message (newest first).
+// Overview — recent conversations grouped by channel. Deliberately COMPACT so it
+// never dominates the page: cap to the few most-recently-active channels, only a
+// handful of single-line previews per channel, all inside a fixed max-height
+// scroll container (#overview-msgs in dashboard.css). A "View all" affordance
+// jumps to the full Chat tab. Channels ordered by their most-recent message.
+const RC_MAX_CHANNELS = 5;   // most-recently-active channels shown in the feed
+const RC_MAX_PER_CHANNEL = 3; // single-line previews per channel
 function renderRecentByChannel(snap) {
   const msgs = snap.recent_messages || [];
   if (!msgs.length) return '<div class="empty">no conversations yet</div>';
@@ -988,15 +992,17 @@ function renderRecentByChannel(snap) {
     const lb = byCh[b][byCh[b].length - 1].timestamp || '';
     return String(lb).localeCompare(String(la));
   });
-  return order.map(chName => {
+  const en = currentLang() === 'en';
+  const shown = order.slice(0, RC_MAX_CHANNELS);
+  const groups = shown.map(chName => {
     const c = chById[chName] || { name: chName, kind: _channelKindOf(chName) };
     const title = channelDisplayName(c, maps);
-    // show the last few lines per channel (compact overview), rendered with the
-    // SAME canonical .msg component the Messages tab / channel modal use, wrapped
-    // in .msg-list so the .msg + .msg .msg-avatar protections apply (the avatar
-    // gets the square clip + object-fit:cover for free — no overflow). The
+    // Compact single-line previews — only the last few lines per channel, rendered
+    // with the SAME canonical .msg component the Messages tab / channel modal use
+    // (so avatars get the square clip / object-fit:cover for free), but the
+    // .rc-group .msg-list .text is clamped to one truncated line in CSS. The
     // per-row #channel chip is suppressed since the group header already names it.
-    const lines = byCh[chName].slice(-4)
+    const lines = byCh[chName].slice(-RC_MAX_PER_CHANNEL)
       .map(m => renderMessage(m, { suppressChannel: true })).join('');
     return `<div class="rc-group">
       <div class="rc-head" onclick="jumpToChat('${esc(chName)}')" title="${esc(chName)}">
@@ -1006,6 +1012,10 @@ function renderRecentByChannel(snap) {
       <div class="msg-list">${lines}</div>
     </div>`;
   }).join('');
+  // Calm "View all" affordance → jumps to the Chat tab. Shown whenever there are
+  // more channels than we list (or simply to lead into the full conversation view).
+  const viewAll = `<button type="button" class="rc-viewall" onclick="jumpToChat()">${en ? 'View all' : '전체 보기'}<i class="ti ti-arrow-right" aria-hidden="true"></i></button>`;
+  return groups + viewAll;
 }
 // Mirror of server _channel_kind for channels that appear only in the message feed.
 function _channelKindOf(name) {
@@ -1704,11 +1714,13 @@ async function openChannel(name) {
 // WS. The edge's channel id IS the chat channel id — no translation. Agent is
 // derived for dm-* (group-* passes undefined → server defaults agent→mgr).
 function jumpToChat(name) {
-  if (!name) return;
   closeModal();
   document.body.classList.remove('graph-fullscreen');
   const chatTab = document.querySelector('nav.tabs button[data-tab="chat"]');
   if (chatTab) chatTab.click();  // switch + lazy-init via the tab handler
+  // No channel name (e.g. the Overview "View all" affordance) → just open the
+  // Chat tab and let it keep its current/last channel.
+  if (!name) return;
   const agent = name.indexOf('dm-') === 0 ? name.slice(3) : undefined;
   if (window.GlimiChat) window.GlimiChat.selectChannelById(name, agent);
 }

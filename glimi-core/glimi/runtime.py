@@ -156,6 +156,10 @@ AVAILABLE_MODELS = [
      "kind": "local", "provider": "ollama", "tier": "balanced", "icon": "🖥️"},
     {"id": "ollama:huihui_ai/gemma-4-abliterated:e2b", "label": "Gemma4 E2B (local)",
      "kind": "local", "provider": "ollama", "tier": "fast", "icon": "🖥️"},
+    # Grok (xAI) — grok CLI 백엔드. 실제 grok 모델은 env GLIMI_GROK_MODEL 따름
+    # (기본 grok-composer-2.5-fast). id "grok" 선택 시 _resolve_provider 가 grok_cli 로 라우팅.
+    {"id": "grok", "label": "Grok (xAI)",
+     "kind": "cloud", "provider": "grok", "tier": "balanced", "icon": "☁️"},
     # 향후: vllm / llamacpp provider.
 ]
 
@@ -234,6 +238,8 @@ def _resolve_provider(agent_type: str, model: str) -> str:
                     return "ollama"
                 if v in ("claude_cli", "anthropic_sdk", "claude"):
                     return "claude"
+                if v in ("grok", "grok_cli"):
+                    return "grok_cli"
                 if v:  # 기타 명시 백엔드 (echo 등) 은 그대로 위임
                     return v
         except Exception:
@@ -244,15 +250,24 @@ def _resolve_provider(agent_type: str, model: str) -> str:
         return "ollama"
     if glob in ("claude_cli", "anthropic_sdk", "claude"):
         return "claude"
+    if glob in ("grok", "grok_cli"):
+        return "grok_cli"
     if glob:  # echo 등 — community.llm.generate(backend=glob) 로 위임
         return glob
     # 3) model id prefix
     if model.startswith("ollama:"):
         return "ollama"
+    if model.startswith("grok"):  # "grok" / "grok-*" id → grok_cli
+        return "grok_cli"
     # 4) 레지스트리
     for mm in AVAILABLE_MODELS:
         if mm["id"] == model:
-            return "ollama" if mm.get("provider") == "ollama" else "claude"
+            prov = mm.get("provider")
+            if prov == "ollama":
+                return "ollama"
+            if prov == "grok":
+                return "grok_cli"
+            return "claude"
     return "claude"
 
 

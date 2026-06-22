@@ -77,11 +77,12 @@
            title="{{ 'View profile' if EN else '프로필 보기' }}" hidden>
           <i class="ti ti-user-circle" aria-hidden="true"></i>
         </a>
-        {# 자동 진행 / Auto-run toggle — workspace-only (chat.js reveals it when
-           WS_BASE is truthy AND the surface isn't read-only). Hidden by default. #}
+        {# 가동 / Run toggle — the ONE global run/stop control (design_system §5.1).
+           Workspace-only (chat.js reveals it when WS_BASE is truthy AND the surface
+           isn't read-only). Hidden by default. chat.js flips its label play↔stop. #}
         <button type="button" class="ib ws-only" id="ws-autorun-toggle" data-ws-only
-                aria-pressed="false" aria-label="{{ 'Auto-run' if EN else '자동 진행' }}"
-                title="{{ 'Auto-run' if EN else '자동 진행' }}" hidden>
+                aria-pressed="false" aria-label="{{ 'Run' if EN else '가동' }}"
+                title="{{ 'Run' if EN else '가동' }}" hidden>
           <i class="ti ti-player-play" aria-hidden="true"></i>
         </button>
         <button type="button" class="ib" id="chat-thread-toggle" aria-label="Thread"

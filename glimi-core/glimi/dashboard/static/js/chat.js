@@ -156,15 +156,13 @@
   // The last reaction WE initiated, so its broadcast echo can bind OWNER_ID
   // ({id, emoji}); cleared once consumed.
   var pendingReaction = null;
-  // Threads / replies — feature flag (default OFF). The per-message reply action,
-  // the "View thread" affordance, and the thread side-panel are gated behind this
-  // so the chat reads as a clean single stream. The full reply→thread→fetch_thread
-  // pipeline (setReplyTo / openThreadPanel / fetchThread / renderThreadFromServer /
-  // threadRow + the reply-cue) is LEFT INTACT below — flip this to true to restore
-  // the affordances once the thread UX is finished. Reactions are independent and
-  // stay live. Inbound reply pointers still render (reply quotes survive reload);
-  // only the WRITE/OPEN affordances are hidden.
-  var THREADS_ENABLED = false;
+  // Threads / replies — feature flag (ON). The per-message reply action, the
+  // "View thread" affordance, and the thread side-panel are gated behind this. The
+  // full reply→thread→fetch_thread pipeline (setReplyTo / openThreadPanel /
+  // fetchThread / renderThreadFromServer / threadRow + the reply-cue) is live.
+  // Reactions are independent and always live. Inbound reply pointers always
+  // render (reply quotes survive reload) regardless of this flag.
+  var THREADS_ENABLED = true;
 
   // ==== Small helpers ====
   // XSS-safe: textContent escape, then rich() only re-introduces known spans.
@@ -527,19 +525,71 @@
   // English. All other channels use the server-provided name verbatim.
   function channelDisplayName(c) {
     if (!c) return '';
-    if (EN && c.channel === 'internal-owner') return "Owner's review";
+    // internal-owner = the owner's own read-only notes channel — keep the
+    // server-provided name (workspace: "자동 진행 메모"; community: "오너의 검토"),
+    // EN swaps to "Owner's review". It is NOT a between-two-agents pair.
+    if (c.channel === 'internal-owner') {
+      return EN ? "Owner's review" : (c.name || c.channel || '');
+    }
+    // Between-agents pair: resolve the participants to their display names and join
+    // with ' · ' (e.g. "시니어 엔지니어 · 테크 라이터"). Generic — no role names
+    // hardcoded; names come from the members' DM rows / the agents map.
+    var members = internalMembers(c);
+    if (members.length >= 2) {
+      return members.map(agentNameOf).filter(Boolean).join(' · ');
+    }
     // Generic safety net: an internal backchannel whose name is still a raw slug
-    // ('internal-a-b') reads as a pair — strip 'internal-' and join the remaining
-    // '-'-separated tokens with ' ↔ '. No role names hardcoded; the server
-    // normally supplies a nicer name, so this only fires when it hasn't.
+    // ('internal-a-b') and that carries no members — strip 'internal-' and join the
+    // remaining '-'-separated tokens with ' · '. The server normally supplies a
+    // nicer name, so this only fires when it hasn't.
     var isInternal = c.kind === 'internal' ||
       (c.channel || '').indexOf('internal-') === 0;
     var label = c.name || c.channel || '';
     if (isInternal && /^internal-/.test(label)) {
       var parts = label.replace(/^internal-/, '').split('-').filter(Boolean);
-      if (parts.length) return parts.join(' ↔ ');
+      if (parts.length) return parts.join(' · ');
     }
     return label;
+  }
+
+  // Small avatar markup for a single agent member in a between-agents pair row —
+  // a compact circle (image with monogram fallback). Inline-styled so it stays
+  // self-contained (no new CSS class); the pair wrapper overlaps them slightly.
+  function pairAvHtml(id, idx) {
+    var nm = agentNameOf(id);
+    var overlap = idx > 0 ? 'margin-left:-8px;' : '';
+    return '<span class="ava pair-av" style="width:22px;height:22px;font-size:var(--fs-xs);' +
+      overlap + 'border:2px solid var(--panel);background:' + avBg(id) + '">' +
+      '<img src="' + escAttr(avatarUrl(id)) + '" alt="" ' +
+      'onerror="this.replaceWith(document.createTextNode(\'' + esc(initialOf(nm)) + '\'))"></span>';
+  }
+  // The side-by-side (slightly overlapping) avatar cluster that prefixes a
+  // between-agents pair row — visually scannable as a two-party channel.
+  function pairAvCluster(members) {
+    var avs = members.slice(0, 2).map(function (id, i) { return pairAvHtml(id, i); }).join('');
+    return '<span class="pair-avs" aria-hidden="true" ' +
+      'style="display:inline-flex;align-items:center;flex:0 0 auto">' + avs + '</span>';
+  }
+
+  // Resolve an agent_id → its human display name. The chat client never gets a
+  // standalone agents map, but every persona surfaces as a DM channel, so the DM
+  // row's server-provided ``name`` is the canonical display name. Fall back to the
+  // raw id when the agent has no DM listed (e.g. a manager-only participant).
+  function agentNameOf(id) {
+    if (!id) return '';
+    for (var i = 0; i < channels.length; i++) {
+      var c = channels[i];
+      if (c.kind === 'dm' && c.agent_id === id) return c.name || id;
+    }
+    return id;
+  }
+
+  // The agent members of an internal (between-agents) channel — the two (or more)
+  // participants whose backchannel this is. internal-owner is the owner's own
+  // read-only notes channel, NOT a between-two-agents pair, so it never qualifies.
+  function internalMembers(c) {
+    if (!c || c.channel === 'internal-owner') return [];
+    return (c.members || []).filter(Boolean);
   }
 
   // Role tag for the active channel's type (DM) / owner.
@@ -554,6 +604,33 @@
       if (activeChannelType() === 'mgr') return { cls: 'mgr', label: 'Manager' };
     }
     return null;
+  }
+
+  // ==== Bootstrap guard — chat-client init ONLY when the chat shell is present ===
+  // chat.js is loaded on two kinds of surface: (1) the chat shell itself
+  // (_chat_shell.html → #chat-shell + #chat-feed/#chat-stream/#chat-input …), and
+  // (2) other pages that only want the shared markdown primitive (e.g.
+  // agent_detail.html, which calls GlimiChat.mdToHtml to render transcripts). On a
+  // non-chat surface the chat DOM doesn't exist, so any further DOM binding below
+  // (e.g. $feed.addEventListener) would throw, AND the auto-boot at the bottom
+  // would open a WebSocket / poll for nothing — which is exactly what hung the
+  // agent-detail page on "불러오는 중" (networkidle never settled). So: if the
+  // chat shell root is absent, expose ONLY the pure render helpers and RETURN
+  // before any DOM binding / connection. (mdToHtml/rich/esc are all defined above
+  // this point, so they're safe to export here.)
+  if (!$shell || !$feed || !$stream) {
+    window.GlimiChat = {
+      mdToHtml: mdToHtml,
+      renderText: function (raw) { return mdToHtml(raw); },
+      // No chat client on this surface — these are no-ops so callers that probe
+      // for them (graph→chat jump, tab re-entry) don't throw on a non-chat page.
+      init: function () {},
+      refit: function () {},
+      selectChannelById: function () {},
+      channelForAgent: function () { return null; },
+      openAgentChannel: function () {}
+    };
+    return;
   }
 
   // ==== Pinned autoscroll (gated) ====
@@ -1305,12 +1382,19 @@
     li.dataset.agent = c.agent_id || '';
 
     var html = '<span class="tick"></span>';
+    var pairMembers = (c.kind === 'internal') ? internalMembers(c) : [];
     if (c.kind === 'dm' && c.agent_id) {
       html += '<span class="ava" style="background:' + avBg(c.agent_id) + '">' +
         '<img src="' + escAttr(avatarUrl(c.agent_id)) + '" alt="" ' +
         'onerror="this.replaceWith(document.createTextNode(\'' + esc(initialOf(c.name)) + '\'))">' +
         '<span class="pres online"></span></span>';
+    } else if (c.kind === 'internal' && pairMembers.length >= 2) {
+      // Between-agents pair: two small avatars side-by-side instead of a glyph, so
+      // the row reads at a glance as a conversation BETWEEN two participants. The
+      // names follow in .meta (channelDisplayName → "name · name").
+      html += pairAvCluster(pairMembers);
     } else if (c.kind === 'internal') {
+      // internal-owner (the owner's notes) or a member-less backchannel → glyph.
       html += '<i class="ti ti-arrows-left-right hash" aria-hidden="true"></i>';
     } else {
       html += '<i class="ti ti-hash hash" aria-hidden="true"></i>';
@@ -1355,9 +1439,10 @@
       return (c.name || c.channel || '').toLowerCase().indexOf(q) !== -1;
     };
     // Discord/Slack ordering: group channels (rooms) FIRST, then DMs sorted by
-    // most-recent activity, then the agent-to-agent backchannels ("Behind the
-    // scenes"). Managers no longer get a separate pinned section — they sort by
-    // recency like everyone else (the row still carries a manager tag/badge).
+    // most-recent activity, then the agent-to-agent backchannels ("Between agents"
+    // / "에이전트끼리" — ONE user-facing term everywhere). Managers no longer get a
+    // separate pinned section — they sort by recency like everyone else (the row
+    // still carries a manager tag/badge).
     var grps = channels.filter(function (c) { return c.kind === 'group' && match(c); })
       .sort(byRecencyDesc);
     var dms = channels.filter(function (c) { return c.kind === 'dm' && match(c); })
@@ -1379,7 +1464,7 @@
       dms.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
     if (internal.length) {
-      $channelList.appendChild(groupLabel(EN ? 'Behind the scenes' : '에이전트끼리', internal.length, 'internal'));
+      $channelList.appendChild(groupLabel(EN ? 'Between agents' : '에이전트끼리', internal.length, 'internal'));
       internal.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
 
@@ -2081,8 +2166,12 @@
       .catch(function () { /* leave the modal defaults */ });
   }
 
-  // Toggle visual state: pressed + accent while running, plain otherwise. The
-  // header icon flips play↔stop; the pill shows the live round count.
+  // The ONE global run/stop control (design_system §5.1):
+  //   • stopped → ink CTA "가동" / "Run" (the screen's single primary action),
+  //     play icon. The toggle is the only run affordance.
+  //   • running → the toggle becomes the single STOP (stop icon, --err intent via
+  //     aria), and the quiet status pill shows "자동 진행 중" + a green dot + round.
+  // There are NO per-channel / per-chat run or stop buttons — this is the only one.
   function renderAutoToggle() {
     if (!$autorunToggle) return;
     var running = autoState.running;
@@ -2090,7 +2179,8 @@
     $autorunToggle.classList.toggle('on', running);
     var ico = $autorunToggle.querySelector('i');
     if (ico) ico.className = (running ? 'ti ti-player-stop' : 'ti ti-player-play');
-    var lbl = running ? (EN ? 'Stop' : '중지') : (EN ? 'Auto-run' : '자동 진행');
+    // Stopped = the ink CTA "가동"/"Run"; running = the single "중지"/"Stop".
+    var lbl = running ? (EN ? 'Stop' : '중지') : (EN ? 'Run' : '가동');
     $autorunToggle.setAttribute('aria-label', lbl);
     $autorunToggle.setAttribute('title', lbl);
     renderAutoPill();
@@ -2099,11 +2189,16 @@
     if (!$autorunPill) return;
     if (autoState.running) {
       var n = autoState.rounds_run || 0;
-      $autorunPill.hidden = false;
-      $autorunPill.classList.add('show');
-      $autorunPill.textContent = EN
+      var txt = EN
         ? ('Running' + (n ? ' · round ' + n : '…'))
         : ('자동 진행 중' + (n ? ' · 라운드 ' + n : '…'));
+      $autorunPill.hidden = false;
+      $autorunPill.classList.add('show');
+      // Quiet pill + a green running dot (§5.1: state via dot, not a filled face).
+      // Inline-styled dot to stay self-contained (no new CSS class).
+      $autorunPill.innerHTML = '<span aria-hidden="true" style="width:6px;height:6px;' +
+        'border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px;' +
+        'flex:0 0 auto"></span>' + esc(txt);
     } else {
       $autorunPill.classList.remove('show');
       $autorunPill.hidden = true;

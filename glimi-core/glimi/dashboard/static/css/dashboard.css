@@ -934,15 +934,24 @@
     background: color-mix(in srgb, var(--creator) 14%, var(--panel-2)); color: var(--creator);
   }
 
-  /* ==== Overview — recent conversations grouped by channel (compact) ==== */
-  #overview-msgs { display: flex; flex-direction: column; gap: 14px; border-top: 0; }
+  /* ==== Overview — recent conversations grouped by channel (compact) ====
+     A calm, bounded glance — NOT a full ledger. The feed is capped to the few
+     most-recent channels (JS: RC_MAX_CHANNELS) with a handful of single-line
+     previews each (RC_MAX_PER_CHANNEL), and the whole thing lives in a fixed
+     max-height scroll container so it never dominates the Overview page. */
+  #overview-msgs {
+    display: flex; flex-direction: column; gap: 10px; border-top: 0;
+    max-height: 360px; overflow-y: auto;
+    /* room for the scrollbar so rows don't sit flush under it */
+    padding-right: 2px;
+  }
   .rc-group {
     background: var(--panel-2); border: 1px solid var(--border-soft); border-radius: 12px;
-    padding: 6px 12px 10px; display: flex; flex-direction: column;
+    padding: 4px 12px 6px; display: flex; flex-direction: column;
   }
   .rc-head {
     display: flex; gap: 8px; align-items: center; cursor: pointer;
-    padding: 7px 2px 8px; border-bottom: 1px solid var(--border-soft); margin-bottom: 4px;
+    padding: 6px 2px 6px; border-bottom: 1px solid var(--border-soft); margin-bottom: 2px;
   }
   .rc-head:hover .rc-ch-name { color: var(--accent); }
   .rc-ch-name {
@@ -954,10 +963,36 @@
      group header already carries the divider, so drop the ledger's own top
      hairline and the last row's bottom hairline for a clean grouped card. */
   .rc-group .msg-list { border-top: 0; }
-  /* Roomier rows — match the agent-detail comfort, not a cramped ledger. */
-  .rc-group .msg-list .msg { font-size: 12.5px; padding: 11px 2px; gap: 11px; }
-  .rc-group .msg-list .msg .text { line-height: 1.6; }
+  /* Tight single-line rows — a preview glance, not a roomy transcript. */
+  .rc-group .msg-list .msg { font-size: 12.5px; padding: 7px 2px; gap: 9px; align-items: center; }
+  /* Smaller avatar so each preview row stays on a single line height. */
+  .rc-group .msg-list .msg .msg-avatar { width: 22px; height: 22px; }
+  /* Collapse the canonical two-line body into one row: name + time inline, then a
+     single truncated message line. No multi-line dump. */
+  .rc-group .msg-list .msg .head { margin-bottom: 0; }
+  .rc-group .msg-list .msg .text {
+    line-height: 1.45;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* A truncated preview shouldn't render block markdown (lists/quotes/images)
+     as stacked blocks — keep it to one calm line. */
+  .rc-group .msg-list .msg .text :where(p, ul, ol, blockquote, pre) {
+    display: inline; margin: 0;
+  }
+  .rc-group .msg-list .msg .chat-img { display: none; }
   .rc-group .msg-list .msg:last-child { border-bottom: 0; }
+  /* "전체 보기 / View all" — quiet pill (DS §5.1), jumps to the Chat tab. No
+     shadow, no hover-transform (DS §1.1): background/colour shift only. */
+  .rc-viewall {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 2px; padding: 7px 14px;
+    background: var(--panel-2); color: var(--text-dim);
+    border: 0; border-radius: var(--r-pill);
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .rc-viewall:hover { background: var(--panel-3); color: var(--text); }
+  .rc-viewall .ti { font-size: 14px; }
 
   /* ==== Messages — 헤어라인 레저 행 (je-empty ledger) ==== */
   .msg-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }

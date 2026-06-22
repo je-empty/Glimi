@@ -50,6 +50,24 @@ def client():
     return TestClient(app)
 
 
+def _wait_ready(client, ws_id, timeout=10.0):
+    """Block until a freshly-created workspace's background build finishes.
+
+    Create is now NON-BLOCKING: POST /api/workspaces returns immediately with
+    ``status="building"`` and the team-forming + first round run on a background
+    thread (streaming live to the dashboard). Tests that assert on the built team
+    poll the snapshot's ``build.status`` to ``"ready"`` first, so correctness never
+    depends on build timing. Returns the final snapshot."""
+    import time as _t
+    deadline = _t.time() + timeout
+    while _t.time() < deadline:
+        snap = client.get(f"/w/{ws_id}/api/snapshot").json()
+        if (snap.get("build") or {}).get("status") == "ready":
+            return snap
+        _t.sleep(0.02)
+    raise AssertionError(f"workspace {ws_id} never became ready within {timeout}s")
+
+
 # ── the registry holds the Demo by default ───────────────────────────────────
 
 def test_registry_holds_demo_by_default():
@@ -100,19 +118,52 @@ def test_create_adds_independent_workspace(client):
     new_id = created["id"]
     assert created["goal"] == "Ship the mobile beta"
     assert created["kind"] == "user"
+    # Create is NON-BLOCKING: it returns immediately while the team-forming + first
+    # round run on a background thread, so the card comes back status="building".
+    assert created["status"] == "building"
 
     after = client.get("/api/workspaces").json()
     assert len(after) == len(before) + 1
 
+    # The dashboard is reachable at /w/{id} the instant the record exists, even
+    # mid-build (no 404/502 while the first round runs).
+    assert client.get(f"/w/{new_id}").status_code == 200
+
     # The new workspace's store is INDEPENDENT of the Demo's: its own owner/goal,
-    # built fresh — not the Demo's hand-authored Sam/launch transcript.
-    ns = client.get(f"/w/{new_id}/api/snapshot").json()
+    # built fresh — not the Demo's hand-authored Sam/launch transcript. Wait for the
+    # background build to finish before asserting on the formed team.
+    ns = _wait_ready(client, new_id)
     assert ns["owner_name"] == "Dana"
     ds = client.get("/w/demo/api/snapshot").json()
     assert ds["owner_name"]                       # demo has its own seeded owner
     assert ns["owner_name"] != ds["owner_name"]   # distinct stores → distinct owners
     # Same role topology (Coordinator + 3 specialists), distinct store instances.
     assert {a["id"] for a in ns["agents"]} == {"coordinator", "researcher", "builder", "critic"}
+
+
+def test_create_is_nonblocking_and_streams_to_ready(client):
+    # The big one: POST /api/workspaces must NOT run the first round synchronously.
+    # It returns immediately with status="building"; the team forms + the first
+    # round run on a background thread; /w/{id} is reachable instantly; and the
+    # snapshot's build.status flips building→ready on its own (live, no extra call).
+    r = client.post("/api/workspaces", json={"name": "Pat", "goal": "Plan the launch"})
+    assert r.status_code == 200
+    wid = r.json()["id"]
+    assert r.json()["status"] == "building"
+
+    # Reachable + reports building immediately (the dashboard renders mid-build).
+    snap0 = client.get(f"/w/{wid}/api/snapshot").json()
+    assert "build" in snap0 and snap0["build"]["status"] in ("building", "ready")
+    assert client.get(f"/w/{wid}").status_code == 200
+
+    # It reaches ready on its own (the background build finishes), and only THEN is
+    # the full team + first-round transcript present.
+    snap = _wait_ready(client, wid)
+    assert snap["build"]["status"] == "ready"
+    assert {a["id"] for a in snap["agents"]} == {"coordinator", "researcher", "builder", "critic"}
+    # The first round actually ran: the owner's goal + replies are in dm-coordinator.
+    hist = client.get(f"/w/{wid}/chat/history", params={"channel": "dm-coordinator"}).json()
+    assert len(hist["messages"]) >= 2
 
 
 def test_create_via_form_redirects(client):
@@ -350,6 +401,7 @@ def test_auto_run_full_loop_echo(monkeypatch, tmp_path):
     c = TestClient(app)
     created = c.post("/api/workspaces", json={"name": "수민", "goal": "오픈소스 런칭 기획"}).json()
     wid = created["id"]
+    _wait_ready(c, wid)  # let the create build (team-forming + first round) finish first
     r = c.post(f"/w/{wid}/auto/start", json={"max_rounds": 3, "context": "정직한 기조"})
     assert r.status_code == 200
     assert r.json()["running"] is True and r.json()["max_rounds"] == 3
@@ -466,6 +518,7 @@ def test_team_add_endpoint_happy_path(client):
     created = client.post("/api/workspaces",
                           json={"name": "Dana", "goal": "Ship the beta"}).json()
     wid = created["id"]
+    _wait_ready(client, wid)  # team must be seeded before adding a member
     r = client.post(f"/w/{wid}/team/add",
                     json={"role": "designer", "name": "디자이너",
                           "persona": "Owns the visual identity.",
@@ -487,6 +540,7 @@ def test_team_add_endpoint_gating(client):
     created = client.post("/api/workspaces",
                           json={"name": "Lee", "goal": "Write docs"}).json()
     wid = created["id"]
+    _wait_ready(client, wid)  # team must be seeded before the collision check
     assert client.post(f"/w/{wid}/team/add", json={"role": "coordinator"}).status_code == 409
     assert client.post(f"/w/{wid}/team/add", json={"role": "researcher"}).status_code == 409  # already on team
     assert client.post(f"/w/{wid}/team/add", json={}).status_code == 400

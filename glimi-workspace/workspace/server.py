@@ -352,6 +352,14 @@ class Workspace:
     kind: str  # "demo" (public read-only) | "user" (created workspace)
     created_at: str = field(default_factory=_now_utc_iso)
 
+    # ── build lifecycle (the initial team-forming + first round) ──
+    # "building" while the background create-build runs the first round; "ready"
+    # once it finishes (or "error" if it failed). The demo is born ready. The
+    # dashboard is reachable at /w/{id} the instant the record exists (status is
+    # surfaced in the snapshot so the UI can show a "team forming…" banner that
+    # clears on its own).
+    status: str = "ready"
+
     # ── autonomous owner-driver brief (persisted) ──
     auto_run: bool = False
     context: str = ""
@@ -365,11 +373,19 @@ class Workspace:
     # ── non-serializable runtime handles ──
     _driver_task: object = field(default=None, repr=False, compare=False)    # asyncio.Task|None
     _driver_cancel: object = field(default=None, repr=False, compare=False)  # threading.Event|None
+    _build_task: object = field(default=None, repr=False, compare=False)     # _DriverHandle|None (initial build)
     _subscribers: set = field(default_factory=set, repr=False, compare=False)  # chat WS fan-out
 
     @property
     def store(self):
         return self.glimi.store
+
+    @property
+    def building(self) -> bool:
+        """True while the initial create-build (team-forming + first round) is in
+        flight on its background thread."""
+        t = self._build_task
+        return bool(t is not None and not getattr(t, "done", lambda: True)())
 
     @property
     def driver_running(self) -> bool:
@@ -390,6 +406,9 @@ class Workspace:
             "title": self.title,
             "goal": self.goal,
             "kind": self.kind,
+            # Live build status so the home card + dashboard can show "팀 꾸리는 중…"
+            # the moment a workspace is created (before its first round finishes).
+            "status": ("building" if self.building else self.status),
             "agents": len(agents),
             "channels": len(snap.get("channels", [])),
             "avatars": [
@@ -428,45 +447,40 @@ class WorkspaceRegistry:
         self._seq += 1
         return f"ws{self._seq}"
 
-    def create(self, name: str, goal: str, *, ws_id: Optional[str] = None,
-               created_at: Optional[str] = None, persist: bool = True,
-               auto_run: bool = False, context: str = "",
-               backlog: Optional[list] = None, max_rounds: int = 5) -> Workspace:
-        """Build a real-topology workspace under the build lock, on the configured
-        backend (``_USER_BACKEND`` — echo by default; a real model when the operator
-        sets ``GLIMI_LLM_BACKEND``).
+    def create_record(self, name: str, goal: str, *, ws_id: Optional[str] = None,
+                      created_at: Optional[str] = None, persist: bool = True,
+                      auto_run: bool = False, context: str = "",
+                      backlog: Optional[list] = None, max_rounds: int = 5) -> Workspace:
+        """Create + register a workspace RECORD immediately, WITHOUT running the
+        first round — the fast, non-blocking half of create.
 
-        Serialized because ``run_workspace`` drives ``runtime.generate_*`` against
-        the process-global store; constructing the ``Glimi`` re-points that global to
-        this workspace's store, so only one build may be in flight at a time. On the
-        echo backend each build is instant + deterministic; on a real backend the
-        create runs the team on the goal (the workspace's first deliverable).
+        Constructing the ``Glimi`` is cheap (in-memory store, no LLM), so this
+        returns in milliseconds and the dashboard is reachable at ``/w/{id}`` the
+        instant it returns. The team-forming + first round (``seed_team`` +
+        ``run_workspace``, which DO drive ``runtime.generate_*``) are deferred to
+        :meth:`build_initial`, run on a background thread so the create request
+        never blocks the event loop. The record is born ``status="building"``.
+
+        Construction still happens under the build lock because ``Glimi()`` re-points
+        the kernel's process-global store to this workspace (last-wins); the lock
+        keeps that atomic with id allocation. The heavy build is scoped separately.
 
         ``ws_id`` / ``created_at`` / ``persist=False`` are used by restore-on-startup
-        to rebuild a persisted workspace with its original id + timestamp (and not
-        re-persist it). ``auto_run`` / ``context`` / ``backlog`` / ``max_rounds`` are
-        the autonomous-loop brief, stamped onto the Workspace (restore carries the
-        last-saved toggle state). The one-time ``run_workspace`` at create still runs
-        round 1; the multi-round driver is a SEPARATE opt-in via /auto/start.
+        to rebuild a persisted workspace with its original id + timestamp.
+        ``auto_run`` / ``context`` / ``backlog`` / ``max_rounds`` are the
+        autonomous-loop brief, stamped onto the Workspace.
         """
         owner_name = (name or "Owner").strip() or "Owner"
         goal = (goal or "").strip() or "Plan the public launch of our open-source project"
         with self._lock:
             g = Glimi(backend=_USER_BACKEND, owner_name=owner_name)
-            # Manager proposes a goal-appropriate roster (real backend), else the
-            # DEFAULT researcher/builder/critic (echo → deterministic). The roster
-            # proposal runs HERE, inside the build lock, AFTER Glimi() so the kernel
-            # globals already point at this ws's store (propose_roster → llm.generate
-            # writes the process-global store). seed_team adds coordinator + roster.
-            seed_team(g, goal, owner_name)
-            # Real interaction topology (echo) → a genuine interaction web for goal.
-            run_workspace(g, owner_name, goal)
             if ws_id is None:
                 ws_id = self._next_user_id()
             elif ws_id.startswith("ws") and ws_id[2:].isdigit():
                 self._seq = max(self._seq, int(ws_id[2:]))  # keep new ids ahead of restored ones
             ws = Workspace(id=ws_id, glimi=g, title=goal, goal=goal, kind="user",
                            created_at=created_at or _now_utc_iso(),
+                           status="building",
                            auto_run=bool(auto_run), context=context or "",
                            backlog=list(backlog or []),
                            max_rounds=max(1, min(int(max_rounds or 5), 10)))
@@ -475,6 +489,72 @@ class WorkspaceRegistry:
             _persist_ws_meta(ws_id, owner_name, goal, ws.created_at,
                              auto_run=ws.auto_run, context=ws.context,
                              backlog=ws.backlog, max_rounds=ws.max_rounds)
+        return ws
+
+    def build_initial(self, ws: "Workspace", *, on_event=None) -> None:
+        """Run the deferred team-forming + first round for a freshly-created record.
+
+        The slow half of create: ``seed_team`` (manager proposes a goal-appropriate
+        roster on a real backend; echo → the deterministic default 3) then
+        ``run_workspace`` (the full interaction topology + first deliverable). Both
+        drive ``runtime.generate_*``, so they MUST run scoped to ``ws`` — routed
+        through :meth:`run_in_ws` (the same per-workspace scoping lock chat turns +
+        the auto-run driver use), which re-points the kernel globals at this ws and
+        serializes against every other build/turn.
+
+        Idempotent + double-run-guarded: only runs while ``status=="building"`` and
+        the team isn't already seeded; flips ``status`` to ``"ready"`` on success
+        (``"error"`` on failure) so the UI's "forming…" banner clears. ``on_event``
+        streams the team-forming + each turn live to connected chat WebSockets.
+        """
+        # Double-run guard: only the building→ready transition runs the build.
+        if ws.status != "building":
+            return
+        owner_name = ws.glimi.owner.name()
+        goal = ws.goal
+
+        def _build():
+            # Skip if the team is already seeded (a racing/duplicate call).
+            try:
+                if ws.store.get_agent("coordinator"):
+                    return
+            except Exception:
+                pass
+            # Manager proposes a goal-appropriate roster (real backend), else the
+            # DEFAULT researcher/builder/critic (echo → deterministic). Runs AFTER
+            # run_in_ws has pointed the kernel globals at this ws's store.
+            seed_team(ws.glimi, goal, owner_name)
+            # Real interaction topology → a genuine interaction web for the goal,
+            # streaming each turn live via on_event (the create's "watch it build").
+            run_workspace(ws.glimi, owner_name, goal, on_event=on_event)
+
+        try:
+            self.run_in_ws(ws, _build)
+            ws.status = "ready"
+        except Exception:  # noqa: BLE001 — a failed build must not crash the thread
+            ws.status = "error"
+            raise
+
+    def create(self, name: str, goal: str, *, ws_id: Optional[str] = None,
+               created_at: Optional[str] = None, persist: bool = True,
+               auto_run: bool = False, context: str = "",
+               backlog: Optional[list] = None, max_rounds: int = 5) -> Workspace:
+        """Create a workspace AND run its first round INLINE (blocking).
+
+        The synchronous convenience used by restore-on-startup and the tests: it
+        creates the record then immediately runs the deferred build on the calling
+        thread, so the returned Workspace is fully ``"ready"``. On the echo backend
+        this is instant + deterministic (restore reproduces each workspace exactly).
+
+        The live, non-blocking create path (``POST /api/workspaces``) instead calls
+        :meth:`create_record` + :meth:`build_initial` on a background thread, so the
+        request returns immediately and the build streams to the dashboard.
+        """
+        ws = self.create_record(
+            name, goal, ws_id=ws_id, created_at=created_at, persist=persist,
+            auto_run=auto_run, context=context, backlog=backlog, max_rounds=max_rounds,
+        )
+        self.build_initial(ws)
         return ws
 
     def run_in_ws(self, ws: "Workspace", fn):
@@ -919,6 +999,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                 "title": c["title"],
                 "desc": c.get("goal") or "",
                 "is_demo": (c["kind"] == "demo"),
+                "building": (c.get("status") == "building"),
                 "avatars": c.get("avatars") or [],
                 "more": max(0, c["agents"] - len(c.get("avatars") or [])),
                 "metas": metas,
@@ -971,11 +1052,18 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     @app.post("/api/workspaces", response_model=None)
     async def create_workspace(request: Request):
-        """Create a workspace from a form (browser) or JSON (API).
+        """Create a workspace from a form (browser) or JSON (API) — NON-BLOCKING.
 
-        Serialized by the registry's build lock (global-singleton WRITE path).
-        Form submits get a 303 redirect to the new dashboard; JSON callers get
-        ``{id, title, goal, kind, ...}``.
+        The record (its ``Glimi`` + store) is created IMMEDIATELY and this returns
+        right away (``status="building"``); the team-forming + first round run on a
+        dedicated background thread (``reg.build_initial`` via a ``_DriverHandle``,
+        the same machinery /auto/start uses), streaming each turn to connected chat
+        WebSockets via the per-ws broadcaster. So ``/w/{id}`` is reachable instantly
+        and the dashboard shows the team forming + the first round progressing LIVE,
+        exactly like watching an auto-run — not a link handed back after it finishes.
+
+        Form submits get a 303 redirect to the new dashboard (the page then opens its
+        chat WS and watches the build); JSON callers get the card with ``status``.
         """
         if _DEMO_ONLY:  # public showcase: only the seeded demo exists, no creation
             raise HTTPException(status_code=403, detail="this is a demo-only instance")
@@ -994,7 +1082,30 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             form = await request.form()
             name = str(form.get("name", "") or "")
             goal = str(form.get("goal", "") or "")
-        ws = reg.create(name, goal)
+
+        # 1) Create the record immediately (cheap: Glimi construction only) so the
+        #    dashboard is reachable at /w/{id} the instant we return.
+        ws = reg.create_record(name, goal)
+
+        # 2) Run the team-forming + first round on a background DAEMON THREAD,
+        #    streaming each turn to connected chat WebSockets via the per-ws
+        #    broadcaster (fan-out targets the SERVER's event loop, where the sockets
+        #    live). The fan-out tolerates zero subscribers, so the build runs whether
+        #    or not the owner's page has connected its WS yet.
+        server_loop = app.state.main_loop
+        broadcaster = _make_ws_broadcaster(ws, server_loop)
+
+        async def _build():
+            try:
+                broadcaster({"type": "auto", "phase": "building", "ws": ws.id})
+                reg.build_initial(ws, on_event=broadcaster)
+                broadcaster({"type": "auto", "phase": "ready", "ws": ws.id})
+            except Exception as e:  # noqa: BLE001 — never crash the build thread
+                broadcaster({"type": "auto", "phase": "error", "message": str(e)})
+
+        ws._build_task = _DriverHandle(_build, threading.Event(),
+                                       name=f"glimi-ws-build-{ws.id}")
+
         if is_form:
             return RedirectResponse(url=f"/w/{ws.id}", status_code=303)
         return JSONResponse(ws.card())
@@ -1385,6 +1496,13 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         cm["name"] = ws.title
         payload["community_meta"] = cm
         payload["community_id"] = ws.id
+        # Surface the initial build status so the chat UI can show a "team forming…"
+        # banner the instant a workspace is created (cleared when status flips to
+        # "ready" — the create build runs in the background, streaming live).
+        payload["build"] = {
+            "status": ("building" if ws.building else ws.status),
+            "building": ws.building,
+        }
         # Surface the autonomous-loop state so the chat UI can restore the toggle
         # on load (writable workspaces only — the demo is read-only).
         payload["auto"] = {
