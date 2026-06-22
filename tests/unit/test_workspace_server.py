@@ -272,6 +272,23 @@ def test_chat_channels_surface_internal_owner(client):
     assert coord_dm is not None
     assert coord_dm["name"] == "매니저"
 
+    # Behind-the-scenes internal pair channels (coordinator↔specialist delegation
+    # and specialist↔specialist A2A) surface as read-only with a friendly "A ↔ B"
+    # label resolved from the two agent ids — NOT the raw channel id, and robust to
+    # the multi-hyphen 'coordinator' side of internal-coordinator-<sid>.
+    deleg = next((c for c in chans if c["channel"] == "internal-coordinator-researcher"), None)
+    assert deleg is not None
+    assert deleg["kind"] == "internal" and deleg["postable"] is False
+    assert deleg["name"] == "매니저 ↔ 리서처"      # friendly pair label, not the raw id
+    a2a = next((c for c in chans if c["channel"] == "internal-researcher-critic"), None)
+    assert a2a is not None
+    assert a2a["name"] == "리서처 ↔ 크리틱"
+    # dm-researcher is OWNER↔specialist only — the demo never delegates there, so no
+    # coordinator→researcher delegation leaked into a dm-* channel.
+    deleg_channels = {c["channel"] for c in chans if c["kind"] == "internal"}
+    assert "internal-coordinator-builder" in deleg_channels
+    assert "internal-coordinator-critic" in deleg_channels
+
 
 def test_auto_start_403_on_demo(client):
     # The public demo is read-only — it showcases the loop via the scripted unfold,
@@ -414,7 +431,9 @@ def test_propose_roster_dynamic_on_stubbed_backend(monkeypatch):
         "coordinator", "researcher", "designer", "marketer"}
     # The live roster drives the derived delegation channels + A2A pairs.
     assert team.live_specialists(g) == ["researcher", "designer", "marketer"]
-    assert team.delegation_channel_for("designer") == "dm-designer"
+    # Delegation is behind-the-scenes (internal-coordinator-<id>), NOT a dm-<id>
+    # (dm-<id> is reserved OWNER↔specialist).
+    assert team.delegation_channel_for("designer") == "internal-coordinator-designer"
     pair_channels = {p[2] for p in team.derive_pairs(g, added)}
     assert "internal-researcher-designer" in pair_channels
     # The dynamic role's avatar emoji comes from its stored role keyword.
@@ -435,9 +454,10 @@ def test_add_team_member_joins_next_round_echo():
     assert run.add_team_member(g, "coordinator", "X", "Y", "") is False
     assert run.add_team_member(g, "writer", "X", "Y", "") is False
     # The next round wires the new specialist's delegation channel + group seat.
+    # Delegation is behind-the-scenes (internal-coordinator-<id>), not a dm-<id>.
     run.run_round(g, "follow up", "Owner")
     overview = {c["channel"] for c in g.store.get_channel_overview()}
-    assert "dm-writer" in overview
+    assert "internal-coordinator-writer" in overview
 
 
 def test_team_add_endpoint_happy_path(client):

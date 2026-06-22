@@ -68,6 +68,15 @@
          running (chat.js toggles .show + fills the round count). Read-only chrome. #}
       <span class="chat-autorun-pill" id="ws-autorun-pill" role="status" aria-live="polite" hidden></span>
       <div class="acts">
+        {# Profile ↗ — opens the active DM partner's full detail page. chat.js sets
+           the href + reveals it only on DM channels that have a detail route
+           (Community/Workspace); hidden by default (standalone demo has no route).
+           Generic across apps — no role names hardcoded. #}
+        <a class="ib chat-head-profile" id="chat-head-profile" href="#" target="_self"
+           rel="noopener" aria-label="{{ 'View profile' if EN else '프로필 보기' }}"
+           title="{{ 'View profile' if EN else '프로필 보기' }}" hidden>
+          <i class="ti ti-user-circle" aria-hidden="true"></i>
+        </a>
         {# 자동 진행 / Auto-run toggle — workspace-only (chat.js reveals it when
            WS_BASE is truthy AND the surface isn't read-only). Hidden by default. #}
         <button type="button" class="ib ws-only" id="ws-autorun-toggle" data-ws-only
@@ -116,7 +125,6 @@
         <div class="cfoot">
           <span class="grow"></span>
           <span class="cnt" id="chat-cnt" hidden>0</span>
-          <span class="seg"><span class="kbd">Shift</span><span class="plus-sign">+</span><span class="kbd">Enter</span>{{ 'new line' if EN else '줄바꿈' }}</span>
         </div>
       </div>
     </div>

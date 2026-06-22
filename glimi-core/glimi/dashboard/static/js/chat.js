@@ -77,6 +77,7 @@
   var $status = document.getElementById('chat-status');
   var $headIcon = document.getElementById('chat-head-icon');
   var $channelLabel = document.getElementById('chat-channel-label');
+  var $headProfile = document.getElementById('chat-head-profile');
   var $headTopic = document.getElementById('chat-head-topic');
   var $feed = document.getElementById('chat-feed');
   var $stream = document.getElementById('chat-stream');
@@ -155,6 +156,15 @@
   // The last reaction WE initiated, so its broadcast echo can bind OWNER_ID
   // ({id, emoji}); cleared once consumed.
   var pendingReaction = null;
+  // Threads / replies — feature flag (default OFF). The per-message reply action,
+  // the "View thread" affordance, and the thread side-panel are gated behind this
+  // so the chat reads as a clean single stream. The full reply→thread→fetch_thread
+  // pipeline (setReplyTo / openThreadPanel / fetchThread / renderThreadFromServer /
+  // threadRow + the reply-cue) is LEFT INTACT below — flip this to true to restore
+  // the affordances once the thread UX is finished. Reactions are independent and
+  // stay live. Inbound reply pointers still render (reply quotes survive reload);
+  // only the WRITE/OPEN affordances are hidden.
+  var THREADS_ENABLED = false;
 
   // ==== Small helpers ====
   // XSS-safe: textContent escape, then rich() only re-introduces known spans.
@@ -242,6 +252,40 @@
     return s;
   }
 
+  // ==== GFM-lite table helpers (all operate on already-escaped lines) ====
+  // A candidate table row: contains at least one pipe (a leading/trailing pipe is
+  // optional, matching GFM). The separator check disambiguates real tables.
+  function isTableRow(line) {
+    return line != null && line.indexOf('|') !== -1 && !/^\s*```/.test(line);
+  }
+  // Separator row: each cell is dashes with optional leading/trailing colon
+  // (`---`, `:--`, `--:`, `:-:`), pipes between. At least one cell required.
+  function isTableSeparator(line) {
+    if (!isTableRow(line)) return false;
+    var cells = splitRow(line);
+    if (!cells.length) return false;
+    return cells.every(function (c) { return /^:?-+:?$/.test(c.trim()); });
+  }
+  // Split a pipe row into trimmed cells, dropping the empty cells produced by a
+  // leading/trailing pipe. A backslash-escaped \| is kept as a literal pipe.
+  function splitRow(line) {
+    var s = String(line).trim().replace(/^\|/, '').replace(/\|$/, '');
+    var cells = s.split(/(?<!\\)\|/).map(function (c) {
+      return c.replace(/\\\|/g, '|').trim();
+    });
+    return cells;
+  }
+  // Map a separator cell to an alignment keyword from its colons.
+  function cellAlign(sep) {
+    var t = String(sep).trim();
+    var l = t.charAt(0) === ':', r = t.charAt(t.length - 1) === ':';
+    if (l && r) return 'center';
+    if (r) return 'right';
+    if (l) return 'left';
+    return '';
+  }
+  function alignAttr(a) { return a ? ' style="text-align:' + a + '"' : ''; }
+
   // Block-level pass. ``escaped`` is the WHOLE message already run through esc().
   // Returns the inner HTML for a rendered markdown block.
   function mdBlocks(escaped) {
@@ -275,6 +319,31 @@
         var lvl = Math.min(h[1].length, 3);
         out.push('<h' + lvl + ' class="md-h md-h' + lvl + '">' + mdInline(h[2].trim()) + '</h' + lvl + '>');
         i++;
+        continue;
+      }
+      // GFM-lite pipe table: a header row `| a | b |`, a separator row
+      // `| --- | :--: |` (colons set per-column alignment), then 0+ body rows.
+      // Operates on already-escaped text; every cell still runs through mdInline
+      // so it stays XSS-safe (no raw HTML ever reaches the DOM here).
+      if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+        flushPara();
+        var headerCells = splitRow(line);
+        var aligns = splitRow(lines[i + 1]).map(cellAlign);
+        i += 2;  // consume header + separator
+        var thead = '<thead><tr>' + headerCells.map(function (cell, ci) {
+          return '<th' + alignAttr(aligns[ci]) + '>' + mdInline(cell) + '</th>';
+        }).join('') + '</tr></thead>';
+        var bodyRows = [];
+        while (i < lines.length && isTableRow(lines[i])) {
+          var cells = splitRow(lines[i]);
+          bodyRows.push('<tr>' + headerCells.map(function (_h, ci) {
+            // Pad/truncate to the header's column count so ragged rows stay valid.
+            return '<td' + alignAttr(aligns[ci]) + '>' + mdInline(cells[ci] || '') + '</td>';
+          }).join('') + '</tr>');
+          i++;
+        }
+        out.push('<table class="md-tbl">' + thead +
+          (bodyRows.length ? '<tbody>' + bodyRows.join('') + '</tbody>' : '') + '</table>');
         continue;
       }
       // Unordered list (-, *, +) — consume the contiguous run.
@@ -359,6 +428,17 @@
   // the avatar endpoint for the un-cropped full-body image used by the lightbox.
   function fullAvatarUrl(agentId) {
     return avatarUrl(agentId) + '&variant=full';
+  }
+  // Per-agent DETAIL PAGE url, built identically to dashboard.js openAgent's
+  // detail link: Workspace → {WS_BASE}/agent/{id}; Community → /agent/{id}?community=.
+  // Standalone kernel demo (neither WS_BASE nor COMMUNITY) has no such route → null
+  // so callers can hide the affordance.
+  function agentDetailUrl(agentId) {
+    if (!agentId) return null;
+    if (WS_BASE) return WS_BASE + '/agent/' + encodeURIComponent(agentId);
+    if (COMMUNITY) return '/agent/' + encodeURIComponent(agentId) +
+      '?community=' + encodeURIComponent(COMMUNITY);
+    return null;
   }
 
   // ==== Lightbox (full-body profile / inline image) ====
@@ -448,7 +528,18 @@
   function channelDisplayName(c) {
     if (!c) return '';
     if (EN && c.channel === 'internal-owner') return "Owner's review";
-    return c.name || c.channel || '';
+    // Generic safety net: an internal backchannel whose name is still a raw slug
+    // ('internal-a-b') reads as a pair — strip 'internal-' and join the remaining
+    // '-'-separated tokens with ' ↔ '. No role names hardcoded; the server
+    // normally supplies a nicer name, so this only fires when it hasn't.
+    var isInternal = c.kind === 'internal' ||
+      (c.channel || '').indexOf('internal-') === 0;
+    var label = c.name || c.channel || '';
+    if (isInternal && /^internal-/.test(label)) {
+      var parts = label.replace(/^internal-/, '').split('-').filter(Boolean);
+      if (parts.length) return parts.join(' ↔ ');
+    }
+    return label;
   }
 
   // Role tag for the active channel's type (DM) / owner.
@@ -596,6 +687,7 @@
   // root that HAS replies (this row is itself a thread_root referenced by some
   // reply) — we render it lazily and refresh it as replies arrive / on cold-load.
   function threadAffordanceHtml(m) {
+    if (!THREADS_ENABLED) return '';
     // Persisted/optimistic ids only (temp 'm…' client ids have no server thread).
     var rootId = m.id;
     if (!isServerId(rootId)) return '';
@@ -636,16 +728,24 @@
 
   function actsPopHtml(m) {
     var canReact = isServerId(m.id);
+    // Reply + thread actions are gated behind THREADS_ENABLED (default OFF) so the
+    // hover pop only offers the live reaction affordance — the chat stays a clean
+    // single stream. When the flag is off and the row can't be reacted to, the pop
+    // is empty (CSS hides an empty pop); leave the markup minimal.
+    var threadActions = THREADS_ENABLED
+      ? (canReact ? '<span class="sep"></span>' : '') +
+        '<b class="reply-btn" data-reply="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Reply">' +
+          '<i class="ti ti-arrow-back-up" aria-hidden="true"></i></b>' +
+        '<span class="sep"></span>' +
+        '<b class="thread-btn" data-thread="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Thread">' +
+          '<i class="ti ti-messages" aria-hidden="true"></i></b>'
+      : '';
     return '<div class="acts-pop">' +
       (canReact
         ? '<b class="react-btn" data-react="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="React">' +
-            '<i class="ti ti-heart" aria-hidden="true"></i></b><span class="sep"></span>'
+            '<i class="ti ti-heart" aria-hidden="true"></i></b>'
         : '') +
-      '<b class="reply-btn" data-reply="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Reply">' +
-        '<i class="ti ti-arrow-back-up" aria-hidden="true"></i></b>' +
-      '<span class="sep"></span>' +
-      '<b class="thread-btn" data-thread="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Thread">' +
-        '<i class="ti ti-messages" aria-hidden="true"></i></b>' +
+      threadActions +
       '</div>';
   }
 
@@ -747,6 +847,7 @@
   // reply's target) belongs to. The root is the parent's thread_root if the
   // parent is itself a reply, else the parent id.
   function refreshThreadAffordance(parentId) {
+    if (!THREADS_ENABLED) return;
     var parent = msgIndex[parentId];
     var rootId = parent ? rootIdOf(parent) : parentId;
     var rootEl = $stream.querySelector('.msg[data-mid="' + cssEsc(rootId) + '"]');
@@ -1323,6 +1424,14 @@
         $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash'
           : c.kind === 'internal' ? 'ti ti-arrows-left-right hash' : 'ti ti-hash hash');
       }
+      // Profile ↗: only on a DM channel whose partner has a detail route. The DM
+      // partner id is the channel's agent_id (web DM keys are opaque — never
+      // reconstruct from the name). Hidden otherwise (groups / internal / demo).
+      if ($headProfile) {
+        var detailUrl = (c.kind === 'dm') ? agentDetailUrl(c.agent_id) : null;
+        if (detailUrl) { $headProfile.href = detailUrl; $headProfile.hidden = false; }
+        else { $headProfile.hidden = true; $headProfile.removeAttribute('href'); }
+      }
       if ($input) {
         var nm = channelDisplayName(c);
         if (c.postable === false) {
@@ -1824,6 +1933,7 @@
     return el;
   }
   function openThreadPanel(rootId) {
+    if (!THREADS_ENABLED) return;  // thread panel gated off (clean single-stream)
     // Resolve the actual thread root: if the clicked row is itself a reply, open
     // its thread_root; else it IS the root.
     var clicked = msgIndex[rootId];
@@ -2168,6 +2278,12 @@
       _inited = true;
       _boot();
     },
+    // Shared markdown primitive: RAW text in → safe rendered-markdown HTML out.
+    // mdToHtml escapes internally (the XSS boundary) before block + inline passes,
+    // so callers MUST pass raw, never pre-escaped, text. This is the single source
+    // of markdown rendering for every Glimi app (chat, detail pages, transcripts).
+    mdToHtml: mdToHtml,
+    renderText: function (raw) { return mdToHtml(raw); },
     // Graph→chat jump: switch to channelId on the single live WS. Reuses
     // selectChannel (history reload + WS reconnect on channel change). If not
     // yet inited, seed the target then boot straight onto it.

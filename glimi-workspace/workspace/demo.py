@@ -47,7 +47,13 @@ GOAL = "오픈소스 프로젝트 공개 런칭 기획"
 
 # Channels (mirror team.py's topology so the seeded demo and a real run look alike).
 DM_COORDINATOR = "dm-coordinator"
-DM = {"researcher": "dm-researcher", "builder": "dm-builder", "critic": "dm-critic"}
+# Coordinator↔specialist delegation is BEHIND THE SCENES (internal-coordinator-<id>):
+# the owner watches but doesn't participate. ``dm-<id>`` is reserved OWNER↔specialist.
+DM = {
+    "researcher": "internal-coordinator-researcher",
+    "builder": "internal-coordinator-builder",
+    "critic": "internal-coordinator-critic",
+}
 A2A_RC = "internal-researcher-critic"
 A2A_BR = "internal-builder-researcher"
 GROUP = "group-team"
@@ -337,7 +343,8 @@ def seed(g: Glimi) -> None:
     # Participants per channel (so the graph + channel viewer know who's in each).
     store.set_channel_participants(DM_COORDINATOR, [OWNER_ID, "coordinator"])
     for sid in SPECIALISTS:
-        store.set_channel_participants(DM[sid], [OWNER_ID, "coordinator", sid])
+        # internal-coordinator-<sid>: coordinator + specialist (owner watches only).
+        store.set_channel_participants(DM[sid], ["coordinator", sid])
     store.set_channel_participants(A2A_RC, ["researcher", "critic"])
     store.set_channel_participants(A2A_BR, ["builder", "researcher"])
     store.set_channel_participants(GROUP, [OWNER_ID, "coordinator", *SPECIALISTS])

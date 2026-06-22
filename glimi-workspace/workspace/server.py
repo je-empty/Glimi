@@ -660,6 +660,35 @@ def _last_preview(store, channel: str, owner_ids: set[str],
     }
 
 
+def _internal_pair_label(ws: "Workspace", channel: str,
+                         names: dict[str, str]) -> str:
+    """Friendly ``"A ↔ B"`` label for a behind-the-scenes ``internal-<a>-<b>``
+    channel, resolving each side's display name.
+
+    Robust to ids that themselves contain hyphens (e.g. ``culture-coach``, or the
+    coordinator side of ``internal-coordinator-<sid>``): prefer the channel's two
+    STORED participants over a naive hyphen split (which can't tell ``a-b-c-d``
+    apart). Falls back to the participants from the store, then to a naive split of
+    the channel id, then to the raw id — always returns a non-empty label."""
+    def _name(aid: str) -> str:
+        return names.get(aid) or (ws.store.get_agent(aid) or {}).get("name") or aid
+
+    # Preferred: the two stored participants (unambiguous for multi-hyphen ids).
+    try:
+        parts = [p for p in (ws.store.get_channel_participants(channel) or []) if p]
+    except Exception:
+        parts = []
+    if len(parts) >= 2:
+        return f"{_name(parts[0])} ↔ {_name(parts[1])}"
+
+    # Fallback: naive split of internal-<a>-<b> into two tokens (best-effort).
+    rest = channel[len("internal-"):] if channel.startswith("internal-") else channel
+    bits = rest.split("-", 1)
+    if len(bits) == 2 and bits[0] and bits[1]:
+        return f"{_name(bits[0])} ↔ {_name(bits[1])}"
+    return channel
+
+
 def _list_chat_channels(ws: "Workspace") -> list[dict]:
     """The workspace's chat channels: a DM per agent (synthesized ``dm-<id>``,
     ordered mgr/coordinator-ish first via ``reader.agents()``) plus the registered
@@ -709,11 +738,13 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
         elif name.startswith("internal-"):
             # ``internal-owner`` is the read-only channel where the autonomous owner
             # logs its per-round reasoning (the "owner thinking" the web shows). Give
-            # it a friendly display name + tooltip; all other internal-* show the RAW
-            # channel id (e.g. "internal-researcher-critic") — the owner asked to see
-            # real names.
+            # it a friendly display name + tooltip. Every OTHER internal-* is a
+            # behind-the-scenes pair (coordinator↔specialist delegation or
+            # specialist↔specialist A2A); show a friendly "A ↔ B" label resolved from
+            # its two agent ids, not the raw channel id.
             is_owner_review = (name == _OWNER_REVIEW_CHANNEL)
-            disp = _OWNER_REVIEW_NAME if is_owner_review else name
+            disp = (_OWNER_REVIEW_NAME if is_owner_review
+                    else _internal_pair_label(ws, name, names))
             out.append({
                 "channel": name, "kind": "internal", "agent_id": None,
                 "agent_type": "internal", "name": disp, "type": "internal",

@@ -793,11 +793,12 @@ body {
   font-size: var(--fs-lg);
   cursor: pointer;
   border: none;
-  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease), transform .1s var(--chat-ease);
+  /* §1.1: 색·면 전환만 (transform 제거) */
+  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease);
 }
 .cbox.has .send { background: var(--chat-accent); color: var(--chat-accent-ink); }
 .cbox.has .send:hover { background: var(--chat-accent-deep); }
-.send:active { transform: scale(.92); }
+.cbox.has .send:active { background: var(--chat-accent); }
 .send:disabled { cursor: default; }
 .send:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 2px; }
 
@@ -947,6 +948,9 @@ body {
   .react .e { font-size: 16px; }
   .acts-pop b { width: 40px; height: 40px; }
   .thread-open { min-height: 36px; }
+  /* 채팅 헤더 아이콘 버튼 + 전송 버튼 — 44px 탭 타깃 (--tap-min) */
+  .head .ib { width: 44px; height: 44px; font-size: var(--fs-xl); }
+  .send { width: 44px; height: 44px; }
 }
 
 /* ============================================================

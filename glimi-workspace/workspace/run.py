@@ -591,7 +591,9 @@ def run_round(
         ch = delegation_channel_for(sid)
         angle = angle_for(g, sid)
         # The Coordinator's delegating message, logged to the specialist's channel.
-        g.store.set_channel_participants(ch, [owner_id, "coordinator", sid])
+        # Behind-the-scenes (internal-coordinator-<sid>): coordinator + specialist
+        # only — the owner watches but doesn't participate.
+        g.store.set_channel_participants(ch, ["coordinator", sid])
         delegation = (
             f"{label_for(g, sid)}, on \"{instruction}\": your angle is to {angle}. "
             f"Take it and report back."

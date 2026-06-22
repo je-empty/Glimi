@@ -14,7 +14,15 @@ const API_BASE = (typeof document !== 'undefined' && document.body &&
 // hide sim-only tabs (scenes/achievements/supervisors/sync/events/health/logs).
 let CAPS = null;
 try { CAPS = JSON.parse((document.body && document.body.getAttribute('data-caps')) || 'null'); } catch (e) { CAPS = null; }
-function capOn(name) { return !CAPS || CAPS[name] !== false; }
+// Capabilities that are OFF by default for EVERY app (including Community, where
+// CAPS is null = everything-on). The Sync tab + all Discord-specific plumbing are
+// hidden unless an app opts in with an explicit `data-caps` of {"sync":true} /
+// {"discord":true}. Backend routes are untouched — this only hides the UI.
+const CAP_DENY_BY_DEFAULT = ['sync', 'discord', 'dbdelete'];
+function capOn(name) {
+  if (CAP_DENY_BY_DEFAULT.includes(name)) return !!(CAPS && CAPS[name] === true);
+  return !CAPS || CAPS[name] !== false;
+}
 // Avatar cache-bust suffix — a host app (Workspace) injects __GLIMI_ASSET_VER__
 // so a returning visitor never gets a stale cached avatar after the route's
 // output changes (anime portrait → role monogram). Community: unset → ''.
@@ -386,15 +394,21 @@ function applySupVisibility() {
 applySupVisibility();
 
 // ==== Capability gating (host apps hide sim-only tabs) ====
-// Community: CAPS null → every tab shown (unchanged). A host like Workspace
-// injects data-caps to hide tabs it has no backend for (scenes/achievements/
-// supervisors/sync/events/health/logs); we hide their nav + toggles so the rich
-// dashboard degrades to the workspace-relevant surface.
+// Community: CAPS null → every tab shown EXCEPT the deny-by-default ones
+// (sync/discord — see CAP_DENY_BY_DEFAULT). A host like Workspace injects
+// data-caps to hide tabs it has no backend for (scenes/achievements/
+// supervisors/events/health/logs); we hide their nav + toggles so the rich
+// dashboard degrades to the workspace-relevant surface. Always runs (no early
+// return on null CAPS) so the Sync tab + Discord controls stay hidden for ALL
+// apps unless explicitly opted in.
 function applyCaps() {
-  if (!CAPS) return;
   document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
     if (!capOn(btn.dataset.tab)) btn.style.display = 'none';
   });
+  // Discord/sync-specific surfaces inside still-visible views (e.g. the channel
+  // detail modal's destructive buttons, the Sync view body) carry .cap-sync /
+  // .cap-discord so they collapse with the same gate.
+  if (!capOn('sync')) document.getElementById('view-sync')?.style.setProperty('display', 'none');
   if (!capOn('supervisors')) {
     const st = document.getElementById('supervisor-toggle');
     if (st) st.style.display = 'none';
@@ -717,6 +731,8 @@ function openFullAvatar(agentId, name) {
 document.addEventListener('click', (e) => {
   const img = e.target.closest('img');
   if (!img) return;
+  // 브랜드/헤더 로고는 줌 대신 감싼 <a> 로 네비게이트 (chrome agent 가 링크 래핑)
+  if (img.closest && img.closest('.brand, .gp-brand')) return;
   // 이미 lightbox 안의 이미지거나 미니 상태면 스킵
   if (img.closest('.lightbox')) return;
   // 아바타/로고는 별도 핸들러 우선 (onclick이 있으면 자동 스킵)
@@ -754,6 +770,27 @@ function renderMessage(m, opts) {
   const chChip = opts.suppressChannel
     ? ''
     : `<span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>`;
+  // Markdown: pass RAW text to GlimiChat.mdToHtml (it escapes internally — the XSS
+  // boundary). Guard for chat.js load order; fall back to plain esc() if absent.
+  const raw = m.message;
+  const textHtml = (window.GlimiChat && GlimiChat.mdToHtml)
+    ? GlimiChat.mdToHtml(raw)
+    : esc(raw);
+  // Inline community images, mirroring chat.js linesHtml (m.images[].url/.caption).
+  // Rendered only when the payload carries them (Community monitor adds them;
+  // the kernel reader does not). esc() covers " so it's attribute-safe.
+  let imgHtml = '';
+  (m.images || []).forEach(im => {
+    if (im && im.url) {
+      imgHtml += `<img class="chat-img" src="${esc(im.url)}" alt="${esc(im.caption || 'image')}">`;
+      if (im.caption) {
+        const capHtml = (window.GlimiChat && GlimiChat.mdToHtml)
+          ? GlimiChat.mdToHtml(im.caption)
+          : esc(im.caption);
+        imgHtml += `<div class="text txt md">${capHtml}</div>`;
+      }
+    }
+  });
   return `<div class="msg ${roleClass(m)}">
     ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
     <div class="msg-body">
@@ -762,7 +799,8 @@ function renderMessage(m, opts) {
         ${chChip}
         <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
       </div>
-      <div class="text">${esc(m.message)}</div>
+      <div class="text txt md">${textHtml}</div>
+      ${imgHtml}
     </div>
   </div>`;
 }
@@ -1599,15 +1637,22 @@ async function openChannel(name) {
   const openChatBtn = postable
     ? `<button class="act-btn small primary" onclick="jumpToChat('${esc(name)}')"><i class="ti ti-message" aria-hidden="true"></i> ${currentLang() === 'en' ? 'Open in chat' : '채팅으로 열기'}</button>`
     : '';
-  const actions = `
+  // Destructive DB-delete affordances (clear messages / delete channel) are hidden
+  // by default — capOn('dbdelete') is false unless an app opts in via data-caps.
+  // Backend routes (doChannelClear/doChannelDelete) stay intact and callable.
+  const dangerBtns = capOn('dbdelete')
+    ? `<button class="act-btn danger small" onclick="doChannelClear('${esc(name)}')">🧹 메시지 전체 삭제 (DB만)</button>
+       ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : ''}`
+    : '';
+  // Only show the Actions section when it has at least one visible control.
+  const actions = (openChatBtn || dangerBtns) ? `
     <div class="detail-section">
       <h4>Actions</h4>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${openChatBtn}
-        <button class="act-btn danger small" onclick="doChannelClear('${esc(name)}')">🧹 메시지 전체 삭제 (DB만)</button>
-        ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : ''}
+        ${dangerBtns}
       </div>
-    </div>`;
+    </div>` : '';
   const body = `
     <div class="detail-section">
       <h4>Participants · ${d.participants.length}</h4>
@@ -3663,14 +3708,17 @@ async function tick() {
     scenesEl.innerHTML = renderScenes(scenes);
   }
 
-  // Events 탭: events 테이블 — 발생한 일들의 로그 (멤버간 사건 기록)
+  // Events 탭: 발생한 일들의 로그 (관계 변화·갈등·화해 등). .event-list 컨테이너에는
+  // .event-card 행만 — 설명 캡션은 정적 #events-intro 형제 요소가 담당 (DS §EVENTS 계약:
+  // .event-list 의 직계 자식은 hairline .event-card 행만). 빈 상태면 캡션 숨김.
   const eventsEl = document.getElementById('events-full');
   if (eventsEl) {
-    eventsEl.innerHTML = snap.events.length
-      ? `<div style="color:var(--text-dim);font-size:11.5px;margin-bottom:12px">
-           커뮤니티에서 발생한 사건 기록 — 관계 변화, 갈등, 화해 등 persona들의 내면 이벤트
-         </div>` + snap.events.map(renderEvent).join('')
-      : '<div class="empty">기록된 이벤트 없음</div>';
+    const evCount = (snap.events || []).length;
+    eventsEl.innerHTML = evCount
+      ? snap.events.map(renderEvent).join('')
+      : `<div class="empty">${currentLang() === 'en' ? 'No events recorded' : '기록된 이벤트 없음'}</div>`;
+    const intro = document.getElementById('events-intro');
+    if (intro) intro.style.display = evCount ? '' : 'none';
   }
 
   // Health
@@ -3685,7 +3733,7 @@ async function tick() {
         <div class="section-title" style="margin-top:0">Processes</div>
         <div class="health-grid">
           <div class="health-card">
-            <h4>Discord Bot</h4>
+            <h4>Runtime</h4>
             <div class="big">${health.bot_alive ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}</div>
             ${health.pid ? `<div class="sub">PID: ${esc(health.pid)}</div>` : ''}
           </div>
@@ -3751,7 +3799,11 @@ async function tick() {
     // Server Control 은 플랫폼 상단 바로 이관됨 — Health 탭에는 server-log 없음
   }
 
-  // Sync tab — sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
+  // Sync tab — Discord↔DB sync UI. Hidden by default for every app (capOn('sync')
+  // is false unless an app opts in via data-caps); the backend routes stay live.
+  // Skip the whole render when the tab is gated off so no Discord chrome paints.
+  if (capOn('sync') && document.getElementById('sync-full')) {
+  // sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
   const serverRunning = b.bot_alive;
   const guardNote = serverRunning
     ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--text)">ℹ 서버 실행 중 — Sync 버튼 클릭 시 <b>자동으로 서버 중단 → 작업 → 재시작</b> 진행. 취소 버튼 제공됨.</div>`
@@ -3797,6 +3849,7 @@ async function tick() {
   // Scan 결과 테이블 복원 (tick 마다 사라지지 않도록)
   renderScanTable();
   loadTrash();
+  }  // end capOn('sync') guard — Sync/Discord UI hidden by default
 
   // (legacy "Dev" tab 제거됨 — 새 글로벌 admin 페이지 /admin/dev-requests 로 이전)
 

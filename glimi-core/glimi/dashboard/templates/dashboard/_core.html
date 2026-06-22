@@ -67,10 +67,12 @@
 <div class="app">
   <header class="status">
     <span class="brand">
-      {% if community_chrome or brand_logo %}
-      <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo"{% if community_chrome %} onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기"{% endif %}>
-      {% endif %}
-      <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="Home">{{ app_name or community_name or 'Glimi' }}</a>
+      <a class="brand-home" href="/" title="Home" aria-label="Home">
+        {% if community_chrome or brand_logo %}
+        <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo">
+        {% endif %}
+        <span class="brand-name">{{ app_name or community_name or 'Glimi' }}</span>
+      </a>
     </span>
 
     {% if community_chrome %}
@@ -94,9 +96,11 @@
       <i class="ti ti-tool" aria-hidden="true"></i>Dev Requests
     </a>
     {% endif %}
-    <a id="dev-pending-badge" href="/admin/dev-requests" target="_self"
+    {# Pending dev-requests notifier — §5.1 quiet pill (.pill.off = err text + dot,
+       no filled surface). JS un-hides it (display:'') when the count > 0. #}
+    <a id="dev-pending-badge" class="pill off" href="/admin/dev-requests" target="_self"
        title="이 커뮤니티의 미처리 dev requests"
-       style="display:none;margin-right:8px;padding:3px 9px;border-radius:999px;font-size:11px;color:white;text-decoration:none;font-weight:700;background:var(--err);">
+       style="display:none;text-decoration:none">
       <span id="dev-pending-count">0</span>
     </a>
 
@@ -127,7 +131,10 @@
     <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">Events</span> <span class="count" id="tc-events">0</span></button>
     <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i><span class="tab-label">Supervisors</span> <span class="count" id="tc-supervisors">0</span></button>
     <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i><span class="tab-label">Health</span></button>
-    <button data-tab="sync"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">Sync</span></button>
+    {# Sync tab (Discord↔DB) — hidden by default for every app. applyCaps()/capOn('sync')
+       keeps it gated off; rendered with display:none so it never flashes pre-JS, and
+       only un-hidden when an app opts in via data-caps {"sync":true}. #}
+    <button data-tab="sync" style="display:none"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">Sync</span></button>
     <button data-tab="usage"><i class="ti ti-chart-bar tab-emoji" aria-hidden="true"></i><span class="tab-label">Usage</span></button>
     <button data-tab="tools"><i class="ti ti-tool tab-emoji" aria-hidden="true"></i><span class="tab-label">Tools</span></button>
     <button data-tab="logs"><i class="ti ti-file-text tab-emoji" aria-hidden="true"></i><span class="tab-label">Logs</span></button>
@@ -176,7 +183,10 @@
       </div>
       <div class="ach-grid" id="ach-grid"></div>
     </div>
-    <div class="view" id="view-events"><div class="event-list" id="events-full"></div></div>
+    <div class="view" id="view-events">
+      <div class="events-intro" id="events-intro">{% if language == 'en' %}A log of moments in the community — relationship shifts, conflicts, reconciliations.{% else %}커뮤니티에서 일어난 순간들 — 관계 변화, 갈등, 화해의 기록이에요.{% endif %}</div>
+      <div class="event-list" id="events-full"></div>
+    </div>
     <div class="view" id="view-health"><div class="health-grid" id="health-full"></div></div>
     <div class="view" id="view-sync"><div id="sync-full"></div></div>
     <div class="view" id="view-usage"><div id="usage-full"></div></div>

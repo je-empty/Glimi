@@ -141,12 +141,14 @@ WS_AGENT_MODEL = "claude-sonnet-4-6"
 # Coordinator plans + delivers. (owner_id is supplied by the harness at runtime.)
 COORDINATOR_DM = "dm-coordinator"
 
-# Coordinator ↔ each specialist: a per-specialist DM where the Coordinator
-# delegates an angle. id → channel.
+# Coordinator ↔ each specialist: a per-specialist INTERNAL channel where the
+# Coordinator delegates an angle. id → channel. These are behind-the-scenes
+# (``internal-coordinator-<id>``): the owner watches the coordinator delegate but
+# doesn't participate — ``dm-<id>`` is reserved for OWNER↔specialist only.
 DELEGATION_CHANNELS: dict[str, str] = {
-    "researcher": "dm-researcher",
-    "builder": "dm-builder",
-    "critic": "dm-critic",
+    "researcher": "internal-coordinator-researcher",
+    "builder": "internal-coordinator-builder",
+    "critic": "internal-coordinator-critic",
 }
 
 # Specialist ↔ specialist A2A: the pairs that should genuinely collaborate, with
@@ -228,9 +230,12 @@ def label_for(g, agent_id: str) -> str:
 
 
 def delegation_channel_for(sid: str) -> str:
-    """The per-specialist delegation DM channel for a role id (``dm-<id>``) — the
-    convention DELEGATION_CHANNELS encoded statically, now derived for any id."""
-    return f"dm-{sid}"
+    """The per-specialist delegation channel for a role id
+    (``internal-coordinator-<id>``) — the convention DELEGATION_CHANNELS encoded
+    statically, now derived for any id. INTERNAL (behind-the-scenes): the owner
+    watches the coordinator delegate here but doesn't participate; ``dm-<id>`` is
+    reserved for OWNER↔specialist only."""
+    return f"internal-coordinator-{sid}"
 
 
 def angle_for(g, sid: str) -> str:
