@@ -53,7 +53,7 @@ def _copy_seed_avatars(dest_dir: Path) -> None:
         return
     for src in src_dir.glob("*.png"):
         try:
-            shutil.copy(src, dest_dir / community.name)
+            shutil.copy(src, dest_dir / src.name)
         except OSError:
             pass
 

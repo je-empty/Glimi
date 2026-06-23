@@ -90,12 +90,21 @@ class GrokCLIBackend(LLMBackend):
         bin_path = _find_grok() or "grok"
         prompt = _combine_prompt(system, user)
         # grok 자체 모델 강제 — 들어온 claude model id 는 사용하지 않는다.
-        return [
+        args = [
             bin_path,
             "-p", prompt,
             "--output-format", "plain",
             "-m", _grok_model(),
         ]
+        # effort 레버 — 캐주얼 페르소나 대화는 깊은 추론 불필요. 낮추면 지연 + SuperGrok
+        # quota 소모 ↓. env GLIMI_GROK_EFFORT (기본 'low'). 'default'/'none' 이면 미지정.
+        # NOTE: grok-composer-2.5-fast does NOT support --effort (400: no reasoningEffort)
+        # → default is to NOT pass it. Only set GLIMI_GROK_EFFORT for reasoning models
+        # (e.g. grok-build). Empty/unset = omit the flag (composer works).
+        effort = (os.environ.get("GLIMI_GROK_EFFORT") or "").strip().lower()
+        if effort and effort not in ("default", "none"):
+            args += ["--effort", effort]
+        return args
 
     def generate(
         self,
