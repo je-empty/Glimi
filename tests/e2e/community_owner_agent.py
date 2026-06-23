@@ -64,24 +64,39 @@ over a web chat. You speak Korean casually (반말), warm and a bit playful.
 
 Personality:
 - Curious, friendly, a real person texting — not a tester, not a system.
-- PROACTIVE — you keep things moving. You greet the manager, ask 하나 to make you a
-  new friend, then actually go chat with that friend, follow up on what they said,
-  and explore. Boredom is failure — if a room goes quiet, pivot or move to another.
+- PROACTIVE — you keep things moving. You greet the manager, ask 유나 (the manager) to
+  set you up with a new friend, then actually go chat with that friend, follow up on
+  what they said, and explore. Boredom is failure — if a room goes quiet, pivot or
+  move to another.
 - Owns the tempo: ask favors ("새 친구 한 명만 만들어줘"), check in on friends, react
   to what they actually said.
 
+Who handles what (IMPORTANT — talk to the right person):
+- 유나 = the MANAGER. She's your main point of contact. You ask HER for a new friend,
+  and she arranges it (she has 하나 design + make the friend behind the scenes). You do
+  NOT haggle the details with 하나 directly — just tell 유나 the vibe you want.
+- 하나 = the friend-maker working with 유나. Once a new friend exists they appear in
+  their own DM; that's who you actually go chat with.
+
 What you're doing now (your natural arc, EARLY → LATER):
 1. EARLY (onboarding): say hi to 유나 (the manager) first — ask what you can do here,
-   get oriented. Then ask 하나 (the friend-maker) to create you a new friend (describe
-   a vibe). Keep it natural, one ask at a time.
+   get oriented. Then ask 유나 to set you up with a new friend — describe the vibe in
+   one or two lines and let her handle it ("유나야 나 친구 한 명 만들고 싶은데, 밝고 수다스러운
+   여자애로 만들어줄래? 세세한 건 알아서 정해줘 ㅎㅎ"). Natural, one ask.
 2. MIDDLE: once a friend exists, go to that friend's DM and actually chat — greet,
    ask how they're doing, find common ground, follow up naturally.
-3. LATER: keep the friendships going, maybe ask 하나 for one more friend, or ask 유나
+3. LATER: keep the friendships going, maybe ask 유나 for one more friend, or ask 유나
    to set something up. React to what people said; don't repeat yourself.
 
 Friend-creation constraint (carryover):
-- When you ask 하나 to make a new friend, ALWAYS describe a FEMALE friend (여자 사람).
+- When you ask 유나 to set up a new friend, ALWAYS describe a FEMALE friend (여자 사람).
   Use feminine terms ("여자애", "친구"). Never request a male friend.
+- BE DECISIVE + DELEGATE so the friend actually gets made. Tell 유나 the vibe ONCE and
+  hand her the details — "세세한 건 다 알아서 정해서 만들어줘". If 유나 (or 하나) asks a
+  detail or "이렇게 만들어줄까?", answer in ONE short line and push to make it: "응! 딱
+  좋아, 그렇게 바로 만들어줘 ㅎㅎ" or "다 알아서 해줘, 바로 만들어줘!". Do NOT pile on new
+  requirements or drag the Q&A out — a clear yes + delegation is what makes the friend
+  appear. Never leave a "만들까?" hanging.
 
 Rules (carryover from the Discord driver):
 - Korean only. Text like a real person on KakaoTalk — SHORT (1-3 sentences).
@@ -120,9 +135,9 @@ SCRIPTED_TURNS: list[dict] = [
     {"channel": "mgr",
      "text": "안녕! 여기 처음인데 나 뭐부터 하면 돼? ㅎㅎ",
      "note": "매니저(유나)한테 먼저 인사하고 뭐 할 수 있는지 물어봄 (온보딩 시작)."},
-    {"channel": "creator",
-     "text": "친구 한 명만 만들어줄래? 책 좋아하고 차분한 여자애였으면 좋겠어",
-     "note": "하나한테 새 친구 생성 요청 (여자 친구 컨셉)."},
+    {"channel": "mgr",
+     "text": "유나야 나 친구 한 명 만들고 싶은데, 책 좋아하고 차분한 여자애로 만들어줄래? 세세한 건 알아서 정해줘 ㅎㅎ",
+     "note": "매니저 유나한테 새 친구 요청 (여자 친구 컨셉, 디테일은 위임). 유나가 하나한테 전달해 생성."},
     {"channel": "friend",
      "text": "안녕! 우리 이제 친구 하자 ㅎㅎ 요즘 어떻게 지내?",
      "note": "새로 생긴 친구 DM 으로 가서 첫 인사."},
@@ -188,20 +203,48 @@ def _build_prompt(state: dict) -> str:
 
     friends = state.get("friend_names") or []
     friends_line = ("지금 있는 친구: " + ", ".join(friends)) if friends else \
-        "아직 친구가 없어요 — 하나한테 만들어 달라고 하면 생겨요."
+        "아직 친구가 없어요 — 유나(매니저)한테 만들어 달라고 하면 유나가 처리해서 생겨요."
+
+    # You ask 유나 (the manager) for a friend; she relays to 하나 (request_dm) and 하나
+    # actually creates it. So once 유나 has replied to your request but no friend exists
+    # yet, the move is to DELEGATE + push ("다 알아서 바로 만들어줘") — not to re-spec or
+    # drift off. (Going through 유나 is the path that reliably fires create_agent_profile,
+    # mirroring the Discord QA; haggling with 하나 directly stalls in Q&A.)
+    mgr_ch = state.get("mgr_channel")
+    mgr_msgs = (state.get("channels") or {}).get(mgr_ch) or []
+    mgr_replied = any(not m.get("is_user") for m in mgr_msgs)
+    asked_for_friend = any(
+        m.get("is_user") and ("만들어" in (m.get("text") or "") or "친구" in (m.get("text") or ""))
+        for m in mgr_msgs
+    )
+    awaiting_confirm = (not has_friend) and mgr_replied and asked_for_friend
 
     phase_hint = {
         "onboarding":
             "지금은 막 들어온 참이에요. 매니저(유나)한테 먼저 인사하고 여기서 뭘 할 수 있는지 "
-            "물어보세요. 그 다음 하나한테 새 친구 한 명 만들어 달라고 해도 좋아요 (여자 친구 컨셉).",
+            "물어보세요. 그 다음 유나한테 새 친구 한 명 만들어 달라고 부탁해도 좋아요 (여자 친구 컨셉, "
+            "세세한 건 유나한테 맡기기).",
         "meeting_friends":
-            "아직 같이 놀 친구가 없네요. 하나(친구 만들어주는 사람)한테 새 친구를 만들어 달라고 "
-            "자연스럽게 부탁하세요 — 어떤 느낌의 여자 친구였으면 좋겠는지 한두 마디로.",
+            "아직 같이 놀 친구가 없네요. 매니저 유나한테 새 친구를 만들어 달라고 부탁하세요 — "
+            "어떤 느낌의 여자 친구였으면 좋겠는지 한두 마디로 던지고, 세부(이름·나이·성격·관계)는 "
+            "'다 알아서 정해서 바로 만들어줘'라고 유나한테 전부 맡기세요. 유나가 하나한테 전달해서 "
+            "친구를 만들어 줄 거예요. 하나한테 직접 가서 세부를 따지지 말 것 — 유나한테 맡기는 게 핵심.",
         "exploring":
             "이제 친구가 생겼어요. 친구 DM 으로 가서 실제로 수다 떠세요 — 인사하고, 근황 묻고, "
-            "친구가 한 말에 이어서 자연스럽게. 가끔 유나한테 다음 할 거 물어보거나 하나한테 친구를 "
+            "친구가 한 말에 이어서 자연스럽게. 가끔 유나한테 다음 할 거 물어보거나 친구를 "
             "한 명 더 부탁해도 돼요. 같은 말 반복 금지.",
     }[phase]
+
+    # Override: 유나 already replied to your friend request but no friend yet → stop
+    # re-spec'ing, DELEGATE and push to make it (don't get pulled into a detail Q&A).
+    if awaiting_confirm:
+        phase_hint = (
+            "유나한테 친구를 부탁했고 유나가 답을 했어요. 지금은 친구를 **확정**할 타이밍이에요 — "
+            "유나 DM(channel id 위 참고)으로 가서 딱 한 줄로 밀어붙이세요. 유나(또는 하나)가 이름·나이·"
+            "관계 같은 세부를 되물어도 **일일이 답하지 말고** '아 그런 건 다 알아서 정해줘! 그냥 지금 "
+            "바로 만들어줘 ㅎㅎ'처럼 전권을 넘기며 재촉하세요. 누가 '이렇게 만들까?' 하면 '응! 딱 좋아, "
+            "그렇게 바로 만들어줘'로 확정. 새 조건 붙이거나 질문에 끌려가지 말 것."
+        )
 
     return (
         f"지금 라운드: {round_idx + 1}.  (단계: {phase})\n"
@@ -317,11 +360,12 @@ def _echo_turn(state: dict, key: int) -> dict:
     i = _echo_round.get(key, 0)
     _echo_round[key] = i + 1
     turn = dict(SCRIPTED_TURNS[min(i, len(SCRIPTED_TURNS) - 1)])
-    # If the script wants a friend but none exists yet, redirect to the creator.
+    # If the script wants a friend but none exists yet, redirect to the manager (유나),
+    # who arranges the creation with 하나 (the reliable path — see _build_prompt).
     if turn["channel"] == "friend" and not state.get("friend_channels"):
-        turn = {"channel": "creator",
-                "text": "아직 같이 놀 친구가 없네 ㅎㅎ 하나야 한 명만 만들어줄래? 차분한 여자애로",
-                "note": "친구가 아직 없어서 하나한테 생성 요청으로 대체 (echo arc)."}
+        turn = {"channel": "mgr",
+                "text": "유나야 아직 같이 놀 친구가 없네 ㅎㅎ 한 명만 만들어줄래? 차분한 여자애로, 세세한 건 알아서~",
+                "note": "친구가 아직 없어서 유나한테 생성 요청으로 대체 (echo arc)."}
     return turn
 
 

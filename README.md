@@ -102,6 +102,7 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 | **Proactive supervisor layer** | The one layer that ticks without input. Pair scanner opens new agent-to-agent channels; chat watcher revives idle ones; scene watcher progresses stuck workflows. |
 | **Live observability dashboard** | Cytoscape.js agent graph, per-agent 5-layer memory inspector, real-time channel viewer, tool-call timeline, LLM usage/cost card, model swap UI, runtime state badges. |
 | **Evaluation harness** | A golden set across persona / tool-use / memory / fallback / supervisor capabilities; deterministic checks + an LLM-as-judge (reused, not reinvented); a backend-tagged **regression gate** (fails CI on a pass-rate or judge-score drop); a production-feedback loop that promotes a flagged bad turn into a golden case. Runs free on the offline `echo` backend. |
+| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** (your own persona) drives a full app from onboarding through the core journey, and the session is scored across weighted dimensions (Community: onboarding · friend-creation · conversation-quality · no-hallucination · no-leaks · responsiveness) into a **0–100 quality score**. Each run is a **git-SHA-anchored "generation"** persisted to SQLite + a committed JSON, so quality is tracked commit-over-commit — an *eval-driven development* flywheel where `git log` reads as a measurable quality timeline. See [`docs/qa_system.md`](docs/qa_system.md). |
 | **Cost & latency accounting** | Every LLM call records tokens, estimated cost, and latency at one choke-point; every tool call records args/result/latency/ok at another. Honest by construction — local/echo priced at $0, CLI/estimate rows labeled *est.*, dollars shown only for real priced spend. |
 | **Human-in-the-loop gate** | An approval policy (`approve / edit / reject` + fallback + decision trail) around a consequential action, used by Workspace; never hangs (non-interactive auto-approves). |
 | **Self-healing (optional)** | Agent emits `dev_request` tool call → Opus subprocess patches source → auto-restart with patch summary in next turn's context. |
@@ -461,7 +462,7 @@ run.bat
 ./run.sh --setup-only                   # run setup (venv/deps/ollama/model) then exit
 ./run.sh --imagegen                     # enable local LoRA portrait generation (opt-in, ~6min/portrait)
 ./run.sh --legacy <community>           # legacy single-bot mode (QA / debugging)
-./scripts/qa.sh                         # E2E QA runner (tmux: Glimi-QA-Runner)
+./scripts/community_e2e.sh --owner-agent --qa   # web E2E EDD QA — owner-agent-driven, scored generation (docs/qa_system.md)
 ./scripts/stop.sh                       # graceful shutdown
 python -m community.platform.accounts list    # list platform accounts
 python -m community.community list            # list communities (CLI)
