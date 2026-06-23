@@ -24,13 +24,9 @@ def _sync_error_log(msg: str):
     log_writer.error(f"[Sync] {msg}")
 
 
-def normalize_channel_name(name: str) -> str:
-    """채널명 정규화 — 공백 → dash, 양 끝 trim. Discord 가 자동 변환하는 것과 일치시켜
-    DB·runtime cache 와 어긋나는 회귀 방지."""
-    import re as _re
-    if not name:
-        return name
-    return _re.sub(r"\s+", "-", name.strip())
+# normalize_channel_name 의 canonical home 은 community.core.channels (discord-free).
+# sync.py 는 후방호환 re-export 만 유지 (자체 caller + 구 importer 보호).
+from community.core.channels import normalize_channel_name  # noqa: E402,F401
 
 
 async def ensure_unique_channel(guild, ch_name: str, category=None, **kwargs) -> tuple:
@@ -63,8 +59,8 @@ _ensure_unique_channel = ensure_unique_channel
 _normalize_ch_name = normalize_channel_name
 
 
-# 카테고리 순서
-CATEGORY_ORDER = ["glimi-mgr", "glimi-dm", "glimi-group", "glimi-internal-dm", "glimi-internal-group"]
+# 카테고리 순서 — canonical home = community.core.channels (discord-free). re-export.
+from community.core.channels import CATEGORY_ORDER  # noqa: E402,F401
 
 
 def _get_category_for_channel(ch_name: str) -> str:
@@ -428,7 +424,7 @@ async def sync_community(
             total_db_to_discord = 0
 
             # 아바타 로드 함수
-            from community.bot.core import _get_profile_image_bytes
+            from community.core.profile_image import get_profile_image_bytes as _get_profile_image_bytes
 
             # 메시지 sync 제외 채널 — 채널 존재는 보장하지만 DB↔Discord 메시지 카운트 맞춤 X.
             # mgr-system-log 디코 채널은 폐지됐지만, 기존(레거시) 커뮤니티에 orphan 으로
@@ -995,7 +991,7 @@ async def restore_messages(
             user_name = get_user_name()
 
             # 아바타 로드
-            from community.bot.core import _get_profile_image_bytes
+            from community.core.profile_image import get_profile_image_bytes as _get_profile_image_bytes
 
             # glimi 채널 매핑
             discord_channels = {}

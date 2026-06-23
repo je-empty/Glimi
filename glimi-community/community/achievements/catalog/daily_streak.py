@@ -9,10 +9,12 @@ from community.achievements.base import Achievement
 
 
 def _norm(ch: str) -> str:
-    """Discord channel name normalization (공백 → 하이픈, 소문자) 대용 — sync 모듈 의존 회피."""
+    """채널명 정규화 (공백 → 하이픈, 소문자). discord-free core.channels 경유 (구
+    `community.core.sync._norm_channel_name` 는 존재한 적 없어 항상 fallback 으로
+    빠졌음 — 그 실제 동작인 .lower() 를 유지한다)."""
     try:
-        from community.core.sync import _norm_channel_name
-        return _norm_channel_name(ch)
+        from community.core.channels import normalize_channel_name
+        return normalize_channel_name(ch).lower()
     except Exception:
         return (ch or "").strip().lower().replace(" ", "-")
 

@@ -12,16 +12,16 @@ import os
 import subprocess
 from datetime import datetime
 
-import discord
-
+# ⚠ discord / community.bot.core 는 top-level import 금지 (web python 엔 discord 미설치).
+# discord 의존 코드는 모두 guild 기반 Discord-only 경로라 사용 지점에서 lazy import 한다
+# (Phase 1.8). 채널/ID 상수는 discord-free 인 community.core.channels 에서 가져온다.
 from community import db, log_writer
 from community.core.runtime import runtime
-from community.bot import (
+from community.core.channels import (
     MGR_CHANNEL,
     CREATOR_CHANNEL,
     MGR_ID,
 )
-from community.bot.core import send_as_agent, _split_for_chat
 from community.supervisors.base import Supervisor
 
 
@@ -342,6 +342,7 @@ class TutorialFlowSupervisor(Supervisor):
             return 999
 
     async def _nudge_yuna(self, guild, system_msg: str):
+        import discord  # lazy — Discord-only 경로 (guild 기반). web 엔 미설치.
         log_writer.system(f"[sup:tutorial] 유나 재촉")
         mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
         if not mgr_ch:
@@ -349,12 +350,15 @@ class TutorialFlowSupervisor(Supervisor):
         await self._inject_and_send(MGR_ID, MGR_CHANNEL, mgr_ch, system_msg)
 
     async def _nudge_agent(self, guild, agent_id: str, ch_name: str, system_msg: str):
+        import discord  # lazy — Discord-only 경로 (guild 기반). web 엔 미설치.
         ch = discord.utils.get(guild.text_channels, name=ch_name)
         if not ch:
             return
         await self._inject_and_send(agent_id, ch_name, ch, system_msg)
 
     async def _inject_and_send(self, agent_id, ch_name, channel, instruction):
+        from community.bot.core import send_as_agent, _split_for_chat  # lazy — Discord-only.
+
         if log_writer.is_thinking(agent_id) or log_writer.is_speaking(agent_id):
             log_writer.system(f"[sup:{self.name}] {agent_id} 이미 추론 중 — 강제 지시 스킵")
             return

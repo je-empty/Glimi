@@ -22,9 +22,33 @@ import asyncio
 import os
 from typing import Literal
 
+from typing import Optional
+
 from community import community, db, log_writer
-from community.core.profile import invalidate_cache
+from community.core.profile import invalidate_cache, load_profile
 from community.core.runtime import runtime
+
+
+# ── 프로필 이미지 바이트 로드 (Phase 1.5 salvage from community.bot.core) ──────
+# 순수 파일 IO — discord-free. 구 bot/core._get_profile_image_bytes 와 동일 로직.
+def get_profile_image_bytes(agent_id: str) -> Optional[bytes]:
+    """프로필 이미지 로드 — 커뮤니티 디렉토리 우선, assets 폴백"""
+    profile = load_profile(agent_id)
+    fname = (profile or {}).get("profile_image_filename") or (profile or {}).get("avatar_filename")
+
+    # DB에 파일명이 있으면 그걸로 찾기
+    if fname:
+        path = community.get_profile_image_path(fname)
+        if path:
+            with open(path, "rb") as f:
+                return f.read()
+
+    # 폴백: agent_id로 파일 스캔
+    path = community.find_profile_image(agent_id)
+    if path:
+        with open(path, "rb") as f:
+            return f.read()
+    return None
 
 
 # 동일 agent 동시 생성 차단 (각 ~6분 GPU 점유, queue 누적 방지)
@@ -140,4 +164,4 @@ async def generate_for_pending_agent(
     return await _generate_to_paths(agent_id, character_block, version, seed)
 
 
-__all__ = ["generate_for_agent", "generate_for_pending_agent"]
+__all__ = ["generate_for_agent", "generate_for_pending_agent", "get_profile_image_bytes"]

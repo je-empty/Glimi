@@ -143,3 +143,21 @@ def internal_dm_channel_name(a_name: str, b_name: str) -> str:
     pa, pb = _agent_name_priority(a_name), _agent_name_priority(b_name)
     first, second = (a_name, b_name) if pa <= pb else (b_name, a_name)
     return f"internal-dm-{_norm_name_for_channel(first)}-{_norm_name_for_channel(second)}"
+
+
+# ── 채널명 정규화 + 카테고리 순서 (Phase 1.4 salvage from community.core.sync) ──
+# sync.py 는 top-level `import discord` 라 web python 에서 import 불가. 아래 두 심볼은
+# discord-free 라 여기(core.channels)로 옮겨 web 경로(scene/achievement)가 sync 의
+# discord 의존 없이 쓰게 한다. sync.py 는 자체 caller 호환을 위해 re-export 유지.
+
+def normalize_channel_name(name: str) -> str:
+    """채널명 정규화 — 공백 → dash, 양 끝 trim. Discord 가 자동 변환하는 것과 일치시켜
+    DB·runtime cache 와 어긋나는 회귀 방지."""
+    import re as _re
+    if not name:
+        return name
+    return _re.sub(r"\s+", "-", name.strip())
+
+
+# 카테고리 순서 (구 Discord 카테고리 정렬용 — web 에선 no-op 이지만 scene 코드가 참조)
+CATEGORY_ORDER = ["glimi-mgr", "glimi-dm", "glimi-group", "glimi-internal-dm", "glimi-internal-group"]

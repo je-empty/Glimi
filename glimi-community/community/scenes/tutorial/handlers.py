@@ -10,15 +10,11 @@ import asyncio
 import json as _json
 import re as _re
 
-import discord
-
+# ⚠ discord / community.bot.core 는 top-level import 금지 (web python 엔 discord 미설치).
+# 이 모듈의 discord 의존 함수들은 모두 `guild` 를 받는 Discord-only 경로라, 각 함수 안에서
+# lazy import 한다 (Phase 1.8). 실제 adapter 전환은 Phase 4.5.
 from community import db, log_writer
 from community.core.channels import MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID
-from community.bot.core import (
-    create_tutorial_channel,
-    send_as_agent,
-    _split_for_chat,
-)
 from community.core.profile import load_profile
 from community.core.runtime import runtime
 from community.scenes.tutorial.scene import scene
@@ -69,6 +65,9 @@ async def force_hana_greeting_if_missing(guild) -> bool:
 
     반환: 복구 실행했으면 True.
     """
+    import discord  # lazy — Discord-only 경로 (guild 기반). web 엔 미설치.
+    from community.bot.core import send_as_agent, _split_for_chat
+
     creator_ch = discord.utils.get(guild.text_channels, name=CREATOR_CHANNEL)
     if not creator_ch:
         return False
@@ -176,6 +175,9 @@ async def trigger_phase2(guild):
 
 async def setup_channels(guild):
     """Phase 2 본체 — 크리에이터(하나) DM 생성, 유나 안내, 하나 인사."""
+    import discord  # lazy — Discord-only 경로 (guild 기반). web 엔 미설치.
+    from community.bot.core import create_tutorial_channel, send_as_agent, _split_for_chat
+
     current = scene.current_phase()
     if current in ("channels_done", "complete"):
         return
@@ -318,7 +320,7 @@ async def setup_channels(guild):
         log_writer.system(f"⚠ {CREATOR_CHANNEL}에 인사 메시지 0건 — 생성 응답 비어있음")
 
     # 카테고리 순서 정렬
-    from community.core.sync import CATEGORY_ORDER
+    from community.core.channels import CATEGORY_ORDER
     for i, cat_name in enumerate(CATEGORY_ORDER):
         cat = discord.utils.get(guild.categories, name=cat_name)
         if cat:

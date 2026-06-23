@@ -29,26 +29,9 @@ from community import db, log_writer, community
 
 
 # ── 프로필 이미지 ──────────────────────────────────────
-
-
-def _get_profile_image_bytes(agent_id: str) -> Optional[bytes]:
-    """프로필 이미지 로드 — 커뮤니티 디렉토리 우선, assets 폴백"""
-    profile = load_profile(agent_id)
-    fname = (profile or {}).get("profile_image_filename") or (profile or {}).get("avatar_filename")
-
-    # DB에 파일명이 있으면 그걸로 찾기
-    if fname:
-        path = community.get_profile_image_path(fname)
-        if path:
-            with open(path, "rb") as f:
-                return f.read()
-
-    # 폴백: agent_id로 파일 스캔
-    path = community.find_profile_image(agent_id)
-    if path:
-        with open(path, "rb") as f:
-            return f.read()
-    return None
+# 순수 파일 IO 스파인은 community.core.profile_image 로 이전 (Phase 1.5, discord-free).
+# 여기선 후방호환 re-export 만 유지.
+from community.core.profile_image import get_profile_image_bytes as _get_profile_image_bytes  # noqa: E402,F401
 
 
 
