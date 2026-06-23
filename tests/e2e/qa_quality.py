@@ -47,7 +47,8 @@ DIMENSIONS: list[Dimension] = [
     Dimension("onboarding", "온보딩", 1.0, "structural",
               "막 들어온 오너가 매니저(유나)한테 인사하고 오리엔테이션을 받는가"),
     Dimension("friend_creation", "친구 생성", 1.5, "structural",
-              "오너 요청으로 진짜 새 친구가 생성되어 그 친구와 대화까지 이어지는가"),
+              "오너 요청으로 진짜 새 친구가 생성되어 그 친구와 대화까지 이어지는가",
+              critical=True),  # 이게 깨지면 제품의 존재 이유가 깨진 것 → 전체 FAIL
     Dimension("conversation_quality", "대화 품질", 2.0, "judge",
               "친구들의 답이 사람 친구처럼 자연스럽고 일관·맥락있게 좋은가 (5축)"),
     Dimension("no_hallucination", "환각 없음", 1.5, "judge",

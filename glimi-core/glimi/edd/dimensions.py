@@ -20,12 +20,16 @@ from typing import Optional
 class Dimension:
     """An app-supplied quality axis. ``kind`` is "structural" | "judge" (free-form —
     used only for display/grouping). ``what`` is a one-line description surfaced in
-    reports so a reader sees what the score means."""
+    reports so a reader sees what the score means. ``critical=True`` marks a make-or-
+    break axis (the app's reason to exist): if a critical dimension fails, the whole
+    run fails regardless of the composite (a high chat score can't paper over a broken
+    core journey)."""
     key: str
     label: str
     weight: float
     kind: str
     what: str = ""
+    critical: bool = False
 
 
 @dataclass
@@ -41,6 +45,7 @@ class DimResult:
     detail: str
     skipped: bool = False
     skip_reason: str = ""
+    critical: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -48,15 +53,16 @@ class DimResult:
             "weight": self.weight, "what": self.what, "score": self.score,
             "passed": self.passed, "detail": self.detail,
             "skipped": self.skipped, "skip_reason": self.skip_reason,
+            "critical": self.critical,
         }
 
     @classmethod
     def for_dim(cls, dim: Dimension, *, score: Optional[float], passed: Optional[bool],
                 detail: str, skipped: bool = False, skip_reason: str = "") -> "DimResult":
         """Build a result carrying a :class:`Dimension`'s static fields — so evaluators
-        don't restate key/label/weight/kind/what."""
+        don't restate key/label/weight/kind/what/critical."""
         return cls(dim.key, dim.label, dim.kind, dim.weight, dim.what,
-                   score, passed, detail, skipped, skip_reason)
+                   score, passed, detail, skipped, skip_reason, dim.critical)
 
 
 def composite_score(results: list[DimResult]) -> Optional[float]:
@@ -97,9 +103,14 @@ class Assessment:
 def build_assessment(results: list[DimResult], *, min_overall: int = 70,
                      meta: Optional[dict] = None) -> Assessment:
     """Fold evaluated dimension results into a composite Assessment. ``passed`` =
-    composite present AND >= ``min_overall``. ``failing`` = dims that hard-failed
-    (``passed is False``; skipped dims are not failures)."""
+    composite present AND >= ``min_overall`` AND no **critical** dimension failed (a
+    broken core journey can't be outvoted by a high chat score). ``failing`` = dims
+    that hard-failed (``passed is False``; skipped dims are not failures)."""
     overall = composite_score(results)
-    passed = overall is not None and overall >= min_overall
     failing = [r.key for r in results if r.passed is False]
-    return Assessment(overall, passed, min_overall, results, failing, dict(meta or {}))
+    critical_failed = [r.key for r in results if r.critical and r.passed is False]
+    passed = (overall is not None and overall >= min_overall and not critical_failed)
+    meta = dict(meta or {})
+    if critical_failed:
+        meta["critical_failed"] = critical_failed
+    return Assessment(overall, passed, min_overall, results, failing, meta)
