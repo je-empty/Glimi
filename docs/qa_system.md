@@ -130,10 +130,20 @@ glimi.edd  (코어, 도메인-중립, glimi wheel 에 포함)
 - **Phase 2** ✅: 플랫폼 **웹 QA 대시보드**(`/admin/qa`, admin 메뉴 — 최신점수 히어로·**품질 우상향 트렌드 차트**·세대 테이블) + **PDF 리포트**(`--pdf` 또는 대시보드 "PDF 내보내기" → playwright 렌더, 트렌드+차원 포함).
 - **Phase 3**: 시나리오 라이브러리(도전과제/그룹챗/드라마) + 차원 확장 + 워크스페이스도 `glimi.edd` 채택.
 
-## 알려진 gen-1 baseline 이슈 (= 시스템이 잡은 첫 실버그)
+## 추적 중인 핵심 이슈 — `friend_creation` (시스템이 계속 잡고 있는 실버그)
 
-`friend_creation` 이 현재 **FAIL** (0/10): 오너가 유나 경유로 친구를 부탁해도, claude_cli 실런타임에서
-유나(`request_dm`)·하나(`create_agent_profile`)가 도구를 **말로만 하고 `<tools>` 블록을 안 뱉어**
-실제 생성이 안 된다. 이것이 gen-1→gen-2 의 첫 개선 타깃 — 고치면 `friend_creation 0→10`, 종합 점수가
-오르고 그 델타가 git 에 남는다. (격리 `llm.generate`+clean confirm 에선 하나가 도구를 뱉는 것으로
-확인 — 멀티턴 대화에서 commit 도달을 못 하는 게 핵심.)
+`friend_creation` 이 **FAIL** (0/10): 오너가 유나 경유로 친구를 부탁해도, claude_cli 실런타임에서
+유나(`request_dm`)·하나(`create_agent_profile`)가 도구를 **말로만 하고(narration) `<tools>` 블록을
+안 뱉어** 실제 생성이 안 된다.
+
+**규명된 것**:
+- 격리 `llm.generate`(단발 깨끗한 요청)에선 유나·하나 **둘 다 `<tools>` 를 제대로 뱉음** — 메커니즘은 정상.
+- **멀티턴 실런타임에선 안 뱉음**: 대화 흐름(인사·오리엔테이션·오너 인터뷰)에 들어가면 도구 발동을 건너뜀.
+- gen-1→gen-2 시도: 프롬프트 강화(mgr rule-6 "narration≠action", creator "narration≠creation", 오너 깨끗요청)로
+  **대화품질 6→9·종합 69.4→75.0** 올랐지만 `friend_creation` 은 여전히 0 — 유나가 "먼저 재빈이 알아가야"라며
+  라우팅 대신 오너를 인터뷰함.
+
+**근본 원인 / robust fix**: claude_cli `-p` text 모드엔 **네이티브 function-calling 이 없어** `<tools>` 텍스트
+dialect 를 모델이 대화 중 *선택*해서 뱉어야 하는데, 멀티턴 사회적 대화에선 자연스러운 채팅이 우선돼 불안정.
+프롬프트 튜닝만으론 100% 안 됨. **robust fix = 네이티브 tool-use 백엔드(`anthropic_sdk`, function-calling)** —
+다음 세대 타깃. QA 시스템은 이걸 계속 측정·가시화한다 (gen 별 `friend_creation` 점수 추적).
