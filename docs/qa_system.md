@@ -88,14 +88,30 @@ GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e \
 
 격리 임시 DATA/COMMUNITIES dir + 비표준 포트 → 실데이터·je-empty(:8200) 무접촉.
 
+## 아키텍처 — 코어 공용 프레임워크 + 앱 도메인
+
+공용 EDD 스캐폴딩은 **코어(`glimi.edd`)** 에 있어 Community·Workspace 가 공유한다. 각 앱은
+자기 **도메인 차원 + 오너 에이전트**만 구현한다. (코어 `eval/` 의 golden-set 능력 eval 과는 층위가
+다른 상보 레이어 — 그쪽은 유닛성, 이쪽은 풀 저니 통합성.)
+
+```
+glimi.edd  (코어, 도메인-중립, glimi wheel 에 포함)
+  ├─ Dimension / DimResult / composite_score / build_assessment   (차원모델 + 0–100 점수)
+  └─ GenerationStore                                              (SQLite + git-SHA JSON 세대)
+        ▲                                   ▲
+   community 가 import                  workspace 가 import (예정)
+   → 6 도메인 차원 + 오너에이전트       → 산출물/위임/A2A 차원 + 오너에이전트
+```
+
 ## 코드 맵
 
 | 파일 | 역할 |
 |---|---|
+| `glimi-core/glimi/edd/` | **공용 EDD 프레임워크** — `dimensions.py`(Dimension·DimResult·종합점수·Assessment) + `history.py`(GenerationStore: SQLite + git-SHA JSON 세대). 양 앱 공유 |
 | `tests/e2e/community_e2e.py` | 실 커뮤니티 서버 spawn + 오너 에이전트 드라이브 + `--qa` 훅 |
 | `tests/e2e/community_owner_agent.py` | 개발자 자아 오너 에이전트 (온보딩→유나경유 친구요청→대화) |
-| `tests/e2e/qa_quality.py` | **차원 정의 + 평가 + 종합 0–100 점수** |
-| `tests/e2e/qa_history.py` | **세대 저장**: SQLite(트렌드) + 커밋용 git-SHA JSON |
+| `tests/e2e/qa_quality.py` | **Community 도메인 6차원 + 평가** (코어 `glimi.edd` 위) |
+| `tests/e2e/qa_history.py` | 코어 `GenerationStore` 를 Community QA 경로로 설정한 thin 래퍼 |
 | `tests/e2e/community_verdict.py` | 구조 판정 (차원이 재사용) |
 | `tests/e2e/community_judge.py` | 대화품질 5축 LLM-judge (차원이 재사용) |
 | `tests/e2e/community_report.py` | 마크다운 리포트 |
