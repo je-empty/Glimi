@@ -136,14 +136,17 @@ glimi.edd  (코어, 도메인-중립, glimi wheel 에 포함)
 유나(`request_dm`)·하나(`create_agent_profile`)가 도구를 **말로만 하고(narration) `<tools>` 블록을
 안 뱉어** 실제 생성이 안 된다.
 
-**규명된 것**:
-- 격리 `llm.generate`(단발 깨끗한 요청)에선 유나·하나 **둘 다 `<tools>` 를 제대로 뱉음** — 메커니즘은 정상.
-- **멀티턴 실런타임에선 안 뱉음**: 대화 흐름(인사·오리엔테이션·오너 인터뷰)에 들어가면 도구 발동을 건너뜀.
-- gen-1→gen-2 시도: 프롬프트 강화(mgr rule-6 "narration≠action", creator "narration≠creation", 오너 깨끗요청)로
-  **대화품질 6→9·종합 69.4→75.0** 올랐지만 `friend_creation` 은 여전히 0 — 유나가 "먼저 재빈이 알아가야"라며
-  라우팅 대신 오너를 인터뷰함.
+**규명 과정 (gen-1 → gen-5, 여러 fix 거치며)**:
+- claude_cli 툴발동은 정상 — 격리 `llm.generate`(단발 요청)에서 유나(`request_dm`)·하나(`create_agent_profile`)
+  **둘 다 `<tools>` 제대로 뱉음**. ("네이티브 tool-use 필요" 라는 중간 결론은 **오답**이었음.)
+- 친구는 **튜토리얼 씬**(`community.scenes.tutorial`)이 진행시킨다: 유나가 오너 프로필(MBTI·직업·취미)을 인터뷰 →
+  ≥2개 수집되면 자동으로 **하나(creator) 등장 → 첫 친구 생성**. 이 진행을 **자율 supervisor 가 백그라운드 틱**으로 한다.
+- 거친 fix(전부 유효, 커밋됨): 오너를 튜토리얼 협조형으로(유나 질문에 답) · WS keepalive 견고성 · mgr/creator 프롬프트 강화.
 
-**근본 원인 / robust fix**: claude_cli `-p` text 모드엔 **네이티브 function-calling 이 없어** `<tools>` 텍스트
-dialect 를 모델이 대화 중 *선택*해서 뱉어야 하는데, 멀티턴 사회적 대화에선 자연스러운 채팅이 우선돼 불안정.
-프롬프트 튜닝만으론 100% 안 됨. **robust fix = 네이티브 tool-use 백엔드(`anthropic_sdk`, function-calling)** —
-다음 세대 타깃. QA 시스템은 이걸 계속 측정·가시화한다 (gen 별 `friend_creation` 점수 추적).
+**진짜 근본 원인**: 그 **자율 scene supervisor(튜토리얼 포함)는 현재 `community.discord_bot` 서브프로세스 안에서만
+돈다** (`DISCORD_BOT_TOKEN` 필요). 웹 플랫폼은 채팅을 on-demand 로 서빙할 뿐 **web-native 자율 루프가 없다** — 그래서
+순수 웹 E2E 에선 튜토리얼이 진행 못 해 `friend_creation` 이 0 에 머문다. (디스코드 QA 가 됐던 건 디스코드 봇이
+그 supervisor 를 돌렸기 때문.) **= CLAUDE.md "Discord = 어댑터" 미완 디커플링** (`analysis/platform_decoupling_review.md`).
+
+**robust fix**: 자율 supervisor 를 디스코드에서 분리해 **web-native 로 실행** (플랫폼 디커플링 프로젝트). 그 전까진 QA 가
+이 갭을 정직하게 측정·가시화한다 (gen 별 `friend_creation` = 0, 디커플링 완료 시 0→10).

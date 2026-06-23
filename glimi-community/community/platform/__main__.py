@@ -7,6 +7,7 @@
 """
 import argparse
 import logging
+import os
 
 import uvicorn
 
@@ -59,12 +60,30 @@ def main() -> None:
 
     _install_access_log_filter()
 
+    # WebSocket keepalive — env-gated so a slow synchronous backend (claude_cli blocks
+    # the loop for 30-90s) doesn't get its chat WS dropped (1011 keepalive timeout).
+    # Defaults unchanged (20/20) for prod; the E2E harness sets GLIMI_WS_PING_INTERVAL=0
+    # to disable pings entirely so a long drive survives. "0"/"none"/"off" → None.
+    def _ws_ping(name: str, default: float):
+        v = os.environ.get(name)
+        if v is None:
+            return default
+        v = v.strip().lower()
+        if v in ("", "0", "none", "off"):
+            return None
+        try:
+            return float(v)
+        except ValueError:
+            return default
+
     uvicorn.run(
         "community.platform.app:app",
         host=args.host,
         port=args.port,
         reload=args.reload,
         log_level="info",
+        ws_ping_interval=_ws_ping("GLIMI_WS_PING_INTERVAL", 20.0),
+        ws_ping_timeout=_ws_ping("GLIMI_WS_PING_TIMEOUT", 20.0),
     )
 
 

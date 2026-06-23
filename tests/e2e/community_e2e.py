@@ -165,6 +165,13 @@ def _get(base: str, path: str, *, cookie: str = "", timeout: float = 30.0) -> di
     return _http("GET", base + path, headers=headers, timeout=timeout)
 
 
+def _post(base: str, path: str, *, cookie: str = "", body: dict | None = None,
+          timeout: float = 30.0) -> dict:
+    headers = {"Cookie": cookie} if cookie else None
+    return _http("POST", base + path, body=body if body is not None else {},
+                 headers=headers, timeout=timeout)
+
+
 def _free_port() -> int:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
@@ -191,6 +198,10 @@ def _child_env(backend: str, data_dir: Path, comm_dir: Path) -> dict:
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"  # 한글 로그가 ASCII stdout 에서 안 깨지게
     env.setdefault("GLIMI_LANG", "ko")
+    # Disable the server's WS keepalive ping: a slow claude_cli call blocks the loop
+    # 30-90s, which would otherwise drop the drive's chat WS (1011 keepalive timeout)
+    # before the tutorial supervisor can bring in 하나 and a friend gets made.
+    env["GLIMI_WS_PING_INTERVAL"] = "0"
     return env
 
 
@@ -761,6 +772,14 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         # (c) log in (admin can access any community).
         cookie = _login(base)
         print("[community_e2e] logged in (session cookie acquired)")
+        # NOTE: the autonomous scene supervisors that would advance onboarding
+        # (collect_profile → bring in 하나 → first friend) currently run ONLY inside the
+        # Discord bot subprocess (`community.discord_bot`, needs DISCORD_BOT_TOKEN). The
+        # web platform serves chat on-demand but has no web-native autonomous loop yet,
+        # so in a pure web E2E the tutorial can't advance and friend_creation stays 0 —
+        # the QA system correctly surfaces this Discord-decoupling gap (analysis/
+        # platform_decoupling_review.md). POST /api/communities/{id}/start would just
+        # spawn a token-less Discord bot that exits immediately, so we don't call it.
 
         # (c.5) optional live-watch pause: the fresh community (owner + 유나 + 하나,
         #       no friends yet) is now served but NOT yet driven. Hold here so a
