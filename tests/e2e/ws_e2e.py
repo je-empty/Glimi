@@ -32,7 +32,7 @@ Usage::
     # REAL run (COST) via the launcher — leaves the server up for a tunnel
     ./scripts/ws_e2e.sh --rounds 3 --keep-serving
 
-Flags: --goal --rounds --backend --port --keep-serving (see ``--help``).
+Flags: --goal --rounds --backend --port --keep-serving --qa --pdf (see ``--help``).
 """
 from __future__ import annotations
 
@@ -51,6 +51,16 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 RESULTS_DIR = PROJECT_ROOT / "tests" / "e2e" / "results"
+
+# Make the split packages importable from THIS (parent harness) process too — the
+# --qa block imports glimi.edd via tests.e2e.ws_qa_quality. The canonical launcher
+# (scripts/ws_e2e.sh) already sets PYTHONPATH, but a bare `python -m tests.e2e.ws_e2e`
+# would otherwise miss glimi-core/glimi-community; bootstrap them here so the
+# assessment runs regardless of how the harness is launched.
+for _src in ("glimi-core", "glimi-community", "glimi-workspace"):
+    _p = str(PROJECT_ROOT / _src)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # Channels the verdict cares about (the authoritative inventory comes from the
 # served /chat/channels, but this is the floor we always try to pull even if a
@@ -330,7 +340,7 @@ def _build_snapshot(base: str, ws_id: str, *, backend: str, goal: str,
 def run(*, goal: str, context: str, backlog: list, rounds: int, backend: str,
         host: str, port: int, keep_serving: bool, poll_interval: float,
         wall_clock_cap: float, report: bool = False,
-        write_baseline: bool = False) -> dict:
+        write_baseline: bool = False, qa: bool = False, pdf: bool = False) -> dict:
     """Full web E2E: start server → create over HTTP → auto-run → poll →
     harvest served data → judge → write artifacts. Returns the verdict dict.
 
@@ -497,6 +507,57 @@ def run(*, goal: str, context: str, backlog: list, rounds: int, backend: str,
             print(f"[ws_e2e] 리포트 실패 (verdict 는 완료): {exc}")
             print(traceback.format_exc())
 
+    # (g) QA generation: multi-dimension quality assessment + git-anchored history.
+    #     Turns this run into a "generation" (overall 0-100 score across
+    #     task-decomposition / deliverable-completeness / deliverable-quality /
+    #     coordination / instruction-following / no-leaks), persisted to SQLite + a
+    #     committable git-SHA-stamped JSON. Mirrors community_e2e's --qa block.
+    if qa:
+        try:
+            from tests.e2e import ws_qa_quality, ws_qa_history
+            assessment = ws_qa_quality.assess(snap)
+            pdf_path = str(RESULTS_DIR / f"{run_id}-qa.pdf") if pdf else ""
+            gen = ws_qa_history.record_generation(
+                assessment, run_id=run_id, owner_name=snap.get("owner_name", OWNER_NAME),
+                goal=goal, report_md=verdict.get("report_md", ""), report_pdf=pdf_path)
+            verdict["qa"] = {
+                "overall_score": assessment["overall_score"],
+                "passed": assessment["passed"],
+                "failing": assessment["failing"],
+                "generation_no": gen["generation_no"],
+                "generation_file": gen["_path"],
+                "git_sha": gen["git"]["sha"],
+            }
+            # Optional PDF report (portfolio artifact) via the shared core renderer,
+            # including the quality-over-generations trend up to this run.
+            if pdf:
+                try:
+                    from glimi.edd import generation_to_pdf
+                    generation_to_pdf(gen, pdf_path, trend=ws_qa_history.load_generations(),
+                                      app_name="Glimi Workspace")
+                    verdict["qa"]["pdf"] = pdf_path
+                except Exception as pexc:
+                    print(f"[ws_e2e] PDF 생성 실패 (세대는 기록됨): {pexc}")
+            ov = assessment["overall_score"]
+            print("\n" + "─" * 64)
+            print(f"  QA GENERATION #{gen['generation_no']}  ·  git {gen['git']['sha']}"
+                  + ("*" if gen['git']['dirty'] else "")
+                  + f"  ·  {'✅ PASS' if assessment['passed'] else '❌ FAIL'} "
+                  + f"(overall {ov}/100, gate {assessment['min_overall']})")
+            for dim in assessment["dimensions"]:
+                if dim["skipped"]:
+                    mark, sc = "·", "skip"
+                else:
+                    mark = "✅" if dim["passed"] else "❌"
+                    sc = f"{dim['score']}/10"
+                print(f"    {mark} {dim['label']:12s} {sc:>6s}  (w{dim['weight']})  {dim['detail'][:60]}")
+            print(f"  generation: {gen['_path']}")
+            print("─" * 64)
+        except Exception as exc:
+            import traceback
+            print(f"[ws_e2e] QA 평가 실패 (verdict 는 완료): {exc}")
+            print(traceback.format_exc())
+
     print("\n" + "=" * 64)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
     print("=" * 64)
@@ -564,6 +625,11 @@ def main(argv: list[str] | None = None) -> int:
                          "after the run — quality judge runs only on a real backend")
     ap.add_argument("--write-baseline", action="store_true",
                     help="(re)write tests/e2e/ws-baseline.json from this run (implies --report)")
+    ap.add_argument("--qa", action="store_true",
+                    help="multi-dimension quality assessment → a git-anchored QA generation "
+                         "(SQLite + committable JSON in tests/e2e/ws_qa_generations/)")
+    ap.add_argument("--pdf", action="store_true",
+                    help="also render the generation to a PDF report (implies --qa; needs Playwright)")
     args = ap.parse_args(argv)
 
     backend = (args.backend or os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo"
@@ -597,6 +663,7 @@ def main(argv: list[str] | None = None) -> int:
         host=args.host, port=port, keep_serving=args.keep_serving,
         poll_interval=max(0.5, args.poll_interval), wall_clock_cap=max(30.0, wall_cap),
         report=args.report, write_baseline=args.write_baseline,
+        qa=args.qa or args.pdf, pdf=args.pdf,
     )
     status = verdict.get("status", "?")
     return 0 if status in ("PASS", "WARN") else 1
