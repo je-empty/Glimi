@@ -136,7 +136,8 @@ class GenerationStore:
             "failing": assessment.get("failing", []),
             "dimensions": [
                 {k: dim.get(k) for k in
-                 ("key", "label", "kind", "weight", "score", "passed", "skipped", "detail")}
+                 ("key", "label", "kind", "weight", "score", "passed", "skipped",
+                  "detail", "critical")}
                 for dim in assessment.get("dimensions", [])
             ],
             "report_md": report_md,

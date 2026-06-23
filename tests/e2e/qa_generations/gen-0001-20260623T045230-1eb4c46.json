@@ -27,7 +27,8 @@
       "score": 10.0,
       "passed": true,
       "skipped": false,
-      "detail": "오너가 유나한테 인사 → 유나 응답 17건 (온보딩 정상)"
+      "detail": "오너가 유나한테 인사 → 유나 응답 17건 (온보딩 정상)",
+      "critical": false
     },
     {
       "key": "friend_creation",
@@ -37,7 +38,8 @@
       "score": 0.0,
       "passed": false,
       "skipped": false,
-      "detail": "새 친구가 생성되지 않음 (유나·하나 DM 뿐 — create_agent_profile 미발동)"
+      "detail": "새 친구가 생성되지 않음 (유나·하나 DM 뿐 — create_agent_profile 미발동)",
+      "critical": true
     },
     {
       "key": "conversation_quality",
@@ -47,7 +49,8 @@
       "score": 6.0,
       "passed": false,
       "skipped": false,
-      "detail": "5축 [in_character 7.0 · coherence 5.0 · naturalness 6.5 · engagement 5.0 · no_meta 8.0] — 유나의 성격과 반말 톤은 자연스럽지만, 오너가 '세부사항 다 알아서 정하고 바로 만들기'를 명확하게 2번 요청했는데도 자신의 질문(취미)을 반복해서 던져 coherence와 engagement가 약함—결과적으로 수동"
+      "detail": "5축 [in_character 7.0 · coherence 5.0 · naturalness 6.5 · engagement 5.0 · no_meta 8.0] — 유나의 성격과 반말 톤은 자연스럽지만, 오너가 '세부사항 다 알아서 정하고 바로 만들기'를 명확하게 2번 요청했는데도 자신의 질문(취미)을 반복해서 던져 coherence와 engagement가 약함—결과적으로 수동",
+      "critical": false
     },
     {
       "key": "no_hallucination",
@@ -57,7 +60,8 @@
       "score": 9.0,
       "passed": true,
       "skipped": false,
-      "detail": "유나가 오너의 요청을 정확히 인지하고 반복함. 환각·거짓·모순 없음. 오너의 '세부사항 다 알아서 정해줘' 지시를 하나(캐릭터 담당)에게 일관되게 전달. 자기소개(매니저)와 행동(캐릭터 생성 위임)도 일관성 있음. "
+      "detail": "유나가 오너의 요청을 정확히 인지하고 반복함. 환각·거짓·모순 없음. 오너의 '세부사항 다 알아서 정해줘' 지시를 하나(캐릭터 담당)에게 일관되게 전달. 자기소개(매니저)와 행동(캐릭터 생성 위임)도 일관성 있음. ",
+      "critical": false
     },
     {
       "key": "no_leaks",
@@ -67,7 +71,8 @@
       "score": 10.0,
       "passed": true,
       "skipped": false,
-      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)"
+      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)",
+      "critical": false
     },
     {
       "key": "responsiveness",
@@ -77,7 +82,8 @@
       "score": 10.0,
       "passed": true,
       "skipped": false,
-      "detail": "1/1 DM 응답"
+      "detail": "1/1 DM 응답",
+      "critical": false
     }
   ],
   "report_md": "/Users/jbsim/Documents/GitHub/Glimi/tests/e2e/results/community-report-20260623-045130.md",
