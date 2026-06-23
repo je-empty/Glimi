@@ -2,7 +2,7 @@
 
 # Glimi
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-A42E2B) ![Status: alpha 0.1.0](https://img.shields.io/badge/status-alpha%200.1.0-orange) ![Backends: Claude · Ollama · vLLM · llama.cpp](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Ollama%20%C2%B7%20vLLM%20%C2%B7%20llama.cpp-4aff9e)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-A42E2B) ![Status: alpha 0.1.0](https://img.shields.io/badge/status-alpha%200.1.0-orange) ![Backends: Claude · Ollama · vLLM · llama.cpp](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Ollama%20%C2%B7%20vLLM%20%C2%B7%20llama.cpp-4aff9e) ![EDD: quality-as-code](https://img.shields.io/badge/EDD-quality--tracked%20per%20commit-9a4aff)
 
 Glimi is a Python library for running a cast of AI characters — each with its own personality, memory, and relationships — that keeps going on its own even when you're away. You set two things per character: a persona, and the model it runs on. From there the characters talk to you and to each other, and a background supervisor periodically opens new conversations and revives idle ones, so when you step away and come back, what they said in the meantime is already sitting in the channels.
 
@@ -26,7 +26,7 @@ You build apps on top of Core. The flagship is **Glimi Community** — a cast of
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
-> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `glimi-community/community/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi.dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e "./glimi-core[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), a **generational EDD QA system** (`glimi.edd` — an autonomous owner agent drives a full app, scored across weighted dimensions into a 0–100 quality score tracked commit-over-commit, with a web dashboard + PDF reports; see [`docs/qa_system.md`](docs/qa_system.md)), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
+> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `glimi-community/community/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi.dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e "./glimi-core[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), a **generational EDD QA system** (`glimi.edd` — an autonomous owner agent drives a full app, scored across weighted dimensions into a 0–100 quality score tracked commit-over-commit, with a `/admin/qa` dashboard + PDF reports; **[real generation data below](#edd--eval-driven-development-quality-tracked-per-commit-)**), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
 
 ```
 Glimi/                           one repo, three self-contained projects (a "workspace" monorepo)
@@ -89,6 +89,80 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 
 ---
 
+## EDD — eval-driven development (quality tracked per commit) ⭐
+
+A multi-agent product is hard to *prove*: "the friends feel more real now" is a vibe, not a number. Glimi's answer is **EDD — eval-driven development**: an autonomous **owner agent** (a persona, not a script) drives a real app end-to-end from onboarding through the core journey, the session is scored across **weighted dimensions** into a single **0–100 composite**, and every run is a **git-SHA-anchored "generation"** committed to the repo. So `git log` becomes a measurable quality timeline, and every commit's effect on product quality is observable. The framework is **`glimi.edd`** — domain-neutral, part of the `glimi` kernel, inherited by **both** Community and Workspace (each supplies its own dimensions + owner agent).
+
+**How a generation is scored** — each dimension is 0–10 with a weight; the composite is the weighted average normalized to 0–100. `critical` dimensions are make-or-break: if one fails, the whole run fails regardless of the composite (a high chat score can't paper over a broken core journey). LLM-judge dimensions are **skipped** — excluded from the composite, never faked — on the offline `echo` backend or when no judge is available, so a free self-test can never inflate the score. Community's six dimensions:
+
+| Dimension | Kind | Weight | Critical | What it checks |
+|---|---|:--:|:--:|---|
+| `onboarding` | structural | 1.0 | | A fresh owner greets the manager and gets oriented |
+| `friend_creation` | structural | 1.5 | ⭐ | An owner request actually creates a new friend, and conversation follows |
+| `conversation_quality` | LLM-judge | 2.0 | | Replies are human, coherent, in-character (5 axes: in_character · coherence · naturalness · engagement · no_meta) |
+| `no_hallucination` | LLM-judge | 1.5 | | No invented facts, no claiming actions it never took |
+| `no_leaks` | structural | 1.0 | | Zero meta / error / tool-block leakage into chat |
+| `responsiveness` | structural | 1.0 | | Every driven DM gets a distinct reply, no stalls |
+
+### The flywheel, with real measurements
+
+These are the **actual generations committed to this repo** (`tests/e2e/qa_generations/*.json`) — real `claude_cli` runs, scored by the judge, each stamped with the git SHA it ran against. N is small (the system is new); the point is the **methodology that accumulates data over generations**, not a long history yet. Read honestly, they already tell a story:
+
+| Gen | git SHA | Branch | Composite / 100 | Verdict | `conversation_quality` | `friend_creation` (critical) | Failing |
+|:--:|:--:|---|:--:|:--:|:--:|:--:|---|
+| **1** | `1eb4c46`* | `feat/community-qa-system` | **69.4** | ❌ FAIL | 6.0 | **0.0** | friend_creation, conversation_quality |
+| **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation |
+| **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation |
+| **4** | `f1eb58a`* | `develop` | **56.9** | ❌ FAIL | 4.0 ▼ | **0.0** | friend_creation, conversation_quality, no_hallucination |
+
+`*` = working tree was dirty at run time. Composite/dimension scores are read verbatim from the committed JSON.
+
+What the numbers actually say — and why we publish them even though every run **FAILs**:
+
+- **`conversation_quality` swung 6.0 → 9.0 → 8.0 → 4.0** across generations. That volatility is the honest signal of a non-deterministic LLM product, and it's exactly what a *trend* (not a single screenshot) is for. Gen-1→2 caught a real improvement (the manager stopped re-asking a question the owner had already answered twice); gen-4 caught a regression of the same failure mode. Without the harness, both would have been invisible.
+- **`friend_creation` is `critical` and sits at 0.0 in every generation — so every run FAILs by design.** This is the system working, not the system broken. The harness is honestly measuring a known architectural gap: the autonomous scene supervisor that drives friend creation currently only runs inside the Discord-bot subprocess, so a pure web E2E can't progress it yet (the "Discord = adapter" decoupling is unfinished — see [`docs/qa_system.md`](docs/qa_system.md) and `analysis/platform_decoupling_review.md`). EDD pins that gap to a number that will read **0 → 10** the day the supervisor goes web-native. A green dashboard that hid this would be the dishonest version.
+
+That is the pitch in one line: **product quality is a first-class, git-tracked metric — every commit's impact is measured and visible**, including the regressions and the unfinished work. The dashboard and PDF below are how a reviewer reads that timeline at a glance.
+
+### See it: the `/admin/qa` dashboard + PDF reports
+
+The platform serves a **QA dashboard** at `/admin/qa` (admin login → "QA" menu): the latest score as a hero, a **quality-over-generations trend chart**, and a per-generation table with every dimension. Any generation exports to a **self-contained PDF** (`glimi.edd.report` renders a print-optimized HTML one-pager → Playwright headless Chromium; the trend line is server-rendered SVG, so it prints identically with no JS).
+
+```bash
+# one scored generation (free self-test: echo backend, judge skipped, structural dims only)
+GLIMI_LLM_BACKEND=echo .venv/bin/python -m tests.e2e.community_e2e --owner-agent --rounds 2 --qa
+
+# a real, judged generation → SQLite + a committable gen-NNNN-*.json
+GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e \
+    --owner-agent --rounds 10 --qa --report
+
+# + a PDF report (trend chart + dimensions; needs Playwright). --pdf implies --qa.
+GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e \
+    --owner-agent --rounds 10 --pdf --report
+```
+
+```bash
+git log -- tests/e2e/qa_generations/   # the quality timeline (committed generations)
+git log --grep "qa:"                   # every quality-affecting change, with its score delta
+```
+
+**Reusable for adopters.** `glimi.edd` is domain-neutral and ships in the `glimi` wheel — bring your own dimensions and owner-agent driver and you get the composite scoring, the git-anchored generation store (SQLite + committed JSON), and the HTML/PDF report for free:
+
+```python
+from glimi.edd import Dimension, DimResult, build_assessment, GenerationStore
+
+DIMS = [Dimension("onboarding", "Onboarding", 1.0, "structural", "fresh user gets oriented"),
+        Dimension("core_journey", "Core journey", 1.5, "structural", "...", critical=True)]
+results = [DimResult.for_dim(d, score=..., passed=..., detail="...") for d in DIMS]  # you evaluate
+assessment = build_assessment(results, min_overall=70)                              # core scores → 0–100
+store = GenerationStore(db_path="qa.db", generations_dir="qa_generations/")          # core persists
+store.record(assessment.as_dict(), run_id="run-1")                                   # → SQLite + git-SHA JSON
+```
+
+Community implements its six dimensions on top of this; Glimi Workspace adopts the same `glimi.edd` core with deliverable / delegation / A2A dimensions — one EDD framework, two apps. Full design: [`docs/qa_system.md`](docs/qa_system.md).
+
+---
+
 ## Glimi Core — the harness
 
 ### What's in the box
@@ -102,7 +176,7 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 | **Proactive supervisor layer** | The one layer that ticks without input. Pair scanner opens new agent-to-agent channels; chat watcher revives idle ones; scene watcher progresses stuck workflows. |
 | **Live observability dashboard** | Cytoscape.js agent graph, per-agent 5-layer memory inspector, real-time channel viewer, tool-call timeline, LLM usage/cost card, model swap UI, runtime state badges. |
 | **Evaluation harness** | A golden set across persona / tool-use / memory / fallback / supervisor capabilities; deterministic checks + an LLM-as-judge (reused, not reinvented); a backend-tagged **regression gate** (fails CI on a pass-rate or judge-score drop); a production-feedback loop that promotes a flagged bad turn into a golden case. Runs free on the offline `echo` backend. |
-| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** (your own persona) drives a full app from onboarding through the core journey, and the session is scored across weighted dimensions (Community: onboarding · friend-creation · conversation-quality · no-hallucination · no-leaks · responsiveness) into a **0–100 quality score**. Each run is a **git-SHA-anchored "generation"** persisted to SQLite + a committed JSON, so quality is tracked commit-over-commit — an *eval-driven development* flywheel where `git log` reads as a measurable quality timeline. See [`docs/qa_system.md`](docs/qa_system.md). |
+| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** drives a full app from onboarding through the core journey, scored across weighted dimensions into a **0–100 quality score**, each run a **git-SHA-anchored "generation"** (SQLite + committed JSON) so quality is tracked commit-over-commit. The flagship differentiator — **[real measured generations + the flywheel](#edd--eval-driven-development-quality-tracked-per-commit-)** are in their own section above. |
 | **Cost & latency accounting** | Every LLM call records tokens, estimated cost, and latency at one choke-point; every tool call records args/result/latency/ok at another. Honest by construction — local/echo priced at $0, CLI/estimate rows labeled *est.*, dollars shown only for real priced spend. |
 | **Human-in-the-loop gate** | An approval policy (`approve / edit / reject` + fallback + decision trail) around a consequential action, used by Workspace; never hangs (non-interactive auto-approves). |
 | **Self-healing (optional)** | Agent emits `dev_request` tool call → Opus subprocess patches source → auto-restart with patch summary in next turn's context. |
