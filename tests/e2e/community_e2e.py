@@ -165,6 +165,13 @@ def _get(base: str, path: str, *, cookie: str = "", timeout: float = 30.0) -> di
     return _http("GET", base + path, headers=headers, timeout=timeout)
 
 
+def _post(base: str, path: str, *, cookie: str = "", body: dict | None = None,
+          timeout: float = 30.0) -> dict:
+    headers = {"Cookie": cookie} if cookie else None
+    return _http("POST", base + path, body=body if body is not None else {},
+                 headers=headers, timeout=timeout)
+
+
 def _free_port() -> int:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
@@ -191,6 +198,10 @@ def _child_env(backend: str, data_dir: Path, comm_dir: Path) -> dict:
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"  # 한글 로그가 ASCII stdout 에서 안 깨지게
     env.setdefault("GLIMI_LANG", "ko")
+    # Disable the server's WS keepalive ping: a slow claude_cli call blocks the loop
+    # 30-90s, which would otherwise drop the drive's chat WS (1011 keepalive timeout)
+    # before the tutorial supervisor can bring in 하나 and a friend gets made.
+    env["GLIMI_WS_PING_INTERVAL"] = "0"
     return env
 
 
@@ -462,6 +473,10 @@ async def _drive_owner_agent(base: str, base_ws: str, cid: str, cookie: str,
     async with websockets.connect(
         ws_url, additional_headers={"Cookie": cookie}, open_timeout=20,
         max_size=4 * 1024 * 1024,
+        # Disable client keepalive pings: a slow claude_cli agent call blocks the
+        # server's loop for 30-90s, so default ping_timeout=20 would drop the WS
+        # (1011 keepalive timeout) mid-drive and harvest an empty snapshot.
+        ping_interval=None,
     ) as ws:
         for rnd in range(rounds):
             snap = _owner_snapshot(base, cid, cookie, round_idx=rnd,
@@ -480,16 +495,26 @@ async def _drive_owner_agent(base: str, base_ws: str, cid: str, cookie: str,
             recent.setdefault(ch, []).append(
                 {"speaker": "사용자", "text": text, "is_user": True})
 
-            await ws.send(json.dumps({
-                "type": "text", "channel": ch, "agent": agent_id, "text": text,
-            }))
-            reply = await _await_reply(ws, ch, reply_timeout, log)
+            try:
+                await ws.send(json.dumps({
+                    "type": "text", "channel": ch, "agent": agent_id, "text": text,
+                }))
+                reply = await _await_reply(ws, ch, reply_timeout, log)
+            except Exception as exc:
+                # A slow claude_cli call can block the server loop long enough for the
+                # WS keepalive to drop the connection mid-drive. Don't lose the run —
+                # stop driving and let the caller harvest what's already persisted
+                # server-side (the conversation so far is in the community DB).
+                log(f"[owner-agent] WS 끊김 R{rnd + 1} ({type(exc).__name__}) — "
+                    f"드라이브 조기 종료, 서버 대화 수확")
+                break
             if reply:
                 observed.setdefault(ch, []).append(reply)
                 recent.setdefault(ch, []).append(
                     {"speaker": agent_id, "text": reply, "is_user": False})
 
-    # Stash the owner side for the verdict (turns + token usage).
+    # Stash the owner side for the verdict (turns + token usage). Reached even on an
+    # early break above, so a WS hiccup still yields the partial transcript.
     observed["_owner_turns"] = driver.turns           # type: ignore[assignment]
     observed["_owner_usage"] = driver.usage           # type: ignore[assignment]
     return observed
@@ -515,6 +540,10 @@ async def _drive_ws(base_ws: str, cid: str, cookie: str, friends: list[str],
     async with websockets.connect(
         ws_url, additional_headers={"Cookie": cookie}, open_timeout=20,
         max_size=4 * 1024 * 1024,
+        # Disable client keepalive pings: a slow claude_cli agent call blocks the
+        # server's loop for 30-90s, so default ping_timeout=20 would drop the WS
+        # (1011 keepalive timeout) mid-drive and harvest an empty snapshot.
+        ping_interval=None,
     ) as ws:
         for rnd in range(rounds):
             turn = OWNER_TURNS[min(rnd, len(OWNER_TURNS) - 1)]
@@ -681,7 +710,8 @@ def _build_snapshot(base: str, cid: str, cookie: str, *, backend: str, goal: str
 def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         host: str, port: int, keep_serving: bool, reply_timeout: float,
         wall_clock_cap: float, report: bool = False,
-        write_baseline: bool = False, owner_agent: bool = True) -> dict:
+        write_baseline: bool = False, owner_agent: bool = True,
+        watch_pause: float = 0.0, qa: bool = False, pdf: bool = False) -> dict:
     """Full web E2E: seed → start server → log in → drive (owner-agent | scripted)
     → harvest → judge → write artifacts. Returns the verdict dict. Mirrors ws_e2e.run.
 
@@ -742,6 +772,27 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         # (c) log in (admin can access any community).
         cookie = _login(base)
         print("[community_e2e] logged in (session cookie acquired)")
+        # NOTE: the autonomous scene supervisors that would advance onboarding
+        # (collect_profile → bring in 하나 → first friend) currently run ONLY inside the
+        # Discord bot subprocess (`community.discord_bot`, needs DISCORD_BOT_TOKEN). The
+        # web platform serves chat on-demand but has no web-native autonomous loop yet,
+        # so in a pure web E2E the tutorial can't advance and friend_creation stays 0 —
+        # the QA system correctly surfaces this Discord-decoupling gap (analysis/
+        # platform_decoupling_review.md). POST /api/communities/{id}/start would just
+        # spawn a token-less Discord bot that exits immediately, so we don't call it.
+
+        # (c.5) optional live-watch pause: the fresh community (owner + 유나 + 하나,
+        #       no friends yet) is now served but NOT yet driven. Hold here so a
+        #       watcher can open the chat page and catch the owner agent from turn 0.
+        if watch_pause > 0:
+            print("=" * 64)
+            print(f"  ⏸  LIVE-WATCH PAUSE — {watch_pause:.0f}s before the owner starts.")
+            print(f"     Open the chat now:  {base}/community/{COMMUNITY_ID}/chat")
+            print("     (fresh community: 유나 매니저 + 하나 창작자, 친구 아직 없음.")
+            print("      the owner agent's first message lands when this pause ends.)")
+            print("=" * 64, flush=True)
+            time.sleep(watch_pause)
+            print("[community_e2e] watch pause over — owner agent driving now.\n", flush=True)
 
         if owner_agent:
             # ── OWNER-AGENT DRIVE (default) — autonomous owner onboards from the
@@ -755,12 +806,15 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
                                        reply_timeout, backend, log=print),
                     timeout=wall_clock_cap,
                 )
+            observed = {}
             try:
                 observed = asyncio.run(_drive_with_cap())
             except asyncio.TimeoutError:
                 error = f"wall_clock_cap {wall_clock_cap}s exceeded"
                 print(f"[community_e2e] WALL-CLOCK CAP {wall_clock_cap}s hit — stopping drive")
-                observed = {}
+            except Exception as exc:  # WS drop etc. — never skip the harvest below
+                error = f"drive error: {type(exc).__name__}: {exc}"
+                print(f"[community_e2e] 드라이브 예외 — 서버 대화는 그대로 수확: {error}")
             owner_turns = observed.pop("_owner_turns", [])  # type: ignore[assignment]
             owner_usage = observed.pop("_owner_usage", {})  # type: ignore[assignment]
             # The owner agent decides its own channels — the driven set is whatever
@@ -870,6 +924,56 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
             print(f"[community_e2e] 리포트 실패 (verdict 는 완료): {exc}")
             print(traceback.format_exc())
 
+    # (i) QA generation: multi-dimension quality assessment + git-anchored history.
+    #     Turns this run into a "generation" (overall 0-100 score across onboarding /
+    #     friend-creation / conversation-quality / no-hallucination / no-leaks /
+    #     responsiveness), persisted to SQLite + a committable git-SHA-stamped JSON.
+    if qa:
+        try:
+            from tests.e2e import qa_quality, qa_history
+            assessment = qa_quality.assess(snap)
+            pdf_path = str(RESULTS_DIR / f"{run_id}-qa.pdf") if pdf else ""
+            gen = qa_history.record_generation(
+                assessment, run_id=run_id, owner_name=OWNER_NAME, goal=goal,
+                report_md=verdict.get("report_md", ""), report_pdf=pdf_path)
+            verdict["qa"] = {
+                "overall_score": assessment["overall_score"],
+                "passed": assessment["passed"],
+                "failing": assessment["failing"],
+                "generation_no": gen["generation_no"],
+                "generation_file": gen["_path"],
+                "git_sha": gen["git"]["sha"],
+            }
+            # Optional PDF report (portfolio artifact) via the shared core renderer,
+            # including the quality-over-generations trend up to this run.
+            if pdf:
+                try:
+                    from glimi.edd import generation_to_pdf
+                    generation_to_pdf(gen, pdf_path, trend=qa_history.load_generations(),
+                                      app_name="Glimi Community")
+                    verdict["qa"]["pdf"] = pdf_path
+                except Exception as pexc:
+                    print(f"[community_e2e] PDF 생성 실패 (세대는 기록됨): {pexc}")
+            ov = assessment["overall_score"]
+            print("\n" + "─" * 64)
+            print(f"  QA GENERATION #{gen['generation_no']}  ·  git {gen['git']['sha']}"
+                  + ("*" if gen['git']['dirty'] else "")
+                  + f"  ·  {'✅ PASS' if assessment['passed'] else '❌ FAIL'} "
+                  + f"(overall {ov}/100, gate {assessment['min_overall']})")
+            for dim in assessment["dimensions"]:
+                if dim["skipped"]:
+                    mark, sc = "·", "skip"
+                else:
+                    mark = "✅" if dim["passed"] else "❌"
+                    sc = f"{dim['score']}/10"
+                print(f"    {mark} {dim['label']:8s} {sc:>6s}  (w{dim['weight']})  {dim['detail'][:70]}")
+            print(f"  generation: {gen['_path']}")
+            print("─" * 64)
+        except Exception as exc:
+            import traceback
+            print(f"[community_e2e] QA 평가 실패 (verdict 는 완료): {exc}")
+            print(traceback.format_exc())
+
     print("\n" + "=" * 64)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
     print("=" * 64)
@@ -942,6 +1046,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="bind host (use 0.0.0.0 with --keep-serving to expose for a tunnel)")
     ap.add_argument("--keep-serving", action="store_true",
                     help="leave the server running after the run (for external watching via a tunnel)")
+    ap.add_argument("--watch-pause", type=float, default=0.0, metavar="SECONDS",
+                    help="after the server is up + logged in, pause this many seconds BEFORE "
+                         "the owner starts driving — so a live watcher can open the chat page "
+                         "first and see the owner agent from its very first message (turn 0)")
     ap.add_argument("--reply-timeout", type=float, default=120.0,
                     help="seconds to wait for each friend reply frame (default 120; claude is slower)")
     ap.add_argument("--wall-cap", "--cap", dest="cap", type=float, default=None,
@@ -949,6 +1057,11 @@ def main(argv: list[str] | None = None) -> int:
                          "(default: env GLIMI_COMMUNITY_E2E_WALL_CAP or 1800)")
     ap.add_argument("--report", action="store_true",
                     help="emit a portfolio report (Markdown + metrics JSON); quality judge runs only on a real backend")
+    ap.add_argument("--qa", action="store_true",
+                    help="record a QA GENERATION: multi-dimension quality assessment (0-100) "
+                         "→ SQLite history + git-SHA-stamped JSON under tests/e2e/qa_generations/")
+    ap.add_argument("--pdf", action="store_true",
+                    help="also render the generation to a PDF report (implies --qa; needs Playwright)")
     ap.add_argument("--write-baseline", action="store_true",
                     help="(re)write tests/e2e/community-baseline.json from this run (implies --report)")
     args = ap.parse_args(argv)
@@ -979,7 +1092,8 @@ def main(argv: list[str] | None = None) -> int:
         reply_timeout=max(5.0, args.reply_timeout),
         wall_clock_cap=max(30.0, wall_cap),
         report=args.report, write_baseline=args.write_baseline,
-        owner_agent=args.owner_agent,
+        owner_agent=args.owner_agent, watch_pause=max(0.0, args.watch_pause),
+        qa=args.qa or args.pdf, pdf=args.pdf,
     )
     return 0 if verdict.get("status") in ("PASS", "WARN") else 1
 

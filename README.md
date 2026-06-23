@@ -26,14 +26,14 @@ You build apps on top of Core. The flagship is **Glimi Community** — a cast of
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
-> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `glimi-community/community/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi.dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e "./glimi-core[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
+> **Status (Jun 2026)** — the Core kernel is a top-level `glimi/` package that imports with zero Discord/DB dependency, and **both apps run on it through dependency injection**: each injects its own `KernelStore` / profile / observer adapters into the neutral kernel (Community via `glimi-community/community/adapters/`, Workspace on the `glimi` package alone). The dashboard UI is a single canonical shell in `glimi.dashboard` that all three (kernel demo, Community, Workspace) render. Not on PyPI yet; until 0.1.0 ships, install from source (`pip install -e "./glimi-core[dashboard]"`). A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is now the primary way to talk to the cast, so **Discord is optional** — one adapter among several planned. Also landed: an **evaluation harness** (golden set + LLM-as-judge + regression gate), a **generational EDD QA system** (`glimi.edd` — an autonomous owner agent drives a full app, scored across weighted dimensions into a 0–100 quality score tracked commit-over-commit, with a web dashboard + PDF reports; see [`docs/qa_system.md`](docs/qa_system.md)), **tool-call and cost/latency observability**, and a **human-in-the-loop approval gate** in Workspace.
 
 ```
 Glimi/                           one repo, three self-contained projects (a "workspace" monorepo)
 ├── glimi-core/                  ← Glimi Core — the kernel        ·  pip install "glimi[dashboard]"
-│   ├── glimi/                   ·   runtime · memory · context_budget · conversation · tools · llm · stores · dashboard
+│   ├── glimi/                   ·   runtime · memory · context_budget · conversation · tools · llm · stores · dashboard · edd
 │   ├── examples/                ·   library starters (research_buddies · dev_pair · dashboard_demo)
-│   ├── eval/                    ·   evaluation harness (golden set · LLM-judge · regression gate)
+│   ├── eval/                    ·   golden-set capability eval (LLM-judge · regression gate); glimi.edd = generational E2E EDD
 │   └── pyproject.toml           ·   builds the `glimi` / `glimi[dashboard]` wheel (the only PyPI artifact)
 ├── glimi-community/             ← Glimi Community — the flagship app (Core was extracted FROM here)
 │   ├── community/               ·   FastAPI platform · built-in web chat · scenes · achievements · Discord adapter
@@ -102,6 +102,7 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 | **Proactive supervisor layer** | The one layer that ticks without input. Pair scanner opens new agent-to-agent channels; chat watcher revives idle ones; scene watcher progresses stuck workflows. |
 | **Live observability dashboard** | Cytoscape.js agent graph, per-agent 5-layer memory inspector, real-time channel viewer, tool-call timeline, LLM usage/cost card, model swap UI, runtime state badges. |
 | **Evaluation harness** | A golden set across persona / tool-use / memory / fallback / supervisor capabilities; deterministic checks + an LLM-as-judge (reused, not reinvented); a backend-tagged **regression gate** (fails CI on a pass-rate or judge-score drop); a production-feedback loop that promotes a flagged bad turn into a golden case. Runs free on the offline `echo` backend. |
+| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** (your own persona) drives a full app from onboarding through the core journey, and the session is scored across weighted dimensions (Community: onboarding · friend-creation · conversation-quality · no-hallucination · no-leaks · responsiveness) into a **0–100 quality score**. Each run is a **git-SHA-anchored "generation"** persisted to SQLite + a committed JSON, so quality is tracked commit-over-commit — an *eval-driven development* flywheel where `git log` reads as a measurable quality timeline. See [`docs/qa_system.md`](docs/qa_system.md). |
 | **Cost & latency accounting** | Every LLM call records tokens, estimated cost, and latency at one choke-point; every tool call records args/result/latency/ok at another. Honest by construction — local/echo priced at $0, CLI/estimate rows labeled *est.*, dollars shown only for real priced spend. |
 | **Human-in-the-loop gate** | An approval policy (`approve / edit / reject` + fallback + decision trail) around a consequential action, used by Workspace; never hangs (non-interactive auto-approves). |
 | **Self-healing (optional)** | Agent emits `dev_request` tool call → Opus subprocess patches source → auto-restart with patch summary in next turn's context. |
@@ -461,7 +462,7 @@ run.bat
 ./run.sh --setup-only                   # run setup (venv/deps/ollama/model) then exit
 ./run.sh --imagegen                     # enable local LoRA portrait generation (opt-in, ~6min/portrait)
 ./run.sh --legacy <community>           # legacy single-bot mode (QA / debugging)
-./scripts/qa.sh                         # E2E QA runner (tmux: Glimi-QA-Runner)
+./scripts/community_e2e.sh --owner-agent --qa   # web E2E EDD QA — owner-agent-driven, scored generation (docs/qa_system.md)
 ./scripts/stop.sh                       # graceful shutdown
 python -m community.platform.accounts list    # list platform accounts
 python -m community.community list            # list communities (CLI)

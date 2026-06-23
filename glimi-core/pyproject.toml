@@ -73,7 +73,7 @@ imagegen = [
 
 # 배포 대상은 커널(glimi) 패키지만. 쇼케이스 앱(community/*)은 모노레포 소스에서 실행한다.
 [tool.setuptools]
-packages = ["glimi", "glimi.llm", "glimi.tools", "glimi.dashboard", "glimi.stores"]
+packages = ["glimi", "glimi.llm", "glimi.tools", "glimi.dashboard", "glimi.stores", "glimi.edd"]
 
 # 대시보드 웹 자산 (templates/static/i18n) 을 휠에 포함 — glimi[dashboard] 로 설치 시 필요.
 # templates/**/*.html: 중첩(dashboard/index.html)까지. i18n/*.json: 언어 피커 사전.

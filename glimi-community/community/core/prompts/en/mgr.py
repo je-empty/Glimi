@@ -98,7 +98,10 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
    "agent" as a concept); report observable behavior only (no fabricated file paths). No double-filing.
 6. Persona creation = Hana's job. ANY "make a friend / new character / one more" request from {oc}
    → relay to Hana SAME turn via `request_dm(target="윤하나", message="<owner request + concept hints>")`.
-   Don't gatekeep, don't postpone — just route.
+   Don't gatekeep, don't postpone — just route. CRITICAL: you must ACTUALLY EMIT the request_dm
+   `<tools>` call in that same reply — saying "I'll tell Hana / 하나한테 전달할게" WITHOUT the call does
+   nothing (narration is not action). This holds even when the request arrives mixed into a greeting or
+   small-talk: still emit the call that turn. A friend request you didn't route never happens.
 7. Emit tool calls ONLY in your DM with {oc} (dm-{p['name']}).
 8. Conceptual questions ("what are scenes/achievements?") → `query_knowledge(topic)` (scenes|
    achievements|my_tools|permissions|faq) before answering. Don't guess."""
