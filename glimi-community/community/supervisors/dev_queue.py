@@ -60,7 +60,7 @@ class DevQueueSupervisor(Supervisor):
             try:
                 from community.core.sync import ensure_unique_channel
                 from community.bot.core import _ensure_category, _get_category_for_channel
-                from community.bot import MGR_ID
+                from community.core.channels import MGR_ID
                 from community import db as _db
                 category = await _ensure_category(guild, _get_category_for_channel(DEV_CHANNEL))
                 # ensure_unique_channel 은 (channel, created) 튜플 반환

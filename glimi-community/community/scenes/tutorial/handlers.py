@@ -13,7 +13,7 @@ import re as _re
 import discord
 
 from community import db, log_writer
-from community.bot import MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID
+from community.core.channels import MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID
 from community.bot.core import (
     create_tutorial_channel,
     send_as_agent,

@@ -34,6 +34,7 @@ class ToolContext:
     channel_name: str
     channel_obj: Any = None  # discord.TextChannel
     guild: Any = None  # discord.Guild
+    channels: Any = None  # ChannelAdapter (transport-neutral 출구; Discord 는 channel_obj/guild 사용)
     extra: dict = None  # 자유 필드
 
 

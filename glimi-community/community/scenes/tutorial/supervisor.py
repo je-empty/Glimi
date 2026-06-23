@@ -246,7 +246,7 @@ class TutorialFlowSupervisor(Supervisor):
             # 조건: hana 보고 채널 + persona 생성됨 + dm-{persona} 채널 존재
             # (= hana가 create_agent_profile + request_dm 까지 완료한 신호).
             # idle 조건 제거 — 오너가 계속 대화해도 튜토리얼은 완료 가능해야 함.
-            from community.bot import MGR_ID
+            from community.core.channels import MGR_ID
             persona_names = [r[0] for r in db.get_conn().execute(
                 "SELECT name FROM agents WHERE type='persona'"
             ).fetchall()]

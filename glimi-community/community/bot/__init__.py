@@ -135,9 +135,11 @@ _agent_locks: dict[str, asyncio.Lock] = {}
 
 
 def _get_channel_lock(channel_name: str) -> asyncio.Lock:
-    if channel_name not in _channel_locks:
-        _channel_locks[channel_name] = asyncio.Lock()
-    return _channel_locks[channel_name]
+    # 캐노니컬 잠금 = community.core.locks (discord-free, community-namespaced).
+    # 웹 _run_turn / supervisor / web greeting 이 같은 mutex 를 공유하게.
+    from community.core.locks import get_channel_lock
+    from community.community import get_community_id
+    return get_channel_lock(get_community_id(), channel_name)
 
 
 def _get_agent_lock(agent_id: str) -> asyncio.Lock:

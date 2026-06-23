@@ -5,7 +5,7 @@ from community.achievements.base import Achievement
 
 
 def check(user_id: str) -> Optional[dict]:
-    from community.bot import _norm_name_for_channel
+    from community.core.channels import _norm_name_for_channel
     conn = db.get_conn()
     personas = [r[0] for r in conn.execute(
         "SELECT name FROM agents WHERE type='persona'"

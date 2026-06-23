@@ -102,3 +102,44 @@ def is_user_postable(channel_id: str) -> bool:
     it.
     """
     return is_owner_dm(channel_id) or channel_kind(channel_id) == "group"
+
+
+# ── Agent identity + manager-channel name defaults ──────────────────────────
+# 매니저(유나/하나/세나) 채널도 페르소나와 동일하게 dm-<이름>. 아래 값은 seed_agents.json
+# 기본 이름 기준 default — 웹/시드-기본 커뮤니티에선 이 default 가 곧 실제값.
+# (구 Discord 어댑터는 startup 시 _build_channel_maps() 가 커뮤니티별 실제 이름으로 자기
+#  모듈 globals 를 덮어썼다 — 그 가변 사본은 community/bot 에 남고 Phase 6 에서 함께 삭제.)
+MGR_CHANNEL = "dm-서유나"       # mgr (유나) owner↔mgr DM
+CREATOR_CHANNEL = "dm-윤하나"    # creator (하나) owner↔creator DM
+DEV_CHANNEL = "dm-한세나"        # dev manager (세나) triage DM
+MGR_ID = "agent-mgr-001"
+CREATOR_ID = "agent-creator-001"
+DEV_ID = "agent-dev-001"
+
+
+# ── internal-dm 채널명 정렬 컨벤션 ───────────────────────────────────────────
+# Yuna(mgr) 먼저 → Hana(creator) → 그 외 입력 순서. 모든 internal-dm 생성 경로가 경유.
+
+def _agent_name_priority(name: str) -> int:
+    """sort 키 — 작을수록 채널명에서 앞에 온다."""
+    PRIORITY = {"서유나": 0, "Yuna": 0, "윤하나": 1, "Hana": 1, "한세나": 2, "Sena": 2}
+    return PRIORITY.get(name, 9)
+
+
+def _norm_name_for_channel(name: str) -> str:
+    """페르소나/유저 이름을 채널명 부품으로 변환.
+    공백→하이픈, 영숫자/한글/하이픈/언더스코어 외 제거, 연속 하이픈→단일."""
+    import re as _re
+    s = _re.sub(r"\s+", "-", (name or "").strip())
+    s = _re.sub(r"[^\w\-가-힣ㄱ-ㅎㅏ-ㅣ]", "", s)
+    s = _re.sub(r"-+", "-", s).strip("-")
+    return s
+
+
+def internal_dm_channel_name(a_name: str, b_name: str) -> str:
+    """두 에이전트 이름으로 internal-dm 채널명 생성. 유나 우선 → 하나 → 그 외."""
+    if not a_name or not b_name:
+        return f"internal-dm-{_norm_name_for_channel(a_name) or '?'}-{_norm_name_for_channel(b_name) or '?'}"
+    pa, pb = _agent_name_priority(a_name), _agent_name_priority(b_name)
+    first, second = (a_name, b_name) if pa <= pb else (b_name, a_name)
+    return f"internal-dm-{_norm_name_for_channel(first)}-{_norm_name_for_channel(second)}"
