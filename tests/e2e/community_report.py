@@ -93,7 +93,11 @@ def render_markdown(metrics: dict, trend: Optional[dict] = None) -> str:
     # ── Owner ↔ friends (structure) ──
     L.append("## Owner ↔ friends")
     L.append("")
-    L.append(f"- Structural verdict: **{_badge(v.get('status'))}** — {v.get('verdict_line', '')}")
+    # verdict_line already carries its own "<emoji> STATUS — " prefix; strip it so
+    # the bolded badge isn't duplicated (e.g. "✅ PASS — ✅ PASS — …").
+    _vline = v.get("verdict_line", "") or ""
+    _vline = _vline.split(" — ", 1)[1] if " — " in _vline else _vline
+    L.append(f"- Structural verdict: **{_badge(v.get('status'))}** — {_vline}")
     L.append(f"- DMs driven: **{s.get('driven_dm_count')}** "
              f"({s.get('dms_with_reply')} got a friend reply)")
     L.append(f"- Friend replies total: **{s.get('friend_replies_total')}**")

@@ -109,7 +109,11 @@ def render_markdown(metrics: dict, trend: Optional[dict] = None) -> str:
     # ── Autonomous loop (structure) ──
     L.append("## Autonomous loop")
     L.append("")
-    L.append(f"- Structural verdict: **{_badge(v.get('status'))}** — {v.get('verdict_line', '')}")
+    # verdict_line already carries its own "<emoji> STATUS — " prefix; strip it so
+    # the bolded badge isn't duplicated (e.g. "✅ PASS — ✅ PASS — …").
+    _vline = v.get("verdict_line", "") or ""
+    _vline = _vline.split(" — ", 1)[1] if " — " in _vline else _vline
+    L.append(f"- Structural verdict: **{_badge(v.get('status'))}** — {_vline}")
     L.append(f"- Rounds run: **{s.get('rounds_run')}** "
              f"(stopped: `{s.get('stopped_reason')}`)")
     L.append(f"- Deliverables: **{s.get('deliverables_count')}** "
