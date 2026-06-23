@@ -446,7 +446,7 @@ async def supervisor_tick():
         guild = get_target_guild()
         if not guild:
             return
-        await pool.tick(guild)
+        await pool.tick(guild=guild)
     except Exception as e:
         log_writer.system(f"[supervisor-tick] 오류: {type(e).__name__}: {e}")
 

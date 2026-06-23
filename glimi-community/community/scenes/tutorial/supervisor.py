@@ -79,8 +79,9 @@ class TutorialFlowSupervisor(Supervisor):
         self._last_nudge_time = time.time()
 
     async def check(self, ctx):
+        channels = ctx.get("channels") if isinstance(ctx, dict) else None
         guild = ctx.get("guild") if isinstance(ctx, dict) else None
-        if guild is None:
+        if channels is None and guild is None:
             return
         # 에이전트 추론/전송 중이면 스킵
         CREATOR_ID = "agent-creator-001"
@@ -90,13 +91,13 @@ class TutorialFlowSupervisor(Supervisor):
 
         phase = self.scene.current_phase()
         if phase in ("greet", "collect_profile"):
-            await self._check_profile_collection(guild, phase)
+            await self._check_profile_collection(channels, guild, phase)
         elif phase in ("channels_setup", "channels_done"):
-            await self._check_channel_setup(guild)
+            await self._check_channel_setup(channels, guild)
 
     # ── 프로필 수집 단계 ────────────────────────────────
 
-    async def _check_profile_collection(self, guild, phase):
+    async def _check_profile_collection(self, channels, guild, phase):
         if phase == "greet":
             return  # 첫 인사 대기
 
@@ -138,7 +139,7 @@ class TutorialFlowSupervisor(Supervisor):
                 f"(fields={collected}/3, user_turns={user_turns}) — 강제 트리거"
             )
             from community.scenes.tutorial.handlers import trigger_phase2
-            await trigger_phase2(guild)
+            await trigger_phase2(channels if channels is not None else guild)
             return
 
         recent = db.get_recent_messages(MGR_CHANNEL, limit=5)
@@ -171,7 +172,7 @@ class TutorialFlowSupervisor(Supervisor):
                 )
             except Exception:
                 pass
-            await self._nudge_yuna(guild,
+            await self._nudge_yuna(channels, guild,
                 "유저가 방금 뭔가 말했는데 아직 반응을 안 한 것 같다. "
                 "자연스럽게 대답해주자."
             )
@@ -189,7 +190,7 @@ class TutorialFlowSupervisor(Supervisor):
                 )
             except Exception:
                 pass
-            await self._nudge_yuna(guild,
+            await self._nudge_yuna(channels, guild,
                 "잡담이 길어진 것 같다. "
                 "자연스럽게 화제를 돌려서 다음 프로필 질문으로 넘어가자. "
                 "갑자기 전환하지 말고 대화 흐름에 맞춰서."
@@ -197,8 +198,12 @@ class TutorialFlowSupervisor(Supervisor):
 
     # ── 채널 세팅 단계 ──────────────────────────────────
 
-    async def _check_channel_setup(self, guild):
-        ch_names = {ch.name for ch in guild.text_channels}
+    async def _check_channel_setup(self, channels, guild):
+        # adapter-first 채널 목록 — web 은 list_channels, 디코는 guild.text_channels.
+        if channels is not None:
+            ch_names = {c.name for c in await channels.list_channels()}
+        else:
+            ch_names = {ch.name for ch in guild.text_channels}
         has_creator = CREATOR_CHANNEL in ch_names
         if not has_creator:
             # 재기동·충돌 등으로 phase=channels_setup 인데 채널이 아직 없을 수 있음.
@@ -214,7 +219,7 @@ class TutorialFlowSupervisor(Supervisor):
                 )
                 from community.scenes.tutorial.handlers import setup_channels
                 try:
-                    await setup_channels(guild)
+                    await setup_channels(channels if channels is not None else guild)
                 except Exception as e:
                     log_writer.system(f"❌ [sup:tutorial] 재개 실패: {type(e).__name__}: {e}")
             return
@@ -268,7 +273,7 @@ class TutorialFlowSupervisor(Supervisor):
                 # DM 까진 왔는데 유나가 자기 DM 에 아직 안내를 안 했다 → nudge
                 if persona_dm_ready and not yuna_mentioned_friend and self._can_nudge():
                     self._mark_nudged()
-                    await self._nudge_yuna(guild,
+                    await self._nudge_yuna(channels, guild,
                         f"하나가 {', '.join(persona_names)} 프로필 만들었고 "
                         f"dm 채널까지 열렸어. 네 DM 에서 오너한테 한 줄 소개하고 "
                         f"바로 finish_tutorial 호출해서 튜토리얼 마무리하자."
@@ -278,7 +283,7 @@ class TutorialFlowSupervisor(Supervisor):
             idle = self._get_idle_seconds(MGR_CHANNEL)
             if idle > 60 and self._can_nudge():
                 self._mark_nudged()
-                await self._nudge_yuna(guild,
+                await self._nudge_yuna(channels, guild,
                     "하나한테 보고 받은 걸 전달해야겠다. "
                     "채널 구조도 설명해주고 튜토리얼 마무리하자."
                 )
@@ -324,7 +329,7 @@ class TutorialFlowSupervisor(Supervisor):
                 )
             except Exception:
                 pass
-            await self._nudge_agent(guild, CREATOR_ID, CREATOR_CHANNEL,
+            await self._nudge_agent(channels, guild, CREATOR_ID, CREATOR_CHANNEL,
                 "아이스브레이킹이 충분했으면 에이전트 생성 얘기 꺼내고 유나한테 보고. "
                 "이미 보고했으면 다시 보내지 마."
             )
@@ -341,30 +346,42 @@ class TutorialFlowSupervisor(Supervisor):
         except Exception:
             return 999
 
-    async def _nudge_yuna(self, guild, system_msg: str):
-        import discord  # lazy — Discord-only 경로 (guild 기반). web 엔 미설치.
+    async def _nudge_yuna(self, channels, guild, system_msg: str):
         log_writer.system(f"[sup:tutorial] 유나 재촉")
-        mgr_ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
-        if not mgr_ch:
-            return
-        await self._inject_and_send(MGR_ID, MGR_CHANNEL, mgr_ch, system_msg)
+        # adapter-first: web 은 채널 존재만 확인, 디코는 channel obj resolve.
+        ch = None
+        if channels is not None:
+            if not await channels.find_channel(MGR_CHANNEL):
+                return
+        else:
+            import discord  # lazy — Discord-only 경로.
+            ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
+            if not ch:
+                return
+        await self._inject_and_send(MGR_ID, MGR_CHANNEL, ch, system_msg, channels=channels)
 
-    async def _nudge_agent(self, guild, agent_id: str, ch_name: str, system_msg: str):
-        import discord  # lazy — Discord-only 경로 (guild 기반). web 엔 미설치.
-        ch = discord.utils.get(guild.text_channels, name=ch_name)
-        if not ch:
-            return
-        await self._inject_and_send(agent_id, ch_name, ch, system_msg)
+    async def _nudge_agent(self, channels, guild, agent_id: str, ch_name: str, system_msg: str):
+        ch = None
+        if channels is not None:
+            if not await channels.find_channel(ch_name):
+                return
+        else:
+            import discord  # lazy — Discord-only 경로.
+            ch = discord.utils.get(guild.text_channels, name=ch_name)
+            if not ch:
+                return
+        await self._inject_and_send(agent_id, ch_name, ch, system_msg, channels=channels)
 
-    async def _inject_and_send(self, agent_id, ch_name, channel, instruction):
-        from community.bot.core import send_as_agent, _split_for_chat  # lazy — Discord-only.
-
+    async def _inject_and_send(self, agent_id, ch_name, channel, instruction, *, channels=None):
         if log_writer.is_thinking(agent_id) or log_writer.is_speaking(agent_id):
             log_writer.system(f"[sup:{self.name}] {agent_id} 이미 추론 중 — 강제 지시 스킵")
             return
 
-        from community.bot import _get_channel_lock
-        lock = _get_channel_lock(ch_name)
+        # 채널 잠금 — discord-free core.locks (web _run_turn 과 공유). community 단위 키.
+        from community.core.locks import get_channel_lock
+        from community.community import get_community_id
+        cid = get_community_id() or ""
+        lock = get_channel_lock(cid, ch_name)
         if lock.locked():
             log_writer.system(f"[sup:{self.name}] #{ch_name} 채널 잠금 중 — 강제 지시 스킵")
             return
@@ -378,12 +395,21 @@ class TutorialFlowSupervisor(Supervisor):
                 )
             )
             sent_count = 0
-            for resp in responses:
-                clean = resp.strip()
-                if clean and clean != "..." and clean != "(무시)":
-                    for part in _split_for_chat(clean):
-                        await send_as_agent(channel, agent_id, part)
-                        await asyncio.sleep(0.1)
+            if channels is not None:
+                # adapter-first (web). 어댑터가 pacing 처리.
+                for resp in responses:
+                    clean = resp.strip()
+                    if clean and clean != "..." and clean != "(무시)":
+                        await channels.send_as_agent(ch_name, agent_id, clean)
                         sent_count += 1
+            else:
+                from community.bot.core import send_as_agent, _split_for_chat  # lazy — Discord-only.
+                for resp in responses:
+                    clean = resp.strip()
+                    if clean and clean != "..." and clean != "(무시)":
+                        for part in _split_for_chat(clean):
+                            await send_as_agent(channel, agent_id, part)
+                            await asyncio.sleep(0.1)
+                            sent_count += 1
             if sent_count == 0:
                 log_writer.system(f"[sup:{self.name}] {agent_id} 재촉 응답 없음 (에이전트가 불필요 판단)")

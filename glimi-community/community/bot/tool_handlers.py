@@ -1624,3 +1624,14 @@ def register_all():
     """registry에 모든 핸들러 주입. 봇 시작 시 1회 호출."""
     for name, fn in _MAP.items():
         set_handler(name, fn)
+
+
+# ── Phase 3.3 re-export shim ────────────────────────────────────────────────
+# 정본 registry 는 community.core.tool_handlers (discord-free, adapter-routed).
+# web 런타임/부팅은 그쪽 register_all 을 쓴다. 디코 어댑터(이 파일)는 위 _MAP/
+# register_all 을 유지 (Phase 6 에서 함께 삭제). 같은 이름을 web 측에서 찾으려는
+# 코드 호환을 위해 core 버전을 명시적 별칭으로 노출.
+try:
+    from community.core.tool_handlers import register_all as register_all_core  # noqa: F401
+except Exception:  # discord-only env 에서 core import 실패해도 디코 register_all 은 동작
+    register_all_core = None

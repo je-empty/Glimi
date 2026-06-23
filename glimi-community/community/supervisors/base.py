@@ -250,15 +250,20 @@ class SupervisorPool:
 
     # ── Tick ───────────────────────────────────────────────
 
-    async def tick(self, guild):
+    async def tick(self, *, guild=None, channels=None):
         """각 supervisor를 자기 interval 지났으면 check().
-        매 ~5초마다 호출 권장 (bot tasks 에서). 각 check는 try/except 격리."""
+        매 ~5초마다 호출 권장. 각 check는 try/except 격리.
+
+        transport-neutral: Discord caller 는 ``tick(guild=...)``, web 드라이버는
+        ``tick(channels=<ChannelAdapter>)`` 를 넘긴다. 각 supervisor 의 check 는
+        ctx 에서 channels 우선, 없으면 guild 폴백.
+        """
         from community.community import is_maintenance_mode
         if is_maintenance_mode():
             return
         import time as _time
         from community import log_writer
-        ctx = {"guild": guild}
+        ctx = {"guild": guild, "channels": channels}
         await self.sync()  # tick마다 안전하게 재동기화
         now = _time.time()
         for sup in list(self._instances.values()):

@@ -31,8 +31,9 @@ class DevQueueSupervisor(Supervisor):
             return False
 
     async def check(self, ctx: dict) -> None:
+        channels = ctx.get("channels")
         guild = ctx.get("guild")
-        if guild is None:
+        if channels is None and guild is None:
             return
 
         cid = community.get_community_id() or ""
@@ -50,29 +51,36 @@ class DevQueueSupervisor(Supervisor):
         # Dev agent lazy seed
         ensure_dev_seeded()
 
-        # dev (세나) DM 채널 ensure
-        ch = None
-        for c in guild.text_channels:
-            if c.name == DEV_CHANNEL:
-                ch = c
-                break
-        if ch is None:
+        from community.core.channels import MGR_ID
+        from community import db as _db
+
+        # dev (세나) DM 채널 ensure — adapter-first (web), guild-fallback (Discord).
+        ch = None  # discord channel obj (guild branch only)
+        if channels is not None:
             try:
-                from community.core.sync import ensure_unique_channel
-                from community.bot.core import _ensure_category, _get_category_for_channel
-                from community.core.channels import MGR_ID
-                from community import db as _db
-                category = await _ensure_category(guild, _get_category_for_channel(DEV_CHANNEL))
-                # ensure_unique_channel 은 (channel, created) 튜플 반환
-                result = await ensure_unique_channel(guild, DEV_CHANNEL, category)
-                ch = result[0] if isinstance(result, tuple) else result
-                # DB 참여자 등록 (세나 + 유나)
+                await channels.ensure_channel(DEV_CHANNEL, participants=[DEV_ID, MGR_ID])
                 _db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
             except Exception as e:
                 log_writer.system(f"[dev.queue] {DEV_CHANNEL} 채널 ensure 실패: {e}")
                 return
+        else:
+            for c in guild.text_channels:
+                if c.name == DEV_CHANNEL:
+                    ch = c
+                    break
             if ch is None:
-                return
+                try:
+                    from community.core.sync import ensure_unique_channel
+                    from community.bot.core import _ensure_category, _get_category_for_channel
+                    category = await _ensure_category(guild, _get_category_for_channel(DEV_CHANNEL))
+                    result = await ensure_unique_channel(guild, DEV_CHANNEL, category)
+                    ch = result[0] if isinstance(result, tuple) else result
+                    _db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
+                except Exception as e:
+                    log_writer.system(f"[dev.queue] {DEV_CHANNEL} 채널 ensure 실패: {e}")
+                    return
+                if ch is None:
+                    return
 
         # Dev agent invoke — pending 큐에서 가장 오래된 1건 대상.
         try:
@@ -89,30 +97,32 @@ class DevQueueSupervisor(Supervisor):
                 "그리고 너의 DM 채널에 in-character 한 줄 ack."
             )
             from community.core.runtime import runtime
-            from community.bot.core import send_as_agent
-            from community.bot.mgr_system import parse_and_execute_actions
             import asyncio as _asyncio
             # generate_response_force 는 sync + 내부에서 subprocess.run(claude CLI, 120s) 호출.
-            # 그냥 await 했더니 sync 함수는 list 반환하지만 event loop 가 120s 동안 블록 →
-            # paced_sender 워커 못 돌아서 Discord 메시지 안 나가던 회귀. asyncio.to_thread 로
-            # 워커 스레드에서 실행 → event loop 자유.
+            # asyncio.to_thread 로 워커 스레드에서 실행 → event loop 자유.
             responses = await _asyncio.to_thread(
                 runtime.generate_response_force,
                 DEV_ID, DEV_CHANNEL, user_msg,
             )
-            # tool 호출 dispatch (dev_organize / dev_escalate / dev_clarify) — 응답 텍스트와
-            # 별개로 runtime 이 stash 한 tool_calls 를 ToolContext 로 실행.
+            # tool 호출 dispatch (dev_organize / dev_escalate / dev_clarify) — adapter-first.
+            # web 은 core.mgr_actions, 디코는 동일 core 스파인 + discord 어댑터.
+            if channels is not None:
+                _adapter = channels
+            else:
+                from community.adapters.discord.channels import get_discord_adapter
+                _adapter = get_discord_adapter()
+            from community.core.mgr_actions import parse_and_execute_actions
             try:
                 responses = await parse_and_execute_actions(
-                    ch, responses, guild, caller_agent_id=DEV_ID,
+                    DEV_CHANNEL, responses, channels=_adapter, caller_agent_id=DEV_ID,
                 )
             except Exception as e:
                 log_writer.system(f"[dev.queue] tool dispatch 실패: {type(e).__name__}: {e}")
-            # 응답 chat 메시지를 dev (세나) DM 채널에 게시
+            # 응답 chat 메시지를 dev (세나) DM 채널에 게시 (어댑터 경유)
             for msg in responses or []:
                 if msg and msg.strip():
                     try:
-                        await send_as_agent(ch, DEV_ID, msg)
+                        await _adapter.send_as_agent(DEV_CHANNEL, DEV_ID, msg)
                     except Exception as e:
                         log_writer.system(f"[dev.queue] send_as_agent 실패: {e}")
             # 활동 이벤트 기록 — request_id 처리했음을 그래프에 가시화.

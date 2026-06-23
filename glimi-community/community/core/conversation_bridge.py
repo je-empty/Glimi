@@ -1,13 +1,20 @@
-"""App bridge for the kernel conversation engine.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Jaebin Sim
+"""
+conversation_bridge (core) — discord-free wiring for the kernel conversation engine.
 
 Wires the pure kernel engine (``glimi.conversation``) to the Community app:
 - injects the SQLite ``KernelStore`` + ``OwnerContext`` adapters,
-- supplies the Discord ``<tools>`` execution callback,
+- supplies a transport-neutral ``<tools>`` execution callback (resolved via
+  ``get_channel_adapter()`` → ``core.mgr_actions.parse_and_execute_actions``),
 - applies the app's maintenance guard.
 
-Callers import the conversation API from here (one site). The pure helpers
-(stop / list / detect / state) are re-exported unchanged — they share the
-kernel module's active-conversation state.
+This is the web home for ``start_conversation`` (the old ``community/bot/
+conversation_bridge.py`` re-exports from here). NO ``import discord``.
+
+The pure helpers (stop / list / detect / state) come straight from the kernel
+module — they share the kernel's active-conversation state, so re-exporting them
+here is identical to importing from the kernel directly.
 """
 from __future__ import annotations
 
@@ -34,28 +41,23 @@ __all__ = [
 
 
 async def _execute_agent_tools(channel_name: str, speaker_id: str) -> None:
-    """Run any ``<tools>`` a just-spoken agent emitted, against the Discord channel.
+    """Run any ``<tools>`` a just-spoken agent emitted, against the resolved adapter.
 
-    Discord-specific feeder kept for the (Phase-6-doomed) Discord transport. The
-    web/neutral feeder lives in ``community.core.conversation_bridge``.
-    Lazy imports avoid a module-level import cycle with ``mgr_system``.
+    SECOND feeder of the kernel tool stash (the first is ``chat._run_turn``). It
+    MUST run inside the same active-community scope as the stash write — the engine
+    drives both within one ``run_in_community`` turn, so ``pop_tool_calls`` keys
+    consistently (Phase 3.0). Resolves the transport via ``get_channel_adapter()``
+    so it is discord-free on web.
     """
-    from community.bot.mgr_system import parse_and_execute_actions
-    from community.bot.core import get_target_guild
-    import discord
+    from community.core.channel_adapter import get_channel_adapter
+    from community.core.mgr_actions import parse_and_execute_actions
 
-    guild = get_target_guild()
-    if not guild:
-        return
-    ch_obj = discord.utils.get(guild.text_channels, name=channel_name)
-    if not ch_obj:
-        return
-    await parse_and_execute_actions(ch_obj, [], guild, caller_agent_id=speaker_id)
+    channels = get_channel_adapter()
+    await parse_and_execute_actions(
+        channel_name, [], channels=channels, caller_agent_id=speaker_id
+    )
 
 
-# Phase 3.6: ``start_conversation`` 의 정본 홈은 core.conversation_bridge.
-# 디코 어댑터는 discord-specific ``_execute_agent_tools`` 를 써야 하므로 여기선
-# core.start_conversation 을 그대로 못 쓰고(거긴 web feeder), 자체 wiring 유지.
 async def start_conversation(
     channel_name: str,
     participants: list[str],
@@ -63,12 +65,11 @@ async def start_conversation(
     context: str = "",
     max_turns: int = _kc.DEFAULT_MAX_TURNS,
 ) -> ConversationState:
-    """App-facing entry (Discord): maintenance guard + DI (discord tool feeder)."""
+    """App-facing entry: maintenance guard + dependency injection, then run."""
     from community.community import is_maintenance_mode
     if is_maintenance_mode():
         from community import log_writer
         log_writer.system(f"[maintenance] start_conversation skip #{channel_name}")
-        # 최소 state 리턴 (호출자 기대 타입 유지)
         return ConversationState(channel_name, participants, max_turns=max_turns)
 
     return await _kc.start_conversation(

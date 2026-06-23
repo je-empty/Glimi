@@ -31,7 +31,7 @@ async def _run_checks():
     guild = get_target_guild()
     if not guild:
         return
-    await pool.tick(guild)
+    await pool.tick(guild=guild)
 
 
 async def notify_idle(channel_name: str):

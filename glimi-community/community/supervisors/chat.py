@@ -12,8 +12,6 @@ import re
 import subprocess
 from datetime import datetime
 
-import discord
-
 from community import db, log_writer
 from community.supervisors.base import Supervisor
 # universe-scoped 헬퍼들 — runtime 과 공유 (src/core/scoping.py 로 이전됨)
@@ -100,8 +98,9 @@ class ChatSupervisor(Supervisor):
     # ── check ─────────────────────────────────────────────
 
     async def check(self, ctx):
+        channels = ctx.get("channels") if isinstance(ctx, dict) else None
         guild = ctx.get("guild") if isinstance(ctx, dict) else None
-        if guild is None:
+        if channels is None and guild is None:
             return
 
         # Quiet hours (23:00~06:59 KST) — 새벽 시간대 nudge 금지.
@@ -168,8 +167,15 @@ class ChatSupervisor(Supervisor):
                 return
             log_writer.system(f"[sup:{self.id}] 멈춤 — {target_id} 재촉")
             self._mark_nudged()
-            ch = discord.utils.get(guild.text_channels, name=self.channel_name)
-            if ch:
+            # adapter-first (web): 채널 존재 확인. 디코는 guild 에서 channel obj resolve.
+            ch = None
+            if channels is not None:
+                if not await channels.find_channel(self.channel_name):
+                    return
+            else:
+                import discord
+                ch = discord.utils.get(guild.text_channels, name=self.channel_name)
+            if channels is not None or ch:
                 # 1인칭 self-talk — persona 가 지시문으로 오해하지 않도록.
                 # 새 주제 유도: 같은 대화 재탕 방지. 여러 seed 중 랜덤.
                 import random as _r
@@ -191,7 +197,8 @@ class ChatSupervisor(Supervisor):
                 # SAO 페르소나는 SAO 관련 채널의 오너 발화만 보고, 홀로라이브 페르소나는
                 # 자기 채널의 오너 발화만 봄. universe 분리 자동 처리.
                 owner_status = _owner_recent_status(here_personas)
-                await self._inject_and_send(target_id, ch, seed + guard + owner_status)
+                await self._inject_and_send(target_id, ch, seed + guard + owner_status,
+                                            channels=channels)
 
     def _pick_nudge_target(self, participants: list[str]) -> str | None:
         """nudge 대상 결정 — 마지막 발화자 외 에이전트 1명.
@@ -231,16 +238,18 @@ class ChatSupervisor(Supervisor):
         except Exception:
             return 999.0
 
-    async def _inject_and_send(self, agent_id: str, channel, instruction: str):
+    async def _inject_and_send(self, agent_id: str, channel, instruction: str, *, channels=None):
         if log_writer.is_thinking(agent_id) or log_writer.is_speaking(agent_id):
             log_writer.system(
                 f"[sup:{self.id}] nudge skip — {agent_id} 가 다른 채널에서 응답 중"
             )
             return
-        from community.bot import _get_channel_lock
-        from community.bot.core import send_as_agent, _split_for_chat
         from community.core.runtime import runtime
-        lock = _get_channel_lock(self.channel_name)
+        # 채널 잠금 — discord-free core.locks (web _run_turn 과 공유). community 단위 키.
+        from community.core.locks import get_channel_lock
+        from community.community import get_community_id
+        cid = get_community_id() or ""
+        lock = get_channel_lock(cid, self.channel_name)
         if lock.locked():
             log_writer.system(f"[sup:{self.id}] nudge skip — channel lock busy")
             return
@@ -273,11 +282,18 @@ class ChatSupervisor(Supervisor):
                 )
 
             sent = 0
-            for clean in kept:
-                for part in _split_for_chat(clean):
-                    await send_as_agent(channel, agent_id, part)
-                    await asyncio.sleep(0.1)
+            if channels is not None:
+                # adapter-first (web). 어댑터가 pacing 처리 — _split_for_chat 불필요.
+                for clean in kept:
+                    await channels.send_as_agent(self.channel_name, agent_id, clean)
                     sent += 1
+            else:
+                from community.bot.core import send_as_agent, _split_for_chat
+                for clean in kept:
+                    for part in _split_for_chat(clean):
+                        await send_as_agent(channel, agent_id, part)
+                        await asyncio.sleep(0.1)
+                        sent += 1
             if sent == 0:
                 # nudge 가 어떤 응답을 만들었지만 디스코드 송출 0 — 진단용 로그.
                 # 빈 list (CLI 실패/타임아웃), 모든 라인이 "..." 또는 "(무시)" 등

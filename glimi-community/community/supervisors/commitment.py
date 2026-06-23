@@ -90,8 +90,9 @@ class CommitmentSupervisor(Supervisor):
         return any((now - ts) < 30 * 60 for ts in self._last_nudge.values())
 
     async def check(self, ctx: dict) -> None:
+        channels = ctx.get("channels")
         guild = ctx.get("guild")
-        if guild is None:
+        if channels is None and guild is None:
             return
 
         commitments = self._scan_recent_commitments()
@@ -128,7 +129,7 @@ class CommitmentSupervisor(Supervisor):
                 continue  # 약속 이행됨
 
             # invoke_agent 로 nudge
-            await self._nudge_agent(guild, agent_id, agent_name, target_ch, commit_msg)
+            await self._nudge_agent(channels, guild, agent_id, agent_name, target_ch, commit_msg)
             self._last_nudge[key] = now
 
     # ── helpers ───────────────────────────────────────────────
@@ -228,26 +229,38 @@ class CommitmentSupervisor(Supervisor):
         except Exception:
             return False
 
-    async def _nudge_agent(self, guild, agent_id: str, agent_name: str,
+    async def _nudge_agent(self, channels, guild, agent_id: str, agent_name: str,
                             target_channel: str, commit_msg: str) -> None:
-        """invoke_agent 로 강제 nudge — 해당 agent 가 target_channel 에서 약속 이행 발화."""
+        """invoke_agent 로 강제 nudge — 해당 agent 가 target_channel 에서 약속 이행 발화.
+
+        Phase 3.4: yuna_force_agent 새 시그니처 (channel_name, args_str, ctx) +
+        adapter-first. args_str 는 "이름 채널 지시" 공백 구분 (split(None,2)).
+        """
         from community.supervisors.events import log_event as _log_sup_event
         try:
-            from community.bot.mgr_system import yuna_force_agent
-            import json as _json
-            # invoke_agent payload 형식: {name, target, instruction}
             instruction = (
                 f"방금 internal-dm 에서 한 약속 이행 차례 — '{commit_msg[:120]}'. "
                 f"#{target_channel} 가서 약속한 작업 시작. 빈이가 기다리고 있어."
             )
-            payload = _json.dumps({
-                "name": agent_name,
-                "target": target_channel,
-                "instruction": instruction,
-            }, ensure_ascii=False)
+            args_str = f"{agent_name} {target_channel} {instruction}"
             _mgr_dm = _mgr_dm_channel_name()
-            mgr_ch = next((c for c in guild.text_channels if c.name == _mgr_dm), None)
-            await yuna_force_agent(mgr_ch, payload, guild)
+
+            if channels is not None:
+                # adapter-first (web). BEFORE community.bot import.
+                from community.core.mgr_actions import yuna_force_agent, MGR_ID
+                from glimi.tools.dispatcher import ToolContext
+                ctx = ToolContext(caller_agent_id=MGR_ID, caller_agent_type="mgr",
+                                  channel_name=_mgr_dm, channels=channels)
+                await yuna_force_agent(_mgr_dm, args_str, ctx)
+            else:
+                # guild-fallback (Discord — Phase-6-doomed).
+                from community.bot.mgr_system import core_mgr_actions
+                from community.adapters.discord.channels import get_discord_adapter
+                from community.core.mgr_actions import MGR_ID
+                from glimi.tools.dispatcher import ToolContext
+                ctx = ToolContext(caller_agent_id=MGR_ID, caller_agent_type="mgr",
+                                  channel_name=_mgr_dm, channels=get_discord_adapter())
+                await core_mgr_actions.yuna_force_agent(_mgr_dm, args_str, ctx)
             log_writer.system(
                 f"[commitment] {agent_name} → #{target_channel} nudge 발송 (commit: {commit_msg[:80]})"
             )
