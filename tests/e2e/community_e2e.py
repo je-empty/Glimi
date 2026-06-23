@@ -462,6 +462,10 @@ async def _drive_owner_agent(base: str, base_ws: str, cid: str, cookie: str,
     async with websockets.connect(
         ws_url, additional_headers={"Cookie": cookie}, open_timeout=20,
         max_size=4 * 1024 * 1024,
+        # Disable client keepalive pings: a slow claude_cli agent call blocks the
+        # server's loop for 30-90s, so default ping_timeout=20 would drop the WS
+        # (1011 keepalive timeout) mid-drive and harvest an empty snapshot.
+        ping_interval=None,
     ) as ws:
         for rnd in range(rounds):
             snap = _owner_snapshot(base, cid, cookie, round_idx=rnd,
@@ -480,16 +484,26 @@ async def _drive_owner_agent(base: str, base_ws: str, cid: str, cookie: str,
             recent.setdefault(ch, []).append(
                 {"speaker": "사용자", "text": text, "is_user": True})
 
-            await ws.send(json.dumps({
-                "type": "text", "channel": ch, "agent": agent_id, "text": text,
-            }))
-            reply = await _await_reply(ws, ch, reply_timeout, log)
+            try:
+                await ws.send(json.dumps({
+                    "type": "text", "channel": ch, "agent": agent_id, "text": text,
+                }))
+                reply = await _await_reply(ws, ch, reply_timeout, log)
+            except Exception as exc:
+                # A slow claude_cli call can block the server loop long enough for the
+                # WS keepalive to drop the connection mid-drive. Don't lose the run —
+                # stop driving and let the caller harvest what's already persisted
+                # server-side (the conversation so far is in the community DB).
+                log(f"[owner-agent] WS 끊김 R{rnd + 1} ({type(exc).__name__}) — "
+                    f"드라이브 조기 종료, 서버 대화 수확")
+                break
             if reply:
                 observed.setdefault(ch, []).append(reply)
                 recent.setdefault(ch, []).append(
                     {"speaker": agent_id, "text": reply, "is_user": False})
 
-    # Stash the owner side for the verdict (turns + token usage).
+    # Stash the owner side for the verdict (turns + token usage). Reached even on an
+    # early break above, so a WS hiccup still yields the partial transcript.
     observed["_owner_turns"] = driver.turns           # type: ignore[assignment]
     observed["_owner_usage"] = driver.usage           # type: ignore[assignment]
     return observed
@@ -515,6 +529,10 @@ async def _drive_ws(base_ws: str, cid: str, cookie: str, friends: list[str],
     async with websockets.connect(
         ws_url, additional_headers={"Cookie": cookie}, open_timeout=20,
         max_size=4 * 1024 * 1024,
+        # Disable client keepalive pings: a slow claude_cli agent call blocks the
+        # server's loop for 30-90s, so default ping_timeout=20 would drop the WS
+        # (1011 keepalive timeout) mid-drive and harvest an empty snapshot.
+        ping_interval=None,
     ) as ws:
         for rnd in range(rounds):
             turn = OWNER_TURNS[min(rnd, len(OWNER_TURNS) - 1)]
@@ -769,12 +787,15 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
                                        reply_timeout, backend, log=print),
                     timeout=wall_clock_cap,
                 )
+            observed = {}
             try:
                 observed = asyncio.run(_drive_with_cap())
             except asyncio.TimeoutError:
                 error = f"wall_clock_cap {wall_clock_cap}s exceeded"
                 print(f"[community_e2e] WALL-CLOCK CAP {wall_clock_cap}s hit — stopping drive")
-                observed = {}
+            except Exception as exc:  # WS drop etc. — never skip the harvest below
+                error = f"drive error: {type(exc).__name__}: {exc}"
+                print(f"[community_e2e] 드라이브 예외 — 서버 대화는 그대로 수확: {error}")
             owner_turns = observed.pop("_owner_turns", [])  # type: ignore[assignment]
             owner_usage = observed.pop("_owner_usage", {})  # type: ignore[assignment]
             # The owner agent decides its own channels — the driven set is whatever
