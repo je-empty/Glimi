@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Glimi · QA — EDD generations{% endblock %}
+{% block head %}
+<style>
+  .qa-page { max-width: 1200px; margin: 0 auto; padding: 18px 22px 80px; }
+  .qa-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .qa-head h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .admin-tag { font-size: 10.5px; padding: 3px 8px; background: var(--err); color: #fff;
+               border-radius: 4px; font-weight: 700; letter-spacing: 0.5px; }
+  .qa-page .lede { color: var(--text-dim); font-size: 13px; margin: 4px 0 22px; max-width: 760px; }
+  .qa-page code { background: var(--panel); border: 1px solid var(--border-soft);
+                  border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+
+  .qa-empty { border: 1px dashed var(--border); border-radius: 12px; padding: 40px 24px;
+              text-align: center; color: var(--text-dim); }
+
+  /* hero — latest generation */
+  .qa-hero { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: center;
+             background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+             padding: 22px 24px; margin-bottom: 22px; }
+  @media (max-width: 680px) { .qa-hero { grid-template-columns: 1fr; } }
+  .qa-score { text-align: center; }
+  .qa-score-num { font-size: 56px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+  .qa-score-sub { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+  .qa-badge { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 700;
+              padding: 4px 12px; border-radius: 999px; }
+  .qa-pass { background: color-mix(in srgb, #1f9d57 16%, transparent); color: #1f9d57; }
+  .qa-fail { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+  .qa-meta { font-size: 12px; color: var(--text-dim); display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  .qa-meta b { color: var(--text); font-weight: 600; }
+
+  /* dimension chips */
+  .qa-dims { display: flex; flex-direction: column; gap: 6px; }
+  .qa-dim { display: grid; grid-template-columns: 130px 54px 1fr; align-items: center;
+            gap: 10px; font-size: 12.5px; }
+  .qa-dim-label { font-weight: 600; }
+  .qa-dim-score { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+  .qa-bar { height: 7px; border-radius: 4px; background: var(--border-soft); overflow: hidden; }
+  .qa-bar > span { display: block; height: 100%; border-radius: 4px; }
+  .qa-dim.skip { opacity: 0.5; }
+
+  /* trend */
+  .qa-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+             padding: 18px 20px; margin-bottom: 22px; }
+  .qa-card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; }
+  .qa-card .sub { color: var(--text-faint); font-size: 12px; margin-bottom: 14px; }
+  #qa-trend { width: 100%; height: 200px; display: block; }
+
+  /* table */
+  .qa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .qa-table th { text-align: left; color: var(--text-faint); font-size: 11px;
+                 text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+                 padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .qa-table td { padding: 9px 10px; border-bottom: 1px solid var(--border-soft);
+                 font-variant-numeric: tabular-nums; }
+  .qa-table tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+  .qa-sha { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-dim); }
+  .qa-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .qa-fail-dims { color: var(--err); font-size: 11.5px; }
+  .qa-delta-up { color: #1f9d57; } .qa-delta-down { color: var(--err); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="qa-page">
+  <div class="qa-head">
+    <h1>QA — EDD generations</h1>
+    <span class="admin-tag">ADMIN</span>
+  </div>
+  <p class="lede">
+    자율 오너 에이전트가 커뮤니티를 처음부터 구동한 각 세션을 여러 차원으로 채점한
+    <b>0–100 품질 점수</b>를 git 세대(commit)별로 추적합니다 — eval-driven development flywheel.
+    데이터는 <code>community_e2e --qa</code> 가 기록한 git-앵커 세대입니다. (<code>docs/qa_system.md</code>)
+  </p>
+
+  {% if not generations %}
+  <div class="qa-empty">
+    아직 기록된 세대가 없습니다.<br>
+    <code>GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e --owner-agent --qa</code>
+    로 첫 세대를 남기세요.
+  </div>
+  {% else %}
+  {% set latest = generations[-1] %}
+  <div class="qa-hero">
+    <div class="qa-score">
+      <div class="qa-score-num" id="hero-score">
+        {{ latest.overall_score if latest.overall_score is not none else '–' }}
+      </div>
+      <div class="qa-score-sub">/ 100 · gate {{ latest.min_overall or 70 }}</div>
+      <div class="qa-badge {{ 'qa-pass' if latest.passed else 'qa-fail' }}">
+        {{ '✅ PASS' if latest.passed else '❌ FAIL' }}
+      </div>
+    </div>
+    <div>
+      <div class="qa-meta">
+        <span>gen <b>#{{ latest.generation_no }}</b></span>
+        <span>git <b class="qa-sha">{{ latest.git.sha }}{{ '*' if latest.git.dirty }}</b></span>
+        <span>backend <b>{{ latest.backend }}</b></span>
+        <span>{{ latest.generated_at[:19].replace('T',' ') }}Z</span>
+        {% if latest.failing %}<span class="qa-fail-dims">실패: {{ latest.failing|join(', ') }}</span>{% endif %}
+      </div>
+      <div class="qa-dims">
+        {% for d in latest.dimensions %}
+        <div class="qa-dim {{ 'skip' if d.skipped }}">
+          <span class="qa-dim-label">{{ d.label }}</span>
+          <span class="qa-dim-score">{{ 'skip' if d.skipped else (d.score|string + '/10') }}</span>
+          <span class="qa-bar"><span style="width: {{ 0 if d.skipped or d.score is none else (d.score*10)|round(0,'floor') }}%;
+            background: {{ 'var(--border)' if d.skipped else ('#1f9d57' if d.passed else 'var(--err)') }};"></span></span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="qa-card">
+    <h2>Quality over generations</h2>
+    <div class="sub">세대별 종합 점수 — 우상향이 곧 품질 개선의 측정 가능한 증거.</div>
+    <svg id="qa-trend" viewBox="0 0 800 200" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div class="qa-card">
+    <h2>Generations</h2>
+    <div class="sub">{{ generations|length }} 세대 · 각 행은 한 commit 위의 한 QA 런.</div>
+    <table class="qa-table">
+      <thead><tr>
+        <th>#</th><th>점수</th><th></th><th>git</th><th>backend</th><th>실패 차원</th><th>시각</th>
+      </tr></thead>
+      <tbody>
+        {% for g in generations|reverse %}
+        <tr>
+          <td>{{ g.generation_no }}</td>
+          <td><b>{{ g.overall_score if g.overall_score is not none else '–' }}</b></td>
+          <td><span class="qa-pill {{ 'qa-pass' if g.passed else 'qa-fail' }}">{{ 'PASS' if g.passed else 'FAIL' }}</span></td>
+          <td class="qa-sha">{{ g.git.sha }}{{ '*' if g.git.dirty }}</td>
+          <td>{{ g.backend }}</td>
+          <td class="qa-fail-dims">{{ g.failing|join(', ') if g.failing else '—' }}</td>
+          <td>{{ g.generated_at[:19].replace('T',' ') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block bottom_scripts %}
+<script>
+  const GENS = {{ (generations or [])|tojson }};
+  (function drawTrend() {
+    const svg = document.getElementById('qa-trend');
+    if (!svg || !GENS.length) return;
+    const W = 800, H = 200, padL = 36, padR = 12, padT = 14, padB = 22;
+    const pts = GENS.map((g, i) => ({ i, no: g.generation_no, y: g.overall_score, pass: g.passed }))
+                    .filter(p => p.y !== null && p.y !== undefined);
+    if (!pts.length) return;
+    const n = pts.length;
+    const xAt = i => padL + (n === 1 ? (W - padL - padR) / 2 : (W - padL - padR) * i / (n - 1));
+    const yAt = v => padT + (H - padT - padB) * (1 - v / 100);
+    const css = getComputedStyle(document.documentElement);
+    const accent = css.getPropertyValue('--accent').trim() || '#b76e0e';
+    const dim = css.getPropertyValue('--text-faint').trim() || '#999';
+    const soft = css.getPropertyValue('--border-soft').trim() || '#eee';
+    let s = '';
+    // y gridlines + labels (0, 50, 70 gate, 100)
+    [0, 50, 100].forEach(v => {
+      const y = yAt(v);
+      s += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="${soft}" stroke-width="1"/>`;
+      s += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="10" fill="${dim}">${v}</text>`;
+    });
+    // gate line at 70 (dashed)
+    const gy = yAt(70);
+    s += `<line x1="${padL}" y1="${gy}" x2="${W-padR}" y2="${gy}" stroke="${accent}" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>`;
+    s += `<text x="${W-padR}" y="${gy-4}" text-anchor="end" font-size="10" fill="${accent}">gate 70</text>`;
+    // line
+    const path = pts.map((p, k) => `${k ? 'L' : 'M'}${xAt(p.i).toFixed(1)},${yAt(p.y).toFixed(1)}`).join(' ');
+    s += `<path d="${path}" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    // points
+    pts.forEach(p => {
+      const c = p.pass ? '#1f9d57' : (css.getPropertyValue('--err').trim() || '#c0392b');
+      s += `<circle cx="${xAt(p.i).toFixed(1)}" cy="${yAt(p.y).toFixed(1)}" r="4" fill="${c}"/>`;
+      s += `<text x="${xAt(p.i).toFixed(1)}" y="${yAt(p.y)-9}" text-anchor="middle" font-size="10" fill="${dim}">${p.y}</text>`;
+    });
+    svg.innerHTML = s;
+  })();
+</script>
+{% endblock %}

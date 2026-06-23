@@ -229,3 +229,42 @@ async def admin_dev_requests_page(
         "admin/dev_requests.html",
         {"user": user},
     )
+
+
+def _qa_store():
+    """The Community QA generation store (committed generations + local SQLite), via
+    the shared core framework (:class:`glimi.edd.GenerationStore`). Path is
+    configurable with ``GLIMI_QA_GENERATIONS_DIR``; defaults to the repo's
+    ``tests/e2e/qa_generations``."""
+    import os
+    from pathlib import Path
+
+    from glimi.edd import GenerationStore
+
+    env_dir = os.environ.get("GLIMI_QA_GENERATIONS_DIR")
+    if env_dir:
+        gens = Path(env_dir).resolve()
+        repo = gens.parents[2]                      # tests/e2e/qa_generations -> repo
+    else:
+        repo = Path(__file__).resolve().parents[4]  # routers/platform/community/glimi-community/<repo>
+        gens = repo / "tests" / "e2e" / "qa_generations"
+    db = repo / "tests" / "e2e" / "results" / "qa_history.db"
+    return GenerationStore(db_path=db, generations_dir=gens, repo_root=repo)
+
+
+@router.get("/admin/qa", response_class=HTMLResponse)
+async def admin_qa_page(
+    request: Request,
+    user: dict = Depends(require_admin),
+):
+    """글로벌 admin 페이지 — EDD QA 세대 히스토리 (품질 트렌드 + 런별 차원 분해).
+
+    Reads the git-anchored generations ``community_e2e --qa`` writes through the
+    shared ``glimi.edd`` store — the flywheel data ``docs/qa_system.md`` describes."""
+    store = _qa_store()
+    generations = store.load_generations()
+    return templates.env.TemplateResponse(
+        request,
+        "admin/qa.html",
+        {"user": user, "generations": generations},
+    )
