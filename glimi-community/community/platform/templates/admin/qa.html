@@ -8,6 +8,11 @@
   .admin-tag { font-size: 10.5px; padding: 3px 8px; background: var(--err); color: #fff;
                border-radius: 4px; font-weight: 700; letter-spacing: 0.5px; }
   .qa-page .lede { color: var(--text-dim); font-size: 13px; margin: 4px 0 22px; max-width: 760px; }
+  .qa-pdf-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+                font-size: 12.5px; font-weight: 600; text-decoration: none; color: var(--text);
+                background: var(--panel); border: 1px solid var(--border); border-radius: 7px;
+                padding: 7px 13px; transition: border-color 0.12s; }
+  .qa-pdf-btn:hover { border-color: var(--accent); color: var(--accent); }
   .qa-page code { background: var(--panel); border: 1px solid var(--border-soft);
                   border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 
@@ -66,6 +71,11 @@
   <div class="qa-head">
     <h1>QA — EDD generations</h1>
     <span class="admin-tag">ADMIN</span>
+    {% if generations %}
+    <a class="qa-pdf-btn" href="/admin/qa/pdf" target="_blank" title="최신 세대 리포트 PDF">
+      <i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF 내보내기
+    </a>
+    {% endif %}
   </div>
   <p class="lede">
     자율 오너 에이전트가 커뮤니티를 처음부터 구동한 각 세션을 여러 차원으로 채점한

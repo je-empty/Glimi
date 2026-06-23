@@ -34,6 +34,7 @@ from .dimensions import (
     build_assessment,
 )
 from .history import GenerationStore
+from .report import generation_to_html, generation_to_pdf, html_to_pdf
 
 __all__ = [
     "Dimension",
@@ -42,4 +43,7 @@ __all__ = [
     "composite_score",
     "build_assessment",
     "GenerationStore",
+    "generation_to_html",
+    "generation_to_pdf",
+    "html_to_pdf",
 ]

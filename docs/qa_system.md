@@ -82,6 +82,12 @@ GLIMI_LLM_BACKEND=echo .venv/bin/python -m tests.e2e.community_e2e --owner-agent
 GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e \
     --owner-agent --rounds 10 --qa --report
 
+# + PDF 리포트까지 (트렌드 차트 + 차원 포함, playwright 필요). --pdf 는 --qa 포함.
+GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e \
+    --owner-agent --rounds 10 --pdf --report
+
+# 웹에서 보기: 플랫폼 로그인(admin) → 상단 "QA" 메뉴 → /admin/qa (트렌드·세대·PDF 내보내기)
+
 # 라이브 관전 (터널로 처음부터 보기) — 드라이브 시작 전 N 초 일시정지
 ./scripts/community_e2e.sh --owner-agent --rounds 10 --keep-serving --host 0.0.0.0 --watch-pause 180 --qa
 ```
@@ -107,7 +113,9 @@ glimi.edd  (코어, 도메인-중립, glimi wheel 에 포함)
 
 | 파일 | 역할 |
 |---|---|
-| `glimi-core/glimi/edd/` | **공용 EDD 프레임워크** — `dimensions.py`(Dimension·DimResult·종합점수·Assessment) + `history.py`(GenerationStore: SQLite + git-SHA JSON 세대). 양 앱 공유 |
+| `glimi-core/glimi/edd/` | **공용 EDD 프레임워크** — `dimensions.py`(Dimension·DimResult·종합점수·Assessment) + `history.py`(GenerationStore: SQLite + git-SHA JSON 세대) + `report.py`(세대→자체완결 HTML→PDF, playwright lazy). 양 앱 공유 |
+| `glimi-community/.../routers/pages.py` `/admin/qa` | 웹 QA 대시보드 라우트 + `/admin/qa/pdf` PDF 내보내기 |
+| `glimi-community/.../templates/admin/qa.html` | 대시보드 템플릿 (히어로·SVG 트렌드·세대 테이블·PDF 버튼) |
 | `tests/e2e/community_e2e.py` | 실 커뮤니티 서버 spawn + 오너 에이전트 드라이브 + `--qa` 훅 |
 | `tests/e2e/community_owner_agent.py` | 개발자 자아 오너 에이전트 (온보딩→유나경유 친구요청→대화) |
 | `tests/e2e/qa_quality.py` | **Community 도메인 6차원 + 평가** (코어 `glimi.edd` 위) |
@@ -118,9 +126,9 @@ glimi.edd  (코어, 도메인-중립, glimi wheel 에 포함)
 
 ## 로드맵
 
-- **Phase 1 (현재)**: 다차원 평가 + 종합 점수 + git-앵커 세대 히스토리. ✅ 엔진/차원/히스토리.
-- **Phase 2**: PDF 리포트 추출 + 플랫폼 **웹 QA 대시보드**(별도 메뉴: 런 목록·리포트·**품질 우상향 트렌드 차트**).
-- **Phase 3**: 시나리오 라이브러리(도전과제/그룹챗/드라마) + 차원 확장 + 다개발자 자아 문서.
+- **Phase 1** ✅: 다차원 평가 + 종합 점수 + git-앵커 세대 히스토리 (엔진/차원/히스토리, 코어 `glimi.edd`).
+- **Phase 2** ✅: 플랫폼 **웹 QA 대시보드**(`/admin/qa`, admin 메뉴 — 최신점수 히어로·**품질 우상향 트렌드 차트**·세대 테이블) + **PDF 리포트**(`--pdf` 또는 대시보드 "PDF 내보내기" → playwright 렌더, 트렌드+차원 포함).
+- **Phase 3**: 시나리오 라이브러리(도전과제/그룹챗/드라마) + 차원 확장 + 워크스페이스도 `glimi.edd` 채택.
 
 ## 알려진 gen-1 baseline 이슈 (= 시스템이 잡은 첫 실버그)
 

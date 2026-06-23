@@ -1,6 +1,6 @@
 """HTML 페이지 라우터 — 로그인 / 홈 (커뮤니티 리스트) / 커뮤니티 대시보드."""
 from fastapi import APIRouter, Depends, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from community.community import is_read_only, list_communities
 
@@ -268,3 +268,34 @@ async def admin_qa_page(
         "admin/qa.html",
         {"user": user, "generations": generations},
     )
+
+
+# sync `def` (not async) on purpose: FastAPI runs it in a threadpool, so the
+# Playwright SYNC api works without clashing with the server's event loop.
+@router.get("/admin/qa/pdf")
+def admin_qa_pdf(
+    gen: int | None = None,
+    user: dict = Depends(require_admin),
+):
+    """Render a QA generation to a PDF report (latest by default, or ``?gen=N``).
+    Returns the PDF as a download. 503 if Playwright isn't installed on the host."""
+    import tempfile
+    from pathlib import Path
+
+    store = _qa_store()
+    generations = store.load_generations()
+    if not generations:
+        raise HTTPException(status_code=404, detail="아직 기록된 QA 세대가 없습니다.")
+    target = (next((g for g in generations if g.get("generation_no") == gen), None)
+              if gen else generations[-1])
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"generation #{gen} 없음")
+
+    out = Path(tempfile.gettempdir()) / f"glimi-qa-gen-{target.get('generation_no')}.pdf"
+    try:
+        from glimi.edd import generation_to_pdf
+        generation_to_pdf(target, out, trend=store.quality_trend(),
+                          app_name="Glimi Community")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return FileResponse(str(out), media_type="application/pdf", filename=out.name)

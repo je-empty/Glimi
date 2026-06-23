@@ -682,7 +682,7 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         host: str, port: int, keep_serving: bool, reply_timeout: float,
         wall_clock_cap: float, report: bool = False,
         write_baseline: bool = False, owner_agent: bool = True,
-        watch_pause: float = 0.0, qa: bool = False) -> dict:
+        watch_pause: float = 0.0, qa: bool = False, pdf: bool = False) -> dict:
     """Full web E2E: seed → start server → log in → drive (owner-agent | scripted)
     → harvest → judge → write artifacts. Returns the verdict dict. Mirrors ws_e2e.run.
 
@@ -892,9 +892,10 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         try:
             from tests.e2e import qa_quality, qa_history
             assessment = qa_quality.assess(snap)
+            pdf_path = str(RESULTS_DIR / f"{run_id}-qa.pdf") if pdf else ""
             gen = qa_history.record_generation(
                 assessment, run_id=run_id, owner_name=OWNER_NAME, goal=goal,
-                report_md=verdict.get("report_md", ""))
+                report_md=verdict.get("report_md", ""), report_pdf=pdf_path)
             verdict["qa"] = {
                 "overall_score": assessment["overall_score"],
                 "passed": assessment["passed"],
@@ -903,6 +904,16 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
                 "generation_file": gen["_path"],
                 "git_sha": gen["git"]["sha"],
             }
+            # Optional PDF report (portfolio artifact) via the shared core renderer,
+            # including the quality-over-generations trend up to this run.
+            if pdf:
+                try:
+                    from glimi.edd import generation_to_pdf
+                    generation_to_pdf(gen, pdf_path, trend=qa_history.load_generations(),
+                                      app_name="Glimi Community")
+                    verdict["qa"]["pdf"] = pdf_path
+                except Exception as pexc:
+                    print(f"[community_e2e] PDF 생성 실패 (세대는 기록됨): {pexc}")
             ov = assessment["overall_score"]
             print("\n" + "─" * 64)
             print(f"  QA GENERATION #{gen['generation_no']}  ·  git {gen['git']['sha']}"
@@ -1009,6 +1020,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--qa", action="store_true",
                     help="record a QA GENERATION: multi-dimension quality assessment (0-100) "
                          "→ SQLite history + git-SHA-stamped JSON under tests/e2e/qa_generations/")
+    ap.add_argument("--pdf", action="store_true",
+                    help="also render the generation to a PDF report (implies --qa; needs Playwright)")
     ap.add_argument("--write-baseline", action="store_true",
                     help="(re)write tests/e2e/community-baseline.json from this run (implies --report)")
     args = ap.parse_args(argv)
@@ -1040,7 +1053,7 @@ def main(argv: list[str] | None = None) -> int:
         wall_clock_cap=max(30.0, wall_cap),
         report=args.report, write_baseline=args.write_baseline,
         owner_agent=args.owner_agent, watch_pause=max(0.0, args.watch_pause),
-        qa=args.qa,
+        qa=args.qa or args.pdf, pdf=args.pdf,
     )
     return 0 if verdict.get("status") in ("PASS", "WARN") else 1
 
