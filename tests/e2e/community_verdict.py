@@ -209,6 +209,56 @@ def _check_meta_leaks(snap: dict, issues: list, metrics: dict):
                        "evidence": leaks[:4]})
 
 
+def _check_owner_agent(snap: dict, issues: list, metrics: dict):
+    """When an AUTONOMOUS OWNER AGENT drove the session, judge the OWNER side too —
+    not just the friends. The owner is an LLM standing in for the human, so its
+    turns must read as a real person: coherent, progressing across rounds, and with
+    NO meta/AI-reveal leaks of its own.
+
+    Only runs in ``drive_mode == "owner-agent"`` (the scripted path has no owner
+    agent to judge). Checks:
+      - owner_turns_produced  — the owner agent produced ≥1 turn (it actually drove);
+      - owner_no_meta         — no owner turn leaks meta terms (AI/봇/프롬프트/…);
+      - owner_progressed      — across ≥2 turns the owner didn't send the identical
+        message every time (a stuck/looping owner). Echo is exempt (the scripted arc
+        is deterministic and may legitimately repeat the friend-request fallback)."""
+    if snap.get("drive_mode") != "owner-agent":
+        metrics["owner_agent"] = False
+        return
+    metrics["owner_agent"] = True
+    turns = snap.get("owner_turns") or []
+    metrics["owner_turns"] = len(turns)
+
+    if not turns:
+        issues.append({"severity": "BLOCKER", "category": "owner_agent",
+                       "detail": "오너 에이전트가 한 턴도 만들지 못함 (드라이브 실패)"})
+        return
+
+    # Owner-side meta scan (the owner must not betray it's software either).
+    owner_leaks = []
+    for t in turns:
+        hits = _meta_hits(t.get("text", ""))
+        if hits:
+            owner_leaks.append({"channel": t.get("channel"),
+                                "hits": sorted(set(hits)),
+                                "snippet": (t.get("text", "") or "")[:140]})
+    metrics["owner_meta_leaks"] = len(owner_leaks)
+    if owner_leaks:
+        issues.append({"severity": "REGRESSION", "category": "owner_meta_leak",
+                       "detail": f"오너 에이전트 발화에 메타 용어 {len(owner_leaks)}건 "
+                                 "(AI/봇/프롬프트 등 — 사람처럼 안 보임)",
+                       "evidence": owner_leaks[:4]})
+
+    # Owner progression — on a real backend the owner shouldn't send the SAME
+    # message every round. Echo's scripted arc is deterministic → exempt.
+    backend = (snap.get("backend") or "echo").lower()
+    texts = [(t.get("text") or "").strip() for t in turns if (t.get("text") or "").strip()]
+    metrics["owner_distinct_turns"] = len(set(texts))
+    if backend != "echo" and len(texts) >= 2 and len(set(texts)) == 1:
+        issues.append({"severity": "REGRESSION", "category": "owner_stuck",
+                       "detail": f"오너 에이전트가 {len(texts)}턴 내내 같은 말만 함 (루프 의심)"})
+
+
 def _check_errors(snap: dict, issues: list, metrics: dict):
     """No error/traceback/CAPPED leaked into any chat channel + surface a runner
     exception (a wall-clock cap is a soft envelope condition, not a defect)."""
@@ -276,6 +326,7 @@ def judge_snapshot(snap: dict, run_id: str = "community-e2e-adhoc") -> dict:
     _check_friend_replied(snap, issues, metrics)
     _check_replies_distinct(snap, issues, metrics)
     _check_meta_leaks(snap, issues, metrics)
+    _check_owner_agent(snap, issues, metrics)
     _check_errors(snap, issues, metrics)
 
     status = _status_from_issues(issues)
@@ -284,8 +335,10 @@ def judge_snapshot(snap: dict, run_id: str = "community-e2e-adhoc") -> dict:
         "status": status,
         "verdict": _verdict_line(status, issues),
         "backend": snap.get("backend"),
+        "drive_mode": snap.get("drive_mode", "scripted"),
         "driven_dms": metrics.get("driven_dms", []),
         "friend_replies_total": metrics.get("friend_replies_total", 0),
+        "owner_turns": metrics.get("owner_turns", 0),
         "elapsed_seconds": snap.get("elapsed_seconds"),
         "issues": issues,
         "metrics": metrics,

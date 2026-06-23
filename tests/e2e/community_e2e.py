@@ -4,9 +4,10 @@
 
 This is the Community analogue of :mod:`tests.e2e.ws_e2e` (the Workspace web E2E).
 Where ws_e2e drives an autonomous coordinator loop over HTTP, this drives the
-human-facing product: **the owner opens the web chat and messages a couple of AI
-friends in their DMs; each friend replies.** It is a TRUE web E2E — it exercises
-the whole web stack, not an in-process headless call:
+human-facing product: **an autonomous OWNER agent opens the web chat and, from the
+START (onboarding), chats with the manager (유나) + friend-maker (하나) + friends —
+turn by turn, deciding each move itself.** It is a TRUE web E2E — it exercises the
+whole web stack, not an in-process headless call:
 
   1. **start the REAL server** — ``python -m community.platform`` as a subprocess,
      in an ISOLATED ``GLIMI_DATA_DIR`` + ``GLIMI_COMMUNITIES_DIR`` (temp dirs, so
@@ -14,18 +15,24 @@ the whole web stack, not an in-process headless call:
      set (auto-bootstraps the admin) and ``GLIMI_LLM_BACKEND`` from env (echo for
      the free $0 self-test, claude_cli for the real run). Wait for ``/healthz``;
 
-  2. **seed a WRITABLE community with a few friends** — reuse
-     ``scripts.seed_demo_mockup.seed("<cid>")`` (the rich mockup: owner + 9 friend
-     personas + DMs), then flip ``read_only=false`` in the registry so the WS write
-     path is NOT blocked (the demo seed marks it read_only=true). Done in a child
-     subprocess sharing the SAME isolated env BEFORE the server starts, so the
-     server picks the community up at boot — no onboarding wizard needed;
+  2. **seed a WRITABLE community** — two modes:
+     - **fresh** (default, for ``--owner-agent``): owner + the default manager
+       (유나) + creator/friend-maker (하나) ONLY — NO pre-seeded friends. This is
+       the "from the start" state the owner agent onboards from (it greets 유나,
+       asks 하나 to make a friend, then chats). Seeded by :func:`_seed_fresh`;
+     - **demo mockup** (``--scripted`` legacy path): reuse
+       ``scripts.seed_demo_mockup.seed("<cid>")`` (owner + 7 friend personas).
+     Either way ``read_only=false`` is flipped so the WS write path is not blocked.
+     Done in a child subprocess sharing the SAME isolated env BEFORE the server
+     starts, so the server picks the community up at boot;
 
   3. **drive a QA scenario over the chat WebSocket** — log in (POST /login → session
-     cookie), connect to ``/community/{cid}/chat/ws`` as the owner, pick 1-2 friend
-     DM channels (``dm-<agent_id>``), and send a realistic mini-conversation
-     (greeting → a question → a follow-up) per round, collecting each friend's reply
-     from the WS ``text`` frames (and reconciling against ``/chat/history``);
+     cookie), connect to ``/community/{cid}/chat/ws`` as the owner, then EITHER
+     (default ``--owner-agent``) let an autonomous owner agent
+     (:mod:`tests.e2e.community_owner_agent`) decide each turn's channel + message
+     from the live snapshot and drive onboarding→friends→chat, OR (``--scripted``)
+     replay the fixed ``OWNER_TURNS`` into 1-2 friend DMs. Each owner turn's reply
+     is collected from the WS ``text`` frames (and reconciled against ``/chat/history``);
 
   4. **build the verdict from the SERVED API** — GET /chat/channels + /chat/history
      per driven DM + /api/usage, assemble the flat snapshot
@@ -46,14 +53,18 @@ reply frames the server emits back:
 
 Usage::
 
-    # FREE self-test ($0): full WS round-trip on echo, server torn down after
-    GLIMI_LLM_BACKEND=echo python -m tests.e2e.community_e2e --rounds 1 --port 8231
+    # FREE self-test ($0): autonomous owner-agent loop on echo, torn down after
+    GLIMI_LLM_BACKEND=echo python -m tests.e2e.community_e2e --owner-agent --rounds 2 --port 8232
 
-    # REAL run (COST) via the launcher — leaves the server up for a tunnel
-    ./scripts/community_e2e.sh --rounds 2 --keep-serving --host 0.0.0.0
+    # REAL run (COST) — owner agent drives onboarding→friends live; tunnel to watch
+    GLIMI_LLM_BACKEND=claude_cli python -m tests.e2e.community_e2e --owner-agent \
+        --rounds 6 --keep-serving --host 0.0.0.0
 
-Flags: --rounds --friends --goal --backend --port --host --keep-serving --report
-       --write-baseline --wall-cap (see ``--help``).
+    # Legacy scripted path (fixed owner turns into seeded friend DMs)
+    GLIMI_LLM_BACKEND=echo python -m tests.e2e.community_e2e --scripted --rounds 1 --port 8231
+
+Flags: --owner-agent/--scripted --rounds --friends --goal --backend --port --host
+       --keep-serving --report --write-baseline --wall-cap (see ``--help``).
 
 SAFETY: isolated temp dirs + a non-standard default port (8230). NEVER touches the
 owner's real communities, je-empty, or any shared resource. Does not start tunnels.
@@ -198,15 +209,92 @@ print("[seed] '%s' seeded writable (read_only=false)" % cid)
 """
 
 
-def _seed_community(env: dict, cid: str, log_fh) -> None:
+# FRESH seed (the "from the start" state for the owner agent): owner + the default
+# manager (유나) + creator/friend-maker (하나) + their DM channels — NO friend
+# personas. The owner agent onboards from here (greets 유나, asks 하나 for a friend,
+# then chats). Mirrors scripts.seed_demo_mockup's DB shape (init_db, users, agents,
+# dm-<agent_id> channels) but omits the persona block. read_only=false so the WS
+# write path is open.
+_FRESH_SEED_SNIPPET = """
+import sys
+from datetime import datetime
+from community import community, db
+from community.platform.demo_seed import _write_registry_block
+from community.community import _ensure_registry
+
+cid = sys.argv[1]
+community.set_community(cid)
+cdir = community.get_community_dir()
+cdir.mkdir(parents=True, exist_ok=True)
+for suffix in ("", "-shm", "-wal"):
+    p = cdir / ("community.db" + suffix)
+    if p.exists():
+        p.unlink()
+(cdir / "logs").mkdir(parents=True, exist_ok=True)
+(cdir / "logs" / "system.log").write_text("[seed] fresh (mgr+creator only)\\n")
+envf = cdir / ".env"
+if not envf.exists():
+    envf.write_text("DISCORD_BOT_TOKEN=fresh-no-token\\n")
+
+db.init_db()
+conn = db.get_conn()
+conn.execute(
+    "INSERT INTO users (id, name, age, mbti, personality) VALUES (?,?,?,?,?)",
+    ("owner", "사용자", 29, "INTJ", '{"gender":"남자","nickname":"사용자"}'),
+)
+conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('active_user_id','owner')")
+
+def _agent(aid, atype, name, age, gender, mbti, bg):
+    conn.execute(
+        "INSERT INTO agents (id,type,name,status,current_emotion,emotion_intensity,"
+        "birth_year,age,gender,mbti,background,profile_image_filename,version,created_at)"
+        " VALUES (?,?,?,'active','평온',5,?,?,?,?,?,?,1,?)",
+        (aid, atype, name, 2026 - age, age, gender, mbti, bg, aid + ".png",
+         datetime.now().isoformat()),
+    )
+
+_agent("agent-mgr-001", "mgr", "유나", 24, "여자", "ENFJ",
+       "Glimi 커뮤니티 매니저. 친근하고 정리 잘하는 누나 같은 존재.")
+_agent("agent-creator-001", "creator", "하나", 22, "여자", "INFP",
+       "신규 멤버 튜토리얼 + 친구 디자이너. 다정하고 창의적.")
+
+def _channel(name, parts):
+    conn.execute(
+        "INSERT INTO channels (channel,participants,status,max_turns,created_at)"
+        " VALUES (?,?,?,?,?)",
+        (name, __import__("json").dumps(parts, ensure_ascii=False), "idle", 0,
+         datetime.now().isoformat()),
+    )
+
+_channel("dm-agent-mgr-001", ["agent-mgr-001"])
+_channel("dm-agent-creator-001", ["agent-creator-001"])
+conn.commit()
+conn.close()
+
+_ensure_registry(cid)
+_write_registry_block(cid, "QA E2E (fresh)",
+                      "owner onboards manager+creator from scratch (web E2E)",
+                      language="ko", read_only=False)
+print("[seed] '%s' seeded FRESH (owner + 유나 + 하나, read_only=false)" % cid)
+"""
+
+
+def _seed_community(env: dict, cid: str, log_fh, *, fresh: bool = False) -> None:
     """Seed a writable community in a child subprocess sharing the isolated env.
 
     Runs BEFORE the server starts so the community + registry block exist at boot.
-    Reuses the rich demo mockup seeder, then flips read_only=false in the registry
-    (the seeder marks demos read_only=true, which would block the WS write path)."""
+
+    - ``fresh=True`` (owner-agent default): owner + manager (유나) + creator (하나)
+      ONLY — the "from the start" state the owner agent onboards from.
+    - ``fresh=False`` (scripted legacy): the rich demo mockup (7 friend personas).
+
+    Either way read_only=false is flipped (the demo seeder marks demos read_only,
+    which would block the WS write path)."""
     py = _python()
-    cmd = [py, "-c", _SEED_SNIPPET, cid]
-    print(f"[community_e2e] seed: {cid} (writable) ...")
+    snippet = _FRESH_SEED_SNIPPET if fresh else _SEED_SNIPPET
+    label = "fresh (mgr+creator only)" if fresh else "demo mockup (7 friends)"
+    cmd = [py, "-c", snippet, cid]
+    print(f"[community_e2e] seed: {cid} — {label} (writable) ...")
     res = subprocess.run(cmd, cwd=str(PROJECT_ROOT), env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     log_fh.write(res.stdout or "")
@@ -281,7 +369,133 @@ def _login(base: str) -> str:
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
 
 
-# ── WS driving ────────────────────────────────────────────────────────────────
+# ── owner-agent driving (the DEFAULT drive) ────────────────────────────────────
+
+# Human labels for the manager / creator rooms so the owner agent picks a room by
+# who's in it, not by an opaque id. Friend DMs get a "<name> (친구) DM" label built
+# from the served channel list.
+_MGR_CHANNEL = "dm-agent-mgr-001"
+_CREATOR_CHANNEL = "dm-agent-creator-001"
+
+
+def _owner_snapshot(base: str, cid: str, cookie: str, *, round_idx: int,
+                    backend: str, recent: dict[str, list[dict]]) -> dict:
+    """Assemble the live community snapshot the owner agent decides from.
+
+    Pulls the served channel list (so the owner sees rooms that appeared as the
+    session progressed — e.g. a friend 하나 just created), labels manager/creator/
+    friend rooms in human terms, and carries the in-memory recent transcript per
+    channel (observed live over the WS) so the owner reacts to what was just said."""
+    labels: dict[str, str] = {}
+    postable: list[str] = []
+    friend_channels: list[str] = []
+    friend_names: list[str] = []
+    mgr_ch = _MGR_CHANNEL
+    creator_ch = _CREATOR_CHANNEL
+    try:
+        chans = _get(base, f"/community/{cid}/chat/channels", cookie=cookie)
+        for c in chans.get("channels", []):
+            ch = c.get("channel") or ""
+            if not ch or c.get("kind") != "dm":
+                continue
+            name = c.get("name") or ch
+            atype = c.get("agent_type") or ""
+            if atype == "mgr" or ch == _MGR_CHANNEL:
+                mgr_ch = ch
+                labels[ch] = f"{name}(매니저) DM"
+            elif atype == "creator" or ch == _CREATOR_CHANNEL:
+                creator_ch = ch
+                labels[ch] = f"{name}(친구 만들어주는 사람) DM"
+            else:
+                friend_channels.append(ch)
+                friend_names.append(name)
+                labels[ch] = f"{name}(친구) DM"
+            if c.get("postable"):
+                postable.append(ch)
+    except Exception:
+        pass
+    # Always allow the manager/creator DMs (they exist from the fresh seed even if
+    # the channel list call hiccuped).
+    for ch in (mgr_ch, creator_ch):
+        if ch not in postable:
+            postable.append(ch)
+        labels.setdefault(ch, ch)
+
+    # Build the per-channel recent transcript view (most recent last, capped).
+    channels_view: dict[str, list[dict]] = {}
+    for ch in set(list(recent.keys()) + postable):
+        channels_view[ch] = (recent.get(ch) or [])[-6:]
+
+    return {
+        "round": round_idx,
+        "backend": backend,
+        "channels": channels_view,
+        "labels": labels,
+        "postable_channels": postable,
+        "mgr_channel": mgr_ch,
+        "creator_channel": creator_ch,
+        "friend_channels": friend_channels,
+        "friend_names": friend_names,
+    }
+
+
+async def _drive_owner_agent(base: str, base_ws: str, cid: str, cookie: str,
+                             rounds: int, reply_timeout: float, backend: str,
+                             log) -> dict:
+    """Autonomous owner-agent drive: each round the owner agent decides the channel
+    + message from the live snapshot, the harness sends the owner frame over the WS,
+    awaits the friend/manager reply, feeds it back into the snapshot, and repeats.
+
+    Returns ``{channel: [reply_texts]}`` (observed live) for the same downstream
+    use as the scripted path. Streams every owner turn + reply to the log so a
+    watcher sees the autonomous onboarding→friends→chat session unfold."""
+    import websockets
+
+    from tests.e2e.community_owner_agent import OwnerDriver
+
+    driver = OwnerDriver(backend=backend)
+    # Per-channel recent transcript (the owner's working memory of the session).
+    recent: dict[str, list[dict]] = {}
+    observed: dict[str, list[str]] = {}
+
+    ws_url = f"{base_ws}/community/{cid}/chat/ws"
+    async with websockets.connect(
+        ws_url, additional_headers={"Cookie": cookie}, open_timeout=20,
+        max_size=4 * 1024 * 1024,
+    ) as ws:
+        for rnd in range(rounds):
+            snap = _owner_snapshot(base, cid, cookie, round_idx=rnd,
+                                   backend=backend, recent=recent)
+            turn = driver.next_turn(snap)
+            ch = turn["channel"]
+            text = turn["text"]
+            agent_id = ch[len("dm-"):] if ch.startswith("dm-") else ch
+            label = snap["labels"].get(ch, ch)
+            note = turn.get("note", "")
+            log(f"[owner-agent] R{rnd + 1} → {label} ({ch}): {text!r}"
+                + (f"   ⟪{note}⟫" if note else ""))
+
+            # Record the owner's own turn into the working memory (the WS does NOT
+            # echo it back, so we add it here for the next snapshot).
+            recent.setdefault(ch, []).append(
+                {"speaker": "사용자", "text": text, "is_user": True})
+
+            await ws.send(json.dumps({
+                "type": "text", "channel": ch, "agent": agent_id, "text": text,
+            }))
+            reply = await _await_reply(ws, ch, reply_timeout, log)
+            if reply:
+                observed.setdefault(ch, []).append(reply)
+                recent.setdefault(ch, []).append(
+                    {"speaker": agent_id, "text": reply, "is_user": False})
+
+    # Stash the owner side for the verdict (turns + token usage).
+    observed["_owner_turns"] = driver.turns           # type: ignore[assignment]
+    observed["_owner_usage"] = driver.usage           # type: ignore[assignment]
+    return observed
+
+
+# ── WS driving (scripted legacy path) ──────────────────────────────────────────
 
 async def _drive_ws(base_ws: str, cid: str, cookie: str, friends: list[str],
                     rounds: int, reply_timeout: float, log) -> dict:
@@ -406,9 +620,15 @@ def _harvest_channel(base: str, cid: str, channel: str, cookie: str,
 
 def _build_snapshot(base: str, cid: str, cookie: str, *, backend: str, goal: str,
                     context: str, driven: list[str], elapsed: float,
-                    error: str | None) -> dict:
+                    error: str | None, drive_mode: str = "scripted",
+                    owner_turns: list | None = None,
+                    owner_usage: dict | None = None) -> dict:
     """Assemble the flat snapshot community_verdict.judge_snapshot consumes, from the
-    SERVED endpoints. owner_id is inferred from the served is_user rows."""
+    SERVED endpoints. owner_id is inferred from the served is_user rows.
+
+    ``drive_mode`` ("owner-agent" | "scripted") + ``owner_turns`` (the owner agent's
+    chosen turns) + ``owner_usage`` (owner-side token usage) are carried so the
+    verdict can judge the WHOLE session (owner + friends), not just the replies."""
     channels: dict[str, list[dict]] = {}
     # Pull every postable channel (so meta/error scans see the whole space) + the
     # driven DMs (always).
@@ -450,6 +670,9 @@ def _build_snapshot(base: str, cid: str, cookie: str, *, backend: str, goal: str
         "usage_aggregate": usage,
         "elapsed_seconds": round(elapsed, 1),
         "error": error,
+        "drive_mode": drive_mode,
+        "owner_turns": owner_turns or [],
+        "owner_usage": owner_usage or {},
     }
 
 
@@ -458,9 +681,14 @@ def _build_snapshot(base: str, cid: str, cookie: str, *, backend: str, goal: str
 def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         host: str, port: int, keep_serving: bool, reply_timeout: float,
         wall_clock_cap: float, report: bool = False,
-        write_baseline: bool = False) -> dict:
-    """Full web E2E: seed → start server → log in → drive WS → harvest → judge →
-    write artifacts. Returns the verdict dict. Mirrors ws_e2e.run."""
+        write_baseline: bool = False, owner_agent: bool = True) -> dict:
+    """Full web E2E: seed → start server → log in → drive (owner-agent | scripted)
+    → harvest → judge → write artifacts. Returns the verdict dict. Mirrors ws_e2e.run.
+
+    ``owner_agent=True`` (default): a fresh community (owner + 유나 + 하나) is seeded
+    and an autonomous owner agent drives onboarding→friends→chat over the WS.
+    ``owner_agent=False``: the demo mockup is seeded and the fixed ``OWNER_TURNS``
+    are replayed into ``num_friends`` friend DMs."""
     from tests.e2e import community_verdict
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -480,11 +708,13 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
     comm_dir.mkdir(parents=True, exist_ok=True)
     env = _child_env(backend, data_dir, comm_dir)
 
+    drive_mode = "owner-agent" if owner_agent else "scripted"
     print("=" * 64)
     print("  Glimi Community — TRUE WEB E2E (real server, WS-driven)")
     print("=" * 64)
     print(f"  run_id   : {run_id}")
     print(f"  backend  : {backend}")
+    print(f"  drive    : {drive_mode}")
     print(f"  rounds   : {rounds}   friends: {num_friends}")
     print(f"  bind     : {host}:{port}   (probe {base})")
     print(f"  temp     : {tmp_root}")
@@ -494,12 +724,15 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
     start = time.time()
     error: str | None = None
     driven: list[str] = []
+    owner_turns: list = []
+    owner_usage: dict = {}
     log_fh = open(server_log, "w", encoding="utf-8")
 
     # (a) seed a writable community BEFORE the server boots (shared isolated env).
+    #     owner-agent → FRESH (owner + 유나 + 하나); scripted → demo mockup.
     proc = None
     try:
-        _seed_community(env, COMMUNITY_ID, log_fh)
+        _seed_community(env, COMMUNITY_ID, log_fh, fresh=owner_agent)
 
         # (b) launch + wait for /healthz.
         proc = _launch_server(host, port, env, log_fh)
@@ -510,38 +743,66 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         cookie = _login(base)
         print("[community_e2e] logged in (session cookie acquired)")
 
-        # (d) discover the friend DM channels to drive (dm-<agent_id>, skip the
-        #     manager/creator DMs — drive real friend personas first).
-        chans = _get(base, f"/community/{COMMUNITY_ID}/chat/channels", cookie=cookie)
-        dm_channels = [c["channel"] for c in chans.get("channels", [])
-                       if c.get("kind") == "dm" and c.get("channel", "").startswith("dm-")]
-        # Prefer persona friends over mgr/creator for a more representative run.
-        personas = [c for c in dm_channels if "persona" in c]
-        ordered = personas + [c for c in dm_channels if c not in personas]
-        driven = ordered[:max(1, num_friends)]
-        if not driven:
-            raise RuntimeError(f"no friend DM channels found (channels={dm_channels})")
-        print(f"[community_e2e] driving {len(driven)} friend DM(s): {driven}")
+        if owner_agent:
+            # ── OWNER-AGENT DRIVE (default) — autonomous owner onboards from the
+            #    start (greet 유나 → ask 하나 for a friend → chat), deciding each turn.
+            print("[community_e2e] drive mode: AUTONOMOUS OWNER AGENT "
+                  "(onboarding → friends → chat)")
 
-        # (e) drive the scenario over the WS, with a wall-clock cap.
-        async def _drive_with_cap():
-            return await asyncio.wait_for(
-                _drive_ws(base_ws, COMMUNITY_ID, cookie, driven, rounds,
-                          reply_timeout, log=print),
-                timeout=wall_clock_cap,
-            )
-        try:
-            observed = asyncio.run(_drive_with_cap())
+            async def _drive_with_cap():
+                return await asyncio.wait_for(
+                    _drive_owner_agent(base, base_ws, COMMUNITY_ID, cookie, rounds,
+                                       reply_timeout, backend, log=print),
+                    timeout=wall_clock_cap,
+                )
+            try:
+                observed = asyncio.run(_drive_with_cap())
+            except asyncio.TimeoutError:
+                error = f"wall_clock_cap {wall_clock_cap}s exceeded"
+                print(f"[community_e2e] WALL-CLOCK CAP {wall_clock_cap}s hit — stopping drive")
+                observed = {}
+            owner_turns = observed.pop("_owner_turns", [])  # type: ignore[assignment]
+            owner_usage = observed.pop("_owner_usage", {})  # type: ignore[assignment]
+            # The owner agent decides its own channels — the driven set is whatever
+            # it actually posted into (so the verdict judges those DMs).
+            driven = [ch for ch in observed.keys()] or \
+                [t.get("channel") for t in owner_turns if t.get("channel")]
+            driven = sorted(set(driven))
             n_obs = sum(len(v) for v in observed.values())
-            print(f"[community_e2e] WS drive done — {n_obs} live reply frame(s) observed")
-        except asyncio.TimeoutError:
-            error = f"wall_clock_cap {wall_clock_cap}s exceeded"
-            print(f"[community_e2e] WALL-CLOCK CAP {wall_clock_cap}s hit — stopping drive")
+            print(f"[community_e2e] owner-agent drive done — {len(owner_turns)} owner "
+                  f"turn(s), {n_obs} live reply frame(s), channels: {driven}")
+        else:
+            # ── SCRIPTED DRIVE (legacy) — fixed owner turns into seeded friend DMs.
+            chans = _get(base, f"/community/{COMMUNITY_ID}/chat/channels", cookie=cookie)
+            dm_channels = [c["channel"] for c in chans.get("channels", [])
+                           if c.get("kind") == "dm" and c.get("channel", "").startswith("dm-")]
+            # Prefer persona friends over mgr/creator for a more representative run.
+            personas = [c for c in dm_channels if "persona" in c]
+            ordered = personas + [c for c in dm_channels if c not in personas]
+            driven = ordered[:max(1, num_friends)]
+            if not driven:
+                raise RuntimeError(f"no friend DM channels found (channels={dm_channels})")
+            print(f"[community_e2e] driving {len(driven)} friend DM(s): {driven}")
+
+            async def _drive_with_cap():
+                return await asyncio.wait_for(
+                    _drive_ws(base_ws, COMMUNITY_ID, cookie, driven, rounds,
+                              reply_timeout, log=print),
+                    timeout=wall_clock_cap,
+                )
+            try:
+                observed = asyncio.run(_drive_with_cap())
+                n_obs = sum(len(v) for v in observed.values())
+                print(f"[community_e2e] WS drive done — {n_obs} live reply frame(s) observed")
+            except asyncio.TimeoutError:
+                error = f"wall_clock_cap {wall_clock_cap}s exceeded"
+                print(f"[community_e2e] WALL-CLOCK CAP {wall_clock_cap}s hit — stopping drive")
 
         # (f) harvest the SERVED data for the verdict.
         snap = _build_snapshot(
             base, COMMUNITY_ID, cookie, backend=backend, goal=goal, context=context,
-            driven=driven, elapsed=time.time() - start, error=error)
+            driven=driven, elapsed=time.time() - start, error=error,
+            drive_mode=drive_mode, owner_turns=owner_turns, owner_usage=owner_usage)
     except Exception as exc:  # capture; never crash the harness
         import traceback
         error = f"{type(exc).__name__}: {exc}"
@@ -551,7 +812,8 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
             "owner_id": "owner", "owner_name": OWNER_NAME,
             "driven_channels": driven, "channels": {}, "usage": [],
             "usage_aggregate": {}, "elapsed_seconds": round(time.time() - start, 1),
-            "error": error,
+            "error": error, "drive_mode": drive_mode,
+            "owner_turns": owner_turns, "owner_usage": owner_usage,
         }
     finally:
         try:
@@ -575,6 +837,14 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
     verdict["store_snapshot"] = str(store_path)
     verdict["keep_serving"] = keep_serving
     verdict["temp_dir"] = str(tmp_root)
+    verdict["drive_mode"] = drive_mode
+    if owner_agent:
+        # Owner-side summary so the verdict reflects the AUTONOMOUS session, not just
+        # the friends' replies: how many turns the owner produced, what it said
+        # (channel + text + private reason), and the owner-side token spend.
+        verdict["owner_turns_count"] = len(owner_turns)
+        verdict["owner_turns"] = owner_turns
+        verdict["owner_usage"] = owner_usage
 
     out_path = RESULTS_DIR / f"{run_id}.json"
     out_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2),
@@ -653,10 +923,17 @@ def main(argv: list[str] | None = None) -> int:
         description="Glimi Community TRUE WEB E2E QA (drives the real served server over HTTP+WS)")
     ap.add_argument("--goal", default=DEFAULT_GOAL, help="the chat scenario being driven (for the report/judge)")
     ap.add_argument("--context", default=None, help="extra context for the judge")
+    drive = ap.add_mutually_exclusive_group()
+    drive.add_argument("--owner-agent", dest="owner_agent", action="store_true", default=True,
+                       help="DEFAULT: an autonomous owner agent drives onboarding→friends→chat "
+                            "from a FRESH community (owner + 유나 + 하나)")
+    drive.add_argument("--scripted", dest="owner_agent", action="store_false",
+                       help="legacy: replay fixed OWNER_TURNS into seeded friend DMs (demo mockup)")
     ap.add_argument("--rounds", type=int, default=2,
-                    help="owner turns per friend DM (1..3 mapped to greeting→question→follow-up; default 2)")
+                    help="owner-agent: number of autonomous owner turns (default 2). "
+                         "scripted: owner turns per friend DM (clamped 1..3)")
     ap.add_argument("--friends", type=int, default=2,
-                    help="how many friend DMs to drive (default 2)")
+                    help="scripted mode: how many friend DMs to drive (default 2; ignored by --owner-agent)")
     ap.add_argument("--backend", default=None,
                     help="LLM backend (else env GLIMI_LLM_BACKEND → echo). echo=$0 self-test, claude_cli=real")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT,
@@ -691,13 +968,18 @@ def main(argv: list[str] | None = None) -> int:
 
     context = args.context if args.context is not None else DEFAULT_CONTEXT
 
+    # scripted mode replays OWNER_TURNS (3 entries) so it clamps to 1..3; the owner
+    # agent decides its own messages each round so it can run as many as requested.
+    rounds = max(1, args.rounds) if args.owner_agent else max(1, min(args.rounds, 3))
+
     verdict = run(
-        goal=args.goal, context=context, rounds=max(1, min(args.rounds, 3)),
+        goal=args.goal, context=context, rounds=rounds,
         num_friends=max(1, args.friends), backend=backend, host=args.host,
         port=port, keep_serving=args.keep_serving,
         reply_timeout=max(5.0, args.reply_timeout),
         wall_clock_cap=max(30.0, wall_cap),
         report=args.report, write_baseline=args.write_baseline,
+        owner_agent=args.owner_agent,
     )
     return 0 if verdict.get("status") in ("PASS", "WARN") else 1
 
