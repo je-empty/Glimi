@@ -55,9 +55,36 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    # Web 자율 드라이버 — 각 활성(read_only=False) 커뮤니티마다 WebRuntime 기동.
+    # WebRuntime 이 boot_community + supervisor 등록 + 유나 PROACTIVE 첫 인사 + tick 루프를
+    # 담당 (구 discord on_ready / @tasks.loop 대체). read_only(데모)는 자율 구동 안 함.
+    app.state.web_runtimes = {}
+    try:
+        from .web_runtime import WebRuntime
+        from community.platform.community_ctx import run_in_community
+        for c in _comm.list_communities():
+            cid = c.get("id")
+            if not cid or c.get("read_only"):
+                continue
+            try:
+                # boot 시드는 커뮤니티 스코프 안에서 (DB 경로 resolve). start() 가 내부에서
+                # 다시 pin 하지만, 등록/리스트는 process-global 전환을 거치므로 직렬화.
+                rt = WebRuntime(cid)
+                await rt.start()
+                app.state.web_runtimes[cid] = rt
+            except Exception as e:
+                print(f"[platform] WebRuntime({cid}) 기동 실패: {e}")
+    except Exception as e:
+        print(f"[platform] WebRuntime 일괄 기동 스킵: {e}")
+
     print("[platform] ready")
     yield
-    print("[platform] shutdown — 봇 subprocess 정리 중")
+    print("[platform] shutdown — WebRuntime + 봇 subprocess 정리 중")
+    for cid, rt in list(getattr(app.state, "web_runtimes", {}).items()):
+        try:
+            await rt.stop()
+        except Exception as e:
+            print(f"[platform] WebRuntime({cid}) 정리 오류: {e}")
     supervisor.shutdown_all()
 
 

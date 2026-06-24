@@ -114,10 +114,15 @@ async def _h_update_profile(args: dict, ctx: ToolContext):
 
 async def _h_update_relationship(args: dict, ctx: ToolContext):
     from community.core.mgr_actions import yuna_edit_relationship
-    s = json.dumps(args, ensure_ascii=False)
+    # yuna_edit_relationship parses a space-separated "name_a name_b field value"
+    # string (matches the legacy bot handler) — NOT JSON.
+    s = f"{args['name_a']} {args['name_b']} {args['field']} {args['value']}"
     result = await yuna_edit_relationship(ctx.channel_name, s, ctx,
                                           caller_agent_id=ctx.caller_agent_id or "")
-    return result if isinstance(result, dict) else {"ok": True}
+    base = {k: args[k] for k in ("name_a", "name_b", "field", "value")}
+    if isinstance(result, dict):
+        base.update(result)
+    return base
 
 
 async def _h_invoke_agent(args: dict, ctx: ToolContext):

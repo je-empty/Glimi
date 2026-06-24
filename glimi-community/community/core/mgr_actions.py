@@ -757,20 +757,135 @@ async def _edit_user_profile(user: dict, field_path: str, value: str) -> None:
 
 async def yuna_edit_relationship(channel_name: str, args_str: str, ctx,
                                  caller_agent_id: str = "") -> Any:
-    """관계 수정 — DB spine 은 legacy 와 동일. 여기선 어댑터 send 로 라우팅.
+    """관계 수정 — '이름A 이름B 필드 값'  (ported from bot/mgr_system.py, discord-free).
 
-    NOTE: full 본문은 mgr_system 의 DB 로직이 길어 Phase 3 에선 send 만 어댑터로 우회.
-    web 경로에서 호출 시 channels.send_as_agent 사용. 상세 본문 이식은 후속 (구현 보류 표시).
+    예: 은하윤 최지수 intimacy +10  /  은하윤 최지수 type 절친
+    허용 필드: intimacy / affection (intimacy 의 alias) / type / dynamics.
+    Self-modification 금지: caller(mgr/creator) 가 자기 자신의 호감도를 직접 올리는 호출 거부
+    (LLM placebo-drift 안전망). 실제 호감도는 자연 누적(메모리 추출 +1)으로만.
+
+    report send 는 어댑터(ctx.channels.send_as_agent)로 라우팅.
     """
-    # The relationship DB-edit spine in mgr_system is long and self-contained
-    # (db.get/add/update_relationship). It is discord-free EXCEPT for the report
-    # send. Web callers route the report through the adapter. (Body extraction is
-    # mechanical; flagged for follow-up — see report.)
     channels = ctx.channels
-    await channels.send_as_agent(channel_name, MGR_ID,
-        "(update_relationship: web adapter 경로 — DB 본문 이식 후속)")
-    log_writer.system(f"[update_relationship] web stub — args={args_str[:60]}")
-    return None
+    parts = args_str.split()
+    if len(parts) < 4:
+        await channels.send_as_agent(channel_name, MGR_ID,
+            "update_relationship 인자 부족 — agent_a/agent_b/field/value 필요")
+        return {"ok": False, "error": "args 부족"}
+
+    name_a, name_b, field, value = parts[0], parts[1], parts[2], " ".join(parts[3:])
+
+    agents = db.list_agents()
+    agent_by_name = {a["name"]: a for a in agents}
+    agent_by_name[get_user_name()] = {"id": get_user_id(), "name": get_user_name()}
+
+    a = agent_by_name.get(name_a)
+    b = agent_by_name.get(name_b)
+    if not a or not b:
+        await channels.send_as_agent(channel_name, MGR_ID,
+            f"에이전트를 찾을 수 없어: {name_a}, {name_b}")
+        return {"ok": False, "error": "agent not found"}
+
+    # ── Self-modification guard ──
+    # mgr/creator 가 자기 자신을 한쪽 끝으로 두고 intimacy/affection 을 직접 올리는 호출 거부.
+    caller = caller_agent_id or getattr(ctx, "caller_agent_id", "") or ""
+    if caller:
+        caller_agent = db.get_agent(caller)
+        caller_type = (caller_agent or {}).get("type", "")
+        if caller_type in ("mgr", "creator"):
+            if a["id"] == caller or b["id"] == caller:
+                if field in ("intimacy", "affection"):
+                    log_writer.system(
+                        f"[권한거부] {caller}({caller_type}) 가 자기 자신의 관계 호감도 직접 수정 시도 차단: "
+                        f"{name_a}↔{name_b} {field}={value}"
+                    )
+                    await channels.send_as_agent(channel_name, MGR_ID,
+                        "내 호감도/친밀도는 내가 직접 올리거나 내릴 수 없어. "
+                        "관계는 자연스러운 대화로만 쌓여."
+                    )
+                    return {"ok": False, "error": "self_modification_denied",
+                            "rule": "mgr/creator cannot edit own affection/intimacy"}
+
+    # ── Field 정규화 + 분기 ──
+    field_norm = field.lower()
+    if field_norm in ("intimacy", "affection", "호감도", "친밀도"):
+        existing = db.get_relationship(a["id"], b["id"]) or db.get_relationship(b["id"], a["id"])
+        if not existing:
+            db.add_relationship(a["id"], b["id"], rel_type="", intimacy=db.INTIMACY_SCALE_DEFAULT)
+            existing = db.get_relationship(a["id"], b["id"])
+        if value.startswith("+") or value.startswith("-"):
+            delta = int(value)
+            db.update_intimacy(a["id"], b["id"], delta)
+            await channels.send_as_agent(channel_name, MGR_ID,
+                f"{name_a}↔{name_b} 호감도 {value} 변경")
+            return {"ok": True, "delta": delta}
+        score = max(0, min(100, int(value)))
+        conn = db.get_conn()
+        for ax, bx in [(a["id"], b["id"]), (b["id"], a["id"])]:
+            conn.execute(
+                "UPDATE relationships SET intimacy_score=?, updated_at=? WHERE agent_a=? AND agent_b=?",
+                (score, now_utc_iso(), ax, bx),
+            )
+        conn.commit()
+        conn.close()
+        await channels.send_as_agent(channel_name, MGR_ID,
+            f"{name_a}↔{name_b} 호감도 → {score}")
+        return {"ok": True, "score": score}
+
+    elif field_norm == "type":
+        conn = db.get_conn()
+        existing = conn.execute(
+            "SELECT 1 FROM relationships WHERE (agent_a=? AND agent_b=?) OR (agent_a=? AND agent_b=?)",
+            (a["id"], b["id"], b["id"], a["id"]),
+        ).fetchone()
+        if not existing:
+            conn.execute(
+                "INSERT INTO relationships (agent_a, agent_b, type, intimacy_score, dynamics, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (a["id"], b["id"], value, 50, "", now_utc_iso()),
+            )
+        else:
+            for ax, bx in [(a["id"], b["id"]), (b["id"], a["id"])]:
+                conn.execute(
+                    "UPDATE relationships SET type=?, updated_at=? WHERE agent_a=? AND agent_b=?",
+                    (value, now_utc_iso(), ax, bx),
+                )
+        conn.commit()
+        conn.close()
+        await channels.send_as_agent(channel_name, MGR_ID,
+            f"{name_a}↔{name_b} 관계 → {value}")
+        return {"ok": True, "type": value}
+
+    elif field_norm == "dynamics":
+        conn = db.get_conn()
+        existing = conn.execute(
+            "SELECT 1 FROM relationships WHERE (agent_a=? AND agent_b=?) OR (agent_a=? AND agent_b=?)",
+            (a["id"], b["id"], b["id"], a["id"]),
+        ).fetchone()
+        if not existing:
+            conn.execute(
+                "INSERT INTO relationships (agent_a, agent_b, type, intimacy_score, dynamics, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (a["id"], b["id"], "", 50, value, now_utc_iso()),
+            )
+        else:
+            for ax, bx in [(a["id"], b["id"]), (b["id"], a["id"])]:
+                conn.execute(
+                    "UPDATE relationships SET dynamics=?, updated_at=? WHERE agent_a=? AND agent_b=?",
+                    (value, now_utc_iso(), ax, bx),
+                )
+        conn.commit()
+        conn.close()
+        await channels.send_as_agent(channel_name, MGR_ID,
+            f"{name_a}↔{name_b} 역학 → {value}")
+        return {"ok": True, "dynamics": value}
+
+    else:
+        log_writer.system(
+            f"[update_relationship] 알 수 없는 필드 '{field}' (caller={caller}) — DB 변경 0"
+        )
+        await channels.send_as_agent(channel_name, MGR_ID,
+            f"관계 필드 '{field}' 모름. 사용 가능: intimacy(=affection) / type / dynamics")
+        return {"ok": False, "error": "unknown_field", "field": field,
+                "allowed": ["intimacy", "affection", "type", "dynamics"]}
 
 
 # ── force agent (commitment supervisor + invoke_agent tool) ─────────────────

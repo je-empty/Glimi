@@ -702,6 +702,15 @@ async def _run_turn(
         # Scope the community inside the worker thread; the kernel reads
         # process-global state guarded by the community lock.
         def _call():
+            # The kernel stashes <tools> calls keyed by the community_id() CONTEXTVAR.
+            # run_in_community's _set_active_community is idempotent on the module
+            # GLOBAL, so if another thread already pinned this cid it SKIPS applying
+            # it here — leaving THIS worker thread's contextvar unset (None) and the
+            # stash landing under (None, agent_id), which the loop-side pop misses.
+            # Set the kernel contextvar EXPLICITLY in this worker thread so the
+            # stash key matches the pop in parse_and_execute_actions (Phase 4.1 / 3.0).
+            from community.core.runtime import set_active_community as _sac
+            _sac(community_id)
             # Load this community's CONFIGURED backend keys before the runtime
             # call (Phase-1 _apply_community switches DB/caches but NOT the .env).
             _load_community_llm_env()
@@ -747,6 +756,17 @@ async def _run_turn(
     # scope churn). Falls back to None on any failure.
     emotion = run_in_community(community_id, _agent_emotion)
 
+    def _meta_filter(line: str) -> str:
+        """Scrub a meta-speech leak from one agent line (core/meta_filter — the
+        safety net the web path lacked). DB-marking is best-effort; a failure
+        returns the original line so a turn never breaks on the guard."""
+        try:
+            from community.core.meta_filter import filter_meta_speech
+            from community import db
+            return filter_meta_speech(line, agent_id, channel_id, db)
+        except Exception:
+            return line
+
     await outbox.set_typing(channel_id, speaker, True)
     fut = loop.run_in_executor(None, _generate)
     lines: list[str] = []
@@ -756,6 +776,18 @@ async def _run_turn(
             item = await asyncio.wait_for(queue.get(), timeout=60.0)
             if item is SENTINEL:
                 break
+            # Meta-speech filter FIRST (before persist + broadcast) — the web turn
+            # previously had no leak guard, so a persona could say "I'm an AI" and
+            # it would persist + render. Runs inside the community scope (db mark).
+            try:
+                item = await loop.run_in_executor(
+                    None, lambda ln=item: run_in_community(
+                        community_id, lambda: _meta_filter(ln)),
+                )
+            except Exception:
+                pass
+            if not (item or "").strip():
+                continue
             lines.append(item)
             # Persist-then-broadcast: the frame must carry the persisted id so the
             # client can anchor reactions / replies. Persist in an executor thread
@@ -776,6 +808,62 @@ async def _run_turn(
         await outbox.set_typing(channel_id, speaker, False)
         try:
             await fut
+        except Exception:
+            pass
+
+    # ── Tool execution (Phase 4.1 — THE headline web fix) ──────────────────
+    # The kernel stashed any <tools> calls during generate (keyed by the active
+    # community contextvar). The generate ran in an executor thread, so the loop's
+    # contextvar is NOT set — pin the active community on the loop synchronously
+    # (brief, in the community lock) so pop_tool_calls/stash see the right key, then
+    # run the dispatcher through the web ChannelAdapter so the agent's tools ACTUALLY
+    # execute (create_room / edit_profile / create_agent / finish_tutorial / …).
+    # Best-effort: a tool failure must never break the chat reply already streamed.
+    try:
+        from community.core.channel_adapter import get_channel_adapter
+        from community.core.mgr_actions import parse_and_execute_actions
+        from community.core.runtime import set_active_community
+        # Pin the active community on THIS loop thread. The kernel stashes tool
+        # calls keyed by the community_id() contextvar; the generate ran in an
+        # executor thread so that contextvar is task/thread-local and unset here.
+        # _set_active_community is idempotent on the module global so it may skip
+        # re-applying — set the kernel contextvar EXPLICITLY on this loop thread so
+        # pop_tool_calls keys off the SAME community the stash used.
+        run_in_community(community_id, lambda: None)
+        set_active_community(community_id)
+        # parse_and_execute_actions returns [stripped input lines] (+ any query
+        # follow-up analysis appended at the tail). The input lines were already
+        # streamed; only the tail beyond them is new. Mirror its own input-cleaning
+        # (strip + drop empties) so the tail index lines up exactly.
+        n_input = len([ln for ln in lines if ln and ln.strip()])
+        followups = await parse_and_execute_actions(
+            channel_id, lines,
+            channels=get_channel_adapter(),
+            caller_agent_id=agent_id,
+        )
+        # A query tool can produce a follow-up analysis line — persist + broadcast
+        # the NEW lines (those beyond what we already streamed) the same way.
+        for extra in (followups or [])[n_input:]:
+            extra = (extra or "").strip()
+            if not extra:
+                continue
+            try:
+                mid = await loop.run_in_executor(
+                    None, lambda ln=extra: run_in_community(
+                        community_id, lambda: _persist_line(ln, emotion)),
+                )
+            except Exception:
+                mid = None
+            await outbox.send_text(channel_id, speaker, extra, message_id=mid)
+    except Exception as e:
+        try:
+            from community.core import log_writer as _lw  # noqa: F401
+        except Exception:
+            pass
+        # Surface to the system log, never to the user (the reply already landed).
+        try:
+            from community import log_writer
+            log_writer.system(f"[web-tools] parse_and_execute_actions 오류: {type(e).__name__}: {e}")
         except Exception:
             pass
 
