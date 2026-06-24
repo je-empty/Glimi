@@ -639,6 +639,11 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 - Ollama / vLLM / llama.cpp implementations (stubs already in `AVAILABLE_MODELS`)
 - Per-agent local override from dashboard
 
+**Then — Per-agent RAG memory (memory at scale)** ⭐
+- The 5-layer memory works *in context*, but an agent that has lived a long time eventually outgrows any window. Plan: give **each agent its own RAG corpus** on top of a proven retrieval core — the agent's accumulated history + knowledge is embedded and indexed, and the agent pulls only what's relevant per turn instead of carrying it all in the prompt. Memory stops being a budget you spend and becomes a store you query.
+- **Expected effect**: recall that doesn't degrade as history grows (retrieval is `O(top-k)`, not `O(history)`); a distinct, inspectable per-agent knowledge base; precise, *sourced* recall instead of summary drift.
+- **Latency as character, not friction**: retrieval adds a delay the in-context memory doesn't. The agent invokes the RAG lookup as a **skill/tool while it's on-load**, and masks the wait *in character* — *"잠시만…", "그거 뭐였더라, 기억 더듬는 중…"* — so the retrieval pause reads as a person recalling, not a spinner. The same latency that would feel like lag becomes a believable human beat.
+
 **Community-specific**
 - Owner-absence simulation + return briefing
 - Emotion application layer (auto sentiment → state changes)
