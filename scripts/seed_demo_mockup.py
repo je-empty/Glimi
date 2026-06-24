@@ -151,7 +151,7 @@ def seed(community_id: str = "demo") -> None:
                  "신규 멤버 튜토리얼 + 페르소나 디자이너. 다정하고 창의적.")
 
 
-    # ── 3. 페르소나 7명 (순수 친구 관계만 — 연인/동료/가족 X) ─────────
+    # ── 3. 페르소나 10명 (5남 5녀 · 순수 친구 관계만 — 연인/동료/가족 X) ───
     personas = [
         {
             "id": "agent-persona-001", "name": "소은", "age": 24, "gender": "여자",
@@ -167,8 +167,8 @@ def seed(community_id: str = "demo") -> None:
             "routine": "아침 책방 → 오후 작업 → 저녁 친구들이랑 카페",
         },
         {
-            "id": "agent-persona-002", "name": "민서", "age": 27, "gender": "여자",
-            "image": "agent-persona-f-26-enfp-energetic-bold.png",
+            "id": "agent-persona-002", "name": "시우", "age": 27, "gender": "남자",
+            "image": "agent-persona-m-27-estp-bold-sporty.png",
             "mbti": "ESTP", "enneagram": "7",
             "bg": "초등학교부터 친구. 옆 동네 살아서 자주 붙어다님. 편하게 반말·욕설까지 가능.",
             "emotion": "활기", "intensity": 8,
@@ -193,7 +193,7 @@ def seed(community_id: str = "demo") -> None:
             "routine": "학교 → 카페 공부 → 친구들과",
         },
         {
-            "id": "agent-persona-004", "name": "예린", "age": 24, "gender": "여자",
+            "id": "agent-persona-004", "name": "다은", "age": 24, "gender": "여자",
             "image": "agent-persona-f-26-enfp-cheerful-warm.png",
             "mbti": "ENFP", "enneagram": "4",
             "bg": "소은 통해 알게 된 친구. 일러스트레이터, 프리랜서. 작년 개인전 열었음. 감성적이고 수다스러움.",
@@ -232,8 +232,8 @@ def seed(community_id: str = "demo") -> None:
             "routine": "06시 필라테스 → 저녁 독서/캠핑 계획",
         },
         {
-            "id": "agent-persona-007", "name": "수진", "age": 26, "gender": "여자",
-            "image": "agent-persona-f-21-enfj-lively-warm.png",
+            "id": "agent-persona-007", "name": "재현", "age": 26, "gender": "남자",
+            "image": "agent-persona-m-24-isfj-gentle-steady.png",
             "mbti": "ISFJ", "enneagram": "6",
             "bg": "브런치 모임에서 알게 된 친구. 꼼꼼하고 세심함. 요리·빵 좋아하고 같이 맛집 탐방 자주.",
             "emotion": "차분", "intensity": 6,
@@ -244,11 +244,11 @@ def seed(community_id: str = "demo") -> None:
             "occupation": "동네 베이커리 운영",
             "routine": "새벽 빵 굽기 → 오후 가게 → 저녁 친구들과",
         },
-        # ── 남자 페르소나 3명 (순수 친구 — 연인/동료/가족 X) ─────────
+        # ── 남자 페르소나 (008-010) — 순수 친구 (연인/동료/가족 X) ─────────
         # 커밋된 assets/sample_profile_images 의 남성 샘플 이미지와 1:1 매칭.
         # "image" = 그 샘플 파일명 → 공개 경로(glimi.iruyo.com)에서도 resolver 가 바로 해석.
         {
-            "id": "agent-persona-008", "name": "준호", "age": 25, "gender": "남자",
+            "id": "agent-persona-008", "name": "도하", "age": 25, "gender": "남자",
             "mbti": "INTJ", "enneagram": "5",
             "bg": "대학원 스터디에서 알게 된 친구. 분석적이고 차분함. 같이 자료 정리하다 친해짐.",
             "emotion": "차분", "intensity": 5,
@@ -261,7 +261,7 @@ def seed(community_id: str = "demo") -> None:
             "image": "agent-persona-m-25-intj-calm-analytical.png",
         },
         {
-            "id": "agent-persona-009", "name": "지훈", "age": 23, "gender": "남자",
+            "id": "agent-persona-009", "name": "선우", "age": 23, "gender": "남자",
             "mbti": "ENFP", "enneagram": "7",
             "bg": "동아리 후배. 밝고 에너지 넘침. 어디서든 분위기 띄우는 스타일.",
             "emotion": "신남", "intensity": 8,
@@ -274,7 +274,7 @@ def seed(community_id: str = "demo") -> None:
             "image": "agent-persona-m-23-enfp-warm-energetic.png",
         },
         {
-            "id": "agent-persona-010", "name": "태경", "age": 28, "gender": "남자",
+            "id": "agent-persona-010", "name": "재하", "age": 28, "gender": "남자",
             "mbti": "ISTP", "enneagram": "9",
             "bg": "클라이밍 모임에서 알게 된 친구. 과묵하고 쿨함. 말은 적어도 챙길 건 챙김.",
             "emotion": "평온", "intensity": 5,
@@ -332,17 +332,17 @@ def seed(community_id: str = "demo") -> None:
     rel_pairs = [
         # (a, b, type, intimacy, dynamics) — 모두 친구 계열만
         ("agent-persona-001", "agent-persona-004", "절친", 95, "대학 동기, 매일 연락"),
-        ("agent-persona-001", "agent-persona-002", "친구", 72, "사용자 통해 알게 됨. 민서 직설적이라 가끔 부담"),
+        ("agent-persona-001", "agent-persona-002", "친구", 72, "사용자 통해 알게 됨. 시우 직설적이라 가끔 부담"),
         ("agent-persona-002", "agent-persona-006", "친구", 68, "러닝·필라테스 모임에서 친해짐. 서로 존중"),
         ("agent-persona-003", "agent-persona-005", "절친", 92, "동아리 선후배, 거의 매일 통화"),
-        ("agent-persona-004", "agent-persona-005", "친구", 60, "소은 통해 만남. 예린이 하린 작품 좋아함"),
+        ("agent-persona-004", "agent-persona-005", "친구", 60, "소은 통해 만남. 다은이 하린 작품 좋아함"),
         ("agent-persona-006", "agent-persona-007", "친구", 82, "브런치·필라테스 모임 같이 다니는 사이"),
         ("agent-persona-001", "agent-persona-003", "지인", 45, "사용자 모임에서 몇 번 — 소은가 서아 스타일 살짝 불편"),
-        ("agent-persona-002", "agent-persona-003", "지인", 50, "사용자 모임에서 만남. 서아가 민서 재밌다고 함"),
+        ("agent-persona-002", "agent-persona-003", "지인", 50, "사용자 모임에서 만남. 서아가 시우 재밌다고 함"),
         ("agent-persona-001", "agent-persona-007", "지인", 55, "사용자 모임에서 만남. 둘 다 조용한 타입 공감"),
         # 남자 친구들 — 운동·취미 모임으로 엮인 사이 (순수 친구)
         ("agent-persona-009", "agent-persona-010", "친구", 78, "풋살·클라이밍 모임 단골. 성격은 정반대지만 잘 맞음"),
-        ("agent-persona-008", "agent-persona-009", "친구", 64, "운동모임에서 알게 됨. 준호가 지훈 에너지 신기해함"),
+        ("agent-persona-008", "agent-persona-009", "친구", 64, "운동모임에서 알게 됨. 도하가 선우 에너지 신기해함"),
         ("agent-persona-002", "agent-persona-010", "친구", 70, "러닝·클라이밍 같이 다니는 운동 메이트"),
         ("agent-mgr-001", "agent-creator-001", "친구", 88, "Glimi 매니저·크리에이터, 서로 의지"),
     ]
@@ -378,9 +378,9 @@ def seed(community_id: str = "demo") -> None:
                 ["agent-persona-002", "agent-persona-008",
                  "agent-persona-009", "agent-persona-010"])
     # Internal (에이전트끼리, 오너 read-only)
-    add_channel("internal-dm-소은-예린", ["agent-persona-001", "agent-persona-004"])
+    add_channel("internal-dm-소은-다은", ["agent-persona-001", "agent-persona-004"])
     add_channel("internal-dm-서아-하린", ["agent-persona-003", "agent-persona-005"])
-    add_channel("internal-dm-수연-수진", ["agent-persona-006", "agent-persona-007"])
+    add_channel("internal-dm-수연-재현", ["agent-persona-006", "agent-persona-007"])
     add_channel("internal-group-여자들",
                 ["agent-persona-001", "agent-persona-003", "agent-persona-004", "agent-persona-005"])
 
@@ -411,7 +411,7 @@ def seed(community_id: str = "demo") -> None:
             ("owner", "응 이번 주만 버티면 될듯"),
             ("agent-persona-001", "다음주는 푹 쉬자 약속"),
         ],
-        # 민서 (20년 지기 소꿉친구)
+        # 시우 (20년 지기 소꿉친구)
         "dm-agent-persona-002": [
             ("agent-persona-002", "빈아 주말 뭐함"),
             ("owner", "왜"),
@@ -442,9 +442,9 @@ def seed(community_id: str = "demo") -> None:
             ("agent-persona-003", "저 근데 요즘 하린이랑 마라탕 맛집 다니는데 같이 가실래요?"),
             ("owner", "ㅋㅋ 기회 되면"),
         ],
-        # 예린 (친구, 일러스트레이터)
+        # 다은 (친구, 일러스트레이터)
         "dm-agent-persona-004": [
-            ("owner", "예린아 전시 준비는?"),
+            ("owner", "다은아 전시 준비는?"),
             ("agent-persona-004", "오빠! 거의 다 됐어요 ㅎㅎ"),
             ("agent-persona-004", "다음달 15일 오프닝이에요"),
             ("owner", "소은랑 같이 갈게"),
@@ -476,10 +476,10 @@ def seed(community_id: str = "demo") -> None:
             ("owner", "아 진짜 요즘 목 아파요"),
             ("agent-persona-006", "그러니까 나오라고. 스트레칭부터 잡아줄게"),
             ("owner", "역시 누나밖에 없다 ㅎㅎ"),
-            ("agent-persona-006", "담주에 캠핑도 갈건데 올래? 수진이도 와"),
+            ("agent-persona-006", "담주에 캠핑도 갈건데 올래? 재현이도 와"),
             ("owner", "오 좋아요"),
         ],
-        # 수진 (브런치 모임 친구, 동네 베이커리)
+        # 재현 (브런치 모임 친구, 동네 베이커리)
         "dm-agent-persona-007": [
             ("agent-persona-007", "오늘 스콘 구웠는데 좀 갖다줄까요?"),
             ("owner", "헐 완전 좋죠"),
@@ -487,11 +487,11 @@ def seed(community_id: str = "demo") -> None:
             ("owner", "ㅇㅋ 7시쯤 갈게요"),
             ("agent-persona-007", "글고 저번에 말한 그 파스타집 예약했어요"),
             ("owner", "오 거기 가보고 싶었는데"),
-            ("agent-persona-007", "토요일 1시 어때요? 수연 언니도 온대요"),
+            ("agent-persona-007", "토요일 1시 어때요? 수연 누나도 온대요"),
             ("owner", "좋아요 ㅋㅋ"),
             ("agent-persona-007", "기대하세요 거기 진짜 맛집"),
         ],
-        # 준호 (대학원 스터디 친구, INTJ·차분·분석적)
+        # 도하 (대학원 스터디 친구, INTJ·차분·분석적)
         "dm-agent-persona-008": [
             ("agent-persona-008", "이번 주 스터디 자료 정리해서 공유 드렸어요"),
             ("owner", "오 빠르다 ㅋㅋ 고마워"),
@@ -503,7 +503,7 @@ def seed(community_id: str = "demo") -> None:
             ("owner", "토욜 오후 괜찮아"),
             ("agent-persona-008", "그럼 2시에. 조용한 데로 잡아둘게요"),
         ],
-        # 지훈 (동아리 후배, ENFP·밝고 에너지)
+        # 선우 (동아리 후배, ENFP·밝고 에너지)
         "dm-agent-persona-009": [
             ("agent-persona-009", "형!! 오늘 풋살 오죠??"),
             ("owner", "ㅋㅋ 몇 시였지"),
@@ -516,7 +516,7 @@ def seed(community_id: str = "demo") -> None:
             ("owner", "오 뭐 하는데"),
             ("agent-persona-009", "저 버스킹 무대 서요 ㅎㅎ 기대하세요"),
         ],
-        # 태경 (클라이밍 모임 친구, ISTP·과묵·쿨)
+        # 재하 (클라이밍 모임 친구, ISTP·과묵·쿨)
         "dm-agent-persona-010": [
             ("agent-persona-010", "오늘 클라이밍장 감?"),
             ("owner", "어 갈까 했는데"),
@@ -540,7 +540,7 @@ def seed(community_id: str = "demo") -> None:
         (85, "agent-mgr-001", "오늘 서아가 다음주 홈커밍 얘기 꺼냈어요. 갈지 정하시면 알려주세요~"),
         (82, "agent-mgr-001", "그리고 소은님이 사용자님 건강 걱정 많이 하시더라구요 (최근 대화 기록 기반)"),
         (75, "owner", "ㅎㅎ 고마워요"),
-        (30, "agent-mgr-001", "참고로 요즘 소은이랑 예린이가 사용자님 생일 선물 의논 중이에요 🤫"),
+        (30, "agent-mgr-001", "참고로 요즘 소은이랑 다은이가 사용자님 생일 선물 의논 중이에요 🤫"),
         (15, "agent-mgr-001", "프로필 수정하거나 친구 새로 만들고 싶으시면 하나한테 말씀해 주세요!"),
     ]
     for ago, sp, content in MGR_LINES:
@@ -569,7 +569,7 @@ def seed(community_id: str = "demo") -> None:
     msg("group-브런치", "owner", "ㅋㅋ 불러주면 가야지", 15, "즐거움")
     msg("group-브런치", "agent-persona-006", "콜. 일요일 12시 ㄱ", 10, "평온")
 
-    # 운동모임 (민서·준호·지훈·태경 + owner) — 혼성 친구 그룹
+    # 운동모임 (시우·도하·선우·재하 + owner) — 혼성 친구 그룹
     msg("group-운동모임", "agent-persona-009", "이번 주말 풋살 ㄱㄱ?", 35, "신남")
     msg("group-운동모임", "agent-persona-002", "콜 난 무조건", 34, "활기")
     msg("group-운동모임", "agent-persona-010", "난 클라이밍 끝나고 합류 가능", 33, "평온")
@@ -611,13 +611,13 @@ def seed(community_id: str = "demo") -> None:
     _dm_msg = _msg_id("dm-agent-persona-001", "agent-persona-001", "내일 책방 같이 갈래?", 30, "차분")
     _react(_dm_msg, "owner", "👍")
 
-    # Internal — 소은·예린 (사용자 걱정 + 생일 준비)
+    # Internal — 소은·다은 (사용자 걱정 + 생일 준비)
     INTERNAL_JIWOO_YERIN = [
-        ("agent-persona-001", "예린아 사용자 요즘 너무 바빠 보여서 걱정이야", 180),
+        ("agent-persona-001", "다은아 사용자 요즘 너무 바빠 보여서 걱정이야", 180),
         ("agent-persona-004", "언니 또 걱정 모드 ㅋㅋ 사용자 오빠 건강한 편이잖아요", 178),
         ("agent-persona-001", "그래도 최근 잠 잘 못 자고 스트레스 받더라", 176),
         ("agent-persona-004", "음 언니가 옆에 있으니 괜찮을 거예요"),
-        ("agent-persona-001", "ㅎㅎ 고마워 예린아"),
+        ("agent-persona-001", "ㅎㅎ 고마워 다은아"),
         ("agent-persona-004", "근데 언니 사용자 오빠 다음달 생일이잖아요", 90),
         ("agent-persona-001", "맞아 뭐 해줄까 고민 중", 88),
         ("agent-persona-004", "제가 그림 그려드리면 어때요?"),
@@ -632,7 +632,7 @@ def seed(community_id: str = "demo") -> None:
     for i, entry in enumerate(INTERNAL_JIWOO_YERIN):
         sp, content = entry[0], entry[1]
         ago = entry[2] if len(entry) > 2 else (len(INTERNAL_JIWOO_YERIN) - i) * 8
-        msg("internal-dm-소은-예린", sp, content, ago_min=ago,
+        msg("internal-dm-소은-다은", sp, content, ago_min=ago,
             emotion="차분" if sp == "agent-persona-001" else "행복")
 
     # Internal — 서아·하린 (마라탕 + 오빠 얘기)
@@ -660,9 +660,9 @@ def seed(community_id: str = "demo") -> None:
         msg("internal-dm-서아-하린", sp, content, ago_min=ago,
             emotion="신남" if sp == "agent-persona-003" else "평온")
 
-    # Internal — 수연·수진 (사용자 챙기기 + 생일 준비)
+    # Internal — 수연·재현 (사용자 챙기기 + 생일 준비)
     INTERNAL_SUYEON_SUJIN = [
-        ("agent-persona-006", "수진아, 사용자 요즘 좀 피곤해 보이지 않아?", 30),
+        ("agent-persona-006", "재현아, 사용자 요즘 좀 피곤해 보이지 않아?", 30),
         ("agent-persona-007", "맞아요 안색이 영..."),
         ("agent-persona-006", "운동을 안 해서 그래. 주말에 끌고 나와야겠어"),
         ("agent-persona-007", "ㅎㅎ 저는 빵이라도 챙겨줄게요"),
@@ -674,9 +674,9 @@ def seed(community_id: str = "demo") -> None:
     for i, entry in enumerate(INTERNAL_SUYEON_SUJIN):
         sp, content = entry[0], entry[1]
         ago = entry[2] if len(entry) > 2 else (len(INTERNAL_SUYEON_SUJIN) - i) * 4
-        msg("internal-dm-수연-수진", sp, content, ago_min=ago, emotion="평온")
+        msg("internal-dm-수연-재현", sp, content, ago_min=ago, emotion="평온")
 
-    # Internal group — 여자들 (소은, 서아, 예린, 하린)
+    # Internal group — 여자들 (소은, 서아, 다은, 하린)
     INTERNAL_GIRLS = [
         ("agent-persona-004", "언니들 주말에 브런치 어때요", 120),
         ("agent-persona-001", "좋지 어디?"),
@@ -725,8 +725,8 @@ def seed(community_id: str = "demo") -> None:
         (2, "dm-사용자", "- 사용자가 알바 시작할 때부터 단골 → 친구로 발전\n- 책·커피·음악 취향 비슷해서 대화 편함\n- 주 3-4번 카톡, 주말엔 가끔 만남",
          "relationship", 8, ["사용자"], 10),
         # Cross-channel
-        (1, "internal-dm-소은-예린", "- 예린이랑 사용자 생일 선물 아이디어\n- 예린: 일러스트 그려주기 / 소은: 사용자가 찜해둔 LP 한 장\n- 다음주 쇼핑 동행",
-         "event", 7, ["예린", "사용자"], 2),
+        (1, "internal-dm-소은-다은", "- 다은이랑 사용자 생일 선물 아이디어\n- 다은: 일러스트 그려주기 / 소은: 사용자가 찜해둔 LP 한 장\n- 다음주 쇼핑 동행",
+         "event", 7, ["다은", "사용자"], 2),
         # Pinned — 걱정 공유용
         (1, "dm-사용자", "- 사용자가 요즘 잠 잘 못 자서 새벽 산책 한다고\n- 한강 쪽 걷는 루트 공유\n- 가끔 같이 나가자고 얘기",
          "fact", 7, ["사용자"], 3),
@@ -740,16 +740,16 @@ def seed(community_id: str = "demo") -> None:
                       ents, knows=["소은", "owner"] if "사용자" in ents else None,
                       is_pinned=pinned, ago_days=ago, level=lvl)
 
-    # 민서 — 러닝·모임 관련 메모리
+    # 시우 — 러닝·모임 관련 메모리
     insert_memory("agent-persona-002", "dm-사용자",
-                  "- 사용자한테 같이 러닝하자고 꼬심\n- 일요일 아침 한강 코스 (민서가 데리러 감)\n- 사용자 운동 안 한다고 놀림",
-                  "event", 6, ["사용자"], ["민서", "owner"], ago_days=0)
+                  "- 사용자한테 같이 러닝하자고 꼬심\n- 일요일 아침 한강 코스 (시우가 데리러 감)\n- 사용자 운동 안 한다고 놀림",
+                  "event", 6, ["사용자"], ["시우", "owner"], ago_days=0)
     insert_memory("agent-persona-002", "dm-사용자",
                   "- 사용자 요즘 바빠서 주말에만 시간\n- 동창 모임 토요일 7시 — 사용자 참석 확인 중\n- 소은 허락 필요하다고 농담",
-                  "event", 5, ["사용자"], ["민서", "owner"], ago_days=1)
+                  "event", 5, ["사용자"], ["시우", "owner"], ago_days=1)
     insert_memory("agent-persona-002", "dm-사용자",
-                  "- 20년 지기 친구로 인생 큰 결정마다 의견 주고받음\n- 서로 가장 솔직한 말 해주는 관계\n- 사용자 연애 시작할 때도 민서이 먼저 조언",
-                  "relationship", 9, ["사용자"], ["민서", "owner"], ago_days=14)
+                  "- 20년 지기 친구로 인생 큰 결정마다 의견 주고받음\n- 서로 가장 솔직한 말 해주는 관계\n- 사용자 연애 시작할 때도 시우가 먼저 조언",
+                  "relationship", 9, ["사용자"], ["시우", "owner"], ago_days=14)
 
     # 서아 — 오빠한테 마음 있는 거 (internal 에만)
     insert_memory("agent-persona-003", "dm-오빠",
@@ -762,15 +762,15 @@ def seed(community_id: str = "demo") -> None:
                   ["서아", "하린"],  # owner 없음 — 사적 대화
                   ago_days=1)
 
-    # 예린 — 사용자 생일 계획 (internal)
-    insert_memory("agent-persona-004", "internal-dm-소은-예린",
-                  "- 소은 언니랑 사용자 오빠 생일선물 의논\n- 예린=그림 직접 그려주기\n- 언니=위스키 구매 예정\n- 다음주 토요일 쇼핑 동행",
+    # 다은 — 사용자 생일 계획 (internal)
+    insert_memory("agent-persona-004", "internal-dm-소은-다은",
+                  "- 소은 언니랑 사용자 오빠 생일선물 의논\n- 다은=그림 직접 그려주기\n- 언니=위스키 구매 예정\n- 다음주 토요일 쇼핑 동행",
                   "event", 9, ["소은", "사용자"],
-                  ["예린", "소은"],  # owner 없음
+                  ["다은", "소은"],  # owner 없음
                   ago_days=2)
     insert_memory("agent-persona-004", "dm-사용자",
                   "- 다음달 15일 개인전 오프닝\n- 사용자 + 소은 참석 약속\n- '언니가 보고 싶어하는 작품' 준비 중 (비밀)",
-                  "event", 7, ["사용자", "소은"], ["예린", "owner"], ago_days=0)
+                  "event", 7, ["사용자", "소은"], ["다은", "owner"], ago_days=0)
 
     # 하린 — 조용한 깊이
     insert_memory("agent-persona-005", "dm-사용자",
@@ -781,15 +781,15 @@ def seed(community_id: str = "demo") -> None:
     insert_memory("agent-persona-006", "dm-사용자",
                   "- 사용자 거북목·자세 안 좋은 거 지적\n- 일요일 오전 필라테스 클래스 오라고 함\n- 다음주 캠핑도 같이 가기로",
                   "event", 6, ["사용자"], ["수연", "owner"], ago_days=0)
-    insert_memory("agent-persona-006", "internal-dm-수연-수진",
-                  "- 사용자 요즘 피곤해 보임 → 수진이랑 같이 챙기기로\n- 주말에 운동 데리고 나갈 계획\n- 생일 선물도 같이 준비",
-                  "fact", 6, ["사용자", "수진"], ["수연", "수진"],  # owner 모름
+    insert_memory("agent-persona-006", "internal-dm-수연-재현",
+                  "- 사용자 요즘 피곤해 보임 → 재현이랑 같이 챙기기로\n- 주말에 운동 데리고 나갈 계획\n- 생일 선물도 같이 준비",
+                  "fact", 6, ["사용자", "재현"], ["수연", "재현"],  # owner 모름
                   ago_days=0)
 
-    # 수진 — 베이킹·약속
+    # 재현 — 베이킹·약속
     insert_memory("agent-persona-007", "dm-사용자",
                   "- 스콘 구워서 가게에서 나눠주기로\n- 토요일 파스타집 예약 (수연도 함께)",
-                  "event", 5, ["사용자", "수연"], ["수진", "owner"], ago_days=0)
+                  "event", 5, ["사용자", "수연"], ["재현", "owner"], ago_days=0)
 
 
     # ── 8. agent_facts (Layer 3 Semantic) ──────────────────
@@ -812,10 +812,10 @@ def seed(community_id: str = "demo") -> None:
     add_fact("agent-persona-001", "사용자", "좋아하는음식", "파스타 · 담백한 거", 5)
     add_fact("agent-persona-001", "사용자", "최근고민", "수면 부족 · 새벽 산책", 8)
     add_fact("agent-persona-001", "사용자", "생일", "다음달 초", 7)
-    add_fact("agent-persona-001", "예린", "역할", "친한 친구 · 대학 동기", 6)
+    add_fact("agent-persona-001", "다은", "역할", "친한 친구 · 대학 동기", 6)
 
-    # 민서이 사용자에 대해 아는 것
-    add_fact("agent-persona-002", "사용자", "운동", "요즘 러닝 시작 (민서랑 같이)", 5)
+    # 시우가 사용자에 대해 아는 것
+    add_fact("agent-persona-002", "사용자", "운동", "요즘 러닝 시작 (시우랑 같이)", 5)
     add_fact("agent-persona-002", "사용자", "성향", "INTJ, 분석적", 5)
     add_fact("agent-persona-002", "사용자", "술취향", "위스키 > 맥주", 7)
     add_fact("agent-persona-002", "사용자", "연애", "소은와 5년차", 8)
@@ -828,20 +828,20 @@ def seed(community_id: str = "demo") -> None:
     add_fact("agent-persona-003", "소은", "역할", "오빠 여자친구", 6)
     add_fact("agent-persona-003", "하린", "역할", "동아리 동기", 5)
 
-    # 예린이 소은에 대해 아는 것
+    # 다은이 소은에 대해 아는 것
     add_fact("agent-persona-004", "소은", "직업", "출판사 편집자", 7)
     add_fact("agent-persona-004", "소은", "좋아하는것", "독립서점, 비오는 날", 6)
     add_fact("agent-persona-004", "소은", "걱정거리", "사용자 건강", 9)
     add_fact("agent-persona-004", "사용자", "선물선호", "실용적 + 좋아하는 술", 7)
 
-    # 수연가 사용자/수진에 대해 아는 것
+    # 수연가 사용자/재현에 대해 아는 것
     add_fact("agent-persona-006", "사용자", "운동", "거의 안 함 (잔소리 대상)", 6)
     add_fact("agent-persona-006", "사용자", "건강", "거북목 · 수면 부족", 7)
     add_fact("agent-persona-006", "사용자", "성격", "챙겨주면 잘 따라옴", 5)
-    add_fact("agent-persona-006", "수진", "특기", "베이킹 · 맛집 탐방", 6)
-    add_fact("agent-persona-006", "수진", "직업", "동네 베이커리 운영", 6)
+    add_fact("agent-persona-006", "재현", "특기", "베이킹 · 맛집 탐방", 6)
+    add_fact("agent-persona-006", "재현", "직업", "동네 베이커리 운영", 6)
 
-    # 수진이 수연/사용자에 대해 아는 것
+    # 재현이 수연/사용자에 대해 아는 것
     add_fact("agent-persona-007", "수연", "직업", "필라테스 강사", 6)
     add_fact("agent-persona-007", "사용자", "취향", "담백한 음식 · 따뜻한 디저트", 5)
     add_fact("agent-persona-007", "사용자", "성격", "신중한 INTJ", 5)
@@ -857,7 +857,7 @@ def seed(community_id: str = "demo") -> None:
 
 
     add_rel_delta("agent-persona-001", "agent-persona-004", "intimacy", "90", "95",
-                  "예린이 소은 개인전에 소은 배려한 작품 준비", 5)
+                  "다은이 소은 개인전에 소은 배려한 작품 준비", 5)
     add_rel_delta("agent-persona-002", "agent-persona-006", "dynamics",
                   "형식적", "편한 사이", "러닝·필라테스 모임 같이 다니며 친해짐", 14)
     add_rel_delta("agent-persona-003", "agent-persona-005", "intimacy", "88", "92",
@@ -883,11 +883,11 @@ def seed(community_id: str = "demo") -> None:
         ("감정변화", ["agent-persona-001", "agent-persona-003"],
          "소은가 서아와 사용자의 친밀도 살짝 신경 쓰기 시작", "주의"),
         ("기념일임박", ["owner", "agent-persona-001"],
-         "사용자 생일 다음달 — 소은·예린이 공동 선물 준비 중", "긍정"),
+         "사용자 생일 다음달 — 소은·다은이 공동 선물 준비 중", "긍정"),
         ("주말약속", ["agent-persona-006", "agent-persona-007", "owner"],
-         "다음주 수연·수진이랑 브런치 + 한강 나들이 계획", "긍정"),
+         "다음주 수연·재현이랑 브런치 + 한강 나들이 계획", "긍정"),
         ("작업성과", ["agent-persona-004"],
-         "예린 개인전 준비 완료. 다음달 15일 오프닝", "긍정"),
+         "다은 개인전 준비 완료. 다음달 15일 오프닝", "긍정"),
     ]
     for et, parts, desc, impact in events:
         ts = (datetime.now() - timedelta(days=random.randint(0, 5))).isoformat()
