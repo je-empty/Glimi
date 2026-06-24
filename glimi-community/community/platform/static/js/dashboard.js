@@ -1455,7 +1455,8 @@ async function openAgent(id) {
       ${d.pinned_memories.map(m => renderMemItem(m, {showChannel: true})).join('')}
     </div>`;
   }
-  for (const [ch, mems] of Object.entries(d.memories_by_channel || {})) {
+  for (const [ch, _mems] of Object.entries(d.memories_by_channel || {})) {
+    const mems = Array.isArray(_mems) ? _mems : [];
     memCount += mems.length;
     const byLevel = {3: [], 2: [], 1: []};
     mems.forEach(m => { (byLevel[m.level] || byLevel[1]).push(m); });
