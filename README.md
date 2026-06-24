@@ -378,38 +378,37 @@ That's the Glimi Core harness at work. Channel discipline (layer 4) keeps the bo
 | **Achievements** | 7 default unlocks tracked as the user explores: first chat, three friends, group chat, peek-internal, autonomous-chat, long-relationship, fourth-wall break |
 | **Multi-community isolation** | One platform process spawns N community bot subprocesses; each gets its own SQLite DB and Discord server |
 
-### Community architecture (Discord-coupled)
+### Community architecture (web-first; Discord = optional adapter)
 
 ```mermaid
 flowchart LR
     linkStyle default stroke:#888,stroke-width:1.5px
     subgraph Owner["👤 Owner"]
-        Browser["🌐 Web Dashboard"]
+        Web["🌐 Built-in web chat + dashboard"]
     end
 
     subgraph Engine["Community Engine (built on Glimi Core)"]
-        Plat["🧩 Platform (FastAPI)"]
-        Bot["🤖 Discord Bot"]
+        Plat["🧩 Platform (FastAPI · WebSocket)"]
         Core["⚙ Glimi Core<br/>(runtime · memory · supervisors)"]
         DB[("SQLite<br/>community.db")]
-        Sync["🔄 Sync (Discord ↔ DB)"]
+        Log["📄 logs/system.log<br/>(runtime tool logs)"]
+        Bot["🤖 Discord adapter<br/>(optional)"]
     end
 
-    subgraph Discord["💬 Discord Channels"]
-        Mgr["📋 mgr-dashboard · mgr-creator · mgr-system-log"]
-        DM["💬 dm-A · dm-B · dm-C"]
-        Grp["👥 group-A-B"]
+    subgraph Channels["💬 Channels"]
+        DM["💬 dm-{name}<br/>incl. manager dm-agent-mgr-001"]
+        Grp["👥 group-{names}"]
         SecDM["🔒 internal-dm-A-B"]
         SecGrp["🔒 internal-group-A-B-C"]
     end
 
-    Browser <--> Plat
-    Plat -->|"spawn / stop"| Bot
-    Owner <-->|"chat"| Mgr & DM & Grp
-    Owner -. "spy 🔍 read-only" .-> SecDM & SecGrp
-    Bot <--> Core
+    Web <-->|"chat (WebSocket)"| Plat
+    Plat <--> Core
     Core <--> DB
-    Sync <-->|"bidirectional"| DB & Discord
+    Core -.->|"tool-call logs"| Log
+    Owner <-->|"chat"| DM & Grp
+    Owner -. "spy 🔍 read-only" .-> SecDM & SecGrp
+    Bot -. "optional mirror" .-> Plat
 
     style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
     style Core fill:#1a3a5c,stroke:#4a9eff,color:#fff
@@ -417,19 +416,17 @@ flowchart LR
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
 ```
 
-Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `discord`. Community's Discord bot lives in its own layer; Telegram / web-chat adapters are planned and will sit next to it.
+Note: **The built-in web chat is the primary surface; Discord is an optional adapter, not the kernel.** Glimi Core does not import `discord`. Community ships a first-class web chat (FastAPI + WebSocket); the Discord adapter is optional and mirrors the same channels, and Telegram / other adapters are planned next to it.
 
-### Discord channel structure (Community)
+### Channel structure (Community)
 
-| Category | Channel | Created | Purpose |
-|---|---|---|---|
-| `glimi-mgr` | `mgr-dashboard` | first boot | Owner ↔ Manager DM |
-| | `mgr-system-log` | after profile setup | System logs |
-| | `mgr-creator` | after profile setup | Owner ↔ Creator DM |
-| `glimi-dm` | `dm-{name}` | after agent creation | Owner ↔ Agent 1:1 |
-| `glimi-group` | `group-{names}` | on demand | Owner + Agents multi-DM |
-| `glimi-internal-dm` | `internal-dm-{A}-{B}` | on demand | Agent secret 1:1 (**owner read-only**) |
-| `glimi-internal-group` | `internal-group-{names}` | on demand | Agent secret multi-DM (**owner read-only**) |
+| Channel | Created | Purpose |
+|---|---|---|
+| `dm-{agent}` (incl. manager `dm-agent-mgr-001`) | first boot / on agent creation | Owner ↔ agent 1:1 |
+| `group-{names}` | on demand | Owner + agents multi-DM |
+| `internal-dm-{A}-{B}` | on demand | Agent-to-agent secret 1:1 (**owner read-only**) |
+| `internal-group-{names}` | on demand | Agent-to-agent secret group (**owner read-only**) |
+| `logs/system.log` (file) | runtime | Runtime tool-call logs — a file, not a channel |
 
 ### Quick Start (Community) — cross-platform
 
@@ -437,8 +434,8 @@ Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `dis
 - Python 3.12+
 - Node.js (Claude Code CLI dependency)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
-- For Claude-backed agents: an Anthropic API key *or* a Claude CLI login. Either way Claude turns cost **metered API credits** (headless `claude -p` is not a free subscription) — set a monthly cap at setup. The **free** option is **Local-only** (all agents on Ollama, $0) or **Hybrid** (personas local/free, only mgr/creator/dev on Claude — the cheapest config that still feels like Glimi).
-- Discord bot token (only if running the full Community stack)
+- For Claude-backed agents: a **Claude CLI login** (the setup wizard's default; an `ANTHROPIC_API_KEY` in `.env` also works). Either way Claude turns cost **metered API credits** (headless `claude -p` is not a free subscription). The **free** option is **Local-only** (all agents on Ollama, $0) or **Hybrid** (personas local/free, only mgr/creator/dev on Claude — the cheapest config that still feels like Glimi).
+- Discord bot token (only if you enable the optional Discord adapter)
 
 **Fresh Mac (nothing installed)** — one command installs the prerequisites above
 (Homebrew, Python, Node, Claude CLI), sets up the project, and opens your browser to
@@ -695,7 +692,7 @@ backends, reranker-based memory retrieval, smaller-model tool-call accuracy tuni
 - **Discord = adapter.** `community/core/*` never imports `discord`. Community-specific code lives under `community/bot/`, `community/scenes/`, `community/achievements/`, etc.
 - **Memory / emotion are user-prompt injections**, never system-prompt baked. `AgentRuntime` assembles them per channel, per turn.
 - **Timestamps are UTC-aware ISO** (`community.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` is naive — don't use it directly.
-- **Meta words** like "agent" / "bot" / "AI" are forbidden in user-visible text. `<tools>` blocks only surface in `mgr-system-log`.
+- **Meta words** like "agent" / "bot" / "AI" are forbidden in user-visible text. `<tools>` blocks never surface in conversation channels — runtime tool-call logs go to the `logs/system.log` file.
 - **Profile edits** require `invalidate_cache()` + `runtime.refresh_agent()` paired.
 
 ### Commit rules

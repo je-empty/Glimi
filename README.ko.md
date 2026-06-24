@@ -343,38 +343,37 @@ B 가 솔직하게 답함 ("마감주간") — 차가웠던 진짜 이유. B 는
 | **도전과제** | 7개 기본 unlock: 첫 대화, 친구 셋, 그룹챗, peek-internal, 자율 대화, 장기 관계, 4차벽 깨기 |
 | **멀티 커뮤니티 격리** | Platform 프로세스 하나가 N 커뮤니티 봇 subprocess 를 띄움, 각자 고유 SQLite DB + Discord 서버 |
 
-### Community 아키텍처 (Discord 결합)
+### Community 아키텍처 (웹 우선; Discord = 선택 어댑터)
 
 ```mermaid
 flowchart LR
     linkStyle default stroke:#888,stroke-width:1.5px
     subgraph Owner["👤 오너"]
-        Browser["🌐 웹 대시보드"]
+        Web["🌐 내장 웹 채팅 + 대시보드"]
     end
 
     subgraph Engine["Community 엔진 (Glimi Core 기반)"]
-        Plat["🧩 Platform (FastAPI)"]
-        Bot["🤖 Discord 봇"]
+        Plat["🧩 Platform (FastAPI · WebSocket)"]
         Core["⚙ Glimi Core<br/>(runtime · memory · supervisors)"]
         DB[("SQLite<br/>community.db")]
-        Sync["🔄 Sync (Discord ↔ DB)"]
+        Log["📄 logs/system.log<br/>(런타임 도구 로그)"]
+        Bot["🤖 Discord 어댑터<br/>(선택)"]
     end
 
-    subgraph Discord["💬 Discord 채널"]
-        Mgr["📋 mgr-dashboard · mgr-creator · mgr-system-log"]
-        DM["💬 dm-A · dm-B · dm-C"]
-        Grp["👥 group-A-B"]
+    subgraph Channels["💬 채널"]
+        DM["💬 dm-{이름}<br/>매니저 dm-agent-mgr-001 포함"]
+        Grp["👥 group-{이름들}"]
         SecDM["🔒 internal-dm-A-B"]
         SecGrp["🔒 internal-group-A-B-C"]
     end
 
-    Browser <--> Plat
-    Plat -->|"spawn / stop"| Bot
-    Owner <-->|"대화"| Mgr & DM & Grp
-    Owner -. "spy 🔍 읽기만" .-> SecDM & SecGrp
-    Bot <--> Core
+    Web <-->|"대화 (WebSocket)"| Plat
+    Plat <--> Core
     Core <--> DB
-    Sync <-->|"양방향"| DB & Discord
+    Core -.->|"도구 호출 로그"| Log
+    Owner <-->|"대화"| DM & Grp
+    Owner -. "spy 🔍 읽기만" .-> SecDM & SecGrp
+    Bot -. "선택 미러링" .-> Plat
 
     style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
     style Core fill:#1a3a5c,stroke:#4a9eff,color:#fff
@@ -382,19 +381,17 @@ flowchart LR
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
 ```
 
-원칙: **Discord 는 어댑터일 뿐, 커널이 아님.** Glimi Core 는 `discord` 를 import 하지 않음. Community 의 Discord 봇은 자체 레이어에 있고, Telegram / 웹챗 어댑터가 같은 자리에 붙을 예정.
+원칙: **내장 웹 채팅이 1급 주력, Discord 는 선택 어댑터일 뿐 커널이 아님.** Glimi Core 는 `discord` 를 import 하지 않음. Community 는 1급 웹 채팅(FastAPI + WebSocket)을 제공하고, Discord 어댑터는 선택이며 같은 채널을 미러링한다. Telegram / 기타 어댑터가 같은 자리에 붙을 예정.
 
-### Discord 채널 구조 (Community)
+### 채널 구조 (Community)
 
-| 카테고리 | 채널 | 생성 시점 | 용도 |
-|---|---|---|---|
-| `glimi-mgr` | `mgr-dashboard` | 첫 부팅 | 오너 ↔ 매니저 DM |
-| | `mgr-system-log` | 프로필 세팅 후 | 시스템 로그 |
-| | `mgr-creator` | 프로필 세팅 후 | 오너 ↔ Creator DM |
-| `glimi-dm` | `dm-{이름}` | 에이전트 생성 후 | 오너 ↔ 에이전트 1:1 |
-| `glimi-group` | `group-{이름들}` | 요청 시 | 오너 + 에이전트 멀티 DM |
-| `glimi-internal-dm` | `internal-dm-{A}-{B}` | 요청 시 | 에이전트 비밀 1:1 (**오너 읽기 전용**) |
-| `glimi-internal-group` | `internal-group-{이름들}` | 요청 시 | 에이전트 비밀 그룹 (**오너 읽기 전용**) |
+| 채널 | 생성 시점 | 용도 |
+|---|---|---|
+| `dm-{에이전트}` (매니저 `dm-agent-mgr-001` 포함) | 첫 부팅 / 에이전트 생성 후 | 오너 ↔ 에이전트 1:1 |
+| `group-{이름들}` | 요청 시 | 오너 + 에이전트 멀티 DM |
+| `internal-dm-{A}-{B}` | 요청 시 | 에이전트끼리 비밀 1:1 (**오너 읽기 전용**) |
+| `internal-group-{이름들}` | 요청 시 | 에이전트끼리 비밀 그룹 (**오너 읽기 전용**) |
+| `logs/system.log` (파일) | 런타임 | 런타임 도구 호출 로그 — 채널 아님, 파일 |
 
 ### Quick Start (Community) — cross-platform
 
@@ -402,8 +399,8 @@ flowchart LR
 - Python 3.12+
 - Node.js (Claude Code CLI 의존)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
-- Claude 백엔드 에이전트용: Anthropic API key *또는* Claude CLI 로그인. 어느 쪽이든 Claude 턴은 **사용량만큼 과금되는 API 크레딧**을 쓴다(headless `claude -p` 는 구독 무료가 아님) — setup 에서 월 상한을 정하라. **무료** 옵션은 **로컬 전용**(전 에이전트 Ollama, $0) 또는 **하이브리드**(페르소나는 로컬/무료, mgr/creator/dev 만 Claude — Glimi 느낌을 유지하는 가장 저렴한 구성).
-- Discord 봇 토큰 (Community 풀-스택 가동 시만)
+- Claude 백엔드 에이전트용: **Claude CLI 로그인**(setup 위저드 기본값; `.env` 의 `ANTHROPIC_API_KEY` 도 동작). 어느 쪽이든 Claude 턴은 **사용량만큼 과금되는 API 크레딧**을 쓴다(headless `claude -p` 는 구독 무료가 아님). **무료** 옵션은 **로컬 전용**(전 에이전트 Ollama, $0) 또는 **하이브리드**(페르소나는 로컬/무료, mgr/creator/dev 만 Claude — Glimi 느낌을 유지하는 가장 저렴한 구성).
+- Discord 봇 토큰 (선택 Discord 어댑터를 켤 때만)
 
 **아무것도 안 깔린 맥** — 한 줄이면 위 사전 요구(Homebrew·Python·Node·Claude CLI)를
 알아서 설치하고, 프로젝트 셋업까지 한 뒤 브라우저로 setup 위저드를 열어 준다:
@@ -663,7 +660,7 @@ Community 의 소셜 sim 스캐폴딩 없이 Glimi Core 를 직접 보여주는,
 - **Discord = 어댑터.** `community/core/*` 는 `discord` import 금지. Community 종속은 `community/bot/`, `community/scenes/`, `community/achievements/` 등에.
 - **메모리 / 감정은 user prompt 동적 주입** (system prompt 에 박지 않음). `AgentRuntime` 이 채널별로 턴마다 조립.
 - **타임스탬프는 UTC-aware ISO** (`community.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` 직접 사용 금지 (naive).
-- **메타 용어** ("에이전트", "봇", "AI") 사용자 텍스트에 노출 금지. `<tools>` 블록은 `mgr-system-log` 에만.
+- **메타 용어** ("에이전트", "봇", "AI") 사용자 텍스트에 노출 금지. `<tools>` 블록은 대화 채널에 노출 금지 — 런타임 도구 호출 로그는 `logs/system.log` 파일로.
 - **프로필 편집** 은 `invalidate_cache()` + `runtime.refresh_agent()` 쌍으로.
 
 ### 커밋 규칙
