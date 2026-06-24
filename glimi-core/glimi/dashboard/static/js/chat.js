@@ -503,12 +503,12 @@
     try {
       // 'en-US' (not the browser default) so chat chrome stays English even in a
       // Korean-locale browser — matches the rest of the English UI chrome.
-      return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      return new Date(ms).toLocaleTimeString(EN ? 'en-US' : 'ko-KR', { hour: 'numeric', minute: '2-digit' });
     } catch (e) { return ''; }
   }
   function dayLabelOf(ms) {
     try {
-      return new Date(ms).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+      return new Date(ms).toLocaleDateString(EN ? 'en-US' : 'ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
     } catch (e) { return ''; }
   }
   function relTime(ms) {
@@ -549,6 +549,8 @@
       var parts = label.replace(/^internal-/, '').split('-').filter(Boolean);
       if (parts.length) return parts.join(' · ');
     }
+    if (/^group-/.test(label)) return label.replace(/^group-/, '');
+    if (/^dm-/.test(label)) return label.replace(/^dm-/, '');
     return label;
   }
 
@@ -1520,10 +1522,10 @@
       if ($input) {
         var nm = channelDisplayName(c);
         if (c.postable === false) {
-          $input.setAttribute('data-ph', EN ? "Read-only — you're watching" : '관전 전용 — 에이전트끼리 대화');
+          $input.setAttribute('data-ph', EN ? "Read-only — you're watching" : '관전 전용 — 오가는 대화');
           $input.setAttribute('aria-label', EN ? 'Read-only channel' : '관전 전용 채널');
         } else {
-          $input.setAttribute('data-ph', EN ? ('Message ' + nm + '…') : (nm + '에게 메시지…'));
+          $input.setAttribute('data-ph', EN ? ('Message ' + nm + '…') : (nm + '에게 메시지 보내기'));
           $input.setAttribute('aria-label', EN ? ('Message ' + nm) : (nm + '에게 메시지'));
         }
       }
