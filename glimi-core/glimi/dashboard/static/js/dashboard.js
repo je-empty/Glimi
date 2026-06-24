@@ -2859,7 +2859,7 @@ function mountCytoscapeGraph(snap) {
   cyInstance = cytoscape({
     container,
     elements: { nodes, edges },
-    minZoom: 0.5,
+    minZoom: 0.28,   // fit() 가 노드 많아도(13+) 컨테이너 안에 다 수렴하게 (구 0.5 → 모바일 상하 잘림)
     maxZoom: 2.5,
     boxSelectionEnabled: false,
     autounselectify: true,
