@@ -70,7 +70,7 @@
 <div class="qa-page">
   <div class="qa-head">
     <h1>QA — EDD generations</h1>
-    <span class="admin-tag">ADMIN</span>
+    <span class="admin-tag">관리자</span>
     {% if generations %}
     <a class="qa-pdf-btn" href="/admin/qa/pdf" target="_blank" title="최신 세대 리포트 PDF">
       <i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF 내보내기
@@ -96,16 +96,16 @@
       <div class="qa-score-num" id="hero-score">
         {{ latest.overall_score if latest.overall_score is not none else '–' }}
       </div>
-      <div class="qa-score-sub">/ 100 · gate {{ latest.min_overall or 70 }}</div>
+      <div class="qa-score-sub">/ 100 · 통과선 {{ latest.min_overall or 70 }}</div>
       <div class="qa-badge {{ 'qa-pass' if latest.passed else 'qa-fail' }}">
-        {{ '✅ PASS' if latest.passed else '❌ FAIL' }}
+        {{ '✅ 통과' if latest.passed else '❌ 실패' }}
       </div>
     </div>
     <div>
       <div class="qa-meta">
-        <span>gen <b>#{{ latest.generation_no }}</b></span>
+        <span>세대 <b>#{{ latest.generation_no }}</b></span>
         <span>git <b class="qa-sha">{{ latest.git.sha }}{{ '*' if latest.git.dirty }}</b></span>
-        <span>backend <b>{{ latest.backend }}</b></span>
+        <span>백엔드 <b>{{ latest.backend }}</b></span>
         <span>{{ latest.generated_at[:19].replace('T',' ') }}Z</span>
         {% if latest.failing %}<span class="qa-fail-dims">실패: {{ latest.failing|join(', ') }}</span>{% endif %}
       </div>
@@ -123,24 +123,24 @@
   </div>
 
   <div class="qa-card">
-    <h2>Quality over generations</h2>
+    <h2>세대별 품질 추이</h2>
     <div class="sub">세대별 종합 점수 — 우상향이 곧 품질 개선의 측정 가능한 증거.</div>
     <svg id="qa-trend" viewBox="0 0 800 200" preserveAspectRatio="none"></svg>
   </div>
 
   <div class="qa-card">
-    <h2>Generations</h2>
+    <h2>세대 목록</h2>
     <div class="sub">{{ generations|length }} 세대 · 각 행은 한 commit 위의 한 QA 런.</div>
     <table class="qa-table">
       <thead><tr>
-        <th>#</th><th>점수</th><th></th><th>git</th><th>backend</th><th>실패 차원</th><th>시각</th>
+        <th>#</th><th>점수</th><th></th><th>Git</th><th>백엔드</th><th>실패 차원</th><th>시각</th>
       </tr></thead>
       <tbody>
         {% for g in generations|reverse %}
         <tr>
           <td>{{ g.generation_no }}</td>
           <td><b>{{ g.overall_score if g.overall_score is not none else '–' }}</b></td>
-          <td><span class="qa-pill {{ 'qa-pass' if g.passed else 'qa-fail' }}">{{ 'PASS' if g.passed else 'FAIL' }}</span></td>
+          <td><span class="qa-pill {{ 'qa-pass' if g.passed else 'qa-fail' }}">{{ '통과' if g.passed else '실패' }}</span></td>
           <td class="qa-sha">{{ g.git.sha }}{{ '*' if g.git.dirty }}</td>
           <td>{{ g.backend }}</td>
           <td class="qa-fail-dims">{{ g.failing|join(', ') if g.failing else '—' }}</td>
@@ -181,7 +181,7 @@
     // gate line at 70 (dashed)
     const gy = yAt(70);
     s += `<line x1="${padL}" y1="${gy}" x2="${W-padR}" y2="${gy}" stroke="${accent}" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>`;
-    s += `<text x="${W-padR}" y="${gy-4}" text-anchor="end" font-size="10" fill="${accent}">gate 70</text>`;
+    s += `<text x="${W-padR}" y="${gy-4}" text-anchor="end" font-size="10" fill="${accent}">통과선 70</text>`;
     // line
     const path = pts.map((p, k) => `${k ? 'L' : 'M'}${xAt(p.i).toFixed(1)},${yAt(p.y).toFixed(1)}`).join(' ');
     s += `<path d="${path}" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linejoin="round"/>`;

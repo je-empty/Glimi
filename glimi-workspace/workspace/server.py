@@ -1083,7 +1083,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         EN = (lang == "en")
         items = []
         for c in reg.cards():
-            metas = ([f"{c['agents']} agents", f"{c['channels']} channels"] if EN
+            metas = ([f"{c['agents']} teammates", f"{c['channels']} channels"] if EN
                      else [f"팀원 {c['agents']}명", f"채널 {c['channels']}개"])
             items.append({
                 "href": f"/w/{c['id']}",
@@ -1100,13 +1100,13 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             create = {
                 "action": "/api/workspaces",
                 "heading": "Or start your own" if EN else "직접 만들어 보기",
-                "lede": ("Name yourself, give a goal, and a fresh manager-led team spins up around it."
-                         if EN else "이름을 정하고 목표를 적으면, 매니저가 이끄는 새 팀이 그 주위로 꾸려져요."),
+                "lede": ("Name yourself, give a goal, and a new team led by a team lead forms around it."
+                         if EN else "이름을 적고 목표를 정하면, 팀장이 이끄는 새 팀이 그 주위로 꾸려져요."),
                 "name_label": "Your name" if EN else "이름",
-                "name_ph": "Owner" if EN else "예: 오너",
+                "name_ph": "e.g. Alex" if EN else "예: 지수",
                 "goal_label": "Goal" if EN else "목표",
-                "goal_ph": ("Plan the launch of a new app / service"
-                            if EN else "예: 신규 앱·서비스 출시 기획"),
+                "goal_ph": ("e.g. Plan the launch of a new app, Karukan"
+                            if EN else "예: 신규 앱 '하루칸' 출시 기획"),
                 "submit": "Create workspace" if EN else "워크스페이스 만들기",
             }
         ctx = {
@@ -1114,11 +1114,12 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             "brand": "Glimi Workspace",
             "brand_sub": ("specialist teams on one Glimi Core" if EN
                           else "하나의 Glimi Core 위에서 움직이는 전문가 팀"),
-            "lede": ("Give a goal and a team forms around it — a manager that delegates to "
-                     "Researcher, Builder, and Critic, who talk to each other and report back. "
-                     "Open the demo below to watch one in motion." if EN
-                     else "목표를 주면 그 주위로 팀이 꾸려집니다 — 매니저가 리서처·빌더·크리틱에게 일을 나누고, "
-                          "서로 의논해 결과를 가져옵니다. 아래 데모를 열면 그 과정이 그대로 보여요."),
+            "lede": ("Set a goal and a team forms around it — a team lead splits the work among "
+                     "teammates who research, build, and review, and they share ideas to bring back "
+                     "a result. Open a demo below to watch it. No login needed." if EN
+                     else "목표를 주면 그 주위로 팀이 꾸려집니다 — 조사·구현·검토를 맡은 팀원들에게 팀장이 일을 "
+                          "나눠 주고, 서로 의견을 주고받으며 결과를 가져와요. 아래 데모를 열면 그 과정을 볼 수 "
+                          "있어요. 로그인도 필요 없어요."),
             "items": items,
             "create": create,
         }
@@ -1325,7 +1326,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                 if read_only:
                     await websocket.send_json({
                         "type": "error", "channel": channel, "error": "demo_readonly",
-                        "message": "Demo — read-only. Create your own workspace to chat with the team.",
+                        "message": "둘러보기 전용 데모예요. 직접 워크스페이스를 만들면 팀과 대화할 수 있어요.",
                     })
                     continue
                 if not _ws_postable(channel):

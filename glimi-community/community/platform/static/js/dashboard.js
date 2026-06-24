@@ -257,7 +257,7 @@ function renderModelChips(d, compact) {
   const parts = raw.split(/\s*·\s*/).map(s => s.trim()).filter(Boolean);
   const provider = d.provider || '';
   const override = d.model_override ? ' override' : '';
-  const title = d.model_override ? 'per-agent override' : 'default';
+  const title = d.model_override ? 'per-agent override' : (currentLang() === 'en' ? 'Default' : '기본값');
   const chips = parts.map(p => {
     const fam = _modelFamilyClass(p);
     const classes = ['model-tag', provider, fam, override.trim()].filter(Boolean).join(' ');
@@ -268,7 +268,7 @@ function renderModelChips(d, compact) {
     ? ''
     : (d.model_override
         ? ' <small style="color:var(--accent)">override</small>'
-        : '<small style="color:var(--text-faint)"> · default</small>');
+        : `<small style="color:var(--text-faint)"> · ${currentLang() === 'en' ? 'Default' : '기본값'}</small>`);
   return `<span class="model-chip-row">${chips}</span>${suffix}`;
 }
 async function j(u) { try { const r = await fetch(u); return await r.json(); } catch { return null; } }
@@ -701,7 +701,7 @@ function renderHero(snap) {
 
   return `<div class="hero-row">
     <div class="hero-avatars">
-      ${avatarsHtml || '<div style="color:var(--text-faint);padding:16px 0">no agents yet</div>'}
+      ${avatarsHtml || `<div style="color:var(--text-faint);padding:16px 0">${currentLang() === 'en' ? 'No friends yet' : '아직 친구가 없어요'}</div>`}
     </div>
     <div class="hero-text" style="flex:1">
       <h1>
@@ -1343,7 +1343,7 @@ async function openAgent(id) {
   } else if (d.speaking) {
     statusHtml = '<span style="color:var(--speaking)">💬 Speaking</span>';
   } else if (d.status === 'active') {
-    statusHtml = '<span style="color:var(--ok)">● Active</span>';
+    statusHtml = `<span style="color:var(--ok)">● ${currentLang() === 'en' ? 'Active' : '활동 중'}</span>`;
   } else {
     statusHtml = `<span style="color:var(--text-dim)">○ ${esc(d.status)}</span>`;
   }
@@ -1606,7 +1606,7 @@ async function openAgent(id) {
     } else {
       supEventsHtml = `<div class="detail-section">
         <h4>📋 감시 활동</h4>
-        <div class="empty" style="font-size:12px">최근 24시간 내 기록된 개입 없음 — 조용히 감시 중</div>
+        <div class="empty" style="font-size:12px">${currentLang() === 'en' ? 'No activity in the last 24h — quietly watching' : '최근 24시간 동안 별다른 움직임이 없었어요 — 조용히 지켜보는 중이에요'}</div>
       </div>`;
     }
   }
@@ -1664,7 +1664,7 @@ async function openAgent(id) {
       <div class="msg-list" style="${secInner}">${chatHtml}</div>
     </details>` : ''}
   `;
-  openModal(d.emoji, d.name + ' · ' + d.type, body, d);
+  openModal(d.emoji, d.name + ' · ' + t('type_' + d.type), body, d);
 }
 
 async function openChannel(name) {
@@ -2231,7 +2231,8 @@ function supDisplayName(name) {
 }
 function supervisorAsAgent(s) {
   const statusEmoji = s.intervening ? '🔥' : (s.active ? '💭' : '💤');
-  const emotion = s.intervening ? '개입 중' : (s.active ? '감시 중' : '대기');
+  const _en = currentLang() === 'en';
+  const emotion = s.intervening ? (_en ? 'Stepping in' : '나서는 중') : (s.active ? (_en ? 'Watching' : '지켜보는 중') : (_en ? 'Idle' : '대기'));
   return {
     id: `sup:${s.name}`,
     type: 'supervisor',
@@ -2274,8 +2275,8 @@ function renderSupervisorsTab(supervisors) {
   };
 
   return [
-    renderGroup('Active', active, '현재 조건 충족 — 백그라운드 감시 중'),
-    renderGroup('Idle', inactive, '현재 조건 미충족 — 트리거 대기'),
+    renderGroup('Active', active, currentLang() === 'en' ? 'Conditions met — quietly watching' : '지금 조건이 맞아 조용히 지켜보는 중이에요'),
+    renderGroup('Idle', inactive, currentLang() === 'en' ? 'Conditions not yet met — waiting' : '아직 조건이 안 맞아 기다리는 중이에요'),
   ].join('');
 }
 
@@ -3548,7 +3549,7 @@ async function openAchievementDetail(key) {
     </div>`;
   } else {
     body += `<div class="detail-section"><h4>대화 컨텍스트 없음</h4>
-      <div class="empty">trigger 메시지를 못 찾았어 — 도전과제는 events 테이블이나 다른 source 로 달성됐을 수 있음.</div>
+      <div class="empty">${currentLang() === 'en' ? "Couldn't find the moment that unlocked this achievement" : '이 도전과제를 달성한 순간의 대화를 찾지 못했어요'}</div>
     </div>`;
   }
 
@@ -3979,7 +3980,7 @@ function renderUsage(u) {
           <span style="color:var(--text-dim);font-size:12px">${(a.call_count || 0).toLocaleString()} calls · ${spend}</span>
         </div>`;
       }).join('')
-    : '<div style="color:var(--text-faint);font-size:12px">No per-agent usage yet.</div>';
+    : `<div style="color:var(--text-faint);font-size:12px">${currentLang() === 'en' ? 'No per-member usage yet' : '아직 구성원별 사용량이 없어요'}</div>`;
 
   host.innerHTML = `
     <div class="overview-grid">

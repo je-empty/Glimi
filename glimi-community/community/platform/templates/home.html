@@ -83,7 +83,7 @@
 
 {% if user and not communities %}
 <div class="card">
-  <p class="muted" style="margin: 0;">아직 커뮤니티가 없어. 상단의 <a href="/community/new"><strong>+ 새 커뮤니티</strong></a> 로 하나 만들어봐.</p>
+  <p class="muted" style="margin: 0;">아직 커뮤니티가 없어요. 상단의 <a href="/community/new"><strong>+ 새 커뮤니티</strong></a> 로 하나 만들어 보세요.</p>
 </div>
 {% endif %}
 
@@ -139,7 +139,7 @@
   <h3 style="margin-top: 0; color: var(--err);">커뮤니티 삭제</h3>
   <p style="margin: 10px 0 6px 0; font-size: 13.5px; line-height: 1.6;">
     <strong id="del-cid" style="color: var(--err); font-family: ui-monospace, monospace;">...</strong> 커뮤니티를 완전히 삭제합니다.<br>
-    <span class="muted">DB + 프로필 이미지 + 로그 전부 제거되며 복구 불가능.</span>
+    <span class="muted">대화 기록·프로필 이미지·전체 데이터가 모두 지워지며 복구할 수 없어요.</span>
   </p>
   <div style="margin: 14px 0; padding: 12px; background: color-mix(in srgb, var(--warn) 8%, var(--panel2)); border-radius: 10px;">
     <label style="display: flex; align-items: start; gap: 8px; cursor: pointer; font-size: 13px;">
@@ -151,7 +151,7 @@
     </label>
   </div>
   <div class="del-body" style="margin: 16px 0;">
-    <label style="display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted);">확인 입력: 커뮤니티 ID 를 정확히 입력해</label>
+    <label style="display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted);">확인을 위해 커뮤니티 ID 를 정확히 입력해 주세요.</label>
     <input id="del-input" type="text" style="width: 100%;" placeholder="" autocomplete="off">
   </div>
   <div id="del-progress"></div>
@@ -185,7 +185,7 @@ async function confirmDelete() {
   const typed = document.getElementById('del-input').value.trim();
   const wipe = document.getElementById('del-wipe').checked;
   if (typed !== cid) {
-    alert('입력이 일치하지 않아 삭제 취소됨.');
+    alert('입력이 일치하지 않아 삭제를 취소했어요.');
     return;
   }
   // 다이얼로그 안에서 진행 상태 표시 (닫지 않음). 버튼 비활성화.
@@ -194,8 +194,8 @@ async function confirmDelete() {
   const progress = document.getElementById('del-progress');
   if (progress) {
     const msg = wipe
-      ? '봇 정지 + 디스코드 채널 삭제 중... (최대 30초)'
-      : '봇 정지 + 데이터 삭제 중... (최대 10초)';
+      ? '정지하고 채널과 데이터를 지우는 중이에요... (최대 30초)'
+      : '정지하고 데이터를 지우는 중이에요... (최대 10초)';
     progress.innerHTML =
       '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--panel2);border-radius:8px;margin-top:12px;border-left:3px solid var(--accent)">' +
       '<div style="width:16px;height:16px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>' +
@@ -221,7 +221,7 @@ async function confirmDelete() {
     dlg.close();
     location.reload();
   } catch (e) {
-    if (progress) progress.innerHTML = '<div class="err">통신 오류: ' + e + '</div>';
+    if (progress) progress.innerHTML = '<div class="err">연결에 문제가 생겼어요: ' + e + '</div>';
     if (actions) actions.querySelectorAll('button').forEach(b => b.disabled = false);
   }
 }

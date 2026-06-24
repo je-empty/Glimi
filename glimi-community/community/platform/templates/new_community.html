@@ -116,12 +116,12 @@
         <input id="f-desc" type="text" placeholder="친구들과 편하게 수다 떠는 공간">
       </div>
       <div class="wiz-field">
-        <label>에이전트 언어</label>
+        <label>대화 언어</label>
         <select id="f-lang">
           <option value="ko" selected>🇰🇷 한국어</option>
           <option value="en">🇺🇸 English</option>
         </select>
-        <div class="hint" style="margin-top:4px;color:var(--muted);font-size:12px">커뮤니티 생성 후 변경 불가 — 에이전트 기억이 해당 언어로 누적되기 때문</div>
+        <div class="hint" style="margin-top:4px;color:var(--muted);font-size:12px">커뮤니티를 만든 뒤에는 바꿀 수 없어요 — 친구들의 기억이 이 언어로 쌓이기 때문이에요.</div>
       </div>
       <div class="wiz-field">
         <label>대화 모델 <span class="hint">(기본값 = 전역 설정 상속, 나중에 변경 가능)</span></label>
@@ -131,7 +131,7 @@
           <option value="claude">Claude 전용 — 이 커뮤니티 전용 Claude 키 (전부 과금)</option>
           <option value="local">로컬 전용 (Ollama) — 진짜 무료 $0</option>
         </select>
-        <div class="hint" style="margin-top:4px;font-size:12px">무료 런타임 = 로컬 모델. Claude 백엔드는 사용량만큼 과금됩니다(metered).</div>
+        <div class="hint" style="margin-top:4px;font-size:12px">무료 런타임 = 로컬 모델. Claude 백엔드는 사용한 만큼 요금이 부과돼요.</div>
         <div id="model-cloud" class="wiz-field" style="display:none;margin-top:8px">
           <label>Anthropic API 키 <span class="hint">(이 커뮤니티 전용)</span></label>
           <input id="f-model-key" type="password" placeholder="sk-ant-..." autocomplete="off">
@@ -160,13 +160,13 @@
   <!-- Step 2: 오너 프로필 -->
   <div class="wiz-page" data-page="2">
     <div class="card">
-      <p class="muted" style="margin-top:0">에이전트들이 오너를 어떻게 부를지 알기 위해 필요해.</p>
+      <p class="muted" style="margin-top:0">친구들이 당신을 어떻게 부르면 좋을지 알기 위해 필요해요.</p>
       <div class="wiz-field">
         <label>이름 <span class="hint">(필수)</span></label>
         <input id="f-owner-name" type="text" placeholder="홍길동">
       </div>
       <div class="wiz-field">
-        <label>별명 <span class="hint">(선택 — 에이전트가 친근하게 부를 호칭)</span></label>
+        <label>별명 <span class="hint">(선택 — 친구들이 친근하게 부를 호칭)</span></label>
         <input id="f-owner-nickname" type="text" placeholder="길동이">
       </div>
       <div class="wiz-field">
@@ -219,14 +219,14 @@
   <div class="wiz-page" data-page="4">
     <div id="verify-summary" class="wiz-result ok"></div>
     <div id="existing-channels-box" class="wiz-existing-channels" style="display:none">
-      <h5>⚠ 기존 <code>glimi-*</code> 채널이 감지됨</h5>
+      <h5>⚠ 기존 <code>glimi-*</code> 채널이 발견됐어요.</h5>
       <div id="existing-list"></div>
       <label><input type="radio" name="clean-mode" value="keep" checked> 유지 — 기존 채널 그대로 사용 (기존 대화 보존)</label>
       <label><input type="radio" name="clean-mode" value="clean"> 삭제 — 첫 기동 시 모든 glimi 채널 삭제 후 새로 생성 (깨끗한 시작)</label>
     </div>
     <div id="create-loading" class="wiz-loading">
       <div class="spinner"></div>
-      <div>커뮤니티 생성 중... <span class="muted">(DB 초기화)</span></div>
+      <div>커뮤니티를 만드는 중이에요... <span class="muted">(초기 설정 중)</span></div>
     </div>
     <div id="create-err" class="wiz-result err" style="display:none"></div>
     <div class="wiz-nav">
@@ -274,14 +274,14 @@ async function wizNext(from) {
   if (from === 1) {
     const id = document.getElementById('f-id').value.trim();
     if (!id || !id.replace(/-|_/g, '').match(/^[a-zA-Z0-9]+$/)) {
-      alert('ID 는 영문/숫자/-/_ 만 가능');
+      alert('ID 는 영문·숫자·-·_ 만 쓸 수 있어요');
       return;
     }
     await _tryApplyDefaults(id);
     wizGoto(2);
   } else if (from === 2) {
     const name = document.getElementById('f-owner-name').value.trim();
-    if (!name) { alert('이름은 필수'); return; }
+    if (!name) { alert('이름을 입력해 주세요'); return; }
     wizGoto(3);
     const tokenInput = document.getElementById('f-token');
     if (tokenInput && tokenInput.dataset.prefilled === '1') {
@@ -342,7 +342,7 @@ async function wizVerify() {
   const btn = document.getElementById('btn-verify');
 
   errBox.style.display = 'none';
-  if (!token) { errBox.textContent = '토큰을 입력해'; errBox.style.display = 'block'; return; }
+  if (!token) { errBox.textContent = '토큰을 입력해 주세요'; errBox.style.display = 'block'; return; }
 
   btn.disabled = true;
   loading.classList.add('on');
@@ -370,7 +370,7 @@ async function wizVerify() {
       return;
     }
     if (!info.guilds || !info.guilds.length) {
-      errBox.innerHTML = '봇이 어떤 서버에도 초대되지 않았어. 먼저 서버에 초대해.';
+      errBox.innerHTML = '아직 어떤 서버에도 초대되지 않았어요. 먼저 서버에 초대해 주세요.';
       errBox.style.display = 'block';
       return;
     }

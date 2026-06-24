@@ -44,7 +44,7 @@
             style="background:var(--chat-av-3)">{{ (user.username[0] if user and user.username else "Me")|upper }}<span class="pres online"></span></span>
       <span class="meta">
         <span class="t">{{ user.username if user else "Me" }}</span>
-        <span class="p"><span class="d"></span>{{ 'Online' if EN else '접속 중' }}</span>
+        <span class="p"><span class="d"></span>{{ 'Online' if EN else '온라인' }}</span>
       </span>
       <span class="chat-status" id="chat-status" data-state="connecting"
             role="status" aria-live="polite">{{ 'Connecting…' if EN else '연결 중…' }}</span>
@@ -99,7 +99,7 @@
            디자인 토큰만 사용 (raw hex 금지). 둘러보기 전용임을 명확히 알림. -->
       <div class="chat-readonly-banner" id="chat-readonly-banner" role="status" hidden>
         <i class="ti ti-lock" aria-hidden="true"></i>
-        <span>{{ 'Demo — read-only. Sending messages is disabled here.' if EN else '데모 — 둘러보기 전용. 여기서는 메시지를 보낼 수 없어요.' }}</span>
+        <span>{{ 'Demo — just for browsing. You can\'t send messages here.' if EN else '데모 — 둘러보기 전용이에요. 여기서는 메시지를 보낼 수 없어요.' }}</span>
       </div>
       <div class="typefoot" id="chat-typefoot" aria-hidden="true">
         <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
