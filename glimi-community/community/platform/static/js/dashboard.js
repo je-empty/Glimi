@@ -657,13 +657,13 @@ function renderAgent(a, clickable=true) {
       <div class="state-bar-fill"></div>
       <div class="state-bar-shine"></div>
       <div class="state-bar-text">
-        ${a.thinking ? '<i class="ti ti-brain" aria-hidden="true"></i> Thinking<span class="state-dots"></span>' : (a.speaking ? '<i class="ti ti-message-circle" aria-hidden="true"></i> Speaking<span class="state-dots"></span>' : '')}
+        ${a.thinking ? `<i class="ti ti-brain" aria-hidden="true"></i> ${t('thinking')}<span class="state-dots"></span>` : (a.speaking ? `<i class="ti ti-message-circle" aria-hidden="true"></i> ${t('speaking')}<span class="state-dots"></span>` : '')}
         ${(a.thinking || a.speaking) ? `<span style="opacity:0.75;font-weight:400;font-size:11px;letter-spacing:0">${fmtElapsed(elapsed)}</span>` : ''}
       </div>
     </div>
     <div class="agent-footer">
       ${a.model ? renderModelChips(a, true) : '<span></span>'}
-      ${agoText ? `<span title="마지막 활동">${agoText} ago</span>` : ''}
+      ${agoText ? `<span title="마지막 활동">${agoText} ${t('ago')}</span>` : ''}
     </div>
     ${expanded}
   </div>`;
@@ -2780,7 +2780,7 @@ function renderConnectionGraph(snap) {
   const hasContent = channels.length > 0 || hasMgrCreator;
 
   const headHtml = `<div class="graph-head">
-      <h3>Connection Graph</h3>
+      <h3>${t('sec_connection_graph')}</h3>
       <span class="note" id="graph-note"></span>
     </div>`;
 
@@ -2792,7 +2792,7 @@ function renderConnectionGraph(snap) {
   // 커뮤니티 언어(currentLang)에 따라 라벨 전환 — ko 데모/en 데모 둘 다 자연스럽게.
   const _gl = currentLang() === 'en'
     ? { owner: 'Owner', mgr: 'Manager', creator: 'Creator', persona: 'Persona', sup: 'Supervisor', talking: 'Talking' }
-    : { owner: '오너', mgr: '매니저', creator: '크리에이터', persona: '페르소나', sup: '감시자', talking: '대화 중' };
+    : { owner: '오너', mgr: '매니저', creator: '크리에이터', persona: '페르소나', sup: '슈퍼바이저', talking: '대화 중' };
   const chips = `<div class="graph-chips">
     <span class="gchip"><span class="gdot" style="background:var(--user)"></span>${_gl.owner}</span>
     <span class="gchip"><span class="gdot" style="background:var(--mgr)"></span>${_gl.mgr}</span>
@@ -3677,19 +3677,19 @@ async function tick() {
   // Overview KPIs
   // Server Status = 서버 전체 살아있는지 (bot alive 기반)
   document.getElementById('kpi-server').innerHTML = b.bot_alive
-    ? `<span style="color:var(--ok)">● Online</span>`
-    : `<span style="color:var(--err)">○ Offline</span>`;
+    ? `<span style="color:var(--ok)">${t('online')}</span>`
+    : `<span style="color:var(--err)">${t('offline_short')}</span>`;
   document.getElementById('kpi-bot').innerHTML = b.bot_alive
-    ? `<span style="color:var(--ok)">● Running</span>`
-    : `<span style="color:var(--err)">○ Stopped</span>`;
+    ? `<span style="color:var(--ok)">${t('running')}</span>`
+    : `<span style="color:var(--err)">${t('stopped')}</span>`;
   document.getElementById('kpi-user').innerHTML = esc(m.user_name || '—');
   // Active Scene: 현재 진행 중 씬 (snap.scenes에서 status='active' 첫번째)
   const scene = firstActiveScene(snap);
   const actives = activeScenes(snap);
   document.getElementById('kpi-scene').innerHTML = scene
     ? `<span style="color:var(--accent)">${esc(scene.icon || '')} ${esc(scene.name)}</span><small>${esc(scene.phase_desc || scene.status)}${actives.length > 1 ? ` +${actives.length - 1}` : ''}</small>`
-    : `<span style="color:var(--text-faint);font-size:15px">—</span><small>nothing active</small>`;
-  document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>total</small>`;
+    : `<span style="color:var(--text-faint);font-size:15px">—</span><small>${t('nothing_active')}</small>`;
+  document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>${t('total')}</small>`;
   // Workspace-only KPIs (hidden for community via the template) — fill the row.
   const _ka = document.getElementById('kpi-agents');
   if (_ka) _ka.innerHTML = (snap.agents || []).length;
@@ -3779,7 +3779,7 @@ async function tick() {
         <div class="health-grid">
           <div class="health-card">
             <h4>Runtime</h4>
-            <div class="big">${health.bot_alive ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}</div>
+            <div class="big">${health.bot_alive ? `<span style="color:var(--ok)">${t('running')}</span>` : `<span style="color:var(--err)">${t('stopped')}</span>`}</div>
             ${health.pid ? `<div class="sub">PID: ${esc(health.pid)}</div>` : ''}
           </div>
           <div class="health-card">

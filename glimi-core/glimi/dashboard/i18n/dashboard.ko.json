@@ -131,5 +131,7 @@
   "chat.brief_max_rounds": "최대 라운드",
   "chat.owner_review": "오너의 검토",
   "kpi_agents": "에이전트",
-  "kpi_channels": "채널"
+  "kpi_channels": "채널",
+  "total": "전체",
+  "ago": "전"
 }
