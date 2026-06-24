@@ -133,5 +133,10 @@
   "kpi_agents": "Agents",
   "kpi_channels": "Channels",
   "total": "total",
-  "ago": "ago"
+  "ago": "ago",
+  "type_mgr": "MGR",
+  "type_creator": "CREATOR",
+  "type_persona": "PERSONA",
+  "type_supervisor": "SUPERVISOR",
+  "type_dev": "DEV"
 }

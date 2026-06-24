@@ -133,5 +133,10 @@
   "kpi_agents": "에이전트",
   "kpi_channels": "채널",
   "total": "전체",
-  "ago": "전"
+  "ago": "전",
+  "type_mgr": "매니저",
+  "type_creator": "크리에이터",
+  "type_persona": "페르소나",
+  "type_supervisor": "슈퍼바이저",
+  "type_dev": "개발"
 }

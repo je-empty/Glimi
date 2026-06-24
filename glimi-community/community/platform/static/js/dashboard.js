@@ -641,7 +641,7 @@ function renderAgent(a, clickable=true) {
         <div class="name-row">
           <span class="status-dot ${dot}"></span>
           <span class="name">${esc(a.name)}</span>
-          <span class="type-tag ${a.type}">${esc(a.type)}</span>
+          <span class="type-tag ${a.type}">${esc(t('type_' + a.type))}</span>
         </div>
         <div class="agent-meta">
           <span class="emotion-label" title="강도 ${a.intensity || 0}/10">${esc(a.emotion)}</span>
@@ -3201,8 +3201,11 @@ function mountCytoscapeGraph(snap) {
     const agentNodeCount = nodes.length - supNodeCount;
     const supEdgeCount = edges.filter(e => e.classes && e.classes.indexOf('sup-edge') === 0).length;
     const channelEdgeCount = edges.length - supEdgeCount;
-    let txt = `${channelEdgeCount} connection${channelEdgeCount === 1 ? '' : 's'} · ${agentNodeCount} node${agentNodeCount === 1 ? '' : 's'}`;
-    if (supNodeCount) txt += ` · ${supNodeCount} supervisor${supNodeCount === 1 ? '' : 's'}`;
+    const _gen = currentLang() === 'en';
+    let txt = _gen
+      ? `${channelEdgeCount} connection${channelEdgeCount === 1 ? '' : 's'} · ${agentNodeCount} node${agentNodeCount === 1 ? '' : 's'}`
+      : `연결 ${channelEdgeCount} · 노드 ${agentNodeCount}`;
+    if (supNodeCount) txt += _gen ? ` · ${supNodeCount} supervisor${supNodeCount === 1 ? '' : 's'}` : ` · 슈퍼바이저 ${supNodeCount}`;
     noteEl.textContent = txt;
   }
 }
