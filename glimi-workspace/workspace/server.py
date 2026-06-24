@@ -1085,6 +1085,12 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         EN = (lang == "en")
         items = []
         for c in reg.cards():
+            # 데모 카드는 언어별 — EN 에선 demo-en(영문 미러)만, KO 에선 demo 만.
+            if c["kind"] == "demo":
+                if EN and c["id"] != "demo-en":
+                    continue
+                if not EN and c["id"] == "demo-en":
+                    continue
             metas = ([f"{c['agents']} teammates", f"{c['channels']} channels"] if EN
                      else [f"팀원 {c['agents']}명", f"채널 {c['channels']}개"])
             items.append({
