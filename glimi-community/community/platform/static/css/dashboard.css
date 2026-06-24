@@ -1700,7 +1700,7 @@
     .overview-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
     .kpi { padding: 10px 12px; }
 
-    /* Graph — 짧은 높이 + 가운데 정렬 */
+    /* Graph — 원형 레이아웃이라 너비≈높이 라야 13+ 노드가 상하 안 잘림 */
     .graph-panel { padding: 10px 12px; margin-bottom: 14px; }
     /* 모바일: 칩 레전드를 그래프 캔버스 *아래*로 빼 노드 겹침 0 (컨트롤은 빈 우상단 코너로) */
     .graph-stage { height: auto; }

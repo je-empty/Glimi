@@ -32,10 +32,10 @@ def built():
 def test_build_population(built):
     r = DashboardReader(built.store)
     snap = r.snapshot()
-    # Coordinator + 3 specialists.
-    assert len(snap["agents"]) == 4
+    # Coordinator + 6 specialists (base 4 roles + demo-extra researcher-2/builder-2/designer).
+    assert len(snap["agents"]) == 7
     ids = {a["id"] for a in snap["agents"]}
-    assert ids == {"coordinator", "researcher", "builder", "critic"}
+    assert ids == {"coordinator", "researcher", "researcher-2", "builder", "builder-2", "critic", "designer"}
     # The full interaction web: the owner DM + 3 behind-the-scenes coordinator↔
     # specialist delegation channels (internal-coordinator-<id>) + 2 specialist↔
     # specialist A2A + group + approvals + the owner-agent's read-only reasoning
@@ -49,19 +49,19 @@ def test_build_population(built):
         "internal-researcher-critic", "internal-builder-researcher",
         "group-team", "mgr-approvals", "internal-owner",
     }
-    # Every relationship edge the graph draws (lead + 3 manages + 2 collaborator).
-    assert len(snap["relationships"]) == 6
+    # Every relationship edge the graph draws (lead + 6 manages + 5 collaborator).
+    assert len(snap["relationships"]) == 12
     types = sorted(e["type"] for e in snap["relationships"])
-    assert types == ["collaborator", "collaborator", "lead", "manages", "manages", "manages"]
+    assert types == ["collaborator", "collaborator", "collaborator", "collaborator", "collaborator", "lead", "manages", "manages", "manages", "manages", "manages", "manages"]
 
 
 def test_coordinator_is_hub_and_mgr(built):
     r = DashboardReader(built.store)
     agents = {a["id"]: a for a in r.snapshot()["agents"]}
     assert agents["coordinator"]["type"] == "mgr"
-    # Coordinator is the most-connected node (owner + 3 specialists = 4 edges).
+    # Coordinator is the most-connected node (owner + 6 specialists = 7 edges).
     detail = r.agent_detail("coordinator")
-    assert len(detail["relationships"]) == 4
+    assert len(detail["relationships"]) == 7
 
 
 def test_memory_facts_emotions_seeded(built):

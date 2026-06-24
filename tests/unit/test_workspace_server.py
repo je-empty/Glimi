@@ -76,9 +76,9 @@ def test_registry_holds_demo_by_default():
     demo_ws = reg.get("demo")
     assert demo_ws is not None
     assert demo_ws.kind == "demo"
-    # The seeded launch team: Coordinator + 3 specialists.
+    # The seeded launch team: Coordinator + 6 specialists (base 4 + demo-extra researcher-2/builder-2/designer).
     snap = demo_ws.reader().snapshot()
-    assert len(snap["agents"]) == 4
+    assert len(snap["agents"]) == 7
 
 
 def test_home_lists_demo(client):
@@ -90,7 +90,7 @@ def test_home_lists_demo(client):
     # Card carries the counts the home page renders. 9 channels: the 4 DMs, the
     # 2 specialist-A2A internal channels, group-team, mgr-approvals, AND the
     # autonomous owner's read-only internal-owner reasoning channel.
-    assert demo["agents"] == 4
+    assert demo["agents"] == 7
     assert demo["channels"] == 9
 
 
@@ -182,7 +182,7 @@ def test_demo_snapshot_shape_matches_core(client):
     snap = client.get("/w/demo/api/snapshot").json()
     # Same shape as glimi/dashboard/app.py's /api/snapshot (graph + owner identity).
     assert set(["agents", "channels", "relationships", "owner_name", "owner_ids"]) <= set(snap.keys())
-    assert len(snap["agents"]) == 4
+    assert len(snap["agents"]) == 7
     # 9 channels — see test_home_lists_demo (now includes internal-owner, the
     # autonomous owner's read-only reasoning channel).
     assert len(snap["channels"]) == 9
