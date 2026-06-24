@@ -548,7 +548,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
       requestAnimationFrame(() => {
         try {
           cyInstance.resize();
-          cyInstance.fit(undefined, window.matchMedia('(max-width: 720px)').matches ? 28 : 25);
+          cyInstance.fit(undefined, window.matchMedia('(max-width: 720px)').matches ? 12 : 25);
         } catch (e) {}
       });
     }
@@ -2763,7 +2763,7 @@ function pickGraphLayout(nodeCount, fullscreen, hasSup) {
     avoidOverlap: true,
     fit: true,
     // 모바일은 padding 만 줄여서 같은 layout 을 더 zoom-out 으로 수렴 (비율 유지).
-    padding: fullscreen ? 140 : (isMobile ? 28 : 25),
+    padding: fullscreen ? 140 : (isMobile ? 12 : 25),
     startAngle: -Math.PI / 2,
     animate: false,
   };
@@ -2813,7 +2813,7 @@ function renderConnectionGraph(snap) {
 function cyFitGraph() {
   if (!cyInstance) return;
   const isMobile = window.matchMedia('(max-width: 720px)').matches;
-  cyInstance.fit(undefined, isMobile ? 28 : 25);
+  cyInstance.fit(undefined, isMobile ? 12 : 25);
 }
 
 // renderConnectionGraph 후 호출 — innerHTML 으로 들어간 #cy-graph 에 cytoscape 인스턴스 마운트
@@ -3163,7 +3163,7 @@ function mountCytoscapeGraph(snap) {
   // 레이아웃 끝나고 명시적으로 fit — 데스크 비율 유지, 모바일은 더 큰 padding 비율 효과로 zoom-out
   cyInstance.ready(() => {
     const isMobile = window.matchMedia('(max-width: 720px)').matches;
-    cyInstance.fit(undefined, fullscreen ? 140 : (isMobile ? 28 : 25));
+    cyInstance.fit(undefined, fullscreen ? 140 : (isMobile ? 12 : 25));
   });
   // 윈도우 리사이즈 / 회전 시 그래프 자동 리핏
   if (!cyInstance._resizeBound) {
@@ -3171,7 +3171,7 @@ function mountCytoscapeGraph(snap) {
       try {
         cyInstance.resize();
         const isMobile = window.matchMedia('(max-width: 720px)').matches;
-        cyInstance.fit(undefined, isMobile ? 28 : 25);
+        cyInstance.fit(undefined, isMobile ? 12 : 25);
       } catch {}
     };
     window.addEventListener('resize', _onResize);
@@ -3214,7 +3214,7 @@ function _recenterGraph() {
   try {
     cyInstance.resize();
     const fs = document.body.classList.contains('graph-fullscreen');
-    cyInstance.fit(undefined, fs ? 140 : (window.matchMedia('(max-width: 720px)').matches ? 28 : 25));
+    cyInstance.fit(undefined, fs ? 140 : (window.matchMedia('(max-width: 720px)').matches ? 12 : 25));
   } catch (e) {}
 }
 function toggleGraphFullscreen() {

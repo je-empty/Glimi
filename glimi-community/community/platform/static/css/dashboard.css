@@ -1697,7 +1697,11 @@
 
     /* Graph — 짧은 높이 + 가운데 정렬 */
     .graph-panel { padding: 10px 12px; margin-bottom: 14px; }
-    .graph-stage { height: min(108vw, 60vh); }
+    /* 모바일: 칩 레전드를 그래프 캔버스 *아래*로 빼 노드 겹침 0 (컨트롤은 빈 우상단 코너로) */
+    .graph-stage { height: auto; }
+    .graph-stage #cy-graph { height: min(104vw, 56vh) !important; }
+    .graph-chips { position: static; max-width: 100%; margin: 8px 2px 0; }
+    .graph-ctl { bottom: auto; top: 12px; }
     .graph-panel .graph-head h3 { font-size: 10.5px; letter-spacing: 0.8px; }
     .graph-panel .graph-head .note { font-size: 10px; }
 
@@ -1796,7 +1800,7 @@
     /* KPI 1열은 스크롤이 너무 길어짐 — 2열 컴팩트 유지 */
     .overview-grid { grid-template-columns: repeat(2, 1fr); }
     .kpi .value { font-size: 14px; }
-    .graph-stage { height: min(104vw, 56vh); }
+    .graph-stage #cy-graph { height: min(98vw, 52vh) !important; }
     .view { padding: 10px 8px; }
 
     /* 모달 — 아주 좁은 폭에선 backdrop 여백 더 줄여 풀스크린에 근접 */
