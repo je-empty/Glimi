@@ -39,10 +39,13 @@
 .step-sub { color: var(--text-dim); font-size: var(--fs-base); margin-bottom: var(--sp-4); }
 .opt { font-size: var(--fs-xs); color: var(--text-faint); font-weight: 500; border: 1px solid var(--border); border-radius: var(--r-pill); padding: 1px 8px; margin-left: 6px; }
 
-/* backend choice cards */
-.choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+/* backend choice cards — 세로 한 줄씩 스택(권장=Claude 먼저). 카드 내부는 세로 flex. */
+.choice-grid { display: flex; flex-direction: column; gap: var(--sp-3); margin-bottom: var(--sp-4); }
 .choice {
-  text-align: left; cursor: pointer;
+  text-align: left; cursor: pointer; width: 100%;
+  /* base.css 의 전역 `button` 규칙(고정 height + center 정렬)을 반드시 덮어쓴다.
+     안 그러면 카드가 --ctl-h 한 줄 높이로 눌려 세로 콘텐츠가 넘쳐 겹친다. */
+  height: auto; align-items: flex-start; justify-content: flex-start;
   display: flex; flex-direction: column; gap: 4px;
   background: var(--panel); border: 1.5px solid var(--border); border-radius: var(--r-lg);
   padding: var(--sp-4); transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
@@ -52,7 +55,7 @@
 .choice.selected { border-color: var(--accent); background: var(--accent-soft); }
 .choice-emoji { font-size: 22px; }
 .choice-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
-.choice-desc { font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; }
+.choice-desc { font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; white-space: normal; }
 
 /* detail panels */
 .detail { border-top: 1px solid var(--border-soft); padding-top: var(--sp-4); }
@@ -104,11 +107,13 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--panel-
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
 .btn-ghost:hover { color: var(--text); border-color: var(--border-strong, var(--accent-2)); }
+/* base.css 의 author `button{display:inline-flex}` 가 UA `[hidden]{display:none}` 를
+   이겨서 hidden 버튼이 안 숨겨진다 → 명시적으로 다시 숨긴다 (next/finish/back 토글). */
+.setup-nav button[hidden] { display: none; }
 
 .setup-foot { font-size: var(--fs-xs); color: var(--text-faint); text-align: center; }
 
 @media (max-width: 520px) {
-  .choice-grid { grid-template-columns: 1fr; }
   .setup-card { padding: var(--sp-4); }
 }
 /* base.css F4 (input,select,textarea) is element-level; setup's

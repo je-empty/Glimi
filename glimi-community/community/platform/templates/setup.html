@@ -12,64 +12,48 @@
       <img src="/logo?v={{ asset_v }}" alt="Glimi" class="setup-logo">
       <div>
         <h1>Glimi 시작하기</h1>
-        <p class="setup-sub">처음이네요. 한 번만 설정하면 됩니다.</p>
+        <p class="setup-sub">Glimi Community 첫 설정이에요. 한 번만 하면 됩니다.</p>
       </div>
     </div>
 
     <ol class="setup-steps" id="steps">
       <li class="active" data-step="1"><span class="dot">1</span>모델</li>
       <li data-step="2"><span class="dot">2</span>계정</li>
-      <li data-step="3"><span class="dot">3</span>연동</li>
     </ol>
 
     <!-- Step 1: model backend -->
     <section class="step" data-step="1">
       <h2>기본 대화 모델</h2>
       <p class="step-sub">새로 만드는 커뮤니티가 이 설정을 <b>기본값으로 상속</b>해요. 커뮤니티별로 나중에 다르게 바꿀 수 있어요.</p>
-      <p class="step-sub"><b>무료 런타임 = 로컬 모델(Ollama).</b> Claude 백엔드 에이전트는 사용량만큼 과금되는 API 크레딧을 씁니다 — 아래에서 월 상한을 정하세요.</p>
       <div class="choice-grid">
-        <button type="button" class="choice" data-backend="hybrid" id="ch-hybrid">
-          <span class="choice-emoji">⚖️</span>
-          <span class="choice-title">하이브리드 <span class="opt">권장</span></span>
-          <span class="choice-desc">페르소나는 로컬(무료), mgr/creator/dev 만 Claude. Glimi 느낌을 살리는 가장 저렴한 구성.</span>
-        </button>
         <button type="button" class="choice" data-backend="claude" id="ch-claude">
           <span class="choice-emoji">☁️</span>
-          <span class="choice-title">Claude 전용</span>
-          <span class="choice-desc">전부 Claude. 가장 똑똑하지만 모든 턴이 과금됨(metered).</span>
+          <span class="choice-title">Claude 전용 <span class="opt">권장</span></span>
+          <span class="choice-desc">전부 Claude 로 동작 — 가장 똑똑하고 자연스러워요. 대화할 때마다 쓴 만큼 과금돼요(metered).</span>
+        </button>
+        <button type="button" class="choice" data-backend="hybrid" id="ch-hybrid">
+          <span class="choice-emoji">⚖️</span>
+          <span class="choice-title">하이브리드</span>
+          <span class="choice-desc">평소 대화는 로컬(무료), 소개·생성 같은 중요한 순간만 Claude. 느낌을 살리며 비용을 아끼는 구성.</span>
         </button>
         <button type="button" class="choice" data-backend="local" id="ch-local">
           <span class="choice-emoji">🖥️</span>
           <span class="choice-title">로컬 전용 (Ollama)</span>
-          <span class="choice-desc">전부 내 컴퓨터에서 — 진짜 무료($0). 다운로드 필요, 사양 탐.</span>
+          <span class="choice-desc">전부 내 컴퓨터에서 — 완전 무료($0). 모델 다운로드가 필요하고 사양을 좀 타요.</span>
         </button>
       </div>
 
-      <!-- claude creds (claude-only + hybrid) -->
+      <!-- Claude 인증 안내 (claude-only + hybrid) — Claude Code 로그인 사용, 키 입력 없음 -->
       <div class="detail" id="detail-claude" hidden>
-        <label class="field">
-          <span class="field-label">Anthropic API 키</span>
-          <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
-          <span class="field-hint">발급: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a></span>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="use-cli">
-          <span>키 대신 <code>claude</code> CLI 로그인을 쓸게요 (Claude Code 사용자 — headless <code>claude -p</code> 도 사용량만큼 과금됩니다, 구독 무료 아님)</span>
-        </label>
+        <p class="note">
+          ☁️ <b>Claude Code 로그인</b>을 사용해요. 터미널에서 <code>claude</code> 에 로그인돼 있으면 바로 동작합니다.
+          headless <code>claude -p</code> 도 쓴 만큼 과금돼요 — 구독에 무료로 포함된 게 아니에요.
+        </p>
       </div>
 
-      <!-- monthly cap (claude-only + hybrid) -->
-      <div class="detail" id="detail-cap" hidden>
-        <label class="field">
-          <span class="field-label">월 상한 (USD)</span>
-          <input type="number" id="monthly-cap" min="0" step="1" value="20">
-          <span class="field-hint">Claude 백엔드 에이전트가 쓰는 metered 크레딧의 월 한도. 기본 $20.</span>
-        </label>
-      </div>
-
-      <!-- tier (hybrid + local) -->
+      <!-- 로컬 사양 티어 (hybrid + local) -->
       <div class="detail" id="detail-tier" hidden>
-        <p class="field-label">로컬 사양 티어 <span class="field-hint">(하이브리드는 페르소나용 로컬 모델에 필요)</span></p>
+        <p class="field-label">로컬 사양 티어 <span class="field-hint">(하이브리드는 로컬 모델에 필요)</span></p>
         <div class="tier-list">
           <label class="tier"><input type="radio" name="tier" value="lite"><span><b>Lite</b> · e2b · ~16GB RAM · 최속, 품질↓</span></label>
           <label class="tier"><input type="radio" name="tier" value="standard" checked><span><b>Standard</b> · e4b · 16GB+ RAM · 균형 (권장)</span></label>
@@ -93,17 +77,6 @@
       </label>
     </section>
 
-    <!-- Step 3: discord (optional) -->
-    <section class="step" data-step="3" hidden>
-      <h2>Discord 연동 <span class="opt">선택</span></h2>
-      <p class="step-sub">지금은 대화가 Discord 로 나갑니다. 토큰이 있으면 입력하세요. 없으면 건너뛰어도 됩니다.</p>
-      <label class="field">
-        <span class="field-label">봇 토큰</span>
-        <input type="password" id="discord-token" placeholder="MTQ... (선택)" autocomplete="off">
-        <span class="field-hint">발급: <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">discord.com/developers</a> → Bot → Reset Token</span>
-      </label>
-    </section>
-
     <div class="setup-err" id="setup-err" hidden></div>
 
     <div class="setup-nav">
@@ -113,15 +86,15 @@
       <button type="button" class="btn-primary" id="btn-finish" hidden>설정 완료</button>
     </div>
   </div>
-  <p class="setup-foot">나중에 바꿀 수 있어요. 설정은 이 컴퓨터의 <code>.env</code> 에 저장됩니다.</p>
 </div>
 {% endblock %}
 
 {% block bottom_scripts %}
 <script>
 (function () {
-  // Hybrid 가 권장 기본값 — 미리 선택됨.
-  const state = { step: 1, backend: 'hybrid' };
+  // Claude 전용 = 권장 기본값 — 미리 선택됨.
+  const state = { step: 1, backend: 'claude' };
+  const LAST = 2;  // 마지막 스텝 (1 모델 → 2 계정)
   const errEl = document.getElementById('setup-err');
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
@@ -132,8 +105,7 @@
   function syncDetails() {
     const usesClaude = state.backend === 'claude' || state.backend === 'hybrid';
     const usesLocal = state.backend === 'local' || state.backend === 'hybrid';
-    $('#detail-claude').hidden = !usesClaude;
-    $('#detail-cap').hidden = !usesClaude;     // 월 상한 = Claude 쓸 때만
+    $('#detail-claude').hidden = !usesClaude;  // Claude Code 로그인 안내
     $('#detail-tier').hidden = !usesLocal;     // 티어 = 로컬 쓸 때만
     $$('.choice').forEach(b => b.classList.toggle('selected', b.dataset.backend === state.backend));
   }
@@ -146,8 +118,8 @@
       li.classList.toggle('done', n < state.step);
     });
     $('#btn-back').hidden = state.step === 1;
-    $('#btn-next').hidden = state.step === 3;
-    $('#btn-finish').hidden = state.step !== 3;
+    $('#btn-next').hidden = state.step === LAST;
+    $('#btn-finish').hidden = state.step !== LAST;
     showErr('');
   }
 
@@ -161,11 +133,7 @@
   function validateStep() {
     if (state.step === 1) {
       if (!state.backend) return '모델 모드를 선택하세요.';
-      if (state.backend === 'claude' || state.backend === 'hybrid') {
-        const key = $('#api-key').value.trim();
-        const cli = $('#use-cli').checked;
-        if (!key && !cli) return 'API 키를 입력하거나 CLI 사용을 체크하세요.';
-      }
+      // Claude 인증은 Claude Code 로그인으로 처리 — 위저드에서 키 입력 없음.
     }
     if (state.step === 2) {
       const pw = $('#admin-pw').value.trim();
@@ -179,7 +147,7 @@
   $('#btn-next').addEventListener('click', () => {
     const e = validateStep();
     if (e) return showErr(e);
-    state.step = Math.min(3, state.step + 1);
+    state.step = Math.min(LAST, state.step + 1);
     render();
   });
   $('#btn-back').addEventListener('click', () => {
@@ -190,15 +158,12 @@
   $('#btn-finish').addEventListener('click', async () => {
     const e = validateStep();
     if (e) return showErr(e);
-    const capVal = parseInt($('#monthly-cap').value, 10);
+    const usesClaude = state.backend === 'claude' || state.backend === 'hybrid';
     const body = {
       backend: state.backend,
       admin_password: $('#admin-pw').value.trim(),
-      api_key: $('#api-key').value.trim(),
-      use_cli: $('#use-cli').checked,
+      use_cli: usesClaude,  // Claude 인증 = Claude Code 로그인 (키 입력 없음)
       tier: (document.querySelector('input[name="tier"]:checked') || {}).value || 'standard',
-      discord_token: $('#discord-token').value.trim(),
-      monthly_cap_usd: Number.isFinite(capVal) ? capVal : 20,
     };
     const fin = $('#btn-finish');
     fin.disabled = true; fin.textContent = '설정 중...';
@@ -223,7 +188,7 @@
     }
   });
 
-  syncDetails();  // Hybrid 미리 선택 상태 반영
+  syncDetails();  // Claude 전용 미리 선택 상태 반영
   render();
 })();
 </script>
