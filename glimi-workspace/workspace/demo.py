@@ -221,6 +221,12 @@ TRANSCRIPT: list[tuple[str, str, str]] = [
     (GROUP, "critic",
      "준비 완료라고 하기 전에 깨끗한 환경에서 퀵스타트 테스트하기 — 맨바닥 시작이 승부의 "
      "전부예요."),
+    (GROUP, "researcher-2",
+     "선례도 같은 결이에요 — 비슷한 런칭들이 '무엇이 아닌지'를 상단에 적었을 때 이탈이 줄었어요."),
+    (GROUP, "builder-2",
+     "깨끗한 환경 셋업은 제가 자동화해둘게요 — 클론 한 번에 첫 출력까지 끊김 없이."),
+    (GROUP, "designer",
+     "README 첫 화면과 데모 썸네일은 60초 안에 '이게 뭔지' 읽히게 — 한 줄 요약 + 스샷 1장 고정."),
 
     # 5) The owner-approved deliverable, back in the owner DM. THE work product —
     #    a structured markdown brief (not a chat paragraph), exactly the shape a
@@ -252,6 +258,13 @@ RELATIONSHIPS: list[tuple[str, str, str, int, str]] = [
      "결과를 두고 토론 — 맨바닥 시작 간극이 진짜 레버라는 데 의견을 모음."),
     ("builder", "researcher", "collaborator", 70,
      "체크리스트를 데이터에 기반시킴 — 지원 시간을 하루 종일로 늘림."),
+    # 역할별 복수 인원 — 같은 직무끼리 분담(협업), 코디네이터가 묶음 관리
+    ("coordinator", "researcher-2", "manages", 58, "경쟁/선례 조사를 분담 배분."),
+    ("coordinator", "builder-2", "manages", 58, "기술 셋업·자동화를 분담 배분."),
+    ("coordinator", "designer", "manages", 58, "산출물의 첫인상·가독성을 배분."),
+    ("researcher", "researcher-2", "collaborator", 66, "옵션 매핑 ↔ 선례 검증을 나눠 맡음."),
+    ("builder", "builder-2", "collaborator", 64, "계획 ↔ 구현 디테일을 나눠 맡음."),
+    ("designer", "builder", "collaborator", 60, "README/데모 화면을 빌더와 맞춤."),
 ]
 
 # Current emotion per agent (drives the agent cards + node tone).
@@ -260,6 +273,9 @@ EMOTIONS: dict[str, tuple[str, int]] = {
     "researcher": ("호기심", 7),
     "builder": ("몰입", 8),
     "critic": ("경계", 7),
+    "researcher-2": ("차분", 6),
+    "builder-2": ("의욕", 7),
+    "designer": ("몰입", 7),
 }
 
 # 5-layer memory: (agent, channel, level, content, importance, pinned).
@@ -422,7 +438,8 @@ def seed(g: Glimi) -> None:
         store.set_channel_participants(DM[sid], ["coordinator", sid])
     store.set_channel_participants(A2A_RC, ["researcher", "critic"])
     store.set_channel_participants(A2A_BR, ["builder", "researcher"])
-    store.set_channel_participants(GROUP, [OWNER_ID, "coordinator", *SPECIALISTS])
+    store.set_channel_participants(
+        GROUP, [OWNER_ID, "coordinator", *SPECIALISTS, "researcher-2", "builder-2", "designer"])
     store.set_channel_participants(APPROVALS, ["coordinator"])
     # internal-owner: the owner's read-only reasoning channel (only the owner posts).
     store.set_channel_participants(OWNER_REVIEW, [OWNER_ID])
@@ -555,11 +572,35 @@ def activity_loop(g: Glimi, stop: threading.Event, interval: float = 6.0) -> Non
 
 # ── orchestration ────────────────────────────────────────────────────────────
 
+# 역할별 복수 인원 — 데모 전용 확장 멤버(리서처 2 · 빌더 2 · 디자이너).
+# (id, 표시명, type, persona, role_keyword). role_keyword 로 아바타 이모지(🔬/🛠/🎨)가 잡힌다.
+# 실런(echo create)의 기본 4인 로스터엔 영향 없음 — 데모에서만 팀을 7명으로 풍부하게.
+DEMO_EXTRA: list[tuple[str, str, str, str, str]] = [
+    ("researcher-2", "리서처 2", "persona",
+     "이 팀의 또 다른 리서처입니다. 1번 리서처가 옵션을 매핑하면, 당신은 실제 선례·벤치마크로 "
+     "그걸 검증합니다. 구체적 사례와 수치로 '진짜 버티는 주장'을 가려내세요.", "researcher"),
+    ("builder-2", "빌더 2", "persona",
+     "이 팀의 또 다른 빌더입니다. 1번 빌더가 계획을 짜면, 당신은 깨끗한 환경 셋업·자동화 같은 "
+     "실제 구현 디테일을 맡습니다. '클론 한 번에 첫 출력까지' 끊김 없게 만드세요.", "builder"),
+    ("designer", "디자이너", "persona",
+     "이 팀의 디자이너입니다. 산출물의 첫인상과 가독성을 책임집니다 — README 첫 화면, 데모 "
+     "썸네일, 한눈에 읽히는 레이아웃. 60초 안에 '이게 뭔지' 읽히게 다듬으세요.", "designer"),
+]
+
+
 def build(backend: str = "echo") -> Glimi:
     """Build the seeded demo population on a fresh store and return the Glimi."""
     g = Glimi(backend=backend, owner_name=OWNER_NAME, owner_id=OWNER_ID)
     for aid, name, atype, persona in TEAM:
         g.add_agent(aid, name=name, persona=persona, agent_type=atype)
+    # 데모 전용 확장 멤버 + role_keyword(아바타 이모지) + Sonnet(팀과 일관)
+    for aid, name, atype, persona, kw in DEMO_EXTRA:
+        g.add_agent(aid, name=name, persona=persona, agent_type=atype)
+        try:
+            g.store.upsert_agent(aid, name=name, agent_type=atype,
+                                 model_override="claude-sonnet-4-6", role_keyword=kw)
+        except Exception:
+            pass
     seed(g)
     return g
 
