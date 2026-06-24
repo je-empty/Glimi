@@ -1697,7 +1697,7 @@
 
     /* Graph — 원형 레이아웃이라 너비≈높이 라야 13+ 노드가 상하 안 잘림 */
     .graph-panel { padding: 10px 12px; margin-bottom: 14px; }
-    .graph-stage { height: min(96vw, 52vh); }
+    .graph-stage { height: min(108vw, 60vh); }
     .graph-panel .graph-head h3 { font-size: 10.5px; letter-spacing: 0.8px; }
     .graph-panel .graph-head .note { font-size: 10px; }
 
@@ -1796,7 +1796,7 @@
     /* KPI 1열은 스크롤이 너무 길어짐 — 2열 컴팩트 유지 */
     .overview-grid { grid-template-columns: repeat(2, 1fr); }
     .kpi .value { font-size: 14px; }
-    .graph-stage { height: min(94vw, 50vh); }
+    .graph-stage { height: min(104vw, 56vh); }
     .view { padding: 10px 8px; }
 
     /* 모달 — 아주 좁은 폭에선 backdrop 여백 더 줄여 풀스크린에 근접 */

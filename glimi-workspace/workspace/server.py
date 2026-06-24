@@ -1126,7 +1126,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         context: user=None + data-caps hide the sim-only chrome, API_BASE=/w/{id}
         retargets the shared dashboard.js, and the KO/EN picker comes built-in."""
         ws = _require(ws_id)
-        return _render_core(request, ws, active_tab="chat")
+        return _render_core(request, ws, active_tab="overview")
 
     @app.get("/w/{ws_id}/agent/{agent_id}", response_class=HTMLResponse)
     def agent_detail(ws_id: str, agent_id: str, request: Request) -> HTMLResponse:

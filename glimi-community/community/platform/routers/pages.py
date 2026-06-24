@@ -168,7 +168,7 @@ async def community_dashboard(
             "app_name": "Glimi Community",
             "static_base": "/static",
             "api_base": "",
-            "active_tab": "chat",
+            "active_tab": "overview",
         },
     )
 
