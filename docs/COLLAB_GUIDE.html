@@ -138,7 +138,7 @@
 <header>
   <div class="eyebrow">Glimi · Collaboration Guide</div>
   <h1>협업 가이드 — 바이브코딩 워크플로우</h1>
-  <div class="tagline">Glimi 에 기여하는 모든 사람 + 그 사람의 Claude Code 세션이 따르는 협업 규약.</div>
+  <div class="tagline">모든 Glimi 기여자와 그들의 Claude Code 세션이 따르는 협업 규약.</div>
   <div class="meta">최종 갱신 2026-06-12 · 프로젝트 소개·셋업은 <code>START_HERE.html</code> · 개발 판단 기준은 <code>docs/dev_guide.md</code></div>
 </header>
 
@@ -159,12 +159,7 @@
 <!-- ============ 1. 파트별 역할 분담 ============ -->
 <section id="zones">
   <h2><span class="num">1</span>파트별 역할 분담</h2>
-  <p class="lead">
-    사람 이름이 아니라 <strong>파트(역할) 단위</strong>로 나눈다. 각 파트에 주도 역할이 있고,
-    파일 단위 규칙은 <span class="zone free">자유</span> /
-    <span class="zone review">리뷰 필수</span> /
-    <span class="zone locked">메인테이너 전용</span> 3구역.
-  </p>
+  <p class="lead"><strong>파트(역할)</strong> 단위로 구분. 각 파트에 주도 역할이 있고, 파일은 <span class="zone free">자유</span> / <span class="zone review">리뷰 필수</span> / <span class="zone locked">메인테이너 전용</span> 3구역.</p>
 
   <h3>파트 맵</h3>
   <table>
@@ -195,7 +190,7 @@
       <td>메인테이너 전용</td>
     </tr>
   </table>
-  <p style="color: var(--muted); font-size: 13.5px;">파트별 진행 중 작업·투두의 단일 소스 = <code>docs/dev_guide.md</code> (현재 스프린트 + 로드맵 섹션). 콘텐츠 파트 백로그는 GitHub 이슈로 관리.</p>
+  <p style="color: var(--muted); font-size: 13.5px;">파트별 작업·투두의 단일 출처는 <code>docs/dev_guide.md</code> (스프린트·로드맵). 콘텐츠 파트 백로그는 GitHub 이슈로 관리.</p>
 
   <h3>구역 규칙 — 파일 기준</h3>
   <table>
@@ -227,11 +222,11 @@
 <!-- ============ 2. 워크플로우 ============ -->
 <section id="workflow">
   <h2><span class="num">2</span>작업 워크플로우 5단계</h2>
-  <p class="lead">모든 작업은 이 5단계. 로컬 클론 + Claude Code 기준 (바이브코딩 전제).</p>
+  <p class="lead">모든 작업은 5단계. 로컬 클론 + Claude Code 기준 (바이브코딩 전제).</p>
 
   <div class="flow">
     <div class="step"><div class="n">STEP 1</div><div class="t">최신화 + 분기</div><div class="d"><code>develop</code> pull 후 새 브랜치 생성</div></div>
-    <div class="step"><div class="n">STEP 2</div><div class="t">작업</div><div class="d">Claude Code 와 작업. CLAUDE.md 가 규칙을 자동 주입</div></div>
+    <div class="step"><div class="n">STEP 2</div><div class="t">작업</div><div class="d">Claude Code 로 작업. CLAUDE.md 가 규칙 자동 주입.</div></div>
     <div class="step"><div class="n">STEP 3</div><div class="t">검증</div><div class="d">테스트 실행 + 실제 동작 확인 (<a href="#quality">§7</a>)</div></div>
     <div class="step"><div class="n">STEP 4</div><div class="t">커밋 + push</div><div class="d">커밋 양식 (<a href="#commit">§4</a>) 준수, 본인 브랜치에만</div></div>
     <div class="step"><div class="n">STEP 5</div><div class="t">PR</div><div class="d">base = <code>develop</code>, PR 양식 (<a href="#pr">§5</a>)</div></div>
@@ -270,16 +265,16 @@ gh pr create --base develop --title "feat: 오시카츠 씬 추가" --body "..."
     <tr><td><code>dev-requests/run-*</code></td><td>자동 dev 시스템 전용</td><td>❌ 사람이 만들지 말 것</td></tr>
   </table>
   <ul>
-    <li>이름은 영문 소문자 + 하이픈: <code>feat/idol-fan-achievements</code>, <code>fix/scene-phase-skip</code></li>
+    <li>이름은 영문 소문자+하이픈: <code>feat/idol-fan-achievements</code>, <code>fix/scene-phase-skip</code></li>
     <li>브랜치 1개 = 주제 1개. 머지되면 삭제.</li>
-    <li>오래 끄는 브랜치 금지 — 3일 넘게 develop 과 벌어지면 중간에 develop 을 머지해서 따라잡기.</li>
+    <li>브랜치를 오래 두지 말 것 — 3일 넘게 develop 과 차이 나면 중간 머지.</li>
   </ul>
 </section>
 
 <!-- ============ 4. 커밋 ============ -->
 <section id="commit">
   <h2><span class="num">4</span>커밋 양식</h2>
-  <p class="lead">1줄 제목 = <code>타입: 요약</code>. 필요할 때만 본문 1-2줄. 한국어 OK.</p>
+  <p class="lead">1줄 제목 = <code>타입: 요약</code>. 필요 시 본문 1–2줄. 한국어 OK.</p>
 
   <table>
     <tr><th>타입</th><th>용도</th></tr>
@@ -302,25 +297,25 @@ gh pr create --base develop --title "feat: 오시카츠 씬 추가" --body "..."
     <div class="col bad">
       <h4>❌ 나쁜 예</h4>
       <ul>
-        <li><code>Add files via upload</code> ← 무슨 작업인지 0 정보</li>
+        <li><code>Add files via upload</code> ← 무슨 작업인지 불명</li>
         <li><code>update</code> / <code>수정</code> / <code>wip</code></li>
-        <li>장황한 본문 + 변경 파일 나열 (diff 가 이미 보여줌)</li>
-        <li><code>Co-Authored-By: Claude ...</code> ← AI co-author trailer 절대 금지</li>
+        <li>본문 장황 + 파일 나열 (diff 에 이미 있음)</li>
+        <li><code>Co-Authored-By: Claude ...</code> ← AI co-author 금지</li>
       </ul>
     </div>
   </div>
 
   <ul>
-    <li>커밋 1개 = 논리적 변경 1개. "씬 추가 + 무관한 버그픽스" 를 한 커밋에 섞지 않기.</li>
-    <li><code>--no-verify</code> 금지 — pre-commit 훅이 실패하면 원인을 고친다.</li>
-    <li>AI 생성 표식 (🤖, "Generated with Claude Code") 금지 — author 는 본인 git config.</li>
+    <li>커밋 1개 = 변경 1개. "씬 추가 + 버그픽스" 같이 섞지 말기.</li>
+    <li><code>--no-verify</code> 금지 — pre-commit 실패 원인 수정.</li>
+    <li>AI 표식 (🤖, "Generated with Claude Code") 금지 — author 는 본인 git config.</li>
   </ul>
 </section>
 
 <!-- ============ 5. PR ============ -->
 <section id="pr">
   <h2><span class="num">5</span>PR 양식 + 크기 규칙</h2>
-  <p class="lead">base 는 항상 <code>develop</code>. 제목은 커밋 양식과 동일 (<code>타입: 요약</code>).</p>
+  <p class="lead">base 는 항상 <code>develop</code>. 제목은 커밋 양식 (<code>타입: 요약</code>).</p>
 
   <h3>PR 본문 템플릿</h3>
   <pre><code>## 무엇
@@ -341,9 +336,9 @@ supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</cod
 
   <h3>크기 규칙</h3>
   <ul>
-    <li><strong>PR 1개 = 주제 1개.</strong> "씬 1개 추가" / "도전과제 묶음 1세트" 단위. 여러 주제면 PR 분리.</li>
-    <li><strong>변경 ~500줄 이하 권장.</strong> 넘으면 리뷰 품질이 급락 — 콘텐츠 대량 추가는 세트 단위로 쪼개기.</li>
-    <li><span class="zone review">리뷰 필수</span> 구역을 건드린 PR 은 본문에 <strong>"⚠ core 접점: 파일명 — 이유"</strong> 명시.</li>
+    <li><strong>PR 1개 = 주제 1개.</strong> "씬 1개 추가" / "도전과제 1세트" 단위. 여러 주제면 분리.</li>
+    <li><strong>변경 500줄 이하 권장.</strong> 넘으면 리뷰 품질 저하 — 대량 추가는 쪼개기.</li>
+    <li><span class="zone review">리뷰 필수</span> 구역 수정 시 본문에 <strong>"⚠ core 접점: 파일명 — 이유"</strong> 명시.</li>
     <li>머지는 메인테이너가. 셀프 머지 금지.</li>
   </ul>
 
@@ -355,10 +350,8 @@ supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</cod
 <!-- ============ 6. 가드레일 ============ -->
 <section id="guardrails">
   <h2><span class="num">6</span>콘텐츠 가드레일 — 커뮤니티 작업 시 필수 통과</h2>
-  <p class="lead">
-    수요 감각으로 콘텐츠를 미는 건 환영. 단, 아래는 프로젝트 설계 락인이라 <strong>수요가 있어도 안 됨</strong>.
-    전체 맥락은 <code>docs/dev_guide.md</code> 의 "설계 락인 6가지".
-  </p>
+  <p class="lead">수요 기반 콘텐츠 환영. 단, 아래는 설계 락인으로 <strong>수요 있어도 불가</strong>.
+전체 맥락: <code>docs/dev_guide.md</code> "설계 락인 6가지".</p>
   <table>
     <tr><th>체크</th><th>기준</th></tr>
     <tr><td>🎯 타깃</td><td>20대 초반 여성 감성 유저 (장기관계·힐링·케어). <strong>10대 서브컬처 (이세계·학원 배틀·하드 판타지) 금지.</strong> 오시카츠·일상 덕질은 타깃과 잘 맞음 — OK</td></tr>
@@ -375,8 +368,8 @@ supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</cod
 <!-- ============ 7. 품질 체크 ============ -->
 <section id="quality">
   <h2><span class="num">7</span>머지 전 품질 체크</h2>
-  <p class="lead">PR 올리기 전에 돌리는 것. Claude Code 한테 "머지 전 체크 돌려줘" 라고 하면 됨.
-    전체 테스트 절차 (E2E QA 셋업 + <strong>QA 페르소나에 자기 자신 넣기</strong>) 는 <code>docs/testing.md</code>.</p>
+  <p class="lead">PR 전 돌릴 것. Claude Code 에 "머지 전 체크 돌려줘" 라 하면 됨.
+전체 테스트 (E2E QA 셋업 + <strong>QA 페르소나 자기 자신 포함</strong>) 은 <code>docs/testing.md</code>.</p>
   <pre><code># 커뮤니티 격리 (global state 만졌으면 필수)
 python -m tests.unit.test_community_isolation
 
@@ -386,22 +379,22 @@ python -m tests.unit.test_community_isolation
 # 콘텐츠 변경은 실제 대화로 확인 — 테스트 통과 ≠ 체감 품질
 # (씬이면 phase 전환 전 구간을 실제로 플레이해보고 스크린샷을 PR 에 첨부)</code></pre>
   <ul>
-    <li>프롬프트·콘텐츠 변경은 <strong>실제 대화 1회 이상</strong> 돌려보고 어색한 발화 없는지 확인.</li>
-    <li>프로필 수정 코드를 건드렸다면 <code>invalidate_cache</code> + <code>runtime.refresh_agent</code> 호출 확인.</li>
+    <li>프롬프트·콘텐츠 바꿀 땐 <strong>실제 대화 1회</strong> 돌려 어색한 발화 없는지 본다.</li>
+    <li>프로필 수정 코드를 바꿨다면 <code>invalidate_cache</code> + <code>runtime.refresh_agent</code> 호출 확인.</li>
   </ul>
 </section>
 
 <!-- ============ 8. 바이브코딩 팁 ============ -->
 <section id="vibe">
   <h2><span class="num">8</span>바이브코딩 팁 — Claude Code 와 일하는 법</h2>
-  <p class="lead">이 repo 는 Claude Code 친화적으로 세팅돼 있다. 로컬 클론에서 열기만 하면 규칙이 자동 적용됨.</p>
+  <p class="lead">이 repo 는 Claude Code 친화형이다. 로컬 클론만 해도 규칙이 자동 적용된다.</p>
   <ul>
-    <li><strong><code>CLAUDE.md</code> 가 자동 로드된다</strong> — 브랜치 전략·커밋 규칙·금지사항을 Claude 가 이미 알고 시작. 웹 업로드로는 이 보호막이 전부 무효가 된다 (금지 이유 중 하나).</li>
-    <li><strong>작업 시작 멘트 예시</strong>: <code>"develop 에서 feat/xxx 브랜치 따고, 오시카츠 도전과제 3종 추가해줘. tutorial 씬 패턴 참고."</code> — 브랜치 생성부터 시키면 develop 직커밋 사고가 없다.</li>
+    <li><strong><code>CLAUDE.md</code> 자동 로드</strong> — Claude 가 브랜치 전략·커밋 규칙·금지사항을 미리 안다. 웹 업로드 시 보호막은 사라진다.</li>
+    <li><strong>작업 시작 멘트 예시</strong>: <code>"develop 에서 feat/xxx 브랜치 따고, 오시카츠 도전과제 3종 추가해줘. tutorial 씬 패턴 참고."</code> — 이렇게 시키면 develop 직커밋이 없다.</li>
     <li><strong>마무리 멘트 예시</strong>: <code>"머지 전 체크 돌리고, 커밋 + push + develop 베이스로 PR 올려줘."</code></li>
-    <li><strong>씬·도전과제 만들 때</strong>: 레퍼런스(<code>community/scenes/tutorial/</code>, <code>community/achievements/catalog/oshikatsu.py</code>)를 프롬프트에 명시하면 패턴이 일관돼서 리뷰가 빨라진다.</li>
-    <li><strong>모르는 건 Claude 한테 먼저</strong>: "이 변경이 리뷰 필수 구역 건드려?" / "가드레일 위반 없어?" 같은 셀프 심사도 시킬 수 있다.</li>
-    <li><strong>Claude 가 커밋 메시지에 Co-Authored-By 를 넣으려 하면 거부</strong> — CLAUDE.md 에 금지로 박혀 있어 보통 안 넣지만, 한 번 더 확인.</li>
+    <li><strong>씬·도전과제 생성 시</strong>: 레퍼런스(<code>community/scenes/tutorial/</code>, <code>community/achievements/catalog/oshikatsu.py</code>)를 프롬프트에 넣으면 패턴이 맞고 리뷰가 빠르다.</li>
+    <li><strong>모를 땐 Claude 먼저</strong>: "이 변경이 리뷰 필수 구역이야?" / "가드레일 위반 있어?" 등 자가 확인 시킬 수 있다.</li>
+    <li><strong>Claude 가 커밋 메시지에 Co-Authored-By 넣으려 하면 거부</strong> — CLAUDE.md 금지 항목이니 다시 확인.</li>
   </ul>
 
   <div class="callout tip">
