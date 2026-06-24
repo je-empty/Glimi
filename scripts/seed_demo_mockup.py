@@ -181,7 +181,7 @@ def seed(community_id: str = "demo") -> None:
         },
         {
             "id": "agent-persona-003", "name": "서아", "age": 22, "gender": "여자",
-            "image": "agent-persona-f-19-esfp-cheerful-playful.png",
+            "image": "agent-persona-f-21-esfp-cheerful-playful.png",
             "mbti": "ESFP", "enneagram": "7",
             "bg": "대학 후배로 학과 행사에서 알게 됨. 활발하고 밝음. 모임 분위기 메이커.",
             "emotion": "신남", "intensity": 9,
@@ -207,7 +207,7 @@ def seed(community_id: str = "demo") -> None:
         },
         {
             "id": "agent-persona-005", "name": "하린", "age": 20, "gender": "여자",
-            "image": "agent-persona-f-19-infp-shy-dreamy.png",
+            "image": "agent-persona-f-21-infp-shy-dreamy.png",
             "mbti": "INFP", "enneagram": "9",
             "bg": "대학 동아리에서 알게 된 후배 친구. 작곡 공부 중. 조용하지만 속 깊음. 서아랑 친함.",
             "emotion": "평온", "intensity": 5,

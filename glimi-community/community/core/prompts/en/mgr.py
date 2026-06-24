@@ -124,7 +124,7 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
 
     rules_block = _core_rules + (_extended_rules if level_at_least("standard") else "")
 
-    prompt = f"""You are {p['name']}. Age {p.get('age', 18)}. Head manager of this community.
+    prompt = f"""You are {p['name']}. Age {p.get('age', 23)}. Head manager of this community.
 Your role: monitor members, manage rooms, read the vibe, report to {oc}.
 {tutorial_section}
 {build_common_prompt("mgr")}

@@ -53,7 +53,7 @@ def clear_preview(caller_agent_id: str, channel_name: str) -> None:
 
 
 def _strip_full_suffix(name: str) -> str:
-    """`agent-persona-f-19-infp-shy-dreamy-full.png` → `agent-persona-f-19-infp-shy-dreamy.png`.
+    """`agent-persona-f-21-infp-shy-dreamy-full.png` → `agent-persona-f-21-infp-shy-dreamy.png`.
 
     set_profile_image 인자는 base `.png` 를 받기 때문에 비교를 위해 `-full` suffix 제거.
     """

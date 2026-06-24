@@ -30,18 +30,18 @@
     "status": "ready"
   },
   {
-    "file": "agent-persona-f-19-esfp-cheerful-playful.png",
+    "file": "agent-persona-f-21-esfp-cheerful-playful.png",
     "gender": "female",
-    "age": 19,
-    "age_range": "10대 후반",
+    "age": 21,
+    "age_range": "20대 초반",
     "mbti_primary": ["ESFP", "ESTP"],
     "vibe1": "cheerful",
     "vibe2": "playful",
     "vibe_tags": ["활발한", "애교", "솔직한", "건강한"],
     "appearance_tags": ["대학 신입생", "생기있는"],
-    "tags": ["활발한", "애교", "솔직한", "건강한", "ESFP", "ESTP", "10대"],
+    "tags": ["활발한", "애교", "솔직한", "건강한", "ESFP", "ESTP", "20대"],
     "description": "밝고 건강한 느낌, 대학 신입생 정도, 활기찬 표정",
-    "gen_prompt": "Anime-style profile illustration, Korean 19-year-old female freshman, bright cheerful expression, short ponytail, casual hoodie or cardigan, clean lineart, soft cel shading, light pastel gradient background, bust-up shot",
+    "gen_prompt": "Anime-style profile illustration, Korean 21-year-old female freshman, bright cheerful expression, short ponytail, casual hoodie or cardigan, clean lineart, soft cel shading, light pastel gradient background, bust-up shot",
     "status": "ready"
   },
   {
@@ -60,18 +60,18 @@
     "status": "ready"
   },
   {
-    "file": "agent-persona-f-19-infp-shy-dreamy.png",
+    "file": "agent-persona-f-21-infp-shy-dreamy.png",
     "gender": "female",
-    "age": 19,
-    "age_range": "10대 후반",
+    "age": 21,
+    "age_range": "20대 초반",
     "mbti_primary": ["INFP", "ISFP"],
     "vibe1": "shy",
     "vibe2": "dreamy",
     "vibe_tags": ["소심한", "몽글몽글", "귀여운", "동글동글"],
     "appearance_tags": ["큰 눈", "동글동글한 얼굴", "멍한 표정"],
-    "tags": ["소심한", "몽글몽글", "귀여운", "동글동글", "INFP", "ISFP", "10대"],
+    "tags": ["소심한", "몽글몽글", "귀여운", "동글동글", "INFP", "ISFP", "20대"],
     "description": "작고 귀여운 느낌, 큰 눈, 동글동글한 얼굴, 멍한 표정",
-    "gen_prompt": "Anime-style profile illustration, Korean 19-year-old shy female, big round eyes, soft dreamy expression, round face, pastel hoodie, clean lineart, soft cel shading, pastel gradient background, bust-up shot",
+    "gen_prompt": "Anime-style profile illustration, Korean 21-year-old shy female, big round eyes, soft dreamy expression, round face, pastel hoodie, clean lineart, soft cel shading, pastel gradient background, bust-up shot",
     "status": "ready"
   },
   {
@@ -197,18 +197,18 @@
     "status": "placeholder"
   },
   {
-    "file": "agent-persona-m-19-esfp-cheerful-bold.png",
+    "file": "agent-persona-m-21-esfp-cheerful-bold.png",
     "gender": "male",
-    "age": 19,
-    "age_range": "10대 후반",
+    "age": 21,
+    "age_range": "20대 초반",
     "mbti_primary": ["ESFP", "ESTP"],
     "vibe1": "cheerful",
     "vibe2": "bold",
     "vibe_tags": ["활발한", "친구많은", "건강한", "순수한"],
     "appearance_tags": ["대학 신입생", "밝은 표정", "스포츠"],
-    "tags": ["활발한", "친구많은", "건강한", "순수한", "ESFP", "ESTP", "10대"],
+    "tags": ["활발한", "친구많은", "건강한", "순수한", "ESFP", "ESTP", "20대"],
     "description": "밝고 활달한 대학 신입생. 운동 좋아하는 타입",
-    "gen_prompt": "Anime-style profile illustration, Korean 19-year-old cheerful male freshman, bright wide smile, short tidy hair, casual varsity jacket, healthy tan, clean lineart, soft cel shading, warm pastel background, bust-up shot",
+    "gen_prompt": "Anime-style profile illustration, Korean 21-year-old cheerful male freshman, bright wide smile, short tidy hair, casual varsity jacket, healthy tan, clean lineart, soft cel shading, warm pastel background, bust-up shot",
     "status": "placeholder"
   },
   {

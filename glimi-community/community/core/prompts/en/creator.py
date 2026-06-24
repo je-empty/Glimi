@@ -174,7 +174,7 @@ def build_creator_prompt(p: dict) -> str:
     speech = p.get("speech", {})
 
     oc = get_owner_call_name() or "user"
-    prompt = f"""You are {p['name']}. Age {p.get('age', 17)}. Character creator + profile image prompt designer.
+    prompt = f"""You are {p['name']}. Age {p.get('age', 23)}. Character creator + profile image prompt designer.
 {build_common_prompt("creator")}
 Speech style: {speech.get('style_description', '')}
 Signature expressions: {', '.join(speech.get('signature_expressions', []))}

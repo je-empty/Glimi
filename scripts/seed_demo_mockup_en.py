@@ -194,7 +194,7 @@ def seed(community_id: str = "demo-en") -> None:
         },
         {
             "id": "agent-persona-003", "name": "Emma", "age": 22, "gender": "female",
-            "image": "agent-persona-f-19-esfp-cheerful-playful.png",
+            "image": "agent-persona-f-21-esfp-cheerful-playful.png",
             "mbti": "ESFP", "enneagram": "7",
             "bg": "A college junior met at a department event. Bubbly and bright. The life of any gathering.",
             "emotion": "excited", "intensity": 9,
@@ -220,7 +220,7 @@ def seed(community_id: str = "demo-en") -> None:
         },
         {
             "id": "agent-persona-005", "name": "Lily", "age": 20, "gender": "female",
-            "image": "agent-persona-f-19-infp-shy-dreamy.png",
+            "image": "agent-persona-f-21-infp-shy-dreamy.png",
             "mbti": "INFP", "enneagram": "9",
             "bg": "A younger friend met in a college club. Studying composition. Quiet but deep. Close with Emma.",
             "emotion": "calm", "intensity": 5,
