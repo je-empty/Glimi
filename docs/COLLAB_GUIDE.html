@@ -5,21 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Glimi — 협업 가이드 (바이브코딩 워크플로우)</title>
 <style>
+  /* === Glimi paper design system — light(default) + dark toggle === */
   :root {
-    --bg: #0d1117;
-    --bg-card: #161b22;
-    --bg-card-2: #1c2128;
-    --border: #30363d;
-    --border-strong: #484f58;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --accent-blue: #4a9eff;
-    --accent-green: #4aff9e;
-    --accent-orange: #ffaa4a;
-    --accent-purple: #a78bfa;
-    --accent-yellow: #f5c542;
-    --accent-red: #ff6b6b;
+    --bg: #fafafa; --bg-card: #ffffff; --bg-card-2: #f6f7f9;
+    --border: #e5e7eb; --border-strong: #cbd0d8;
+    --text: #14161a; --muted: #4a4e57;
+    --accent-blue: #2a4365; --accent-green: #047857; --accent-orange: #b45309;
+    --accent-purple: #51678f; --accent-yellow: #b45309; --accent-red: #b91c1c;
+    --shadow: 0 1px 3px rgba(20,22,26,0.06);
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a1a; --bg-card: #212121; --bg-card-2: #2f2f2f;
+    --border: rgba(255,255,255,0.10); --border-strong: rgba(255,255,255,0.18);
+    --text: #ececec; --muted: #b4b4b4;
+    --accent-blue: #9fb8e0; --accent-green: #34d399; --accent-orange: #fbbf24;
+    --accent-purple: #b8c5dd; --accent-yellow: #fbbf24; --accent-red: #f87171;
     --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -116,9 +119,21 @@
   .good-bad ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
 
   footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+
+  /* theme toggle (design-system: paper surface, navy ink, no neon/shadow) */
+  #theme-toggle {
+    position: fixed; top: 14px; right: 16px; z-index: 1000;
+    width: 36px; height: 36px; border-radius: 999px; line-height: 1;
+    background: var(--bg-card); color: var(--text); border: 1px solid var(--border);
+    font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .15s, border-color .15s;
+  }
+  #theme-toggle:hover { background: var(--bg-card-2); border-color: var(--border-strong); }
+  @media print { #theme-toggle { display: none; } }
 </style>
 </head>
 <body>
+<button id="theme-toggle" type="button" aria-label="라이트/다크 테마 전환" title="라이트/다크 전환">◐</button>
 <div class="container">
 
 <header>
@@ -402,5 +417,18 @@ python -m tests.unit.test_community_isolation
 </footer>
 
 </div>
+<script>
+  (function () {
+    var KEY = 'glimi-doc-theme', root = document.documentElement, saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    if (saved === 'dark') root.setAttribute('data-theme', 'dark');   // 기본 = light(속성 없음)
+    var b = document.getElementById('theme-toggle');
+    if (b) b.addEventListener('click', function () {
+      var dark = root.getAttribute('data-theme') === 'dark';
+      if (dark) { root.removeAttribute('data-theme'); } else { root.setAttribute('data-theme', 'dark'); }
+      try { localStorage.setItem(KEY, dark ? 'light' : 'dark'); } catch (e) {}
+    });
+  })();
+</script>
 </body>
 </html>

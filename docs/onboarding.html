@@ -5,21 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Glimi — Contributor Onboarding</title>
 <style>
+  /* === Glimi paper design system — light(default) + dark toggle === */
   :root {
-    --bg: #0d1117;
-    --bg-card: #161b22;
-    --bg-card-2: #1c2128;
-    --border: #30363d;
-    --border-strong: #484f58;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --accent-blue: #4a9eff;
-    --accent-green: #4aff9e;
-    --accent-orange: #ffaa4a;
-    --accent-purple: #a78bfa;
-    --accent-yellow: #f5c542;
-    --accent-red: #ff6b6b;
+    --bg: #fafafa; --bg-card: #ffffff; --bg-card-2: #f6f7f9;
+    --border: #e5e7eb; --border-strong: #cbd0d8;
+    --text: #14161a; --muted: #4a4e57;
+    --accent-blue: #2a4365; --accent-green: #047857; --accent-orange: #b45309;
+    --accent-purple: #51678f; --accent-yellow: #b45309; --accent-red: #b91c1c;
+    --shadow: 0 1px 3px rgba(20,22,26,0.06);
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a1a; --bg-card: #212121; --bg-card-2: #2f2f2f;
+    --border: rgba(255,255,255,0.10); --border-strong: rgba(255,255,255,0.18);
+    --text: #ececec; --muted: #b4b4b4;
+    --accent-blue: #9fb8e0; --accent-green: #34d399; --accent-orange: #fbbf24;
+    --accent-purple: #b8c5dd; --accent-yellow: #fbbf24; --accent-red: #f87171;
     --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -184,7 +187,7 @@
     text-transform: uppercase;
     letter-spacing: 1px;
   }
-  tr:hover { background: rgba(255,255,255,0.02); }
+  tr:hover { background: var(--bg-card-2); }
   td.center { text-align: center; }
   td.muted { color: var(--muted); }
 
@@ -204,14 +207,14 @@
   .badge.tag { background: rgba(167,139,250,0.1); color: var(--accent-purple); border: 1px solid rgba(167,139,250,0.3); }
 
   pre {
-    background: #010409;
+    background: var(--bg-card-2);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px 20px;
     overflow-x: auto;
     font-size: 13px;
     line-height: 1.55;
-    color: #c9d1d9;
+    color: var(--text);
   }
   code {
     background: var(--bg-card-2);
@@ -332,9 +335,21 @@
     table { font-size: 12px; }
     th, td { padding: 8px 10px; }
   }
+
+  /* theme toggle (design-system: paper surface, navy ink, no neon/shadow) */
+  #theme-toggle {
+    position: fixed; top: 14px; right: 16px; z-index: 1000;
+    width: 36px; height: 36px; border-radius: 999px; line-height: 1;
+    background: var(--bg-card); color: var(--text); border: 1px solid var(--border);
+    font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .15s, border-color .15s;
+  }
+  #theme-toggle:hover { background: var(--bg-card-2); border-color: var(--border-strong); }
+  @media print { #theme-toggle { display: none; } }
 </style>
 </head>
 <body>
+<button id="theme-toggle" type="button" aria-label="라이트/다크 테마 전환" title="라이트/다크 전환">◐</button>
 <div class="container">
 
   <header>
@@ -380,7 +395,7 @@
       <ul>
         <li><span class="badge tag">전환 중</span> <strong>피벗 진행 중</strong>: 사업화 → OSS career capital 방향. <code>analysis/pivot_subagent_review.md</code> 참조 (gitignored, 메인테이너만 접근)</li>
         <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어 (<code>src/core/*</code>, <code>src/llm/*</code>) 를 최상위 <code>glimi/</code> 패키지로 추출 — Discord/DB 의존 0, standalone wheel 로 빌드. <code>pip install glimi</code> 는 PyPI 공개(0.1.0) 대기 중, 그 전엔 소스에서 설치</li>
-        <li><span class="badge do">활성</span> <strong>Community 풀-스택 작동</strong>: 현재 코드 그대로 Discord 봇 + 웹 대시보드 + 멀티 커뮤니티 가동 가능 (<code>./run.sh</code>)</li>
+        <li><span class="badge do">활성</span> <strong>Community 풀-스택 작동</strong>: 웹 우선 — 웹 채팅 + 대시보드 + 멀티 커뮤니티 가동 (<code>./run.sh</code>). Discord 는 어댑터(과도기)</li>
       </ul>
     </div>
   </section>
@@ -398,7 +413,7 @@
           <div class="label">라이브러리</div>
           <div class="name core">Glimi Core</div>
           <div class="pip">pip install glimi (예정)</div>
-          <p>멀티 에이전트 하네스. 8 레이어 wrapper, 5-layer memory, autonomous A2A, observability dashboard. 모델 벤더 중립 (Claude · Ollama · vLLM · llama.cpp).</p>
+          <p>멀티 에이전트 하네스. 8 레이어 wrapper, L0–L5 memory, autonomous A2A, observability dashboard. 모델 벤더 중립 (Claude · Ollama · Grok CLI · echo; vLLM · llama.cpp 는 planned).</p>
         </div>
         <div class="child app">
           <div class="label">flagship 앱</div>
@@ -430,8 +445,7 @@
       <li><strong>Python 3.12+</strong></li>
       <li><strong>Node.js</strong> (Claude Code CLI 가 필요)</li>
       <li><strong>Claude Code CLI</strong>: <code>npm install -g @anthropic-ai/claude-code</code></li>
-      <li><strong>Anthropic API 또는 Claude Code Max 플랜</strong> (페르소나 응답이 Claude 모델로 동작)</li>
-      <li><strong>Discord 봇 토큰</strong> (Community 풀-스택 돌리려면 필요. Core 만 만지면 불필요)</li>
+      <li><strong>Claude CLI 로그인</strong> (첫 실행 setup 위저드가 Claude 전용 모드로 안내 — API 키 입력칸 / 월 상한 없음). 백엔드는 Claude · Ollama · Grok CLI · echo</li>
     </ul>
 
     <h3>한 번에 가동</h3>
@@ -461,8 +475,8 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
     <ul class="checklist">
       <li><code>./run.sh</code> 가 에러 없이 부팅</li>
       <li><code>http://localhost:8000</code> 로그인 화면 보임</li>
-      <li>커뮤니티 하나 생성 → 봇 부팅 → 디스코드 서버에 유나(매니저) 가 첫 인사</li>
-      <li>유나에게 DM 보내면 응답 옴</li>
+      <li>커뮤니티 하나 생성 → 부팅 → <code>dm-agent-mgr-001</code> 채널에 유나(매니저) 가 첫 인사</li>
+      <li>유나에게 메시지 보내면 응답 옴</li>
       <li>대시보드 그래프 탭에서 노드 표시</li>
     </ul>
   </section>
@@ -499,23 +513,25 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
       <tbody>
         <tr><td>1</td><td>프롬프트 조립</td><td><span class="badge info">Core</span></td><td>언어 × agent_type dispatch, provider 별 dialect, scene fragment</td></tr>
         <tr><td>2</td><td>Tool 프로토콜</td><td><span class="badge info">Core</span></td><td><code>&lt;tools&gt;&lt;call/&gt;&lt;/tools&gt;</code> XML 파싱, ToolSpec registry</td></tr>
-        <tr><td>3</td><td>메모리 파이프라인</td><td><span class="badge info">Core</span></td><td>L0-L3 + facts + relationship + pinned, async Haiku 추출, budget 주입</td></tr>
+        <tr><td>3</td><td>메모리 파이프라인</td><td><span class="badge info">Core</span></td><td>L0–L5 (L1 Working Window 포함) + facts + relationship + pinned, async Haiku 추출, budget 주입</td></tr>
         <tr><td>4</td><td>채널 규율</td><td><span class="badge tag">App</span></td><td>"이 채널에서 누가 듣고 있는지" 명시, role bleed 차단</td></tr>
         <tr><td>5</td><td>Anti-echo / Guard</td><td><span class="badge tag">App</span></td><td>작별 핑퐁, 단답 ack 재호출, 60s+95% dedup</td></tr>
         <tr><td>6</td><td>A2A 루프</td><td><span class="badge info">Core</span></td><td>에이전트끼리 자율 대화 시드, turn limit, closure 감지</td></tr>
-        <tr><td>7</td><td>자가 치유</td><td><span class="badge warn">Tool</span></td><td>runtime 에러 → Opus subprocess 가 소스 패치 → 재시작</td></tr>
+        <tr><td>7</td><td>자가 치유</td><td><span class="badge warn">Tool</span></td><td><code>request_dev_fix</code> (기본 OFF) — runtime 에러 → subprocess 가 소스 패치 → 재시작</td></tr>
         <tr><td>8</td><td>Supervisors ⭐</td><td><span class="badge info">Core</span></td><td>입력 없이 도는 유일한 레이어. 페어 스캐너 · 채널 감시 · 씬 진행</td></tr>
       </tbody>
     </table>
 
-    <h3>5-layer 메모리 시스템</h3>
-    <pre><code>L0 Raw          conversations 테이블 (영구)
-L1 Episodic     N msg → digest (Haiku JSON: summary+facts+rel_delta+emotion)
-L2 Chronicle    5 L1 → 단락
-L3 Saga         5 L2 → 주/월 narrative
-+ agent_facts   (subject, predicate, object) + valid_from/valid_to supersession
-+ relationship  스냅샷 + history 변곡점
-+ pinned        is_pinned=1 (항상 주입)
+    <h3>L0–L5 메모리 시스템</h3>
+    <pre><code>L0 Raw            conversations 테이블 (영구)
+L1 Working Window 최근 N msg 슬라이딩 윈도우 (현재 대화 컨텍스트)
+L2 Episodic       N msg → digest (Haiku JSON: summary+facts+rel_delta+emotion)
+L3 Themes         L2 묶음 → 단락
+L4 Narrative      상위 묶음 → 주/월 narrative
+L5 Identity       장기 정체성/요약 레이어
++ agent_facts     (subject, predicate, object) + valid_from/valid_to supersession
++ relationship    스냅샷 + history 변곡점
++ pinned          is_pinned=1 (항상 주입)
 
 주입 budget (턴당 ~800 토큰):
   Pinned 400 · Relationship 200 · Episodic-current 700 · Retrieved 400 · Facts 400
@@ -535,8 +551,8 @@ Retrieval scoring:
 ├── glimi/                      <span style="color:var(--accent-green)"># ⭐ Glimi Core 커널 (pip install glimi · Discord/DB 의존 0)</span>
 │   ├── runtime/                <span style="color:var(--muted)"># per-agent model swap</span>
 │   ├── tools/                  <span style="color:var(--muted)"># &lt;tools&gt; protocol</span>
-│   ├── memory/                 <span style="color:var(--muted)"># 5-layer + facts + relationship</span>
-│   ├── llm/                    <span style="color:var(--muted)"># Claude / Ollama / vLLM / llama.cpp 백엔드</span>
+│   ├── memory/                 <span style="color:var(--muted)"># L0–L5 + facts + relationship</span>
+│   ├── llm/                    <span style="color:var(--muted)"># Claude / Ollama / Grok CLI / echo 백엔드 (vLLM·llama.cpp planned)</span>
 │   ├── conversation/           <span style="color:var(--muted)"># A2A loop</span>
 │   ├── context_budget.py       <span style="color:var(--muted)"># Elastic Memory (컨텍스트 예산)</span>
 │   └── store.py                <span style="color:var(--muted)"># KernelStore ABC (storage 중립)</span>
@@ -676,7 +692,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
     <div class="card accent-red">
       <h4><span class="badge dont">절대 금지</span> 메타 용어 노출</h4>
       <p>사용자(오너) 가 보는 텍스트에서 "에이전트", "멤버", "봇", "AI" 등 메타 용어 절대 X. 시스템 프롬프트에선 "다른 사람은 이름/친구들/사람들" 같은 자연스러운 표현.</p>
-      <p><code>&lt;tools&gt;</code> 블록은 <code>mgr-system-log</code> 에만 노출 (대화 채널에 절대 X).</p>
+      <p><code>&lt;tools&gt;</code> 블록은 대화 채널에 절대 노출 X — 런타임 도구 로그는 <code>logs/system.log</code> 파일로 (구 <code>mgr-system-log</code> 채널 폐지).</p>
     </div>
 
     <h3>상태 관리 / 캐시</h3>
@@ -804,7 +820,7 @@ pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
         <tr><td><a href="../README.ko.md">README.ko.md</a></td><td>한국어 미러</td></tr>
         <tr><td><a href="architecture.md">docs/architecture.md</a></td><td>디렉토리 구조, 핵심 모듈, DB 스키마, &lt;tools&gt; 프로토콜, 채널 구조</td></tr>
         <tr><td><a href="prompt_development.md">docs/prompt_development.md</a></td><td>프롬프트 작성 규칙 (위치, i18n, model dialect, decoupling)</td></tr>
-        <tr><td><a href="memory_system.md">docs/memory_system.md</a></td><td>5 레이어 메모리 시스템 내부 동작</td></tr>
+        <tr><td><a href="memory_system.md">docs/memory_system.md</a></td><td>L0–L5 메모리 시스템 내부 동작</td></tr>
         <tr><td><a href="scenes_and_supervisors.md">docs/scenes_and_supervisors.md</a></td><td>Scene / Achievement / Supervisor 시스템</td></tr>
         <tr><td><a href="formatting.md">docs/formatting.md</a></td><td><code>#channel</code> → <code>&lt;#id&gt;</code> 치환 규칙</td></tr>
         <tr><td><a href="community_isolation.md">docs/community_isolation.md</a></td><td>멀티 커뮤니티 격리 + demo 쇼케이스</td></tr>
@@ -837,7 +853,7 @@ pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
     </ul>
 
     <div class="quote">
-      Glimi 는 "오너가 자리를 비워도 살아있는 AI 인구" 라는 정서적 아이디어에서 출발한 프로젝트입니다. 기술적 깊이 (5-layer 메모리, autonomous A2A, proactive supervisor) 가 그 정서를 받치는 구조입니다. 기여하실 때 이 두 축 (정서 + 기술) 둘 다 함께 생각해주시면 좋겠습니다.
+      Glimi 는 "오너가 자리를 비워도 살아있는 AI 인구" 라는 정서적 아이디어에서 출발한 프로젝트입니다. 기술적 깊이 (L0–L5 메모리, autonomous A2A, proactive supervisor) 가 그 정서를 받치는 구조입니다. 기여하실 때 이 두 축 (정서 + 기술) 둘 다 함께 생각해주시면 좋겠습니다.
     </div>
   </section>
 
@@ -848,5 +864,18 @@ pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
   </footer>
 
 </div>
+<script>
+  (function () {
+    var KEY = 'glimi-doc-theme', root = document.documentElement, saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    if (saved === 'dark') root.setAttribute('data-theme', 'dark');   // 기본 = light(속성 없음)
+    var b = document.getElementById('theme-toggle');
+    if (b) b.addEventListener('click', function () {
+      var dark = root.getAttribute('data-theme') === 'dark';
+      if (dark) { root.removeAttribute('data-theme'); } else { root.setAttribute('data-theme', 'dark'); }
+      try { localStorage.setItem(KEY, dark ? 'light' : 'dark'); } catch (e) {}
+    });
+  })();
+</script>
 </body>
 </html>
