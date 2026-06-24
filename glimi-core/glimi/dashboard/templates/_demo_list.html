@@ -11,12 +11,15 @@
   .dl-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 0 0 6px; }
   .dl-head h2 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
   .dl-head .sub { color: var(--muted); font-size: 13.5px; }
-  .lang-link { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--muted);
-    text-decoration: none; border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px; }
-  .lang-link:hover { color: var(--accent); border-color: var(--accent); }
-  .login-link { font-size: 12px; font-weight: 700; color: var(--accent-fg, #fff); background: var(--accent);
-    text-decoration: none; border-radius: 999px; padding: 5px 14px; white-space: nowrap; }
-  .login-link:hover { filter: brightness(1.06); }
+  /* 인앱 헤더 버튼(.gp-btn-icon: panel2 배경·borderless·hover panel3)과 톤 통일 */
+  .lang-link { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--muted);
+    text-decoration: none; background: var(--panel2); border: 0; border-radius: 999px; padding: 6px 13px;
+    transition: background .15s ease, color .15s ease; }
+  .lang-link:hover { background: var(--panel3); color: var(--text); }
+  .login-link { font-size: 12.5px; font-weight: 700; color: var(--text); background: var(--panel2);
+    text-decoration: none; border: 0; border-radius: 999px; padding: 6px 14px; white-space: nowrap;
+    transition: background .15s ease; }
+  .login-link:hover { background: var(--panel3); }
   .dl-lede { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 22px; max-width: 62ch; }
 
   .community-list { display: flex; flex-direction: column; gap: 12px; }

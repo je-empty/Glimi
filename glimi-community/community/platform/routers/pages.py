@@ -35,26 +35,26 @@ async def home(request: Request):
         shown = matched or public  # 언어 매칭 없으면 전체로 폴백
         items = []
         for c in shown:
-            members = _fetch_members(c["id"])
-            n = len(members)
+            members = _fetch_members(c["id"], limit=99)  # 전체 (페르소나 먼저 정렬)
+            personas = [m for m in members if m.get("type") == "persona"]
+            n = len(personas)  # '친구' 수 = 페르소나만 (mgr/creator 제외, 8 캡 버그 수정)
             metas = ([f"{n} friends"] if EN else [f"친구 {n}명"])
             items.append({
                 "href": f"/community/{c['id']}",
                 "title": c.get("name") or c["id"],
                 "desc": c.get("description") or "",
                 "is_demo": True,
-                "avatars": members[:6],
+                "avatars": personas[:6],
                 "more": max(0, n - 6),
                 "metas": metas,
             })
         ctx = {
             "request": request, "lang": lang, "user": None,
             "brand": "Glimi Community",
-            "brand_sub": ("AI friends who live alongside each other" if EN
-                          else "서로 곁에서 살아가는 AI 친구들"),
-            "lede": ("Friends who talk to each other, remember, and grow closer. "
-                     "Browse the demo below — no login." if EN
-                     else "서로 대화하고, 기억하고, 관계를 쌓아가는 친구들. 아래 데모를 둘러보세요. 로그인 없이."),
+            "brand_sub": None,
+            "lede": ("Friends who talk to each other, remember, and grow closer — "
+                     "meet them in the demo below." if EN
+                     else "서로 대화하고, 기억하고, 관계를 쌓아가는 친구들 — 아래 데모에서 직접 만나보세요."),
             "items": items,
             "create": None,
         }
