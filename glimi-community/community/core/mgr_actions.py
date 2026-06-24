@@ -42,21 +42,15 @@ from community.core.profile import (
 from community.core.runtime import runtime
 
 
-# ── manager-channel name resolution (community-aware, discord-free) ─────────
-# The seed default lives in core.channels (MGR_CHANNEL = "dm-서유나"); a community
-# may rename the manager. Resolve from the DB agent name when possible.
+# ── manager-channel key resolution (community-aware, discord-free) ──────────
+# Canonical mgr DM key is id-based (``dm-agent-mgr-001``) — the display name
+# (유나/서유나/…) is localized so it is never baked into the key (i18n). The
+# resolver prefers the id-based key, falling back to a legacy ``dm-<name>``
+# channel for communities that predate the convention.
 
 def _mgr_dm_channel_name() -> str:
-    try:
-        row = db.get_agent(MGR_ID)
-        name = (row or {}).get("name")
-        if name:
-            from community.core.channels import _norm_name_for_channel
-            return f"dm-{_norm_name_for_channel(name)}"
-    except Exception:
-        pass
-    from community.core.channels import MGR_CHANNEL
-    return MGR_CHANNEL
+    from community.core.channels import mgr_channel
+    return mgr_channel()
 
 
 # ── DM channel name sanitize (was mgr_system._sanitize_dm_name) ─────────────

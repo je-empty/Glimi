@@ -92,12 +92,39 @@ def _transcript(snap: dict, *, limit_chars: int = 6000) -> str:
     return "\n".join(lines)[:limit_chars]
 
 
+def _staff_channels(snap: dict) -> set[str]:
+    """The built-in staff (mgr/creator/dev) DM channels — NOT friends. Prefer the
+    snapshot's served-truth ``staff_channels`` (resolves a community that renamed a
+    manager / a legacy ``dm-<name>`` mgr channel), falling back to the id-based
+    constants."""
+    served = snap.get("staff_channels")
+    if served:
+        return set(served)
+    return {MGR_CHANNEL, CREATOR_CHANNEL, "dm-agent-dev-001"}
+
+
+def _personas(snap: dict) -> list[dict]:
+    """The REAL user-created friends in this run — served-truth persona agents
+    (``agent_id`` + ``name`` + their ``channel``). Empty if none were created.
+
+    Anchored on the served roster (snap['personas']) so the dimension reflects an
+    ACTUAL persona existing, not a channel-name guess. Falls back to channel-shape
+    only if the roster is absent (older snapshots)."""
+    served = snap.get("personas")
+    if served is not None:
+        return [p for p in served if p.get("agent_id") or p.get("channel")]
+    # Legacy fallback: a DM that is neither staff nor a known non-friend.
+    staff = _staff_channels(snap)
+    return [{"agent_id": None, "name": ch, "channel": ch}
+            for ch in (snap.get("channels") or {})
+            if ch.startswith("dm-") and ch not in staff]
+
+
 def _friend_channels(snap: dict) -> list[str]:
-    """DM channels that are an actual created friend (not the built-in mgr/creator)."""
-    return sorted(
-        ch for ch in (snap.get("channels") or {})
-        if ch.startswith("dm-") and ch not in (MGR_CHANNEL, CREATOR_CHANNEL)
-    )
+    """DM channels of actual created friends (personas), excluding built-in staff."""
+    staff = _staff_channels(snap)
+    chs = {p.get("channel") for p in _personas(snap) if p.get("channel")}
+    return sorted(ch for ch in chs if ch and ch not in staff)
 
 
 def _replies_in(snap: dict, ch: str, owner_id: str) -> list[str]:
@@ -129,17 +156,29 @@ def _eval_onboarding(snap: dict, owner_id: str) -> DimResult:
 
 
 def _eval_friend_creation(snap: dict, owner_id: str) -> DimResult:
+    """A REAL friend must exist: a persona agent AND its DM channel in the snapshot.
+    Scoring is anchored on the served roster (snap['personas']) so a judge can't
+    hallucinate a friend and a renamed-manager DM can't be miscounted as one."""
     d = _BY_KEY["friend_creation"]
+    personas = _personas(snap)
+    # A persona only counts if it has a real DM channel (an agent row with no DM is
+    # an incomplete creation — create_agent_profile ran but request_dm did not).
     friend_chs = _friend_channels(snap)
-    if not friend_chs:
+    with_dm = [p for p in personas if p.get("channel") in friend_chs]
+    if not with_dm:
+        if personas:
+            names = ", ".join(p.get("name") or "?" for p in personas)
+            return DimResult.for_dim(d, score=3.0, passed=False,
+                detail=f"페르소나 {len(personas)}명 생성됐으나 DM 채널 미완성 ({names}) — request_dm 누락")
         return DimResult.for_dim(d, score=0.0, passed=False,
-            detail="새 친구가 생성되지 않음 (유나·하나 DM 뿐 — create_agent_profile 미발동)")
-    chatted = [ch for ch in friend_chs if _replies_in(snap, ch, owner_id)]
+            detail="새 친구가 생성되지 않음 (페르소나 0명 — create_agent_profile 미발동)")
+    chatted = [p["channel"] for p in with_dm if _replies_in(snap, p["channel"], owner_id)]
+    names = ", ".join(p.get("name") or p.get("channel") for p in with_dm)
     if chatted:
         return DimResult.for_dim(d, score=10.0, passed=True,
-            detail=f"진짜 친구 {len(friend_chs)}명 생성 + 대화 ({', '.join(chatted)})")
+            detail=f"진짜 친구 {len(with_dm)}명 생성 ({names}) + 대화 ({', '.join(chatted)})")
     return DimResult.for_dim(d, score=6.0, passed=False,
-        detail=f"친구 {len(friend_chs)}명 생성됐으나 아직 대화 없음 ({', '.join(friend_chs)})")
+        detail=f"친구 {len(with_dm)}명 생성 ({names}) — 아직 대화 없음")
 
 
 def _eval_no_leaks(metrics: dict) -> DimResult:

@@ -63,6 +63,17 @@ def _install_global_hooks() -> None:
         install_owner_extraction_hook()
     except Exception as e:
         log_writer.system(f"[boot] 메모리 훅 설치 실패 (skip): {e}")
+    # Tool handlers — register the discord-free core handlers into the shared
+    # glimi.tools registry. The Discord bot does this in bot/tasks.on_ready; the
+    # web path had NO equivalent, so 유나's onboarding tool calls (update_profile /
+    # scene_advance / create_agent_profile / finish_tutorial …) hit "no handler
+    # registered" and the tutorial never advanced (no profile saved → no friend).
+    # The registry is process-global, so installing once per process is correct.
+    try:
+        from community.core.tool_handlers import register_all as _register_core_tools
+        _register_core_tools()
+    except Exception as e:
+        log_writer.system(f"[boot] 코어 도구 핸들러 등록 실패 (skip): {e}")
     _HOOKS_INSTALLED = True
 
 

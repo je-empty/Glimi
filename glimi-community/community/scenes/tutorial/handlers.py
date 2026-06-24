@@ -17,12 +17,10 @@ import asyncio
 import json as _json
 
 from community import db, log_writer
-from community.core.channels import MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID
+from community.core.channels import mgr_channel, creator_channel, MGR_ID, CREATOR_ID
 from community.core.profile import load_profile
 from community.core.runtime import runtime
 from community.scenes.tutorial.scene import scene
-
-CREATOR_ID = "agent-creator-001"
 
 
 def _ensure_creator_seeded() -> bool:
@@ -128,6 +126,7 @@ async def force_hana_greeting_if_missing(channels) -> bool:
 
     반환: 복구 실행했으면 True.
     """
+    CREATOR_CHANNEL = creator_channel()
     creator_ch = await channels.find_channel(CREATOR_CHANNEL)
     if not creator_ch:
         return False
@@ -200,6 +199,8 @@ async def setup_channels(channels):
     current = scene.current_phase()
     if current in ("channels_done", "complete"):
         return
+    MGR_CHANNEL = mgr_channel()
+    CREATOR_CHANNEL = creator_channel()
     log_writer.system("[sup:tutorial] 시작: 채널 생성 + 크리에이터 소개")
 
     await asyncio.sleep(2)

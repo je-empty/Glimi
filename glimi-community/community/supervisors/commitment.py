@@ -45,24 +45,20 @@ _GENERIC_COMMIT = _re.compile(
 )
 
 # Channel hints — 내부 commitment 만 있을 때 디폴트 target 결정용.
-# 매니저(유나/하나/세나)도 dm-<이름> 채널을 본거지로 쓴다 → DB 에이전트 이름에서 도출.
+# 스태프(유나/하나/세나) DM 채널 키는 id 기반 정본 (dm-<agent-id>) — 표시 이름은
+# 로케일 종속이라 채널 키에 새기지 않는다(i18n). resolver 가 legacy dm-<이름> 폴백 처리.
 def _default_target_for_type(agent_type: str) -> Optional[str]:
-    """agent_type (mgr/creator/dev) → 그 매니저의 owner↔manager DM 채널 (dm-<이름>)."""
-    if agent_type not in ("mgr", "creator", "dev"):
-        return None
-    try:
-        for a in db.list_agents():
-            if a.get("type") == agent_type:
-                return f"dm-{a['name']}"
-    except Exception:
-        pass
-    # seed 기본 이름 fallback
-    return {"mgr": "dm-서유나", "creator": "dm-윤하나", "dev": "dm-한세나"}.get(agent_type)
+    """agent_type (mgr/creator/dev) → 그 스태프의 owner↔manager DM 채널 키 (dm-<id>)."""
+    from community.core.channels import mgr_channel, creator_channel, dev_channel
+    return {
+        "mgr": mgr_channel, "creator": creator_channel, "dev": dev_channel,
+    }.get(agent_type, lambda: None)()
 
 
 def _mgr_dm_channel_name() -> str:
-    """mgr (유나) 의 owner↔mgr DM 채널명 — yuna_force_agent 호출 컨텍스트용."""
-    return _default_target_for_type("mgr") or "dm-서유나"
+    """mgr (유나) 의 owner↔mgr DM 채널 키 — yuna_force_agent 호출 컨텍스트용 (id 기반)."""
+    from community.core.channels import mgr_channel
+    return mgr_channel()
 
 NUDGE_AFTER_SEC = 5 * 60      # 5 분 안에 안 가면 nudge
 RENUDGE_COOLDOWN_SEC = 15 * 60  # 같은 (agent, target) 쌍 15 분에 1회만 nudge

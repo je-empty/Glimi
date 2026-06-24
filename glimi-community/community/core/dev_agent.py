@@ -17,8 +17,10 @@ from community import db, log_writer
 
 DEV_ID = "agent-dev-001"
 DEV_NAME = "한세나"
-# 세나도 페르소나처럼 dm-<이름> 채널 (이전 mgr-dev-request).
-DEV_CHANNEL = f"dm-{DEV_NAME}"
+# 세나 owner↔dev DM 채널 키 = id 기반 정본 (``dm-agent-dev-001``). 표시 이름(한세나/Sena)
+# 은 로케일 종속이라 채널 키에 새기지 않는다(i18n). 채널 키의 단일 출처는 core.channels.
+# (런타임 resolve 가 필요하면 community.core.channels.dev_channel() — legacy dm-<이름> 폴백.)
+from community.core.channels import DEV_CHANNEL  # noqa: E402  (= "dm-agent-dev-001")
 
 
 def _platform_conn() -> sqlite3.Connection:

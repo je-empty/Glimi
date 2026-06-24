@@ -18,9 +18,10 @@ from datetime import datetime
 from community import db, log_writer
 from community.core.runtime import runtime
 from community.core.channels import (
-    MGR_CHANNEL,
-    CREATOR_CHANNEL,
+    mgr_channel,
+    creator_channel,
     MGR_ID,
+    CREATOR_ID,
 )
 from community.supervisors.base import Supervisor
 
@@ -84,7 +85,6 @@ class TutorialFlowSupervisor(Supervisor):
         if channels is None and guild is None:
             return
         # 에이전트 추론/전송 중이면 스킵
-        CREATOR_ID = "agent-creator-001"
         busy_agents = [MGR_ID, CREATOR_ID]
         if any(log_writer.is_thinking(a) or log_writer.is_speaking(a) for a in busy_agents):
             return
@@ -101,6 +101,7 @@ class TutorialFlowSupervisor(Supervisor):
         if phase == "greet":
             return  # 첫 인사 대기
 
+        MGR_CHANNEL = mgr_channel()
         idle = self._get_idle_seconds(MGR_CHANNEL)
         if idle < 15:
             return  # 대화 진행 중
@@ -199,6 +200,8 @@ class TutorialFlowSupervisor(Supervisor):
     # ── 채널 세팅 단계 ──────────────────────────────────
 
     async def _check_channel_setup(self, channels, guild):
+        MGR_CHANNEL = mgr_channel()
+        CREATOR_CHANNEL = creator_channel()
         # adapter-first 채널 목록 — web 은 list_channels, 디코는 guild.text_channels.
         if channels is not None:
             ch_names = {c.name for c in await channels.list_channels()}
@@ -224,7 +227,6 @@ class TutorialFlowSupervisor(Supervisor):
                     log_writer.system(f"❌ [sup:tutorial] 재개 실패: {type(e).__name__}: {e}")
             return
 
-        CREATOR_ID = "agent-creator-001"
         creator_msgs = db.get_recent_messages(CREATOR_CHANNEL, limit=1)
         if not creator_msgs:
             return
@@ -237,7 +239,38 @@ class TutorialFlowSupervisor(Supervisor):
         conn.close()
 
         if persona_count == 0:
-            return  # 하나 작업 중
+            # 하나가 아직 친구를 안 만든 상태. 보통은 작업 중이라 대기하지만, 오너가 이미
+            # 친구를 만들어달라고 했고 하나가 (질문/제안만 하고) 정작 create_agent_profile 을
+            # 안 부르는 stall 케이스가 잦다 — 특히 오너 턴이 끝났을 때. 오너가 창작자 채널에서
+            # 발화했고 하나가 충분히 idle 이면, '디테일은 알아서 정하고 바로 생성하라' 고 직접 재촉.
+            from community.core.profile import get_user_id
+            creator_msgs_all = db.get_recent_messages(CREATOR_CHANNEL, limit=12)
+            owner_asked = any(m.get("speaker") == get_user_id() for m in creator_msgs_all)
+            idle = self._get_idle_seconds(CREATOR_CHANNEL)
+            if owner_asked and idle > 20 and self._can_nudge():
+                last = creator_msgs_all[-1] if creator_msgs_all else {}
+                # 하나가 마지막으로 말했어도(질문/제안) 생성은 안 한 상태 → 직접 생성 재촉.
+                self._mark_nudged()
+                log_writer.system(
+                    "[sup:tutorial] persona 0개 + 오너 친구요청 감지 — 하나에게 직접 생성 재촉"
+                )
+                try:
+                    from community.supervisors.events import log_event as _log_sup_event
+                    _log_sup_event(
+                        sup_id="tutorial.flow", action="nudge_creator",
+                        targets=[CREATOR_ID],
+                        summary="오너가 친구 요청했는데 하나가 미생성 — create_agent_profile 직접 재촉",
+                        outcome="ok", details={"reason": "owner_requested_no_persona"},
+                    )
+                except Exception:
+                    pass
+                await self._nudge_agent(channels, guild, CREATOR_ID, CREATOR_CHANNEL,
+                    "오너가 친구를 만들어달라고 했고 디테일은 너한테 맡겼어. 더 묻지 말고 "
+                    "지금 바로 create_agent_profile 로 여자 친구 한 명을 만들어 "
+                    "(이름·나이·성격·배경 네가 자연스럽게 정해서). 만든 뒤 request_dm 으로 "
+                    "그 친구 DM 도 열고, 오너한테 한 줄로 소개해줘."
+                )
+            return  # 하나 작업 중(또는 방금 재촉함)
 
         has_report = any(
             n.startswith("internal-dm-") and ("유나" in n or "하나" in n)
@@ -251,7 +284,6 @@ class TutorialFlowSupervisor(Supervisor):
             # 조건: hana 보고 채널 + persona 생성됨 + dm-{persona} 채널 존재
             # (= hana가 create_agent_profile + request_dm 까지 완료한 신호).
             # idle 조건 제거 — 오너가 계속 대화해도 튜토리얼은 완료 가능해야 함.
-            from community.core.channels import MGR_ID
             persona_names = [r[0] for r in db.get_conn().execute(
                 "SELECT name FROM agents WHERE type='persona'"
             ).fetchall()]
@@ -348,6 +380,7 @@ class TutorialFlowSupervisor(Supervisor):
 
     async def _nudge_yuna(self, channels, guild, system_msg: str):
         log_writer.system(f"[sup:tutorial] 유나 재촉")
+        MGR_CHANNEL = mgr_channel()
         # adapter-first: web 은 채널 존재만 확인, 디코는 channel obj resolve.
         ch = None
         if channels is not None:

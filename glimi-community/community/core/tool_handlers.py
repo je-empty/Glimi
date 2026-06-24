@@ -24,7 +24,7 @@ import json
 from community import db, log_writer
 from glimi.tools.registry import set_handler
 from glimi.tools.dispatcher import ToolContext
-from community.core.channels import MGR_ID, DEV_CHANNEL, DEV_ID
+from community.core.channels import MGR_ID, DEV_ID, dev_channel
 
 
 # ── 관리 도구 (mgr) — delegate to core.mgr_actions (adapter-routed) ─────────
@@ -205,6 +205,7 @@ async def _h_request_dev_fix(args: dict, ctx: ToolContext):
     }
     requested_by = ctx.caller_agent_id or "owner"
     community_id = _community.get_community_id() or "unknown"
+    DEV_CHANNEL = dev_channel()  # id-based canonical (legacy dm-<name> fallback)
 
     existing = find_similar_recent_request(community_id, payload, window_minutes=60)
     if existing:

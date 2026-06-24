@@ -27,18 +27,16 @@ from community import community
 
 
 def _mgr_dm_channel() -> str:
-    """매니저(mgr/유나) 의 owner↔mgr DM 채널명 — dm-<유나 이름>.
+    """매니저(mgr/유나) 의 owner↔mgr DM 채널 키 — id 기반 정본 (``dm-agent-mgr-001``).
 
-    매니저도 페르소나처럼 dm-<이름> 채널을 쓴다. DB 의 mgr 에이전트 이름에서 도출.
-    (core 레이어라 community.bot import 회피 — discord 의존성 누수 방지.)
-    레거시 fallback: 'dm-서유나' (seed 기본 이름)."""
+    표시 이름(유나/서유나/…)은 로케일 종속이라 채널 키에 새기지 않는다(i18n). 정본 키가
+    아직 없고 legacy `dm-<이름>` 채널이 있으면 그걸 채택(resolver 가 처리).
+    (core 레이어라 community.bot import 회피 — discord 의존성 누수 방지.)"""
     try:
-        for a in db.list_agents():
-            if a.get("type") == "mgr":
-                return f"dm-{a['name']}"
+        from community.core.channels import mgr_channel
+        return mgr_channel()
     except Exception:
-        pass
-    return "dm-서유나"
+        return "dm-agent-mgr-001"
 
 
 # ── 프로세스 상태 ──────────────────────────────────────

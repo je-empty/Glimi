@@ -1,0 +1,90 @@
+{
+  "generation_no": 11,
+  "run_id": "community-e2e-20260624-103708",
+  "generated_at": "2026-06-24T01:45:53.923964+00:00",
+  "git": {
+    "sha": "a8d874d",
+    "dirty": true,
+    "branch": "feat/web-native-onboarding"
+  },
+  "owner_name": "사용자",
+  "goal": "오너가 AI 친구 몇 명과 DM 으로 안부·질문·후속 대화를 나눈다",
+  "backend": "claude_cli",
+  "judged": true,
+  "overall_score": 85.0,
+  "passed": true,
+  "min_overall": 70,
+  "failing": [
+    "no_hallucination"
+  ],
+  "dimensions": [
+    {
+      "key": "onboarding",
+      "label": "온보딩",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "오너가 유나한테 인사 → 유나 응답 35건 (온보딩 정상)",
+      "critical": false
+    },
+    {
+      "key": "friend_creation",
+      "label": "친구 생성",
+      "kind": "structural",
+      "weight": 1.5,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "진짜 친구 1명 생성 (소희) + 대화 (dm-소희)",
+      "critical": true
+    },
+    {
+      "key": "conversation_quality",
+      "label": "대화 품질",
+      "kind": "judge",
+      "weight": 2.0,
+      "score": 7.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "5축 [in_character 7.0 · coherence 7.0 · naturalness 6.0 · engagement 7.0 · no_meta 8.0] — 유나의 따뜻한 온보딩과 소희의 친근한 첫 인사는 매력적이지만, 하나의 과도하게 구조화된 캐릭터 프로필(이미지파일·이모지 아이콘 형식)과 '민서' 중복 제시가 자연스러운 대화 흐름을 방해한다.",
+      "critical": false
+    },
+    {
+      "key": "no_hallucination",
+      "label": "환각 없음",
+      "kind": "judge",
+      "weight": 1.5,
+      "score": 6.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "하나가 '민서' 프로필을 동일하게 반복 제시 (2회) — 새 친구를 만들었다고 하면서 같은 설정을 중복 소개. 나머지 설정(오너 정보, 유나의 주말 일상, 소희-오너의 카페 만남 배경)은 일관성 있음.",
+      "critical": false
+    },
+    {
+      "key": "no_leaks",
+      "label": "누수 없음",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)",
+      "critical": false
+    },
+    {
+      "key": "responsiveness",
+      "label": "응답성",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "3/3 DM 응답",
+      "critical": false
+    }
+  ],
+  "report_md": "/Users/jbsim/Documents/GitHub/Glimi/tests/e2e/results/community-report-20260624-014357.md",
+  "report_pdf": ""
+}

@@ -25,7 +25,7 @@ import asyncio
 from typing import Optional
 
 from community import db, log_writer
-from community.core.channels import MGR_ID, MGR_CHANNEL
+from community.core.channels import MGR_ID, mgr_channel
 
 
 _TICK_SECONDS = 5.0
@@ -76,14 +76,31 @@ class WebRuntime:
         except Exception as e:
             log_writer.system(f"[web-runtime:{self.cid}] start_supervisors 오류: {e}")
 
-        # 유나 greets FIRST — proactively, before any owner message.
+        # 유나 greets FIRST — proactively, before any owner message. Run it as a
+        # BACKGROUND task, NOT inline: the greeting is a (potentially slow, 30-90s on
+        # claude_cli) LLM generation, and ``start()`` is awaited inside the server's
+        # lifespan startup. Blocking on it would stall the whole app from becoming
+        # ready (``/healthz`` never answers → the client times out and tears the
+        # server down mid-generation → the greeting's ``run_in_executor`` is
+        # cancelled, surfacing as a ``CancelledError`` that crashes startup). Firing
+        # it in the tick-loop set lets the server go ready immediately; the greeting
+        # lands a few seconds later (idempotent via the ``yuna_greeted`` flag).
+        self._tasks = [
+            asyncio.create_task(self._greet_safely()),
+            asyncio.create_task(self._tick_loop()),
+        ]
+        log_writer.system(f"[web-runtime:{self.cid}] started")
+
+    async def _greet_safely(self) -> None:
+        """Background wrapper for the proactive greeting — never lets a slow/failed
+        generation propagate (incl. ``CancelledError`` on shutdown) into the loop."""
         try:
             await self._fire_onboarding_greeting_if_needed()
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            log_writer.system(f"[web-runtime:{self.cid}] greeting 오류: {type(e).__name__}: {e}")
-
-        self._tasks = [asyncio.create_task(self._tick_loop())]
-        log_writer.system(f"[web-runtime:{self.cid}] started")
+            log_writer.system(
+                f"[web-runtime:{self.cid}] greeting 오류: {type(e).__name__}: {e}")
 
     async def stop(self) -> None:
         """Cancel all background tasks for this community."""
@@ -123,16 +140,11 @@ class WebRuntime:
     # ── proactive onboarding greeting ──────────────────────────
 
     def _mgr_channel_name(self) -> str:
-        """The owner↔manager DM channel name (community may have renamed 유나)."""
-        try:
-            row = db.get_agent(MGR_ID)
-            name = (row or {}).get("name")
-            if name:
-                from community.core.channels import _norm_name_for_channel
-                return f"dm-{_norm_name_for_channel(name)}"
-        except Exception:
-            pass
-        return MGR_CHANNEL
+        """The owner↔manager DM channel key — id-based canonical (``dm-agent-mgr-001``),
+        with a legacy ``dm-<name>`` fallback for pre-existing communities. The
+        display name (유나/서유나/…) is localized so it is NEVER baked into the key
+        (i18n) — the UI resolves it from the channel's agent id at render time."""
+        return mgr_channel()
 
     def _greeting_already_done(self) -> bool:
         """True iff 유나 has already greeted (meta flag set). Pin first."""

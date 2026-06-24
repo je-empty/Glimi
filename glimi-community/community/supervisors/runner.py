@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 
 from community import db, log_writer
-from community.core.channels import MGR_CHANNEL, CREATOR_CHANNEL
+from community.core.channels import mgr_channel, creator_channel
 # Importing the scene module registers the tutorial scene in the registry (side
 # effect) so pool.sync() can discover its scene-scoped supervisor.
 from community.scenes.tutorial import scene as _tutorial_scene  # noqa: F401
@@ -35,7 +35,7 @@ async def _run_checks() -> None:
 async def notify_idle(channel_name: str) -> None:
     """에이전트 응답 완료 후 호출 — 일정 시간 후 유저 응답 없으면 pool tick 실행."""
     relevant = (
-        channel_name in (MGR_CHANNEL, CREATOR_CHANNEL)
+        channel_name in (mgr_channel(), creator_channel())
         or channel_name.startswith("internal-")
     )
     if not relevant:

@@ -389,14 +389,42 @@ _MGR_CHANNEL = "dm-agent-mgr-001"
 _CREATOR_CHANNEL = "dm-agent-creator-001"
 
 
+def _server_recent(base: str, cid: str, cookie: str, channel: str, owner_id_hint: str,
+                   limit: int = 8) -> list[dict]:
+    """The channel's most recent messages, served-truth, in the owner-agent's
+    {speaker, text, is_user} shape (oldest→newest). This is what lets the owner
+    RESPOND to 유나's proactive greeting (which was generated server-side at boot,
+    BEFORE the owner's first turn — it is NOT in the WS-observed `recent`)."""
+    from urllib.parse import quote
+    try:
+        ch_q = quote(channel, safe="")
+        resp = _get(base, f"/community/{cid}/chat/history?channel={ch_q}&limit={limit}",
+                    cookie=cookie, timeout=15.0)
+    except Exception:
+        return []
+    rows = resp.get("messages") or []
+    out: list[dict] = []
+    for r in rows[-limit:]:
+        is_user = bool(r.get("is_user"))
+        out.append({
+            "speaker": ("사용자" if is_user else (r.get("display_name")
+                        or r.get("speaker_id") or "?")),
+            "text": r.get("text") or "",
+            "is_user": is_user,
+        })
+    return out
+
+
 def _owner_snapshot(base: str, cid: str, cookie: str, *, round_idx: int,
                     backend: str, recent: dict[str, list[dict]]) -> dict:
     """Assemble the live community snapshot the owner agent decides from.
 
     Pulls the served channel list (so the owner sees rooms that appeared as the
     session progressed — e.g. a friend 하나 just created), labels manager/creator/
-    friend rooms in human terms, and carries the in-memory recent transcript per
-    channel (observed live over the WS) so the owner reacts to what was just said."""
+    friend rooms in human terms, and MERGES the served-truth recent transcript per
+    channel (history endpoint) with the in-memory WS-observed `recent`, so the owner
+    reacts to what was actually said server-side — including 유나's proactive
+    greeting that landed BEFORE the owner's first turn (the harness Step-9 fix)."""
     labels: dict[str, str] = {}
     postable: list[str] = []
     friend_channels: list[str] = []
@@ -432,10 +460,14 @@ def _owner_snapshot(base: str, cid: str, cookie: str, *, round_idx: int,
             postable.append(ch)
         labels.setdefault(ch, ch)
 
-    # Build the per-channel recent transcript view (most recent last, capped).
+    # Build the per-channel recent transcript view (most recent last, capped). Prefer
+    # the SERVED history (truth — includes 유나's boot greeting + any server-side
+    # agent-to-agent activity) and fall back to the WS-observed `recent` if a history
+    # read hiccups, so the owner never loses context.
     channels_view: dict[str, list[dict]] = {}
     for ch in set(list(recent.keys()) + postable):
-        channels_view[ch] = (recent.get(ch) or [])[-6:]
+        served = _server_recent(base, cid, cookie, ch, "")
+        channels_view[ch] = (served or (recent.get(ch) or []))[-6:]
 
     return {
         "round": round_idx,
@@ -448,6 +480,47 @@ def _owner_snapshot(base: str, cid: str, cookie: str, *, round_idx: int,
         "friend_channels": friend_channels,
         "friend_names": friend_names,
     }
+
+
+def _settle_for_friend(base: str, cid: str, cookie: str, *, max_wait: float,
+                       log) -> list[str]:
+    """After the drive ends, poll the served channel list until a persona (friend)
+    DM appears OR ``max_wait`` elapses. 하나 + the tutorial supervisor finish the
+    creation autonomously server-side; the friend often lands a few turns after the
+    owner's request (which may be the last round), so without this settle the
+    harvest captures the run a beat before the friend exists.
+
+    Returns the list of friend (persona) DM channel ids observed, so the caller can
+    add them to the driven set. A friend = a ``dm`` whose ``agent_type`` is neither
+    mgr/creator/dev (a real created persona)."""
+    deadline = time.time() + max_wait
+    friend_chs: list[str] = []
+    poll_n = 0
+    while time.time() < deadline:
+        poll_n += 1
+        try:
+            chans = _get(base, f"/community/{cid}/chat/channels", cookie=cookie,
+                         timeout=20.0)
+            friend_chs = [
+                c.get("channel") for c in chans.get("channels", [])
+                if c.get("kind") == "dm" and (c.get("channel") or "").startswith("dm-")
+                and (c.get("agent_type") or "") not in ("mgr", "creator", "dev")
+                and c.get("agent_id")
+            ]
+            friend_chs = [c for c in friend_chs if c]
+            if friend_chs:
+                log(f"[community_e2e] settle: 친구 생성 감지 — {friend_chs} "
+                    f"(poll #{poll_n}, +{int(time.time() - (deadline - max_wait))}s)")
+                # Give 하나 one more beat to send the new friend's first greeting into
+                # its DM, so the friend's channel isn't empty in the snapshot.
+                time.sleep(min(20.0, max(0.0, deadline - time.time())))
+                break
+        except Exception:
+            pass  # server busy mid-generation — keep waiting
+        time.sleep(5.0)
+    if not friend_chs:
+        log(f"[community_e2e] settle: {int(max_wait)}s 내 친구 미생성 — 그대로 수확")
+    return friend_chs
 
 
 async def _drive_owner_agent(base: str, base_ws: str, cid: str, cookie: str,
@@ -468,6 +541,22 @@ async def _drive_owner_agent(base: str, base_ws: str, cid: str, cookie: str,
     # Per-channel recent transcript (the owner's working memory of the session).
     recent: dict[str, list[dict]] = {}
     observed: dict[str, list[str]] = {}
+
+    # Step-9 (respond to 유나's greeting): 유나 greets PROACTIVELY at server boot —
+    # generated asynchronously, so on a real backend it can take 30-90s to land. Wait
+    # (bounded) for the mgr DM to carry 유나's first message BEFORE the owner's first
+    # turn, so the owner RESPONDS to the greeting instead of talking into the void. On
+    # echo this is instant; on a slow/failed greeting we proceed anyway (the owner just
+    # says hi and the supervisor/greeting still catch up).
+    greet_deadline = time.time() + min(150.0, max(30.0, reply_timeout))
+    while time.time() < greet_deadline:
+        served = _server_recent(base, cid, cookie, _MGR_CHANNEL, "")
+        if any(not m.get("is_user") and (m.get("text") or "").strip() for m in served):
+            log(f"[owner-agent] 유나 첫 인사 감지 ({len(served)}건) — 오너 응답 시작")
+            break
+        time.sleep(2.0)
+    else:
+        log("[owner-agent] 유나 첫 인사 대기 타임아웃 — 그래도 진행 (오너가 먼저 인사)")
 
     ws_url = f"{base_ws}/community/{cid}/chat/ws"
     async with websockets.connect(
@@ -659,21 +748,48 @@ def _build_snapshot(base: str, cid: str, cookie: str, *, backend: str, goal: str
     chosen turns) + ``owner_usage`` (owner-side token usage) are carried so the
     verdict can judge the WHOLE session (owner + friends), not just the replies."""
     channels: dict[str, list[dict]] = {}
+    # The served server is single-threaded; an in-flight claude_cli generation can
+    # block a read for ~60-90s. Use a GENEROUS timeout for the harvest so a busy
+    # server doesn't time the reads out and yield an EMPTY snapshot (which would
+    # falsely score onboarding/responsiveness 0 — a harvest artifact, not a result).
+    HARVEST_TIMEOUT = 120.0
     # Pull every postable channel (so meta/error scans see the whole space) + the
-    # driven DMs (always).
+    # driven DMs (always). Also harvest the served agent roster so the verdict can
+    # assert a REAL persona (friend) exists — not just guess from channel names.
     pull = list(driven)
+    personas: list[dict] = []          # actual friend agents the owner created
+    staff_channels: set[str] = set()   # mgr/creator/dev DMs (NOT friends)
+    labels: dict[str, str] = {}
     try:
-        chans = _get(base, f"/community/{cid}/chat/channels", cookie=cookie)
+        chans = _get(base, f"/community/{cid}/chat/channels", cookie=cookie,
+                     timeout=HARVEST_TIMEOUT)
         for c in chans.get("channels", []):
             ch = c.get("channel")
-            if ch and ch not in pull:
+            if not ch:
+                continue
+            if ch not in pull:
                 pull.append(ch)
+            kind = c.get("kind") or ""
+            atype = (c.get("agent_type") or "").strip()
+            name = c.get("name") or ch
+            if c.get("agent_id"):
+                labels[ch] = name
+            if kind != "dm":
+                continue
+            if atype in ("mgr", "creator", "dev"):
+                staff_channels.add(ch)
+            elif atype == "persona" or (atype == "" and c.get("agent_id")
+                                        and ch not in (_MGR_CHANNEL, _CREATOR_CHANNEL)):
+                # A user-created friend: a persona agent (or an unlabeled DM that is
+                # neither the built-in mgr nor creator) WITH a real agent_id + DM.
+                personas.append({"agent_id": c.get("agent_id"), "name": name,
+                                 "channel": ch, "agent_type": atype or "persona"})
     except Exception:
         pass
 
     owner_id = "owner"
     for ch in pull:
-        msgs = _harvest_channel(base, cid, ch, cookie)
+        msgs = _harvest_channel(base, cid, ch, cookie, timeout=HARVEST_TIMEOUT)
         if msgs:
             channels[ch] = msgs
             for m in msgs:
@@ -681,12 +797,19 @@ def _build_snapshot(base: str, cid: str, cookie: str, *, backend: str, goal: str
                     owner_id = m["speaker"]
                     break
 
+    # Keep only personas whose DM actually surfaced in the harvested channels (a
+    # persona agent + a real dm channel = a truthfully-created friend).
+    personas = [p for p in personas if p.get("channel") in channels or p.get("agent_id")]
+
     try:
         usage = _get(base, f"/api/usage?community={cid}", cookie=cookie)
     except Exception:
         usage = {}
 
     return {
+        "personas": personas,
+        "staff_channels": sorted(staff_channels),
+        "labels": labels,
         "run_id": f"community-e2e-{cid}",
         "backend": backend,
         "goal": goal,
@@ -711,7 +834,8 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         host: str, port: int, keep_serving: bool, reply_timeout: float,
         wall_clock_cap: float, report: bool = False,
         write_baseline: bool = False, owner_agent: bool = True,
-        watch_pause: float = 0.0, qa: bool = False, pdf: bool = False) -> dict:
+        watch_pause: float = 0.0, qa: bool = False, pdf: bool = False,
+        settle_seconds: float = 180.0) -> dict:
     """Full web E2E: seed → start server → log in → drive (owner-agent | scripted)
     → harvest → judge → write artifacts. Returns the verdict dict. Mirrors ws_e2e.run.
 
@@ -825,6 +949,16 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
             n_obs = sum(len(v) for v in observed.values())
             print(f"[community_e2e] owner-agent drive done — {len(owner_turns)} owner "
                   f"turn(s), {n_obs} live reply frame(s), channels: {driven}")
+            # SETTLE: the owner may have asked 하나 for a friend on a late round, so
+            # 하나 (+ the tutorial supervisor) is likely still finishing the creation
+            # server-side. Hold here until a persona DM appears OR a bounded timeout,
+            # so the milestone friend lands in the snapshot instead of being harvested
+            # a beat too early. Also lets in-flight LLM generations drain so the
+            # harvest reads don't race a busy (single-threaded) server.
+            if not error:
+                settled = _settle_for_friend(base, COMMUNITY_ID, cookie,
+                                             max_wait=settle_seconds, log=print)
+                driven = sorted(set(driven) | set(settled))
         else:
             # ── SCRIPTED DRIVE (legacy) — fixed owner turns into seeded friend DMs.
             chans = _get(base, f"/community/{COMMUNITY_ID}/chat/channels", cookie=cookie)
@@ -1064,6 +1198,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="also render the generation to a PDF report (implies --qa; needs Playwright)")
     ap.add_argument("--write-baseline", action="store_true",
                     help="(re)write tests/e2e/community-baseline.json from this run (implies --report)")
+    ap.add_argument("--settle", type=float, default=None, metavar="SECONDS",
+                    help="owner-agent: after the drive, wait up to this many seconds for 하나 + the "
+                         "tutorial supervisor to finish creating the requested friend before harvesting "
+                         "(default: env GLIMI_COMMUNITY_E2E_SETTLE or 180; 0 disables)")
     args = ap.parse_args(argv)
 
     backend = (args.backend or os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo"
@@ -1085,6 +1223,14 @@ def main(argv: list[str] | None = None) -> int:
     # agent decides its own messages each round so it can run as many as requested.
     rounds = max(1, args.rounds) if args.owner_agent else max(1, min(args.rounds, 3))
 
+    if args.settle is not None:
+        settle = args.settle
+    else:
+        try:
+            settle = float(os.environ.get("GLIMI_COMMUNITY_E2E_SETTLE", "") or 180.0)
+        except ValueError:
+            settle = 180.0
+
     verdict = run(
         goal=args.goal, context=context, rounds=rounds,
         num_friends=max(1, args.friends), backend=backend, host=args.host,
@@ -1093,7 +1239,7 @@ def main(argv: list[str] | None = None) -> int:
         wall_clock_cap=max(30.0, wall_cap),
         report=args.report, write_baseline=args.write_baseline,
         owner_agent=args.owner_agent, watch_pause=max(0.0, args.watch_pause),
-        qa=args.qa or args.pdf, pdf=args.pdf,
+        qa=args.qa or args.pdf, pdf=args.pdf, settle_seconds=max(0.0, settle),
     )
     return 0 if verdict.get("status") in ("PASS", "WARN") else 1
 
