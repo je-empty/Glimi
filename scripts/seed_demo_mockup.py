@@ -897,6 +897,35 @@ def seed(community_id: str = "demo") -> None:
             (et, json.dumps(parts, ensure_ascii=False), desc, impact, ts))
 
 
+    # ── 12.5 데모 표시 제외 (시드 코드·데이터는 위에 그대로 보존 — DB 에서만 숨김) ──
+    # 수연(006)·재현(007) 은 시드에 정의·대화·기억이 다 남아있다. 여기서 데모 DB 에서만
+    # 빼서 안 보이게 한다(에이전트 10명 = 페르소나 8 + 유나/하나). 되살리려면 비우면 끝.
+    HIDDEN_IN_DEMO = ("agent-persona-006", "agent-persona-007")
+    for _aid in HIDDEN_IN_DEMO:
+        for _t in ("agent_personality", "agent_appearance", "agent_daily_life", "agent_speech",
+                   "agent_relationship_templates", "memories", "agent_facts"):
+            conn.execute(f"DELETE FROM {_t} WHERE agent_id=?", (_aid,))
+        conn.execute("DELETE FROM agents WHERE id=?", (_aid,))
+        conn.execute("DELETE FROM relationships WHERE agent_a=? OR agent_b=?", (_aid, _aid))
+        conn.execute("DELETE FROM relationship_history WHERE agent_a=? OR agent_b=?", (_aid, _aid))
+        conn.execute("DELETE FROM conversations WHERE speaker=?", (_aid,))
+    # 채널: dm-<hidden> + 참여자 전부 hidden 인 채널 삭제(+그 대화) / 혼성이면 hidden 만 제거
+    for _ch, _praw in conn.execute("SELECT channel, participants FROM channels").fetchall():
+        _parts = json.loads(_praw or "[]")
+        _remain = [p for p in _parts if p not in HIDDEN_IN_DEMO]
+        if _ch in tuple(f"dm-{h}" for h in HIDDEN_IN_DEMO) or (_parts and not _remain):
+            conn.execute("DELETE FROM channels WHERE channel=?", (_ch,))
+            conn.execute("DELETE FROM conversations WHERE channel=?", (_ch,))
+            conn.execute("DELETE FROM memories WHERE channel=?", (_ch,))
+        elif _remain != _parts:
+            conn.execute("UPDATE channels SET participants=? WHERE channel=?",
+                         (json.dumps(_remain, ensure_ascii=False), _ch))
+    # 이벤트: hidden 참여자/이름 언급 제거
+    for _rid, _praw, _desc in conn.execute("SELECT rowid, participants, description FROM events").fetchall():
+        _parts = json.loads(_praw or "[]")
+        if any(h in _parts for h in HIDDEN_IN_DEMO) or "수연" in (_desc or "") or "재현" in (_desc or ""):
+            conn.execute("DELETE FROM events WHERE rowid=?", (_rid,))
+
     conn.commit()
     conn.close()
 
