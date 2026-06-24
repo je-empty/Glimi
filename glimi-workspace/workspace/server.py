@@ -162,7 +162,7 @@ _DEMO_ONLY = (os.environ.get("GLIMI_DEMO_ONLY") or "").strip().lower() not in ("
 # Demo identities. Two entries are built from the SAME seeded launch team
 # (``demo.build``):
 #   • ``demo`` (/w/demo)       — public, always exposed, read-only (browse only).
-_DEMO_TITLE = "런칭 데모"
+_DEMO_TITLE = "출시 기획 데모"
 
 
 def _load_i18n(lang: str) -> dict:
@@ -1014,8 +1014,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                 "name_label": "Your name" if EN else "이름",
                 "name_ph": "Owner" if EN else "예: 오너",
                 "goal_label": "Goal" if EN else "목표",
-                "goal_ph": ("Plan the public launch of our open-source project"
-                            if EN else "예: 오픈소스 프로젝트 공개 런칭 기획"),
+                "goal_ph": ("Plan the launch of a new app / service"
+                            if EN else "예: 신규 앱·서비스 출시 기획"),
                 "submit": "Create workspace" if EN else "워크스페이스 만들기",
             }
         ctx = {
