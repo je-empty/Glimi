@@ -2234,7 +2234,7 @@ function supervisorAsAgent(s) {
   return {
     id: `sup:${s.name}`,
     type: 'supervisor',
-    name: supDisplayName(s.name),
+    name: s.display_name || supDisplayName(s.name),
     status: s.active ? 'active' : 'inactive',
     emotion,
     emoji: s.icon || statusEmoji,

@@ -145,6 +145,9 @@ _WS_CAPS = {
     "scenes": False, "achievements": False, "supervisors": False,
     "sync": False, "events": False, "health": False, "logs": False,
 }
+# 데모 워크스페이스에서만 supervisor 뷰를 켠다(합성 관찰 데이터로 시연). 사용자가 만든
+# 워크스페이스는 실제 supervisor 런타임이 아직 없어 OFF 유지 — 추후 실구현 시 일괄 전환.
+_WS_CAPS_DEMO = {**_WS_CAPS, "supervisors": True}
 
 # Backend for USER workspaces (build + chat). The chat brain (provider selection +
 # the Claude CLI / Ollama / echo backends + budget cap) all live in Glimi Core
@@ -605,6 +608,73 @@ def _snapshot_payload(reader: DashboardReader) -> dict:
     return _enrich_snapshot(reader)
 
 
+def _demo_ws_supervisors(payload: dict) -> list:
+    """데모 전용 — 워크스페이스 팀을 감시하는 supervisor 세트(합성 관찰 데이터).
+    실제 supervisor 런타임 와이어링은 추후. 팀 협업·산출물·진행을 감시하는 모습으로
+    '관찰성' 레이어를 시연한다 (커뮤니티 demo_mock 과 같은 발상)."""
+    import time as _time
+    agents = payload.get("agents") or []
+    aids = [a.get("id") for a in agents if a.get("id")]
+    channels = payload.get("channels") or []
+    now = int(_time.time())
+    sups = [
+        {
+            "name": "orchestrator", "kind": "system",
+            "display_name": "오케스트레이터", "icon": "🧭",
+            "active": True, "intervening": False,
+            "target_agents": aids[:4],
+            "last_action": "크리틱↔빌더 리스크 토론이 길어짐 — 팀장에게 정리·합의 신호를 보냄",
+            "seconds_since_action": now % 40 + 4,
+        },
+        {
+            "name": "deliverable", "kind": "system",
+            "display_name": "산출물 감수", "icon": "📋",
+            "active": True, "intervening": (now // 19) % 2 == 0,
+            "target_agents": [a for a in aids if "critic" in a or "coordinator" in a][:2] or aids[:1],
+            "last_action": "'하루칸' 출시 계획 초안 점검 — 런칭 게이트(온보딩 검증) 항목 누락 없는지 확인",
+            "seconds_since_action": now % 50 + 6,
+        },
+        {
+            "name": "commitment", "kind": "system",
+            "display_name": "진행 추적", "icon": "🤝",
+            "active": True, "intervening": False,
+            "target_agents": [a for a in aids if "builder" in a][:2] or aids[:1],
+            "last_action": "D-2 '깨끗한 기기 온보딩 테스트' 액션 추적 — 담당 빌더에게 리마인드 검토",
+            "seconds_since_action": now % 55 + 8,
+        },
+    ]
+    label = {"group-team": "팀 전체", "mgr-approvals": "오너 승인",
+             "dm-coordinator": "팀장 DM", "internal-owner": "오너 채널"}
+
+    def _lbl(nm: str) -> str:
+        if nm in label:
+            return label[nm]
+        if nm.startswith("internal-"):
+            return nm[len("internal-"):].replace("-", "·")
+        return nm
+
+    chat_chs = [c for c in channels
+                if (c.get("name") or "").startswith(("internal-", "group-", "mgr-"))]
+    acts = [
+        "방금 오간 협업 메시지 분석 — 합의 진행 중, 개입 불필요",
+        "한 명의 제안이 묻힘 — 팀장에게 끌어올릴지 검토",
+        "리스크 지적이 반복됨 — 결정 라운드로 넘길 타이밍 감지",
+        "조용 — 다음 산출물 라운드 대기",
+    ]
+    for i, c in enumerate(chat_chs[:4]):
+        nm = c.get("name") or ""
+        parts = [p for p in (c.get("participants") or []) if p]
+        sups.append({
+            "name": f"chat.{nm}", "kind": "chat",
+            "display_name": f"대화 · {_lbl(nm)}", "icon": "💬",
+            "active": i < 2, "intervening": i == 0,
+            "target_agents": parts[:3],
+            "last_action": acts[i % len(acts)],
+            "seconds_since_action": (now + i * 9) % 50 + 3,
+        })
+    return sups
+
+
 def _esc(s: str) -> str:
     return (str(s).replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace('"', "&quot;"))
@@ -919,7 +989,7 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "request": request,
         "static_base": "/static",
         "api_base": f"/w/{ws.id}",
-        "caps_json": json.dumps(_WS_CAPS),
+        "caps_json": json.dumps(_WS_CAPS_DEMO if ws.id == "demo" else _WS_CAPS),
         "community_chrome": False,
         "app_name": "Glimi Workspace",
         "brand_logo": True,            # show the Glimi logo (served at /logo) in the brand
@@ -1499,6 +1569,9 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         cm["name"] = ws.title
         payload["community_meta"] = cm
         payload["community_id"] = ws.id
+        # 데모 워크스페이스만: 팀을 감시하는 supervisor 뷰(합성 관찰 데이터) 노출.
+        if ws.id == "demo":
+            payload["supervisors"] = _demo_ws_supervisors(payload)
         # Surface the initial build status so the chat UI can show a "team forming…"
         # banner the instant a workspace is created (cleared when status flips to
         # "ready" — the create build runs in the background, streaming live).

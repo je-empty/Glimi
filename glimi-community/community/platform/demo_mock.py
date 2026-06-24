@@ -28,6 +28,84 @@ def _capture_mode() -> bool:
     return os.environ.get("GLIMI_DEMO_CAPTURE", "").strip() in ("1", "true")
 
 
+def _chan_label(name: str) -> str:
+    """채널 id → 짧은 표시 라벨 (대화 supervisor 카드용)."""
+    n = name or ""
+    if n.startswith("internal-"):
+        return n[len("internal-"):].replace("-", "·")
+    if n.startswith("group-"):
+        return n[len("group-"):] + " 단톡"
+    if n.startswith("dm-"):
+        return n[len("dm-"):]
+    return n
+
+
+def _demo_supervisors(snap: dict[str, Any], running_channel: str | None = None) -> list[dict]:
+    """데모용 풍부한 supervisor 세트 — 실제 타입(오케스트레이터·약속 이행·이벤트·대화)을
+    반영하되 last_action / intervening / target 으로 '살아 운영 중' 처럼 보이게.
+    런타임이 안 떠 있어도 결정론적으로 구성(시간 기반 rotation 으로 live 느낌)."""
+    agents = snap.get("agents") or []
+    pids = [a["id"] for a in agents if a.get("type") == "persona"]
+    pname = {a["id"]: a.get("name", "") for a in agents}
+    channels = snap.get("channels") or []
+    now = int(time.time())
+    n1 = pname.get(pids[0], "친구") if pids else "친구"
+    n2 = pname.get(pids[1], "친구") if len(pids) > 1 else "친구"
+
+    sups: list[dict] = [
+        {
+            "name": "orchestrator", "kind": "system",
+            "display_name": "오케스트레이터", "icon": "🧭",
+            "active": True, "intervening": False,
+            "target_agents": pids[:4],
+            "last_action": f"{n1} 화제가 잔잔하게 도는 중 — 누가 받아칠지 신호를 보냄",
+            "seconds_since_action": now % 40 + 3,
+        },
+        {
+            "name": "commitment", "kind": "system",
+            "display_name": "약속 이행 추적", "icon": "🤝",
+            "active": True, "intervening": (now // 23) % 3 == 0,
+            "target_agents": pids[1:3],
+            "last_action": f"{n2}가 말한 '주말에 같이 가자' 약속을 기억해 둠 — 리마인드 타이밍 계산 중",
+            "seconds_since_action": now % 55 + 5,
+        },
+        {
+            "name": "events", "kind": "system",
+            "display_name": "이벤트 관찰", "icon": "📅",
+            "active": False, "intervening": False,
+            "target_agents": [],
+            "last_action": "다가오는 생일·기념일 없음 — 조건 충족 시 깜짝 이벤트 트리거 대기",
+            "seconds_since_action": now % 600 + 120,
+        },
+    ]
+
+    # 채널별 '대화' 감시자 — group / internal / dm 골고루, running 채널은 개입(intervening).
+    chat_chs = [c for c in channels
+                if (c.get("name") or "").startswith(("group-", "internal-", "dm-"))]
+    chat_chs.sort(key=lambda c: 0 if c.get("name") == running_channel else 1)
+    actions = [
+        "방금 오간 메시지 톤 분석 — 분위기 따뜻, 개입 불필요",
+        "대화가 끊길 기미 — 화제를 이어줄 한 명을 호출할지 검토",
+        "한 명이 지친 기색 — 위로 흐름으로 부드럽게 유도",
+        "잔잔한 일상 — 그냥 지켜보는 중",
+    ]
+    for i, c in enumerate(chat_chs[:4]):
+        nm = c.get("name") or ""
+        parts = [p for p in (c.get("participants") or [])
+                 if p.startswith(("agent-persona-", "agent-mgr-"))]
+        is_running = (nm == running_channel)
+        sups.append({
+            "name": f"chat.{nm}", "kind": "chat",
+            "display_name": f"대화 · {_chan_label(nm)}", "icon": "💬",
+            "active": is_running or i < 2,
+            "intervening": is_running,
+            "target_agents": parts[:3],
+            "last_action": actions[i % len(actions)],
+            "seconds_since_action": (now + i * 7) % 50 + 2,
+        })
+    return sups
+
+
 def _inject_capture(snap: dict[str, Any]) -> None:
     """캡처 모드 전용 — 여러 persona thinking/speaking 동시 + 여러 채널 running.
     결정론적(시간 rotation 없음)이라 프레임이 안정적. graph 에 live edge 가 풍성하게 깔림."""
@@ -63,25 +141,9 @@ def _inject_capture(snap: dict[str, Any]) -> None:
         elif c.get("status") == "running":
             c["status"] = "idle"
 
-    # Supervisor — orchestrator + 각 running 채널 ChatSupervisor 다수 주입.
-    sups = list(snap.get("supervisors") or [])
-    persona_ids = [a["id"] for a in personas]
-    for s in sups:
-        if s.get("name") == "orchestrator":
-            s["active"] = True
-            s["intervening"] = False
-            s["target_agents"] = persona_ids[:5]
-    for nm, parts in list(zip(running_names, running_parts))[:4]:
-        targets = [p for p in parts if p.startswith(("agent-persona-", "agent-mgr-"))]
-        sups.append({
-            "name": f"chat.{nm}",
-            "display_name": f"Chat · {nm}",
-            "icon": "💬",
-            "active": True,
-            "intervening": False,
-            "target_agents": targets,
-        })
-    snap["supervisors"] = sups
+    # Supervisor — 풍부한 데모 세트 (오케스트레이터·약속 이행·이벤트·대화 다수).
+    snap["supervisors"] = _demo_supervisors(
+        snap, running_names[0] if running_names else None)
 
 # 참고: 활성중인 에이전트의 **모든** 참여 채널이 그래프에서 live 로 잡힘.
 # persona 1명만 thinking 돌려도 그 persona 의 dm-/group-/internal- 여러 개가 pulse 됨.
@@ -169,35 +231,8 @@ def inject(snap: dict[str, Any]) -> dict[str, Any]:
                 now - (int(now) % 30), tz=timezone.utc
             ).isoformat()
 
-    # ── Supervisor 주입 — 실제 동작처럼 채팅방별 ChatSupervisor + 전역 Orchestrator ──
-    # 기존 supervisors 배열 유지하되 running 채널 에 대응하는 chat.* 항목 추가.
-    sups = list(snap.get("supervisors") or [])
-    # tutorial 완료 상태면 tutorial.flow 는 inactive 그대로 (건드리지 않음)
-    # orchestrator 는 항상 active 표시 (항상 돌아가는 전역 supervisor)
-    for s in sups:
-        if s.get("name") == "orchestrator":
-            s["active"] = True
-            s["intervening"] = False
-            # 타겟: 가장 친밀도 높은 persona 페어가 자연스러움.
-            # target_agents 빈 배열이면 그래프에 안 그려지니 persona 몇 명을 target 으로.
-            persona_ids = [a["id"] for a in (snap.get("agents") or []) if a.get("type") == "persona"]
-            s["target_agents"] = persona_ids[:3]  # 상위 3명만
-
-    # running 채널이 있으면 해당 채널 전용 ChatSupervisor 주입
-    if running_channel_name and running_channel_participants:
-        persona_targets = [
-            pid for pid in running_channel_participants
-            if pid.startswith("agent-persona-") or pid.startswith("agent-mgr-")
-        ]
-        sups.append({
-            "name": f"chat.{running_channel_name}",
-            "display_name": f"Chat · {running_channel_name}",
-            "icon": "💬",
-            "active": True,
-            "intervening": False,
-            "target_agents": persona_targets,
-        })
-
-    snap["supervisors"] = sups
+    # ── Supervisor 주입 — 풍부한 데모 세트 (실제 타입 반영: 오케스트레이터·약속 이행·이벤트·대화) ──
+    # running 채널이 있으면 그 채널의 '대화' 감시자를 개입(intervening) 상태로 표시.
+    snap["supervisors"] = _demo_supervisors(snap, running_channel_name)
 
     return snap
