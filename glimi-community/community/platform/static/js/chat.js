@@ -600,7 +600,7 @@
     return c ? (c.type || '') : '';
   }
   function tagFor(isUser, speakerId) {
-    if (isUser) return { cls: 'self', label: 'You' };
+    if (isUser) return { cls: 'self', label: EN ? 'You' : '나' };
     // For DM channels the responding agent's type drives the tag.
     if (CHANNEL.indexOf('dm-') === 0 && speakerId === AGENT) {
       if (activeChannelType() === 'mgr') return { cls: 'mgr', label: 'Manager' };

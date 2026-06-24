@@ -41,9 +41,9 @@
 
     <div class="me">
       <span class="ava" aria-hidden="true" id="chat-me-ava"
-            style="background:var(--chat-av-3)">{{ (user.username[0] if user and user.username else "Me")|upper }}<span class="pres online"></span></span>
+            style="background:var(--chat-av-3)">{{ (user.username[0] if user and user.username else ("Me" if EN else "나"))|upper }}<span class="pres online"></span></span>
       <span class="meta">
-        <span class="t">{{ user.username if user else "Me" }}</span>
+        <span class="t">{{ user.username if user else ("Me" if EN else "나") }}</span>
         <span class="p"><span class="d"></span>{{ 'Online' if EN else '온라인' }}</span>
       </span>
       <span class="chat-status" id="chat-status" data-state="connecting"
