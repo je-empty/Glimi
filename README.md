@@ -22,6 +22,8 @@ And you watch the whole thing run: an agent relationship graph, a per-character 
 
 You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends you chat with in a built-in web UI (or Discord): they keep their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** — role-based work agents (a Coordinator delegates to a Researcher, Builder, and Critic), with a live real-time demo — and the starters in `examples/` stand on the same Core.
 
+![Glimi Core](glimi-core/assets/brand/Glimi-Core-banner.svg)
+
 ![Glimi Community](glimi-community/assets/brand/Glimi-Community-banner.svg)
 
 ![Glimi Workspace](glimi-workspace/assets/brand/Glimi-Workspace-banner.svg)

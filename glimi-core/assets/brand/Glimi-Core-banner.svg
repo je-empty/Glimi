@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" role="img" aria-label="Glimi Core — one dependency-free kernel that runs N agents, the engine under both apps">
+  <defs>
+    <radialGradient id="cbg" cx="68%" cy="50%" r="62%">
+      <stop offset="0" stop-color="#262338"/>
+      <stop offset="0.55" stop-color="#1b1930"/>
+      <stop offset="1" stop-color="#141328"/>
+    </radialGradient>
+    <radialGradient id="ccore" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#e9c184" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#e9c184" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#e9c184" stop-opacity="0"/>
+    </radialGradient>
+    <!-- faceless agent (currentColor) -->
+    <g id="cfig">
+      <ellipse cx="0" cy="-12" rx="21" ry="19" fill="#f3ecd2" opacity="0.06"/>
+      <ellipse cx="0" cy="-12" rx="13" ry="12" fill="#f3ecd2" opacity="0.10"/>
+      <path d="M-16 1 C-18 -20 -10 -27 0 -27 C10 -27 18 -20 16 1 C16 4 -16 4 -16 1 Z" fill="currentColor"/>
+      <circle cx="0" cy="-34" r="8.6" fill="currentColor"/>
+    </g>
+  </defs>
+
+  <rect width="1280" height="400" rx="20" fill="url(#cbg)"/>
+
+  <!-- scattered light -->
+  <g fill="#8d8ab2">
+    <circle cx="540" cy="60" r="1"/><circle cx="1180" cy="70" r="1.1"/><circle cx="1230" cy="300" r="1"/>
+    <circle cx="610" cy="330" r="0.9"/><circle cx="1150" cy="350" r="0.9"/><circle cx="980" cy="36" r="1"/>
+    <circle cx="660" cy="150" r="0.8"/><circle cx="1245" cy="180" r="0.8"/><circle cx="700" cy="360" r="0.8"/>
+  </g>
+
+  <!-- core glow -->
+  <ellipse cx="888" cy="215" rx="225" ry="178" fill="url(#ccore)"/>
+
+  <!-- kernel ↔ each agent (bidirectional data flow) -->
+  <g stroke="#d9b878" fill="none" stroke-linecap="round">
+    <line x1="888" y1="215" x2="888" y2="86" stroke-width="1.4" opacity="0.46"/>
+    <line x1="888" y1="215" x2="1028" y2="132" stroke-width="1.4" opacity="0.42"/>
+    <line x1="888" y1="215" x2="1066" y2="240" stroke-width="1.4" opacity="0.4"/>
+    <line x1="888" y1="215" x2="980" y2="330" stroke-width="1.4" opacity="0.42"/>
+    <line x1="888" y1="215" x2="800" y2="330" stroke-width="1.4" opacity="0.42"/>
+    <line x1="888" y1="215" x2="710" y2="240" stroke-width="1.4" opacity="0.42"/>
+    <line x1="888" y1="215" x2="748" y2="132" stroke-width="1.4" opacity="0.42"/>
+  </g>
+
+  <!-- agents around the kernel — mixed colors: it runs friends (pink) AND teams (amber) -->
+  <use href="#cfig" transform="translate(888,86)"   style="color:#f3ecd2"/>
+  <use href="#cfig" transform="translate(1028,132)" style="color:#f472b6"/>
+  <use href="#cfig" transform="translate(1066,240)" style="color:#e0a44c"/>
+  <use href="#cfig" transform="translate(980,330)"  style="color:#7fbfa6"/>
+  <use href="#cfig" transform="translate(800,330)"  style="color:#8aa0d8"/>
+  <use href="#cfig" transform="translate(710,240)"  style="color:#c79bd6"/>
+  <use href="#cfig" transform="translate(748,132)"  style="color:#d9b878"/>
+
+  <!-- the two apps inject into the SAME kernel (DI) -->
+  <g font-family="'JetBrains Mono', Menlo, monospace" font-size="11" letter-spacing="1">
+    <g transform="translate(905,40)">
+      <rect x="0" y="-13" width="150" height="22" rx="11" fill="#1b1930" stroke="#f472b6" stroke-opacity="0.55" stroke-width="1"/>
+      <circle cx="14" cy="-2" r="3.4" fill="#f472b6"/><text x="26" y="2" fill="#cfa9c4">Community</text>
+    </g>
+    <g transform="translate(1068,40)">
+      <rect x="0" y="-13" width="150" height="22" rx="11" fill="#1b1930" stroke="#e0a44c" stroke-opacity="0.55" stroke-width="1"/>
+      <circle cx="14" cy="-2" r="3.4" fill="#e0a44c"/><text x="26" y="2" fill="#d3b88c">Workspace</text>
+    </g>
+  </g>
+  <path d="M980 53 C 952 95 925 130 905 168" fill="none" stroke="#cbb488" stroke-width="1" opacity="0.32" stroke-dasharray="1 5" stroke-linecap="round" marker-end="url(#carr)"/>
+  <path d="M1143 53 C 1110 105 980 150 925 175" fill="none" stroke="#cbb488" stroke-width="1" opacity="0.32" stroke-dasharray="1 5" stroke-linecap="round" marker-end="url(#carr)"/>
+  <defs>
+    <marker id="carr" markerWidth="6" markerHeight="6" refX="4.5" refY="3" orient="auto"><path d="M0,0 L5,3 L0,6 Z" fill="#cbb488" opacity="0.5"/></marker>
+  </defs>
+
+  <!-- the kernel (center) — a rounded core block with inner layer chips -->
+  <g transform="translate(888,215)">
+    <rect x="-46" y="-40" width="92" height="80" rx="14" fill="#1b1930" stroke="#e0a44c" stroke-width="2"/>
+    <rect x="-46" y="-40" width="92" height="80" rx="14" fill="#e0a44c" opacity="0.07"/>
+    <g fill="#e9c184" opacity="0.85">
+      <rect x="-34" y="-28" width="28" height="9" rx="3"/><rect x="6" y="-28" width="28" height="9" rx="3"/>
+      <rect x="-34" y="-13" width="28" height="9" rx="3" opacity="0.7"/><rect x="6" y="-13" width="28" height="9" rx="3" opacity="0.7"/>
+    </g>
+    <text x="0" y="26" text-anchor="middle" font-family="'JetBrains Mono', Menlo, monospace" font-size="11.5" letter-spacing="1.5" fill="#f0d6a6" font-weight="700">CORE</text>
+  </g>
+
+  <!-- wordmark (left) -->
+  <g font-family="Pretendard, -apple-system, 'Segoe UI', sans-serif">
+    <g transform="translate(72,118)">
+      <circle cx="6" cy="6" r="4.4" fill="#f3ecd2"/>
+      <path d="M14 2.5 A11 11 0 0 1 30.5 6.5" fill="none" stroke="#5a5680" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="32.5" cy="8.5" r="5" fill="#e0a44c"/>
+      <text x="50" y="11.5" font-size="12.5" letter-spacing="3" fill="#8d8ab2" font-family="'JetBrains Mono', Menlo, monospace">GLIMI CORE</text>
+    </g>
+    <text x="70" y="196" font-size="48" font-weight="650" letter-spacing="-0.5" fill="#f2f1f8">Glimi Core</text>
+    <text x="72" y="234" font-size="16.5" fill="#c6c0da">One dependency-free kernel that runs N agents — the engine under both apps.</text>
+    <text x="72" y="262" font-size="14" fill="#8d8ab2">의존성 0 커널 하나가 N개의 에이전트를 돌린다 — 두 앱을 떠받치는 엔진</text>
+  </g>
+</svg>
