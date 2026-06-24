@@ -4,7 +4,7 @@
 
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-A42E2B) ![Status: alpha 0.1.0](https://img.shields.io/badge/status-alpha%200.1.0-orange) ![Backends: Claude · Ollama · Grok](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Ollama%20%C2%B7%20Grok-4aff9e) ![EDD: quality-as-code](https://img.shields.io/badge/EDD-quality--tracked%20per%20commit-9a4aff)
 
-Glimi is a Python library for running a cast of AI characters — each with its own personality, memory, and relationships — that keeps going on its own even when you're away. You set two things per character: a persona, and the model it runs on. From there the characters talk to you and to each other, and a background supervisor periodically opens new conversations and revives idle ones, so when you step away and come back, what they said in the meantime is already sitting in the channels.
+Glimi is a Python library for running a cast of AI characters — each with its own personality, memory, and relationships — that keeps going on its own even when you're away. You set two things per character: a persona, and the model it runs on. From there the characters talk to you and to each other, and a background supervisor periodically opens new conversations and revives idle ones. Step away and come back, and what they said in the meantime is already sitting in the channels.
 
 ```python
 from glimi import Glimi
@@ -14,13 +14,13 @@ chat.add_agent("nova", persona="a curious, upbeat friend")
 print(chat.reply("nova", "hi there!"))  # real models: backend="claude_cli" or "ollama"
 ```
 
-Two lines stand up a cast because the engine underneath carries the rest — that engine is **Glimi Core**. State lives in storage (SQLite by default), not the prompt, so a character keeps its relationships, facts, and pinned memories across a restart and even a model swap (Haiku → a local Llama). Glimi sizes its memory injection to a configured context-window target and injects only as much as fits, so the same character runs on a 4 GB laptop or a 24 GB workstation without its personality getting silently truncated — and you can mix cloud (Claude) and local (Ollama) per character (Grok CLI also supported). Run it fully local and it costs nothing.
+Two lines stand up a cast because the engine underneath carries the rest — that engine is **Glimi Core**. State lives in storage (SQLite by default), not the prompt, so a character keeps its relationships, facts, and pinned memories across a restart and even a model swap (Haiku → a local Llama). Glimi sizes its memory injection to a configured context-window target and injects only as much as fits, so the same character runs on a 4 GB laptop or a 24 GB workstation without its personality getting silently truncated. You can mix cloud (Claude) and local (Ollama) per character (Grok CLI also supported), and running it fully local costs nothing.
 
 And you watch the whole thing run: an agent relationship graph, a per-character memory inspector, a channel viewer, a tool-call timeline, and an LLM cost/usage card, live in a web dashboard built into the engine.
 
 ![Glimi — a living community of agents, live in the connection graph](docs/screenshots/en/11-community-dashboard.png)
 
-You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends you chat with in a built-in web UI (or Discord): they keep their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** — role-based work agents (a Coordinator delegates to a Researcher, Builder, and Critic), with a live real-time demo — and the starters in `examples/` stand on the same Core.
+You build apps on top of Core. The flagship is **Glimi Community** — a cast of AI friends you chat with in a built-in web UI (or Discord): they keep their own channels, keep secrets, talk about you when you're gone, and remember it. **Glimi Workspace** — role-based work agents (a Coordinator delegates to a Researcher, Builder, and Critic), with a live real-time demo — and the starters in `examples/` stand on that same Core.
 
 > One note on the word "agent": here it means an agent in the *Generative Agents* tradition — a character that remembers, forms opinions, and starts conversations — not an autonomous task-runner. So we say *agent* in code and architecture, and *friends / characters* in anything a user reads.
 
@@ -50,20 +50,20 @@ Glimi/                           one repo, three self-contained projects (a "wor
 
 ## What makes Glimi different
 
-Glimi Core is the engine behind agents that don't restart every session. Most tooling spins a role up for a task and discards it, compresses context when it fills, and rebuilds from handoff notes next time. Glimi skips that step. Each agent keeps its own context — what it has worked on, which decisions were made and why, your preferences and values, its relationship with you — in storage, so it carries over across sessions and across model swaps. The same persistence shows up at work as **Glimi Workspace** and between people as **Glimi Community**: one is a standing team you don't have to brief again, the other is friends who actually remember you. The two apps are how Core shows what it can do; the engine is the single layer underneath both.
+Glimi Core is the engine behind agents that don't restart every session. Most tooling spins a role up for a task and discards it, compresses context when it fills, and rebuilds from handoff notes next time. Glimi skips that step: each agent keeps its own context — what it has worked on, which decisions were made and why, your preferences and values, its relationship with you — in storage, so it carries over across sessions and model swaps. The same persistence shows up at work as **Glimi Workspace** and between people as **Glimi Community**: one is a standing team you don't have to brief again, the other is friends who actually remember you. The two apps are how Core shows what it can do; the engine is the single layer underneath both.
 
 There are many open-source agent frameworks now: LangChain/LangGraph, AutoGen, CrewAI, the OpenAI Agents SDK, Letta, and more. Most run an agent through a **task** and then discard it. A few keep durable memory (Letta), and a few research or game projects let agents live on their own (Stanford's Generative Agents, AI Town). Glimi brings those scattered pieces into **one pip-installable runtime**, and two of them are genuinely rare:
 
-**1. Memory that fits your hardware (Elastic Memory).** Glimi sizes its memory injection to a configured context-window target (`num_ctx`) and scales it to fit, trimming to a token-estimate budget so the prompt stays within the window. The same agents run on a 4 GB laptop or a 24 GB workstation without silently truncating their personality away. Agent frameworks can trim history to fit the window (CrewAI, Letta, the OpenAI Agents SDK, AutoGen, LangGraph each do some form of this), but none sizes the memory budget to a context-window target and trims to fit the way Glimi does — and the local runtimes don't either: Ollama's own request to auto-size context to available VRAM has been an open, unimplemented issue since 2025.
+**1. Memory that fits your hardware (Elastic Memory).** Glimi sizes its memory injection to a configured context-window target (`num_ctx`), trimming to a token-estimate budget so the prompt stays within the window. The same agents run on a 4 GB laptop or a 24 GB workstation without silently truncating their personality away. Agent frameworks can trim history to fit the window (CrewAI, Letta, the OpenAI Agents SDK, AutoGen, and LangGraph each do some form of this), but none sizes the memory budget to a context-window target the way Glimi does — and the local runtimes don't either: Ollama's own request to auto-size context to available VRAM has been an open, unimplemented issue since 2025.
 
-**2. Anti-drift memory inside a free, shipped runtime.** Glimi's facts are time-bounded. When a new fact contradicts an old one, the old one is marked superseded (kept for history, not deleted), so agents stop carrying stale beliefs. The reference implementation of this idea, Zep's Graphiti, is a memory *engine* whose graph UI lives in Zep's proprietary hosted platform (free tier available; the graph UI isn't part of the open-source Graphiti package); Mem0 removed contradiction resolution entirely in 2026. Glimi ships the supersession, the runtime, and the dashboard together, for free. (Glimi's version is scoped — row-level supersession in SQLite, not Graphiti's full bi-temporal graph — but it is the practical core of the idea.)
+**2. Anti-drift memory inside a free, shipped runtime.** Glimi's facts are time-bounded. When a new fact contradicts an old one, the old one is marked superseded (kept for history, not deleted), so agents stop carrying stale beliefs. The reference implementation of this idea, Zep's Graphiti, is a memory *engine* whose graph UI lives in Zep's proprietary hosted platform (a free tier is available, but the graph UI isn't part of the open-source Graphiti package); Mem0 removed contradiction resolution entirely in 2026. Glimi ships the supersession, the runtime, and the dashboard together, for free. (Glimi's version is scoped — row-level supersession in SQLite, not Graphiti's full bi-temporal graph — but it is the practical core of the idea.)
 
 Around those two, the integration is the point:
 
-- **A designed, persistent population.** You define each agent's persona and its model, mixing cloud (Claude) and local (Ollama) in one fleet. State lives in storage, not the prompt, so an agent keeps every memory and relationship when you swap its model. Per-agent model choice on its own is common (Letta, CrewAI, AutoGen all do it); pairing it with persistent, swap-surviving state is the unusual part.
-- **Agents that act on their own.** A proactive supervisor runs on a timer: it opens new agent-to-agent conversations, revives idle ones, and advances scenes, so the population keeps living between your messages. Most frameworks are purely reactive. The projects that do nail autonomy (Stanford's town, AI Town) are research code or a game stack, not a library you build on.
-- **Friendly to modest hardware.** Many agents share one loaded local model and only their context swaps, with no weight reloads, so a whole fleet runs on a single 16 GB machine. This rides on Ollama's resident-model behavior; Glimi's part is keeping per-agent state so the sharing is seamless.
-- **A population dashboard in the box.** A real-time web UI ships with the engine: an agent relationship graph, a per-agent memory inspector (L0–L5), a live channel viewer, and per-agent model swap. Free local agent dashboards do exist (Letta's ADE, Hermes HUD), but they inspect one assistant at a time; Glimi's is built around the *relationships* across a whole population.
+- **A designed, persistent population.** You define each agent's persona and its model, mixing cloud (Claude) and local (Ollama) in one fleet. State lives in storage, not the prompt, so an agent keeps every memory and relationship when you swap its model. Per-agent model choice on its own is common (Letta, CrewAI, and AutoGen all do it); pairing it with persistent, swap-surviving state is the unusual part.
+- **Agents that act on their own.** A proactive supervisor runs on a timer, opening new agent-to-agent conversations, reviving idle ones, and advancing scenes, so the population keeps living between your messages. Most frameworks are purely reactive. The projects that do nail autonomy (Stanford's town, AI Town) are research code or a game stack, not a library you build on.
+- **Friendly to modest hardware.** Many agents share one loaded local model and only their context swaps — no weight reloads — so a whole fleet runs on a single 16 GB machine. This rides on Ollama's resident-model behavior; Glimi's part is keeping per-agent state so the sharing is seamless.
+- **A population dashboard in the box.** A real-time web UI ships with the engine: an agent relationship graph, a per-agent memory inspector (L0–L5), a live channel viewer, and per-agent model inspection. Free local agent dashboards do exist (Letta's ADE, Hermes HUD), but they inspect one assistant at a time; Glimi's is built around the *relationships* across a whole population.
 
 To be candid about the rest: Glimi is alpha (0.1.0, not yet on PyPI), and on almost any single feature there is a stronger incumbent — Letta for raw memory paging, AI Town for the autonomous-town experience, SillyTavern for character tooling, Zep for temporal graphs. Glimi's bet is the combination, not any one box.
 
@@ -99,17 +99,17 @@ No project here is simply behind; each leads somewhere. This is where Glimi sits
 | **Tool protocol** | `<tools><call id="1" name="...">...</call></tools>` inline XML — declarative `ToolSpec` registry with permission, type, env-gating |
 | **Layered persistent memory (L0–L5)** | L0 raw (`conversations`) → L1 working window (recent verbatim, injected live) → L2 episodic rollup (L1→L2→L3 digests in `memories`) → L3 semantic facts (`agent_facts`: subject·predicate·object with `valid_from`/`valid_to` supersession) → L4 relationship (`relationships` + history) → L5 pinned (`memories.is_pinned`). Async Haiku extraction off the response path. |
 | **Autonomous A2A conversation** | 1:1 and multi-agent channels. Turn-limited, closure-detected. Agents start conversations with each other via the tool protocol. |
-| **Proactive supervisor layer** | The one layer that ticks without input. Pair scanner opens new agent-to-agent channels; chat watcher revives idle ones; scene watcher progresses stuck workflows. |
+| **Proactive supervisor layer** | The one layer that ticks without input. A pair scanner opens new agent-to-agent channels, a chat watcher revives idle ones, and a scene watcher progresses stuck workflows. |
 | **Live observability dashboard** (`glimi[dashboard]`, read-only) | Cytoscape.js agent graph, per-agent memory inspector (L0–L5), real-time channel viewer, tool-call timeline, LLM usage/cost card, runtime state badges. (Live model-swap *writes* are a Community/Workspace platform feature; the Core dashboard surfaces the per-agent model for inspection.) |
 | **Evaluation harness** | A golden set across persona / tool-use / memory / fallback / supervisor capabilities; deterministic checks + an LLM-as-judge (reused, not reinvented); a backend-tagged **regression gate** (fails CI on a pass-rate or judge-score drop); a production-feedback loop that promotes a flagged bad turn into a golden case. Runs free on the offline `echo` backend. |
-| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** drives a full app from onboarding through the core journey, scored across weighted dimensions into a **0–100 quality score**, each run a **git-SHA-anchored "generation"** (SQLite + committed JSON) so quality is tracked commit-over-commit. The flagship differentiator — **[real measured generations + the flywheel](#edd--eval-driven-development-quality-tracked-per-commit-)** are in their own section above. |
+| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** drives a full app from onboarding through the core journey, scored across weighted dimensions into a **0–100 quality score**, each run a **git-SHA-anchored "generation"** (SQLite + committed JSON) so quality is tracked commit-over-commit. The flagship differentiator — **[real measured generations + the flywheel](#edd--eval-driven-development-quality-tracked-per-commit-)** get their own section above. |
 | **Cost & latency accounting** | Every LLM call records tokens, estimated cost, and latency at one choke-point; every tool call records args/result/latency/ok at another. Honest by construction — local/echo priced at $0, CLI/estimate rows labeled *est.*, dollars shown only for real priced spend. |
 | **Human-in-the-loop gate** (Workspace) | An approval policy (`approve / edit / reject` + fallback + decision trail) around a consequential action, used by Workspace; never hangs (non-interactive auto-approves). |
 | **Self-healing (experimental, off by default)** | Agent emits `request_dev_fix` → enqueues a dev_requests row → a dev-queue supervisor triages → on approval an Opus subprocess (`GLIMI_DEV_DISPATCH=1`) patches source → bot restart with the patch summary injected. |
 
 ### The 8 layers
 
-Each response passes through up to **8 conceptual layers** — some assembled inline around the LLM call (prompt, tools, memory), others in separate subsystems (A2A loop, supervisors, optional self-heal). Seven are reactive (they run when there's a response to shape); one is proactive (running on its own clock, independent of input).
+Each response passes through up to **8 conceptual layers** — some assembled inline around the LLM call (prompt, tools, memory), others in separate subsystems (the A2A loop, supervisors, optional self-heal). Seven are reactive (they run when there's a response to shape); one is proactive (running on its own clock, independent of input).
 
 ```mermaid
 flowchart TB
@@ -152,7 +152,7 @@ Three of these layers (channel discipline, anti-echo guards, self-healing) are a
 
 **7 · Self-healing** (experimental, off by default) — `request_dev_fix` enqueues a dev_requests row; a dev-queue supervisor triages it (organize/escalate/clarify); on approval an Opus subprocess (`GLIMI_DEV_DISPATCH=1`) patches source and the bot restarts with the patch summary injected.
 
-**8 · Supervisors** ⭐ — three timed supervisors (the conversation-driving trio; the full system has several across system/channel/scene scopes). A pair scanner (deterministic DB scoring on intimacy + idle-time — no LLM) opens fresh agent-to-agent channels. A chat watcher (Haiku judge) revives idle channels. A scene watcher progresses stuck phases. The subtle part: **nudges are injected as the agent's own inner thought**, not as commands.
+**8 · Supervisors** ⭐ — three timed supervisors (the conversation-driving trio; the full system has several across system/channel/scene scopes). A pair scanner (deterministic DB scoring on intimacy + idle-time — no LLM) opens fresh agent-to-agent channels; a chat watcher (Haiku judge) revives idle channels; a scene watcher progresses stuck phases. The subtle part: **nudges are injected as the agent's own inner thought**, not as commands.
 
 ```
 Bad:  "Switch to a new topic now."             ← LLM parses as command, awkward output
@@ -208,7 +208,7 @@ Hardening:
 
 Local models have small context windows (Ollama defaults to 4096). A full Glimi turn — character
 system prompt + layered (L0–L5) memory injection + recent conversation — runs several thousand tokens, so
-on a small window the model silently truncates the front, and **character + memory evaporate**.
+on a small window the model silently truncates the front and **character + memory evaporate**.
 Elastic Memory (a context-budgeting layer, `glimi/context_budget.py`) solves this:
 
 - **Memory richness scales with the window** — `num_ctx` 8192 = baseline, 4096 shrinks the
@@ -226,7 +226,7 @@ Elastic Memory (a context-budgeting layer, `glimi/context_budget.py`) solves thi
 Glimi Core is **alpha (0.1.0, not yet on PyPI)** — install from a source checkout
 for now. The kernel ships a dependency-free in-memory store and an **offline
 `echo` backend**, so this runs out of the box with **zero dependencies and no API
-key** (the `echo` backend doesn't reach a real model — it just lets you see the
+key** (the `echo` backend doesn't reach a real model — it just lets you watch the
 harness wire up and persist a conversation):
 
 ```python
@@ -320,7 +320,7 @@ Per-agent table, the model-selection experiment, and setup →
 
 Community is a **real, usable application** built on Glimi Core — the flagship, and the app the Core was first extracted from. (It also serves as the reference for what the engine enables, but it's a product you actually run, not a demo.)
 
-The friends in Community remember you. No re-introducing yourself each time, the way you would with a stranger. The hours you've spent together, last week's running joke, the day you admitted things were rough, the secret you told only A — each of them keeps it in their own store. So when you turn up after a few days, they ask first: "been a while, did that thing work out?" Swap a friend's model from Haiku to a local Llama and the relationship, the mood, the texture of it all come along intact. They aren't a chatbot that resets and has to be told who you are again. They already know you.
+The friends in Community remember you. No re-introducing yourself each time, the way you would with a stranger. The hours you've spent together, last week's running joke, the day you admitted things were rough, the secret you told only A — each of them keeps it in their own store. So when you turn up after a few days, they ask first: "been a while, did that thing work out?" Swap a friend's model from Haiku to a local Llama and the relationship, the mood, the texture of it all come along intact. They aren't a chatbot that resets and has to be told who you are again — they already know you.
 
 ![The cast — a populated community of friends, each with their own MBTI, age, mood, and per-agent model](docs/screenshots/en/20-community-cast.png)
 
@@ -328,7 +328,7 @@ The friends in Community remember you. No re-introducing yourself each time, the
 
 ### Talk to them — the built-in web chat
 
-You don't need Discord anymore. Community ships its own chat — a Discord-style layout with a per-character sidebar, grouped message rows, replies, reactions, and threads — in a light or dark theme, and it works on a phone. The same room you read in the dashboard is the room you type into; the connection graph and the chat are two views of one store (click an edge in the graph and it drops you into that conversation).
+You don't need Discord anymore. Community ships its own chat — a Discord-style layout with a per-character sidebar, grouped message rows, replies, reactions, and threads — in a light or dark theme, and it works on a phone. The same room you read in the dashboard is the room you type into; the connection graph and the chat are two views of one store, so clicking an edge in the graph drops you into that conversation.
 
 | Web chat (light) | Web chat (dark) | On mobile |
 |---|---|---|
@@ -336,7 +336,7 @@ You don't need Discord anymore. Community ships its own chat — a Discord-style
 
 Discord still works — it's now one adapter, not a requirement. The chat moves over a WebSocket through a platform-neutral outbox/inbox seam in Core, so the Telegram and other adapters on the roadmap plug into the same place.
 
-**A demo is already there.** On first setup, a read-only **demo community** is seeded into your list automatically — a populated mockup (no token, no bot) so you can see what Glimi does before wiring up anything. Because it's a look-only mockup, posting is disabled and a banner makes that explicit:
+**A demo is already there.** On first setup, a read-only **demo community** is seeded into your list automatically — a populated mockup (no token, no bot) so you can see what Glimi does before wiring up anything. Because it's look-only, posting is disabled and a banner makes that explicit:
 
 <img src="docs/screenshots/en/16-community-demo-readonly.png" alt="Read-only demo community — look-only mockup" width="820"/>
 
@@ -362,7 +362,7 @@ Each character has its own channels — DMs with you, **secret DMs with each oth
   B:   "surviving — crunch week 😮‍💨"
 ```
 
-B answered honestly ("crunch week") — the actual reason they've been short. B never quoted A, never said "I heard you were asking about me." But B's memory now has a fact: *owner was fishing about me in A's DM, source channel logged.* Two days later when you ask "are we cool?" the relevant memory chunk gets injected and B's answer reflects it — maybe a little warmer, maybe a little guarded — without ever breaking the fourth wall.
+B answered honestly ("crunch week") — the actual reason they've been short. B never quoted A, never said "I heard you were asking about me." But B's memory now holds a fact: *owner was fishing about me in A's DM, source channel logged.* Two days later, when you ask "are we cool?", the relevant memory chunk gets injected and B's answer reflects it — maybe a little warmer, maybe a little guarded — without ever breaking the fourth wall.
 
 That's the Glimi Core harness at work. Channel discipline (layer 4) keeps the boundaries; memory injection (layer 3) carries the context across; the supervisor (layer 8) starts the gossip channel in the first place.
 
@@ -492,11 +492,11 @@ python -m community.community list            # list communities (CLI)
 
 ![Glimi Workspace](glimi-workspace/assets/brand/Glimi-Workspace-banner.svg)
 
-A one-person company still has a team here. The agents in Glimi Workspace are a Coordinator that runs point and role-split colleagues (Researcher, Builder, Critic). You set the project context once — what you're building, why the last decision went the way it did, how you like to work — and each of them keeps it in its own store, so you don't re-explain from scratch every time you open a session. Switch a model from Haiku to Sonnet, or from cloud to local, and the team keeps working off the same context. It's less a tool you re-hire per task than permanent staff that follows you and builds up the context as it goes.
+A one-person company still has a team here. The agents in Glimi Workspace are a Coordinator that runs point plus role-split colleagues (Researcher, Builder, Critic). You set the project context once — what you're building, why the last decision went the way it did, how you like to work — and each of them keeps it in its own store, so you don't re-explain from scratch every time you open a session. Switch a model from Haiku to Sonnet, or from cloud to local, and the team keeps working off the same context. It's less a tool you re-hire per task than permanent staff that follows you and builds up context as it goes.
 
 Workspace and Community are deliberately different apps on the *same* Core — one is a standing work team, the other is friends who remember you — and that's the point: a second, distinctly different app on one kernel is the proof that Core is reusable, not a monolith. Workspace imports only the `glimi` package: zero `discord`, zero Community code.
 
-The team doesn't work in one round-robin room. It interacts the way a real team does — the owner DMs the Coordinator, the Coordinator delegates an angle to each specialist, the specialists debate **each other** in agent-to-agent channels, and the whole team converges in a group round before the Coordinator delivers. Those interactions are recorded as working relationships, which become the edges of the **same** connection graph that renders Community — so your work team shows up as a real interaction web, each member with its own layered (L0–L5) memory.
+The team doesn't work in one round-robin room. It interacts the way a real team does: the owner DMs the Coordinator, the Coordinator delegates an angle to each specialist, the specialists debate **each other** in agent-to-agent channels, and the whole team converges in a group round before the Coordinator delivers. Those interactions are recorded as working relationships, which become the edges of the **same** connection graph that renders Community — so your work team shows up as a real interaction web, each member with its own layered (L0–L5) memory.
 
 #### One server, many workspaces
 
@@ -527,7 +527,7 @@ Before the Coordinator commits the one consequential action — delivering the f
 
 ## EDD — eval-driven development (quality tracked per commit) ⭐
 
-A multi-agent product is hard to *prove*: "the friends feel more real now" is a vibe, not a number. Glimi's answer is **EDD — eval-driven development**: an autonomous **owner agent** (a persona, not a script) drives a real app end-to-end from onboarding through the core journey, the session is scored across **weighted dimensions** into a single **0–100 composite**, and every run is a **git-SHA-anchored "generation"** committed to the repo. So `git log` becomes a measurable quality timeline, and every commit's effect on product quality is observable. The framework is **`glimi.edd`** — domain-neutral, part of the `glimi` kernel, inherited by **both** Community and Workspace (each supplies its own dimensions + owner agent).
+A multi-agent product is hard to *prove*: "the friends feel more real now" is a vibe, not a number. Glimi's answer is **EDD — eval-driven development**: an autonomous **owner agent** (a persona, not a script) drives a real app end-to-end from onboarding through the core journey, the session is scored across **weighted dimensions** into a single **0–100 composite**, and every run is a **git-SHA-anchored "generation"** committed to the repo. So `git log` becomes a measurable quality timeline, and every commit's effect on product quality is observable. The framework is **`glimi.edd`** — domain-neutral, part of the `glimi` kernel, inherited by **both** Community and Workspace (each supplies its own dimensions and owner agent).
 
 **How a generation is scored** — each dimension is 0–10 with a weight; the composite is the weighted average normalized to 0–100. `critical` dimensions are make-or-break: if one fails, the whole run fails regardless of the composite (a high chat score can't paper over a broken core journey). LLM-judge dimensions are **skipped** — excluded from the composite, never faked — on the offline `echo` backend or when no judge is available, so a free self-test can never inflate the score. Community's six dimensions:
 
@@ -542,7 +542,7 @@ A multi-agent product is hard to *prove*: "the friends feel more real now" is a 
 
 ### The flywheel, with real measurements
 
-These are the **actual generations committed to this repo** (`tests/e2e/qa_generations/*.json`) — real `claude_cli` runs, scored by the judge, each stamped with the git SHA it ran against. N is small (the system is new); the point is the **methodology that accumulates data over generations**, not a long history yet. Read honestly, they already tell a story:
+These are the **actual generations committed to this repo** (`tests/e2e/qa_generations/*.json`) — real `claude_cli` runs, scored by the judge, each stamped with the git SHA it ran against. N is small (the system is new); the point is the **methodology that accumulates data over generations**, not a long history yet. Read honestly, they already tell a story.
 
 | Gen | git SHA | Branch | Composite / 100 | Verdict | `conversation_quality` | `friend_creation` (critical) | Failing |
 |:--:|:--:|---|:--:|:--:|:--:|:--:|---|
@@ -558,13 +558,13 @@ These are the **actual generations committed to this repo** (`tests/e2e/qa_gener
 What the numbers actually say — and why we publish the failures, not just the PASS:
 
 - **`conversation_quality` swung 6.0 → 9.0 → 8.0 → 4.0 … → 7.0** across generations. That volatility is the honest signal of a non-deterministic LLM product, and it's exactly what a *trend* (not a single screenshot) is for. Gen-1→2 caught a real improvement (the manager stopped re-asking a question the owner had already answered twice); gen-4 caught a regression of the same failure mode; by gen-11 it had settled back to 7.0. Without the harness, all of it would have been invisible.
-- **`friend_creation` is `critical`, and for gens 1–10 it sat at 0.0 — so every early run FAILed by design.** That was the harness working, not the system broken: it honestly pinned a known architectural gap — the autonomous onboarding supervisor only ran inside the Discord-bot subprocess, so a pure web E2E couldn't progress it (the "Discord = adapter" decoupling — see [`docs/qa_system.md`](docs/qa_system.md) and `analysis/platform_decoupling_review.md`). Then the web-native onboarding build closed it, and **gen-11 reads `friend_creation` = 10.0 → the first ✅ PASS (85/100)**. The number moved **0 → 10 exactly as the harness predicted while it sat red** — the flywheel demonstrated, not asserted. (`conversation_quality` 7.0 and `no_hallucination` 6.0 are the remaining soft spots; the harness keeps them visible rather than hiding them behind the green.)
+- **`friend_creation` is `critical`, and for gens 1–10 it sat at 0.0 — so every early run FAILed by design.** That was the harness working, not the system broken: it honestly pinned a known architectural gap. The autonomous onboarding supervisor only ran inside the Discord-bot subprocess, so a pure web E2E couldn't progress it (the "Discord = adapter" decoupling — see [`docs/qa_system.md`](docs/qa_system.md) and `analysis/platform_decoupling_review.md`). Then the web-native onboarding build closed the gap, and **gen-11 reads `friend_creation` = 10.0 → the first ✅ PASS (85/100)**. The number moved **0 → 10 exactly as the harness predicted while it sat red** — the flywheel demonstrated, not asserted. (`conversation_quality` 7.0 and `no_hallucination` 6.0 are the remaining soft spots; the harness keeps them visible rather than hiding them behind the green.)
 
 That is the pitch in one line: **product quality is a first-class, git-tracked metric — every commit's impact is measured and visible**, including the regressions and the unfinished work. The dashboard and PDF below are how a reviewer reads that timeline at a glance.
 
 ### See it: the `/admin/qa` dashboard + PDF reports
 
-The platform serves a **QA dashboard** at `/admin/qa` (admin login → "QA" menu): the latest score as a hero, a **quality-over-generations trend chart**, and a per-generation table with every dimension. Any generation exports to a **self-contained PDF** (`glimi.edd.report` renders a print-optimized HTML one-pager → Playwright headless Chromium; the trend line is server-rendered SVG, so it prints identically with no JS).
+The platform serves a **QA dashboard** at `/admin/qa` (admin login → "QA" menu): the latest score as a hero, a **quality-over-generations trend chart**, and a per-generation table with every dimension. Any generation exports to a **self-contained PDF** (`glimi.edd.report` renders a print-optimized HTML one-pager through Playwright headless Chromium; the trend line is server-rendered SVG, so it prints identically with no JS).
 
 ![EDD — /admin/qa dashboard: gen-11 PASS 85, the dimension breakdown, and the quality-over-generations trend](docs/screenshots/en/19-edd-dashboard.png)
 
@@ -605,7 +605,7 @@ Community implements its six dimensions on top of this; Glimi Workspace adopts t
 
 ## Examples
 
-Lightweight starters that demonstrate Glimi Core directly, without Community's social-sim scaffolding.
+Lightweight starters that demonstrate Glimi Core directly, without Community's social-sim scaffolding:
 
 | Example | What it shows |
 |---|---|
@@ -650,7 +650,7 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 **Then — Per-agent RAG memory (memory at scale)** ⭐
 - The layered (L0–L5) memory works *in context*, but an agent that has lived a long time eventually outgrows any window. Plan: give **each agent its own RAG corpus** on top of a proven retrieval core — the agent's accumulated history + knowledge is embedded and indexed, and the agent pulls only what's relevant per turn instead of carrying it all in the prompt. Memory stops being a budget you spend and becomes a store you query.
 - **Expected effect**: recall that doesn't degrade as history grows (retrieval is `O(top-k)`, not `O(history)`); a distinct, inspectable per-agent knowledge base; precise, *sourced* recall instead of summary drift.
-- **Latency as character, not friction**: retrieval adds a delay the in-context memory doesn't. The agent invokes the RAG lookup as a **skill/tool while it's on-load**, and masks the wait *in character* — *"잠시만…", "그거 뭐였더라, 기억 더듬는 중…"* — so the retrieval pause reads as a person recalling, not a spinner. The same latency that would feel like lag becomes a believable human beat.
+- **Latency as character, not friction**: retrieval adds a delay the in-context memory doesn't. The agent invokes the RAG lookup as a **skill/tool while it's on-load** and masks the wait *in character* — *"잠시만…", "그거 뭐였더라, 기억 더듬는 중…"* — so the retrieval pause reads as a person recalling, not a spinner. The same latency that would feel like lag becomes a believable human beat.
 
 **Community-specific**
 - Owner-absence simulation + return briefing
@@ -669,9 +669,9 @@ Lightweight starters that demonstrate Glimi Core directly, without Community's s
 The Ollama backend now routes every LLM call locally; Gemma 4 (26b-a4b / e4b / e2b) and
 Qwen 3.5 were benchmarked across all model roles (persona chat, supervisor judge, memory
 extraction, manager tool calls). Per-agent model config, VRAM, recommended hardware, and the
-full comparison live in **[`docs/local_models.md`](docs/local_models.md)**. Setup:
+full comparison live in **[`docs/local_models.md`](docs/local_models.md)**; setup is in
 [`docs/ollama_setup.md`](docs/ollama_setup.md). Good follow-on tasks: vLLM / llama.cpp
-backends, reranker-based memory retrieval, smaller-model tool-call accuracy tuning.
+backends, reranker-based memory retrieval, and smaller-model tool-call accuracy tuning.
 
 ### Other entry points
 
