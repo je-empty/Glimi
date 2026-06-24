@@ -98,6 +98,9 @@ def _get_backend_instance(name: str) -> Optional[LLMBackend]:
     elif name == "ollama":
         from .ollama import OllamaBackend
         b = OllamaBackend()
+    elif name in ("grok_cli", "grok"):
+        from .grok_cli import GrokCLIBackend
+        b = GrokCLIBackend()
     elif name == "echo":
         # 오프라인·무의존 백엔드. 자동 선택 안 됨 — backend="echo" 또는
         # GLIMI_LLM_BACKEND=echo 로 명시할 때만 (quick-start / 테스트용).

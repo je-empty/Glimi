@@ -19,8 +19,6 @@ import asyncio
 import random
 from datetime import datetime, timedelta, timezone
 
-import discord
-
 from community import db, log_writer
 from community.supervisors.base import Supervisor
 
@@ -50,8 +48,10 @@ class OrchestratorSupervisor(Supervisor):
     # ── check ─────────────────────────────────────────────
 
     async def check(self, ctx):
+        # adapter-first, guild-fallback. web 은 channels, 디코는 guild.
+        channels = ctx.get("channels") if isinstance(ctx, dict) else None
         guild = ctx.get("guild") if isinstance(ctx, dict) else None
-        if guild is None:
+        if channels is None and guild is None:
             return
 
         # Quiet hours (01:00~07:59 KST) — 새벽 자동 페어링 차단.
@@ -80,7 +80,7 @@ class OrchestratorSupervisor(Supervisor):
         # ① group-* 채널 revive — 페르소나가 오너 부재 시에도 group-* 에서 자발 대화.
         # 기존: orchestrator 가 internal-dm 만 점화 → group-* 는 오너 떠나면 영원 침묵.
         # 수정: 오래 idle 한 group-* 채널에서 페르소나끼리 먼저 수다 시작.
-        revived = await self._revive_idle_group(guild)
+        revived = await self._revive_idle_group(channels, guild)
         if revived:
             self._last_started_at = _time.time()
             return
@@ -112,7 +112,7 @@ class OrchestratorSupervisor(Supervisor):
         except Exception:
             pass
         self._last_started_at = _time.time()
-        await self._start_internal_conv(guild, a_id, b_id, reason)
+        await self._start_internal_conv(channels, guild, a_id, b_id, reason)
 
     # ── 페어 선정 ─────────────────────────────────────────
 
@@ -244,7 +244,7 @@ class OrchestratorSupervisor(Supervisor):
             pass
         return []
 
-    async def _revive_idle_group(self, guild) -> bool:
+    async def _revive_idle_group(self, channels, guild=None) -> bool:
         """오래 idle 한 group-* 채널에서 페르소나들끼리 자발적 대화 재개.
 
         조건:
@@ -304,15 +304,24 @@ class OrchestratorSupervisor(Supervisor):
             # 최대 3명까지 (그룹 규모 제한)
             if len(personas) > 3:
                 personas = random.sample(personas, 3)
-            from community.bot.conversation_bridge import start_conversation
-            from community.bot.core import send_as_agent
 
-            ch = discord.utils.get(guild.text_channels, name=ch_name)
-            if not ch:
-                return False
-
-            async def _send(agent_id: str, message: str):
-                await send_as_agent(ch, agent_id, message)
+            # adapter-first branch (web). BEFORE any community.bot import.
+            if channels is not None:
+                if not await channels.find_channel(ch_name):
+                    return False
+                async def _send(agent_id: str, message: str):
+                    await channels.send_as_agent(ch_name, agent_id, message)
+                from community.core.conversation_bridge import start_conversation
+            else:
+                # guild-fallback branch (Discord — Phase-6-doomed).
+                from community.bot.conversation_bridge import start_conversation
+                from community.bot.core import send_as_agent
+                import discord
+                ch = discord.utils.get(guild.text_channels, name=ch_name)
+                if not ch:
+                    return False
+                async def _send(agent_id: str, message: str):
+                    await send_as_agent(ch, agent_id, message)
 
             names = []
             for pid in personas:
@@ -352,28 +361,32 @@ class OrchestratorSupervisor(Supervisor):
 
     # ── 대화 시작 ─────────────────────────────────────────
 
-    async def _start_internal_conv(self, guild, a_id: str, b_id: str, reason: str):
-        """internal-dm-A-B 채널 생성/찾기 + status=running + 첫 발화 트리거."""
-        try:
-            from community.bot.mgr_system import yuna_create_room
-        except Exception as e:
-            log_writer.system(f"[sup:orchestrator] mgr_system import 실패: {e}")
-            return
+    async def _start_internal_conv(self, channels, guild, a_id: str, b_id: str, reason: str):
+        """internal-dm-A-B 채널 생성/찾기 + status=running + 첫 발화 트리거 (adapter-first)."""
         a_name = (db.get_agent(a_id) or {}).get("name", "?")
         b_name = (db.get_agent(b_id) or {}).get("name", "?")
-        # yuna_create_room 은 기본적으로 Yuna가 mgr-dashboard에서 호출하는 루틴 —
-        # 여기서는 직접 internal-dm 생성 + start_conversation 흐름 사용.
-        from community.bot.conversation_bridge import start_conversation
-        from community.bot import internal_dm_channel_name
+        from community.core.channels import internal_dm_channel_name
         ch_name = internal_dm_channel_name(a_name, b_name)
         try:
-            # 채널 생성 (Discord + DB) — ensure_unique_channel 로 중복 생성 방지
-            from community.bot.core import _get_category_for_channel, _ensure_category
-            from community.core.sync import ensure_unique_channel
-            cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
-            ch, created = await ensure_unique_channel(guild, ch_name, cat)
-            if created:
-                log_writer.system(f"[sup:orchestrator] 채널 생성: {ch_name}")
+            # adapter-first branch (web). BEFORE any community.bot import.
+            if channels is not None:
+                ref = await channels.ensure_channel(ch_name, participants=[a_id, b_id])
+                if getattr(ref, "created", False):
+                    log_writer.system(f"[sup:orchestrator] 채널 생성: {ch_name}")
+                from community.core.conversation_bridge import start_conversation
+                async def _send(agent_id: str, message: str):
+                    await channels.send_as_agent(ch_name, agent_id, message)
+            else:
+                # guild-fallback branch (Discord — Phase-6-doomed).
+                from community.bot.conversation_bridge import start_conversation
+                from community.bot.core import _get_category_for_channel, _ensure_category, send_as_agent
+                from community.core.sync import ensure_unique_channel
+                cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
+                ch, created = await ensure_unique_channel(guild, ch_name, cat)
+                if created:
+                    log_writer.system(f"[sup:orchestrator] 채널 생성: {ch_name}")
+                async def _send(agent_id: str, message: str):
+                    await send_as_agent(ch, agent_id, message)
             db.set_channel_participants(ch_name, [a_id, b_id])
             # 첫 internal 대화면 관계 레코드도 자동 생성 — 없으면 다음 스캔에서도 계속
             # "모르는 사이" 로 분류되어 skip → rapport 쌓이지 못하는 루프. 여기서 기본
@@ -383,9 +396,6 @@ class OrchestratorSupervisor(Supervisor):
                     db.add_relationship(a_id, b_id, "친구", intimacy=30, dynamics="처음 대화 시작")
                 except Exception:
                     pass
-            from community.bot.core import send_as_agent
-            async def _send(agent_id: str, message: str):
-                await send_as_agent(ch, agent_id, message)
 
             # 풍성한 context — 짧은 대화·작별 echo 회귀 fix.
             # 두 에이전트의 직업/관심사 + 관계 dynamics + intimacy + 최근 dm 활동 요약을 묶어 seed.

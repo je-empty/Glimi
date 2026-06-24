@@ -1,6 +1,6 @@
 """HTML 페이지 라우터 — 로그인 / 홈 (커뮤니티 리스트) / 커뮤니티 대시보드."""
 from fastapi import APIRouter, Depends, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from community.community import is_read_only, list_communities
 
@@ -35,26 +35,26 @@ async def home(request: Request):
         shown = matched or public  # 언어 매칭 없으면 전체로 폴백
         items = []
         for c in shown:
-            members = _fetch_members(c["id"])
-            n = len(members)
+            members = _fetch_members(c["id"], limit=99)  # 전체 (페르소나 먼저 정렬)
+            personas = [m for m in members if m.get("type") == "persona"]
+            n = len(personas)  # '친구' 수 = 페르소나만 (mgr/creator 제외, 8 캡 버그 수정)
             metas = ([f"{n} friends"] if EN else [f"친구 {n}명"])
             items.append({
                 "href": f"/community/{c['id']}",
                 "title": c.get("name") or c["id"],
                 "desc": c.get("description") or "",
                 "is_demo": True,
-                "avatars": members[:6],
+                "avatars": personas[:6],
                 "more": max(0, n - 6),
                 "metas": metas,
             })
         ctx = {
             "request": request, "lang": lang, "user": None,
             "brand": "Glimi Community",
-            "brand_sub": ("AI friends who live alongside each other" if EN
-                          else "서로 곁에서 살아가는 AI 친구들"),
-            "lede": ("Friends who talk to each other, remember, and grow closer. "
-                     "Browse the demo below — no login." if EN
-                     else "서로 대화하고, 기억하고, 관계를 쌓아가는 친구들. 아래 데모를 둘러보세요. 로그인 없이."),
+            "brand_sub": None,
+            "lede": ("Friends who talk to each other, remember, and grow closer — "
+                     "meet them in the demo below." if EN
+                     else "서로 대화하고, 기억하고, 관계를 쌓아가는 친구들 — 아래 데모에서 직접 만나보세요."),
             "items": items,
             "create": None,
         }
@@ -165,6 +165,7 @@ async def community_dashboard(
             # api_base="" → dashboard.js 가 절대 /api/* + ?community= 로 라우팅 (data-api-base
             # 없음). caps_json 미전달 → CAPS=null → 모든 탭 노출.
             "community_chrome": True,
+            "app_name": "Glimi Community",
             "static_base": "/static",
             "api_base": "",
             "active_tab": "chat",
@@ -228,3 +229,73 @@ async def admin_dev_requests_page(
         "admin/dev_requests.html",
         {"user": user},
     )
+
+
+def _qa_store():
+    """The Community QA generation store (committed generations + local SQLite), via
+    the shared core framework (:class:`glimi.edd.GenerationStore`). Path is
+    configurable with ``GLIMI_QA_GENERATIONS_DIR``; defaults to the repo's
+    ``tests/e2e/qa_generations``."""
+    import os
+    from pathlib import Path
+
+    from glimi.edd import GenerationStore
+
+    env_dir = os.environ.get("GLIMI_QA_GENERATIONS_DIR")
+    if env_dir:
+        gens = Path(env_dir).resolve()
+        repo = gens.parents[2]                      # tests/e2e/qa_generations -> repo
+    else:
+        repo = Path(__file__).resolve().parents[4]  # routers/platform/community/glimi-community/<repo>
+        gens = repo / "tests" / "e2e" / "qa_generations"
+    db = repo / "tests" / "e2e" / "results" / "qa_history.db"
+    return GenerationStore(db_path=db, generations_dir=gens, repo_root=repo)
+
+
+@router.get("/admin/qa", response_class=HTMLResponse)
+async def admin_qa_page(
+    request: Request,
+    user: dict = Depends(require_admin),
+):
+    """글로벌 admin 페이지 — EDD QA 세대 히스토리 (품질 트렌드 + 런별 차원 분해).
+
+    Reads the git-anchored generations ``community_e2e --qa`` writes through the
+    shared ``glimi.edd`` store — the flywheel data ``docs/qa_system.md`` describes."""
+    store = _qa_store()
+    generations = store.load_generations()
+    return templates.env.TemplateResponse(
+        request,
+        "admin/qa.html",
+        {"user": user, "generations": generations},
+    )
+
+
+# sync `def` (not async) on purpose: FastAPI runs it in a threadpool, so the
+# Playwright SYNC api works without clashing with the server's event loop.
+@router.get("/admin/qa/pdf")
+def admin_qa_pdf(
+    gen: int | None = None,
+    user: dict = Depends(require_admin),
+):
+    """Render a QA generation to a PDF report (latest by default, or ``?gen=N``).
+    Returns the PDF as a download. 503 if Playwright isn't installed on the host."""
+    import tempfile
+    from pathlib import Path
+
+    store = _qa_store()
+    generations = store.load_generations()
+    if not generations:
+        raise HTTPException(status_code=404, detail="아직 기록된 QA 세대가 없습니다.")
+    target = (next((g for g in generations if g.get("generation_no") == gen), None)
+              if gen else generations[-1])
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"generation #{gen} 없음")
+
+    out = Path(tempfile.gettempdir()) / f"glimi-qa-gen-{target.get('generation_no')}.pdf"
+    try:
+        from glimi.edd import generation_to_pdf
+        generation_to_pdf(target, out, trend=store.quality_trend(),
+                          app_name="Glimi Community")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return FileResponse(str(out), media_type="application/pdf", filename=out.name)

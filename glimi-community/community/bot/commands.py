@@ -18,7 +18,7 @@ from community.bot.conversation_bridge import (
     start_conversation, stop_conversation, list_active_conversations,
 )
 from community.bot import (
-    bot, log, MGR_CHANNEL, MGR_ID,
+    bot, log, MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID,
     CHANNEL_AGENT_MAP, AGENT_CHANNEL_MAP, GROUP_PARTICIPANTS,
     _webhook_cache,
 )
@@ -199,7 +199,7 @@ async def cmd_create_agent(ctx, *, concept: str):
         loop = asyncio.get_event_loop()
         responses = await loop.run_in_executor(
             None,
-            lambda: runtime.generate_response(creator_id, "mgr-creator", create_prompt, model_override="claude-opus-4-6")
+            lambda: runtime.generate_response(creator_id, CREATOR_CHANNEL, create_prompt, model_override="claude-opus-4-6")
         )
 
     raw_response = "\n".join(responses)
@@ -442,7 +442,7 @@ async def cmd_avatar_prompt(ctx, agent_name: str):
         loop = asyncio.get_event_loop()
         responses = await loop.run_in_executor(
             None,
-            lambda: runtime.generate_response(creator_id, "mgr-creator", avatar_request)
+            lambda: runtime.generate_response(creator_id, CREATOR_CHANNEL, avatar_request)
         )
 
     # 하나의 응답에서 프롬프트 추출
@@ -625,7 +625,7 @@ async def cmd_avatar_all(ctx):
             responses = await loop.run_in_executor(
                 None,
                 lambda req=char_request: runtime.generate_response(
-                    hana_id, "mgr-dashboard", req
+                    hana_id, CREATOR_CHANNEL, req
                 )
             )
 
@@ -1098,7 +1098,7 @@ async def cmd_analyze(ctx):
         loop = asyncio.get_event_loop()
         responses = await loop.run_in_executor(
             None,
-            lambda: runtime.generate_response(mgr_id, "mgr-dashboard", analysis_prompt)
+            lambda: runtime.generate_response(mgr_id, MGR_CHANNEL, analysis_prompt)
         )
 
     for msg in responses:

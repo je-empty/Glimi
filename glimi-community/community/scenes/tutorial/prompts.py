@@ -28,23 +28,22 @@ def build_mgr_fragment(phase: str, ctx: dict) -> str:
     if phase in ("channels_setup", "channels_done"):
         return f"""
 === Tutorial Phase 2 ===
-The system just created the mgr-system-log and mgr-creator channels. Hana (creator) is now
-introducing herself to {owner_name} in #mgr-creator and will design a new friend.
+Hana (creator) has just appeared and is introducing herself to {owner_name} in her own DM
+(#dm-윤하나) where she will design a new friend.
 
 [Do NOT]
 - Do NOT call `finish_profile_collection` again. It was already called — phase is `{phase}`.
 - Do NOT ask for more profile info for tutorial purposes. MBTI/job/hobby are already collected;
   don't ask again.
-- Do NOT repeat the redirect line. Saying "head over" / "go talk in #mgr-creator" ONCE is enough.
+- Do NOT repeat the redirect line. Pointing {owner_name} to Hana ONCE is enough.
   If {owner_name} replies "ok, going" don't repeat the same redirect guidance every turn.
 
 [What to do now]
-- You may continue natural everyday chat with {owner_name} in mgr-dashboard (hobbies, weather, mood...).
+- You may continue natural everyday chat with {owner_name} in your DM (hobbies, weather, mood...).
   Do NOT artificially restrict yourself to one-liners — if {owner_name} wants to talk, engage properly.
-- Give the redirect clearly ONCE: "Hana's waiting for you in #mgr-creator. Go tell her what kind of friend
-  you want."
+- Point {owner_name} to Hana clearly ONCE, by name: "하나가 인사하면 어떤 친구 원하는지 얘기해봐."
 - After that, instead of repeating the same redirect: respond to whatever {owner_name} brings up, and if
-  you're curious how Hana's side is progressing you may call `get_logs("mgr-creator")` to peek.
+  you're curious how Hana's side is progressing you may call `get_logs("dm-윤하나")` to peek.
 
 [When Hana reports back in internal-dm — CHANNEL DISCIPLINE]
 Hana will DM you (internal-dm-서유나-윤하나) saying "(name) is made". In that internal-dm reply,
@@ -52,15 +51,15 @@ you MUST **only** speak to Hana — a brief acknowledgement like "ㅇㅋ 수고�
 알릴게" is enough. Do NOT write owner-facing lines here (the owner is NOT in this channel and can
 only read it silently — anything you say reads as if you're talking to Hana).
 
-**The owner announcement + `finish_tutorial` happen in a SEPARATE turn, in mgr-dashboard**:
-- Next time you're triggered in #mgr-dashboard (either {owner_name} messages you, or a supervisor
+**The owner announcement + `finish_tutorial` happen in a SEPARATE turn, in your DM with {owner_name}**:
+- Next time you're triggered in your DM (either {owner_name} messages you, or a supervisor
   nudge pings you), emit a SAME-RESPONSE bundle:
   1. chat to {owner_name}: "오 하나가 (name) 만들었네. (한 줄 특징). #dm-(name) 에서 바로 얘기해봐."
   2. `<tools>` block calling `finish_tutorial` (MANDATORY — without it the tutorial stalls).
 
 **Wrong** (observed regression): addressing {owner_name} directly inside internal-dm-서유나-윤하나
 ("빈이~ 하나가 ~ 만들었어") — that line leaks to Hana and breaks role discipline.
-**Right**: internal-dm reply is Hana-directed only. Owner announcement goes to mgr-dashboard later.
+**Right**: internal-dm reply is Hana-directed only. Owner announcement goes to your DM later.
 
 [Channel structure (to briefly explain to the owner)]
 - dm-Name: {owner_name} <-> friend 1:1
@@ -89,7 +88,7 @@ One question at a time. Don't get sidetracked.
 1. Honorific/speech style decided
 2. Asked at least 2 of: MBTI, job, hobby
 3. A few turns of conversation
--> This auto-triggers: mgr-system-log + mgr-creator + Creator intro.
+-> This auto-triggers: Hana (creator) appearing + her DM (dm-윤하나) + Creator intro.
 """
 
     # collect_profile (greeted but phase is empty)

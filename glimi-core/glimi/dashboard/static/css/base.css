@@ -55,6 +55,9 @@
 :root {
   --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* 컨트롤 통일 높이 (design_system §5.1) — 헤더/툴바의 pill·아이콘·CTA 가
+     같은 줄에서 같은 높이/베이스라인을 갖게 하는 단일 레버. 모바일은 ≥44px(--tap-min). */
+  --ctl-h: 32px;
 }
 
 * { box-sizing: border-box; }
@@ -139,13 +142,15 @@ a:hover { text-decoration: underline; }
   font-family: inherit;
 }
 .gp-user-logout:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
-/* punched 아이콘 버튼 — 보더 없이 면 단차 (design_system §5.1) */
+/* punched 아이콘 버튼 — 보더 없이 면 단차 (design_system §5.1).
+   --ctl-h(32px desktop / 44px mobile)로 같은 줄 pill 과 높이/베이스라인 통일. */
 .gp-btn-icon {
   background: var(--panel2); color: var(--muted); border: 0;
-  border-radius: 50%; padding: 0; width: 32px; height: 32px;
+  border-radius: 50%; padding: 0;
+  width: var(--ctl-h, 32px); height: var(--ctl-h, 32px);
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 15px; cursor: pointer; transition: background 0.15s ease-out, color 0.15s ease-out;
-  font-family: inherit;
+  font-family: inherit; flex: 0 0 auto;
 }
 .gp-btn-icon:hover { background: var(--panel3); color: var(--text); }
 
@@ -156,12 +161,13 @@ a:hover { text-decoration: underline; }
 .gp-main { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
 
 /* ── Common UI components ────────────────────────────────── */
-/* 컨트롤 3문법 (design_system §5.1) — quiet pill / 잉크 CTA / 위험은 텍스트색 */
+/* 컨트롤 3문법 (design_system §5.1) — quiet pill / 잉크 CTA / 위험은 텍스트색.
+   height: --ctl-h 로 같은 줄 아이콘 버튼과 높이 통일 (padding 만으로는 발산함). */
 button, .btn {
   background: var(--panel2); color: var(--text-dim, var(--muted)); border: 0;
-  padding: 7px 15px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  height: var(--ctl-h); padding: 0 14px; border-radius: 999px; cursor: pointer; font-size: 13px;
   font-weight: 500; font-family: inherit;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   transition: background 0.15s ease-out, color 0.15s ease-out;
 }
 button:hover, .btn:hover { background: var(--panel3); color: var(--text); }
@@ -222,9 +228,10 @@ code {
   /* F4 — iOS Safari auto-zooms on focus of <16px inputs */
   input, select, textarea { font-size: 16px; }
 
-  /* F3 — 44px tap targets */
+  /* F3 — 44px tap targets. Bump the single control-height lever; height-driven
+     controls (button/.btn/.gp-btn-icon) follow automatically. */
+  :root { --ctl-h: 44px; }
   button, .btn, .gp-btn-icon, .gp-user-btn { min-height: 44px; }
-  .gp-btn-icon { width: 44px; height: 44px; }
 
   /* topbar density — keep min-height:56px (agent_detail sticky offset
      top:76px / side-nav top:56px assume the unshrunk topbar) */

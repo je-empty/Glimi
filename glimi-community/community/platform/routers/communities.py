@@ -495,6 +495,24 @@ _PLACEHOLDER_SVG = (
 ).encode("utf-8")
 
 
+def _avatar_thumbnail(path: str, px: int = 128) -> str:
+    """A small cached thumbnail for list/chat avatars. The source profile PNGs are
+    full-res (~1MB); serving those for a 32–48px avatar is megabytes per chat page
+    and reads as "images won't load". Returns the cached thumb path (regenerated if
+    the source is newer), or the original on any failure. ``-full`` bypasses this."""
+    try:
+        thumb = f"{path}.thumb{px}.png"
+        if os.path.exists(thumb) and os.path.getmtime(thumb) >= os.path.getmtime(path):
+            return thumb
+        from PIL import Image
+        img = Image.open(path)
+        img.thumbnail((px, px))
+        img.save(thumb, "PNG", optimize=True)
+        return thumb
+    except Exception:
+        return path
+
+
 # 별도 라우터 — 공통 prefix 안 타도록 루트에 직접 붙임
 avatar_router = APIRouter()
 
@@ -536,6 +554,11 @@ async def serve_avatar(
             media_type="image/svg+xml",
             headers={"Cache-Control": "no-cache"},
         )
+
+    # List/chat avatars (default variant) → small cached thumbnail, not the ~1MB
+    # source. The agent-detail page asks for ``variant=full`` and still gets full-res.
+    if variant != "full":
+        target = _avatar_thumbnail(target)
 
     with open(target, "rb") as f:
         data = f.read()

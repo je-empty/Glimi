@@ -64,7 +64,7 @@ def build_common_prompt(agent_type: str = "persona") -> str:
     """Baseline rules injected into every agent's system prompt.
 
     agent_type: "persona" | "mgr" | "creator" — changes channel examples.
-      Showing `#mgr-dashboard` to a persona causes them to learn the internal channel and
+      Showing a manager's DM channel to a persona causes them to learn it and
       hallucinate-mention it in real conversations (meta leak, observed QA regression).
     """
     from community.core.profile import get_owner_call_name
@@ -105,10 +105,10 @@ def build_common_prompt(agent_type: str = "persona") -> str:
     if agent_type == "persona":
         channel_examples = "`#dm-sue`, `#group-bin-sue-haerin`"
     elif agent_type == "dev":
-        # Dev agent only operates in mgr-dev-request and internal-dm with other managers.
-        channel_examples = "`#mgr-dev-request`, `#internal-dm-서유나-한세나`"
+        # Dev agent only operates in its own DM and internal-dm with other managers.
+        channel_examples = "`#dm-한세나`, `#internal-dm-서유나-한세나`"
     else:
-        channel_examples = "`#mgr-dashboard`, `#dm-yujin`, `#mgr-creator`"
+        channel_examples = "`#dm-서유나`, `#dm-yujin`, `#dm-윤하나`"
 
     return f"""
 === Style Guide — conversational basics ===
@@ -148,8 +148,8 @@ def build_common_prompt(agent_type: str = "persona") -> str:
 === Silence rule (CRITICAL — context-dependent) ===
 - `NO_REPLY` is for **persona dm/group chat** where silence really is the natural beat
   (e.g. dm-* after both sides exchanged a clean farewell + no new prompt).
-- **Managers (mgr / creator / dev) NEVER use `NO_REPLY` in their owner channels**
-  (`mgr-dashboard`, `mgr-creator`, `mgr-dev-request`). Even on vague pivots like "그래"
+- **Managers (mgr / creator / dev) NEVER use `NO_REPLY` in their owner DM channels**
+  (their `dm-<name>` channels). Even on vague pivots like "그래"
   or "애들끼리 놀게 두자" → engage (call a tool, status update, brief redirect). Manager
   silence to owner reads as a broken bot.
 - Personas: `NO_REPLY` only after BOTH sides exchanged a clean farewell AND there is NO

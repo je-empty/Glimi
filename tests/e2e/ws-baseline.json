@@ -1,0 +1,23 @@
+{
+  "backend": "claude_cli",
+  "generated_at": "2026-06-22T11:57:58.161947+00:00",
+  "goal": "신입 개발자 첫 출근 첫날 온보딩 체크리스트 만들기",
+  "verdict_status": "WARN",
+  "structure": {
+    "rounds_run": 0,
+    "deliverables_count": 19,
+    "delegation_channels_hit": 4,
+    "a2a_channels_both_spoke": 3,
+    "meta_leaks": 0,
+    "error_leaks": 0,
+    "deliverable_len_last": 3678
+  },
+  "quality": {
+    "status": "scored",
+    "overall": 8.0
+  },
+  "cost": {
+    "total_usd": 0.078669,
+    "call_count": 55
+  }
+}

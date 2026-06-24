@@ -236,9 +236,9 @@ async def _h_request_dev_fix(args: dict, ctx: ToolContext):
       2. **dedup 체크** — 같은 community + 같은 channel + 같은 severity 의 pending/analyzed
          가 60분 안에 있으면 거절하고 기존 request_id 알려줌 (회귀 방지: 매니저가 같은 버그
          반복 보고하는 경우)
-      3. mgr-dev-request 채널 ensure
+      3. dev (세나) DM 채널 ensure
       4. dev_requests INSERT
-      5. **mgr-dev-request 채널에 caller 명의로 보고 한 줄 post** (1인극 해소)
+      5. **dev (세나) DM 채널에 caller 명의로 보고 한 줄 post** (1인극 해소)
       6. dev agent lazy seed + runtime invalidate
     """
     from community.core.dev_agent import (
@@ -285,14 +285,14 @@ async def _h_request_dev_fix(args: dict, ctx: ToolContext):
     # Lazy seed dev agent (community-local 시드 — agent 자체는 community DB 에 살음)
     seeded_now = ensure_dev_seeded()
 
-    # mgr-dev-request 채널 ensure (Discord 어댑터 — guild 객체 필요).
+    # dev (세나) DM 채널 ensure (Discord 어댑터 — guild 객체 필요).
     dev_channel_obj = None
     if ctx.guild is not None:
         try:
             from community.core.sync import ensure_unique_channel
-            from community.bot.core import _ensure_category
+            from community.bot.core import _ensure_category, _get_category_for_channel
             from community.bot import MGR_ID
-            category = await _ensure_category(ctx.guild, "glimi-mgr")
+            category = await _ensure_category(ctx.guild, _get_category_for_channel(DEV_CHANNEL))
             dev_channel_obj, _created = await ensure_unique_channel(ctx.guild, DEV_CHANNEL, category)
             db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
         except Exception as e:
@@ -300,7 +300,7 @@ async def _h_request_dev_fix(args: dict, ctx: ToolContext):
 
     request_id = enqueue_dev_request(community_id, requested_by, payload)
 
-    # ── caller 명의로 mgr-dev-request 채널에 보고 한 줄 post ──
+    # ── caller 명의로 dev (세나) DM 채널에 보고 한 줄 post ──
     # 이전엔 INSERT 만 하고 채널엔 아무 발화 없음 → 세나만 일방적으로 분석 떠드는 1인극.
     # 채널 컨텍스트에 보고 자체가 보여야 세나의 분석이 맥락 안에서 읽힘.
     if dev_channel_obj is not None and requested_by != "owner":
@@ -458,7 +458,7 @@ async def _h_dev_clarify(args: dict, ctx: ToolContext):
     """Dev 봇만 호출 — 요청 페이로드가 모호할 때 보고자에게 질문.
 
     args: {request_id, questions[]}
-    질문은 mgr-dev-request 채널에 게시되어 보고자(유나/하나) 가 추가 메시지로 응답.
+    질문은 dev(세나) DM 채널에 게시되어 보고자(유나/하나) 가 추가 메시지로 응답.
     status 는 pending 유지 → 답변 받으면 다음 턴에 다시 분석.
     """
     from community.core.dev_agent import DEV_ID, get_request
@@ -733,7 +733,7 @@ async def _h_create_agent_with_image(args: dict, ctx: ToolContext):
            b. _cmd_profile_create — 에이전트 활성화 + dm 채널 + greet
            c. profile_image_filename UPDATE + cache invalidate
            d. 모든 채널 webhook avatar 갱신
-           e. mgr-creator 에 reveal: full 이미지 + caption '{name} 만들었어! 어때?'
+           e. creator(하나) DM 에 reveal: full 이미지 + caption '{name} 만들었어! 어때?'
            f. yuna_message 가 있으면 _forward_action_to_yuna 로 자동 보고
     """
     import asyncio as _asyncio
@@ -837,7 +837,7 @@ async def _h_create_agent_with_image(args: dict, ctx: ToolContext):
                     pass
             log_writer.system(f"[create_agent_with_image] webhook avatar 갱신: {updated}개")
 
-        # ── 5) mgr-creator 에 reveal (full 이미지) ─────
+        # ── 5) creator(하나) DM 에 reveal (full 이미지) ─────
         await send_image_as_agent(
             channel_obj, caller_agent_id,
             result["full_path"],
@@ -879,7 +879,7 @@ async def _h_create_agent_with_image(args: dict, ctx: ToolContext):
         "estimated_seconds": 420,
         "note": (
             "약 6-7분 후 이미지 생성 완료 → 에이전트 자동 활성화 + dm 채널 생성 + "
-            "mgr-creator 에 이미지 reveal + Yuna 보고. 그동안 추가 호출/재촉 금지."
+            "너의 DM 에 이미지 reveal + Yuna 보고. 그동안 추가 호출/재촉 금지."
         ),
     }
 
@@ -1624,3 +1624,14 @@ def register_all():
     """registry에 모든 핸들러 주입. 봇 시작 시 1회 호출."""
     for name, fn in _MAP.items():
         set_handler(name, fn)
+
+
+# ── Phase 3.3 re-export shim ────────────────────────────────────────────────
+# 정본 registry 는 community.core.tool_handlers (discord-free, adapter-routed).
+# web 런타임/부팅은 그쪽 register_all 을 쓴다. 디코 어댑터(이 파일)는 위 _MAP/
+# register_all 을 유지 (Phase 6 에서 함께 삭제). 같은 이름을 web 측에서 찾으려는
+# 코드 호환을 위해 core 버전을 명시적 별칭으로 노출.
+try:
+    from community.core.tool_handlers import register_all as register_all_core  # noqa: F401
+except Exception:  # discord-only env 에서 core import 실패해도 디코 register_all 은 동작
+    register_all_core = None

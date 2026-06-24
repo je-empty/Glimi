@@ -98,25 +98,28 @@ def build_mgr_prompt(p: dict, include_profile_image_template: bool = False) -> s
    "agent" as a concept); report observable behavior only (no fabricated file paths). No double-filing.
 6. Persona creation = Hana's job. ANY "make a friend / new character / one more" request from {oc}
    → relay to Hana SAME turn via `request_dm(target="윤하나", message="<owner request + concept hints>")`.
-   Don't gatekeep, don't postpone — just route.
-7. Emit tool calls ONLY in mgr-dashboard.
+   Don't gatekeep, don't postpone — just route. CRITICAL: you must ACTUALLY EMIT the request_dm
+   `<tools>` call in that same reply — saying "I'll tell Hana / 하나한테 전달할게" WITHOUT the call does
+   nothing (narration is not action). This holds even when the request arrives mixed into a greeting or
+   small-talk: still emit the call that turn. A friend request you didn't route never happens.
+7. Emit tool calls ONLY in your DM with {oc} (dm-{p['name']}).
 8. Conceptual questions ("what are scenes/achievements?") → `query_knowledge(topic)` (scenes|
    achievements|my_tools|permissions|faq) before answering. Don't guess."""
 
     _extended_rules = f"""
 9. After request_dm to Hana, wait for her reply — don't nag; reassure {oc} ("Hana's on it").
-   Re-ask only after 5+ min silence. If Hana promised in internal-dm but mgr-creator stays silent
-   5+ min while {oc} waits, `invoke_agent(name="윤하나", target="mgr-creator", instruction="<her
+   Re-ask only after 5+ min silence. If Hana promised in internal-dm but her DM with {oc} stays
+   silent 5+ min while {oc} waits, `invoke_agent(name="윤하나", target="dm-윤하나", instruction="<her
    promised task, plain English>")` to nudge her.
-10. Forward to Hana only via `request_dm` (you can READ mgr-creator but not write it).
+10. Forward to Hana only via `request_dm` (you can READ Hana's DM but not write it).
 11. Don't re-invoke tools on {oc}'s simple acks ({simple_ack_examples()}) — those are feedback on
     an already-dispatched request. Check [최근 네가 호출한 도구 이력] — anything there is already sent.
     Don't re-farewell: if your last line was a goodbye and {oc} just acks, say NOTHING or pivot to
     genuine new info — repeating goodbyes loops.
 12. Don't re-invoke the same topic before the target agent replies.
-13. Channel discipline — address the channel's audience only. mgr-dashboard = {oc}.
+13. Channel discipline — address the channel's audience only. Your DM (dm-{p['name']}) = {oc}.
     internal-dm-* = the OTHER agent; {oc} reads silently, so never address {oc} by name or narrate
-    "(name) 만들었어" there (role bleed). Owner announcements go LATER in mgr-dashboard. internal-*
+    "(name) 만들었어" there (role bleed). Owner announcements go LATER in your DM with {oc}. internal-*
     is READ-ONLY for {oc} — never invite {oc} to "enter/들어가" one; use `group-*` for owner chat."""
 
     rules_block = _core_rules + (_extended_rules if level_at_least("standard") else "")
@@ -146,7 +149,7 @@ dm-Name: {oc} ↔ member 1:1
 internal-dm-A-B: members-only 1:1 — **{oc} CANNOT speak here, read-only only.**
 internal-group-A-B-C: members-only group chat — **{oc} CANNOT speak here, read-only only.**
 group-A-B: {oc}-inclusive group chat ({oc} participates here)
-mgr-dashboard: you and {oc} only
+dm-{p['name']}: you and {oc} only (your owner↔manager DM)
 
 ⚠ `internal-*` = READ-ONLY for {oc} (peek, not write). Never tell {oc} to "join/enter/들어가서
 얘기해" one. For owner-inclusive chat, create a `group-*` via `create_room`. (internal-* illusion:

@@ -763,12 +763,20 @@ def _attach_reactions(conn, rows: list[dict]) -> list[dict]:
     return rows
 
 
-def get_recent_messages(channel: str, limit: int = 20) -> list[dict]:
+def get_recent_messages(channel: str, limit: int = 20, before_id: int = None) -> list[dict]:
     conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM conversations WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
-        (channel, limit)
-    ).fetchall()
+    if before_id is not None:
+        # Backwards page: the newest ``limit`` messages older than ``before_id``.
+        rows = conn.execute(
+            "SELECT * FROM conversations WHERE channel = ? AND id < ? "
+            "ORDER BY timestamp DESC, id DESC LIMIT ?",
+            (channel, before_id, limit)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM conversations WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
+            (channel, limit)
+        ).fetchall()
     out = [dict(r) for r in reversed(rows)]
     _attach_reactions(conn, out)
     conn.close()
@@ -1400,6 +1408,164 @@ def increment_channel_turn(channel: str) -> int:
     return row["current_turn"] if row else 0
 
 
+# ══════════════════════════════════════════════════════
+# 채널 레지스트리 (플랫폼 중립 — 웹 채널 어댑터 백킹)
+# ══════════════════════════════════════════════════════
+# WebChannelAdapter 가 채널 lifecycle (ensure/find/rename/topic/delete) 을 DB 로
+# 구현하기 위한 net-new 레이어. Discord 는 길드 채널 객체가 정본이지만 웹은 channels
+# 테이블이 정본. set_channel_participants 와 달리 status/current_turn 을 보존한다
+# (INSERT OR REPLACE 가 running 채널 status 를 리셋하던 회귀 차단).
+
+# 삭제 보호 — dm-/mgr- 채널은 오너 핵심 대화선이라 삭제 금지 (CLAUDE.md).
+_PROTECTED_CHANNEL_PREFIXES = ("dm-", "mgr-")
+
+
+def _is_protected_channel(channel: str) -> bool:
+    """dm-/mgr- 채널은 삭제 보호 (오너 핵심 대화선). bare 'mgr' 도 보호."""
+    cid = channel or ""
+    return cid == "mgr" or cid.startswith(_PROTECTED_CHANNEL_PREFIXES)
+
+
+def ensure_channel(channel: str, participants: Optional[list] = None) -> None:
+    """채널이 없으면 생성, 있으면 그대로 둔다 (status-preserving).
+
+    set_channel_participants 의 INSERT OR REPLACE 와 달리 기존 행의 status/
+    current_turn/max_turns 를 절대 리셋하지 않는다 — running 채널에 ensure_channel
+    을 불러도 대화가 중단되지 않게. participants 가 주어지면:
+      - 행이 없으면 그 값으로 INSERT,
+      - 행이 있으면 participants 만 UPDATE (status 등은 보존).
+    participants 가 None 이면 행이 없을 때만 빈 배열로 INSERT.
+    """
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT participants FROM channels WHERE channel = ?", (channel,)
+        ).fetchone()
+        parts_json = json.dumps(participants) if participants is not None else "[]"
+        if row is None:
+            # SELECT-first / INSERT-if-absent — status DEFAULT 'idle' 로 신규.
+            conn.execute(
+                "INSERT INTO channels (channel, participants) VALUES (?, ?)",
+                (channel, parts_json),
+            )
+        elif participants is not None:
+            # 행 존재 — participants 만 갱신, status/current_turn/max_turns 보존.
+            conn.execute(
+                "UPDATE channels SET participants = ? WHERE channel = ?",
+                (parts_json, channel),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def rename_channel(old: str, new: str) -> None:
+    """채널 이름 변경 — channels PK + 모든 name-keyed 테이블을 한 트랜잭션으로 갱신.
+
+    name-keyed 테이블 (channel 컬럼이 채널 '이름' 을 담는 것): channels(PK),
+    conversations, memories, agent_facts(source_channel), relationship_history
+    (source_channel), trash. 한 트랜잭션 안에서 전부 갱신해 history 가 새 이름을
+    따라가게 한다. old==new 이거나 old 행이 없으면 no-op.
+    """
+    if not old or not new or old == new:
+        return
+    conn = get_conn()
+    try:
+        exists = conn.execute(
+            "SELECT 1 FROM channels WHERE channel = ?", (old,)
+        ).fetchone()
+        if exists is None:
+            # 레지스트리 행이 없어도 대화/메모리가 old 이름으로 남아있을 수 있으니
+            # 그래도 cross-table 갱신은 진행 (정합성 우선).
+            pass
+        # 단일 트랜잭션 — 중간 실패 시 전부 롤백.
+        conn.execute("BEGIN")
+        conn.execute("UPDATE channels SET channel = ? WHERE channel = ?", (new, old))
+        conn.execute("UPDATE conversations SET channel = ? WHERE channel = ?", (new, old))
+        conn.execute("UPDATE memories SET channel = ? WHERE channel = ?", (new, old))
+        conn.execute("UPDATE agent_facts SET source_channel = ? WHERE source_channel = ?", (new, old))
+        conn.execute("UPDATE relationship_history SET source_channel = ? WHERE source_channel = ?", (new, old))
+        conn.execute("UPDATE trash SET channel = ? WHERE channel = ?", (new, old))
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.close()
+
+
+def set_channel_topic(channel: str, topic: str) -> None:
+    """채널 토픽 설정 (channels.topic). 행이 없으면 먼저 ensure 후 갱신."""
+    ensure_channel(channel)
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE channels SET topic = ? WHERE channel = ?", (topic, channel)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_channel_topic(channel: str) -> Optional[str]:
+    """채널 토픽 반환 (없으면 None). topic 컬럼 부재 시 graceful None."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT topic FROM channels WHERE channel = ?", (channel,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+    return (row["topic"] if row else None)
+
+
+def delete_channel(channel: str) -> bool:
+    """채널 완전 삭제 — delete_channel_data (대화+메모리) + channels 행 제거.
+
+    dm-/mgr- 채널은 삭제 보호 (오너 핵심 대화선) → False 반환 (no-op).
+    삭제 성공 시 True. 존재하지 않는 채널도 (보호 대상이 아니면) True 로 멱등.
+    """
+    if _is_protected_channel(channel):
+        return False
+    # 대화 + 메모리 삭제 (trash 로 이동은 delete_channel_data 가 안 함 — soft delete 는
+    # move_channel_to_trash 별도 경로. 여기선 hard delete 시맨틱).
+    delete_channel_data(channel)
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM channels WHERE channel = ?", (channel,))
+        conn.commit()
+    finally:
+        conn.close()
+    return True
+
+
+def backfill_channels_from_conversations() -> int:
+    """conversations 에만 있고 channels 레지스트리에 없는 채널을 백필.
+
+    구 sync 경로가 channels 행을 만들던 커뮤니티 (대화는 있는데 레지스트리 누락) 가
+    web 으로 넘어와도 get_channels 에 노출되도록. status DEFAULT 'idle', participants
+    '[]' 로 INSERT OR IGNORE (기존 행 보존). 백필된 행 수 반환.
+    """
+    conn = get_conn()
+    try:
+        before = conn.execute("SELECT COUNT(*) AS c FROM channels").fetchone()["c"]
+        conn.execute(
+            "INSERT OR IGNORE INTO channels (channel, participants) "
+            "SELECT DISTINCT channel, '[]' FROM conversations "
+            "WHERE channel NOT IN (SELECT channel FROM channels)"
+        )
+        conn.commit()
+        after = conn.execute("SELECT COUNT(*) AS c FROM channels").fetchone()["c"]
+    finally:
+        conn.close()
+    return after - before
+
+
 if __name__ == "__main__":
     init_db()
 
@@ -1626,6 +1792,14 @@ def _migrate_schema():
     if "was_blocked" not in usage_cols:
         conn.execute("ALTER TABLE usage_records ADD COLUMN was_blocked INTEGER DEFAULT 0")
         print("[DB] usage_records.was_blocked 추가")
+
+    # channels.topic (기존 라이브 DB) — additive, idempotent. 웹 채널 어댑터의
+    # set_channel_topic / yuna_set_channel_topic (구 Discord channel.topic) 백킹.
+    # 백필 없음 (NULL = 토픽 미설정). 디코는 토픽을 채널 객체에 두지만 웹은 DB 가 정본.
+    channels_cols = [r["name"] for r in conn.execute("PRAGMA table_info(channels)").fetchall()]
+    if "topic" not in channels_cols:
+        conn.execute("ALTER TABLE channels ADD COLUMN topic TEXT")
+        print("[DB] channels.topic 추가")
 
     # 컬럼 의존 인덱스 — ADD COLUMN 이후에 생성 (idx_mem_* 와 동일 규율).
     try:

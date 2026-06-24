@@ -3,7 +3,7 @@ Project Glimi — Background Tasks, Events & Error Handling
 
 discord_bot.py에서 분리:
 - on_disconnect / on_resumed / on_ready 이벤트
-- yuna_watcher (5분 루프) + system_log_sync (10초 루프)
+- yuna_watcher (5분 루프) — 시스템 로그는 파일(system.log)에만 기록 (디코 미러 폐지)
 - 런타임 에러 자동 감지 + 보고 + 개발 요청
 """
 import os
@@ -21,10 +21,10 @@ from community import log_writer
 from community.core.profile import list_all_profiles, get_user_name, get_user_id
 from community.core.runtime import runtime
 from community.bot import (
-    bot, log, MGR_CHANNEL, MGR_SYSTEM_LOG, CREATOR_CHANNEL, MGR_ID,
+    bot, log, MGR_CHANNEL, CREATOR_CHANNEL, MGR_ID,
     _webhook_cache, _last_activity_snapshot,
     DAILY_SOCIAL_LIMIT,
-    _last_log_line_count, _runtime_error_counts,
+    _runtime_error_counts,
     _runtime_error_reported, AUTO_DEV_REQUEST_THRESHOLD,
 )
 import community.bot as _bot_state  # for modifying module-level primitives
@@ -162,18 +162,13 @@ async def on_ready():
     try:
         from community.core.memory import enqueue_extraction
         from community import db as _db
-        # 각 에이전트의 주 채널
+        from community.bot import _norm_name_for_channel
+        # 각 에이전트의 주 채널 — 매니저 포함 전부 dm-<이름>
         for p in profiles:
-            atype = p.get("type", "persona")
             name = p.get("name", "")
-            if atype == "mgr":
-                ch = "mgr-dashboard"
-            elif atype == "creator":
-                ch = "mgr-creator"
-            else:
-                ch = f"dm-{name}"
+            ch = f"dm-{_norm_name_for_channel(name)}"
             enqueue_extraction(p["id"], ch)
-        # 오너 관점 메모리도 — 모든 dm/mgr 채널의 오너 발화
+        # 오너 관점 메모리도 — 모든 dm/mgr 채널의 오너 발화 (mgr-* 는 레거시 back-compat)
         from community.core.profile import get_user_id
         oid = get_user_id()
         if oid:
@@ -212,12 +207,10 @@ async def on_ready():
     from community.bot.supervisors import start_supervisors
     start_supervisors()
 
-    # 유나 자율 감시 + 시스템 로그 동기화 시작
+    # 유나 자율 감시 시작
     try:
         if not yuna_watcher.is_running():
             yuna_watcher.start()
-        if not system_log_sync.is_running():
-            system_log_sync.start()
         if not alive_heartbeat.is_running():
             alive_heartbeat.start()
         if not supervisor_tick.is_running():
@@ -245,9 +238,8 @@ async def _verify_tutorial_state(guild):
 
     ch_names = {ch.name for ch in guild.text_channels}
 
-    # 필수 채널 3개
+    # 필수 채널 — owner↔mgr DM + owner↔creator DM (mgr-system-log 폐지)
     has_dashboard = MGR_CHANNEL in ch_names
-    has_system_log = MGR_SYSTEM_LOG in ch_names
     has_creator = CREATOR_CHANNEL in ch_names
     # 하나-유나 internal-dm
     has_internal = any(
@@ -255,7 +247,7 @@ async def _verify_tutorial_state(guild):
         for n in ch_names
     )
 
-    all_channels = has_dashboard and has_system_log and has_creator
+    all_channels = has_dashboard and has_creator
 
     if phase == "complete":
         # 이미 완료 — 검증만
@@ -264,7 +256,7 @@ async def _verify_tutorial_state(guild):
         return
 
     if all_channels:
-        # 필수 채널 3개(dashboard/system_log/creator) 가 모두 존재하면 Phase 2 이상 진행됐다는
+        # 필수 채널(mgr DM/creator DM) 가 모두 존재하면 Phase 2 이상 진행됐다는
         # 실질 증거 → 완료로 보정. "대화 기록" 존재는 Phase 1 프로필 수집 중에도 쌓이기 때문에
         # 지표로 쓰면 진행 중인 튜토리얼을 잘못 complete 로 마킹해 Phase 2 진입을 영구 차단.
         if phase != "complete":
@@ -273,7 +265,7 @@ async def _verify_tutorial_state(guild):
                 _db.set_meta("yuna_greeted", "1")
             log_writer.system("[튜토리얼 검증] 튜토리얼 완료 보정 (필수 채널 모두 존재)")
     elif greeted:
-        log_writer.system(f"[튜토리얼 검증] greeted=1, phase={phase}, 채널: dashboard={has_dashboard} syslog={has_system_log} creator={has_creator}")
+        log_writer.system(f"[튜토리얼 검증] greeted=1, phase={phase}, 채널: mgr={has_dashboard} creator={has_creator}")
 
 
 async def _check_owner_profile(guild):
@@ -454,7 +446,7 @@ async def supervisor_tick():
         guild = get_target_guild()
         if not guild:
             return
-        await pool.tick(guild)
+        await pool.tick(guild=guild)
     except Exception as e:
         log_writer.system(f"[supervisor-tick] 오류: {type(e).__name__}: {e}")
 
@@ -584,71 +576,6 @@ async def before_yuna_watcher():
     await bot.wait_until_ready()
     for ch in db.get_channel_overview():
         _last_activity_snapshot[ch["channel"]] = ch["msg_count"]
-
-
-# ── 시스템 로그 → 디코 동기화 ─────────────────────────
-
-def _count_log_lines():
-    log_path = os.path.join(log_writer.get_log_dir(), "system.log")
-    try:
-        with open(log_path, "r", encoding="utf-8") as f:
-            return sum(1 for _ in f)
-    except FileNotFoundError:
-        return 0
-
-
-@tasks.loop(seconds=10)
-async def system_log_sync():
-    """시스템 로그 새 줄을 mgr-system-log 디코 채널에 전송"""
-    from community.bot.core import get_target_guild
-    guild = get_target_guild()
-    if not guild:
-        return
-    ch = discord.utils.get(guild.text_channels, name=MGR_SYSTEM_LOG)
-    if not ch:
-        return
-
-    total = _count_log_lines()
-    if total <= _bot_state._last_log_line_count:
-        return
-
-    new_count = total - _bot_state._last_log_line_count
-    new_lines = log_writer.tail(os.path.join(log_writer.get_log_dir(), "system.log"), new_count)
-
-    # 에이전트 도구 호출, 프로필/관계 변동, 튜토리얼 phase, 에러 등 운영 가시성에 필요한 줄 모두 포함
-    important = [l for l in new_lines if any(k in l for k in (
-        "[Tool]", "[프로필]", "[관계]", "[채널]", "[감정]",
-        "🔔 ACTION", "✓ ACTION", "❌", "⚠",
-        "강제지시", "봇 시작", "봇 종료", "🔧",
-        "튜토리얼", "Phase", "sup:tutorial",
-        "Channel created", "Channel deleted",
-    ))]
-    if important:
-        # discord 메시지 한도(2000자) 안 넘게 나눠 전송
-        chunk = []
-        chunk_len = 0
-        for line in important:
-            if chunk_len + len(line) + 8 > 1900 and chunk:
-                try:
-                    await ch.send("```\n" + "\n".join(chunk) + "\n```")
-                except Exception:
-                    pass
-                chunk, chunk_len = [], 0
-            chunk.append(line)
-            chunk_len += len(line) + 1
-        if chunk:
-            try:
-                await ch.send("```\n" + "\n".join(chunk) + "\n```")
-            except Exception:
-                pass
-
-    _bot_state._last_log_line_count = total
-
-
-@system_log_sync.before_loop
-async def before_system_log_sync():
-    await bot.wait_until_ready()
-    _bot_state._last_log_line_count = _count_log_lines()
 
 
 # ── 런타임 에러 자동 감지 + 보고 + 개발 요청 ─────────

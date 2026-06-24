@@ -64,10 +64,12 @@ bot = commands.Bot(command_prefix="!", intents=intents, heartbeat_timeout=120)
 
 # ── 채널 상수 ─────────────────────────────────────────
 
-MGR_CHANNEL = "mgr-dashboard"
-MGR_SYSTEM_LOG = "mgr-system-log"
-CREATOR_CHANNEL = "mgr-creator"
-DEV_CHANNEL = "mgr-dev-request"  # dev manager (세나) triage channel — request_dev_fix 결과 보고
+# 매니저(유나/하나/세나) 채널도 페르소나와 동일하게 dm-<이름>.
+# 아래 값은 seed_agents.json 기본 이름 기준 default — 실제 값은 startup 시
+# _build_channel_maps() 가 각 커뮤니티의 실제 프로필 이름으로 globals 를 덮어쓴다.
+MGR_CHANNEL = "dm-서유나"      # mgr (유나) owner↔mgr DM
+CREATOR_CHANNEL = "dm-윤하나"   # creator (하나) owner↔creator DM
+DEV_CHANNEL = "dm-한세나"       # dev manager (세나) triage DM — request_dev_fix 결과 보고
 MGR_ID = "agent-mgr-001"
 CREATOR_ID = "agent-creator-001"
 DEV_ID = "agent-dev-001"
@@ -133,9 +135,11 @@ _agent_locks: dict[str, asyncio.Lock] = {}
 
 
 def _get_channel_lock(channel_name: str) -> asyncio.Lock:
-    if channel_name not in _channel_locks:
-        _channel_locks[channel_name] = asyncio.Lock()
-    return _channel_locks[channel_name]
+    # 캐노니컬 잠금 = community.core.locks (discord-free, community-namespaced).
+    # 웹 _run_turn / supervisor / web greeting 이 같은 mutex 를 공유하게.
+    from community.core.locks import get_channel_lock
+    from community.community import get_community_id
+    return get_channel_lock(get_community_id(), channel_name)
 
 
 def _get_agent_lock(agent_id: str) -> asyncio.Lock:

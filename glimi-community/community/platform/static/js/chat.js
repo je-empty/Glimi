@@ -77,6 +77,7 @@
   var $status = document.getElementById('chat-status');
   var $headIcon = document.getElementById('chat-head-icon');
   var $channelLabel = document.getElementById('chat-channel-label');
+  var $headProfile = document.getElementById('chat-head-profile');
   var $headTopic = document.getElementById('chat-head-topic');
   var $feed = document.getElementById('chat-feed');
   var $stream = document.getElementById('chat-stream');
@@ -97,6 +98,23 @@
   var $threadSub = document.getElementById('chat-thread-sub');
   var $threadBody = document.getElementById('chat-thread-body');
   var $threadFoot = document.getElementById('chat-thread-foot');
+  // lightbox (ships in _chat_shell.html → present on every chat surface)
+  var $lightbox = document.getElementById('chat-lightbox');
+  var $lightboxImg = document.getElementById('chat-lightbox-img');
+  var $lightboxCap = document.getElementById('chat-lightbox-caption');
+  var $lightboxClose = document.getElementById('chat-lightbox-close');
+  // auto-run (workspace-only — toggle + status pill + brief modal). All inert
+  // unless WS_BASE is truthy AND the surface isn't read-only (the demo).
+  var $autorunToggle = document.getElementById('ws-autorun-toggle');
+  var $autorunPill = document.getElementById('ws-autorun-pill');
+  var $briefModal = document.getElementById('ws-brief-modal');
+  var $briefClose = document.getElementById('ws-brief-close');
+  var $briefCancel = document.getElementById('ws-brief-cancel');
+  var $briefStart = document.getElementById('ws-brief-start');
+  var $briefGoal = document.getElementById('ws-brief-goal');
+  var $briefContext = document.getElementById('ws-brief-context');
+  var $briefBacklog = document.getElementById('ws-brief-backlog');
+  var $briefMaxRounds = document.getElementById('ws-brief-max-rounds');
 
   var ws = null;
   var channels = [];
@@ -112,6 +130,12 @@
   var msgCounter = 0;        // local id source for frame-born messages
   // Message index for this channel render (id → {speakerId, name, text, ...}).
   var msgIndex = {};
+  // ==== Backwards pagination (load older on scroll-to-top) ====
+  // The smallest SERVER id currently loaded — the cursor for the next older page.
+  var oldestLoadedId = null;
+  var loadingOlder = false;  // re-entrancy guard for the scroll-up fetch
+  var noMoreOlder = false;   // the server returned an empty older page → stop
+  var HISTORY_PAGE = 50;     // page size for both cold-load + older pages
   // Reply target captured from a message's reply action.
   var replyTo = null;        // { id, speaker, text }
   // Thread panel state.
@@ -132,6 +156,13 @@
   // The last reaction WE initiated, so its broadcast echo can bind OWNER_ID
   // ({id, emoji}); cleared once consumed.
   var pendingReaction = null;
+  // Threads / replies — feature flag (ON). The per-message reply action, the
+  // "View thread" affordance, and the thread side-panel are gated behind this. The
+  // full reply→thread→fetch_thread pipeline (setReplyTo / openThreadPanel /
+  // fetchThread / renderThreadFromServer / threadRow + the reply-cue) is live.
+  // Reactions are independent and always live. Inbound reply pointers always
+  // render (reply quotes survive reload) regardless of this flag.
+  var THREADS_ENABLED = true;
 
   // ==== Small helpers ====
   // XSS-safe: textContent escape, then rich() only re-introduces known spans.
@@ -146,11 +177,232 @@
     return s
       .replace(/&lt;em&gt;([^]*?)&lt;\/em&gt;/g, '<em>$1</em>')
       .replace(/@([가-힣A-Za-z0-9_]+)/g, '<span class="mention">@$1</span>')
-      .replace(/(^|\s)#([가-힣A-Za-z0-9_\-]+)/g, '$1<span class="ch">#$2</span>');
+      .replace(/(^|\s)#([가-힣A-Za-z0-9_\-]+)/g, '$1<span class="ch" data-ch="$2">#$2</span>');
   }
   function escAttr(s) {
     return esc(s).replace(/"/g, '&quot;');
   }
+
+  // ==== GFM-lite markdown renderer (dependency-free, XSS-safe) ====
+  // CONTRACT: callers pass the RAW message text; mdToHtml escapes FIRST (esc),
+  // then formats the escaped string. Because the input is fully entity-escaped
+  // up front, the renderer can only ever emit a CLOSED set of tags it writes
+  // itself (h1-3, strong, em, ul/ol/li, code, pre, a, p, br) plus the spans that
+  // rich() re-introduces (@mention / #channel). No user-supplied markup survives:
+  // a literal "<script>" in the message is "&lt;script&gt;" before any rule runs.
+  // Links additionally pass through safeUrl() so only http(s)/mailto hrefs render.
+  //
+  // Supported: ATX headings (# .. ###), **bold**/__bold__, *italic*/_italic_,
+  // `inline code`, ```fenced code```, - / * / + and 1. lists (one level),
+  // [text](url) links + bare autolinks, blank-line paragraphs + soft line breaks.
+
+  // Allow only safe link schemes; everything else (javascript:, data:, etc.) is
+  // dropped so an [x](javascript:…) can't execute. Operates on the ESCAPED href
+  // (so it sees "&amp;" etc.) and returns it re-quote-escaped for an attribute.
+  function safeUrl(escapedHref) {
+    var raw = (escapedHref || '').trim();
+    // Decode the few entities esc() introduces so the scheme test sees the real
+    // first chars, then re-check. We never inject this decoded form into HTML.
+    var probe = raw.replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    if (/^\s*(https?:|mailto:)/i.test(probe)) return raw.replace(/"/g, '&quot;');
+    if (/^\s*(\/|#|\.\/|\?)/.test(probe)) return raw.replace(/"/g, '&quot;');  // relative/in-page
+    if (/^[^:\s]+$/.test(probe)) return raw.replace(/"/g, '&quot;');           // bare host/path, no scheme
+    return null;  // unsafe scheme → render the link text only, no <a>
+  }
+
+  // Inline formatting on an ALREADY-escaped string. Order matters: pull out
+  // inline-code spans FIRST (placeholder them) so their contents are never
+  // touched by bold/italic/mention rules, restore them last.
+  function mdInline(s) {
+    var codes = [];
+    // `inline code` → placeholder (escaped backticks can't appear post-esc, so a
+    // literal backtick in source is a real backtick here).
+    s = s.replace(/`([^`]+)`/g, function (_m, c) {
+      codes.push('<code class="md-code">' + c + '</code>');
+      return ' ' + (codes.length - 1) + ' ';
+    });
+    // [text](url) links — text gets inline formatting, url is scheme-guarded.
+    // URL part allows one level of balanced parens (e.g. a Wikipedia _(disambig)
+    // link) so the whole "(…)" is consumed — no stray ")" leaks when a link is
+    // dropped for an unsafe scheme.
+    s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, function (m, txt, url) {
+      var href = safeUrl(url);
+      if (!href) return txt;  // unsafe scheme → keep the visible text only
+      return '<a class="md-link" href="' + href + '" target="_blank" rel="noopener noreferrer ugc">' + txt + '</a>';
+    });
+    // Bare autolinks (http/https) not already inside an <a …>.
+    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, function (m, pre, url) {
+      var href = safeUrl(url);
+      if (!href) return m;
+      return pre + '<a class="md-link" href="' + href + '" target="_blank" rel="noopener noreferrer ugc">' + url + '</a>';
+    });
+    // Bold then italic (run bold first so ** isn't eaten by the * rule).
+    s = s.replace(/\*\*([^]+?)\*\*/g, '<strong>$1</strong>')
+         .replace(/__([^]+?)__/g, '<strong>$1</strong>')
+         .replace(/(^|[^\*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, '$1<em class="md-em">$2</em>')
+         .replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_(?![_\w])/g, '$1<em class="md-em">$2</em>');
+    // @mention / #channel (and the legacy <em> marker) — reuse rich() so the
+    // existing affordances keep working inside rendered markdown.
+    s = rich(s);
+    // Restore inline code.
+    s = s.replace(/ (\d+) /g, function (_m, i) { return codes[Number(i)]; });
+    return s;
+  }
+
+  // ==== GFM-lite table helpers (all operate on already-escaped lines) ====
+  // A candidate table row: contains at least one pipe (a leading/trailing pipe is
+  // optional, matching GFM). The separator check disambiguates real tables.
+  function isTableRow(line) {
+    return line != null && line.indexOf('|') !== -1 && !/^\s*```/.test(line);
+  }
+  // Separator row: each cell is dashes with optional leading/trailing colon
+  // (`---`, `:--`, `--:`, `:-:`), pipes between. At least one cell required.
+  function isTableSeparator(line) {
+    if (!isTableRow(line)) return false;
+    var cells = splitRow(line);
+    if (!cells.length) return false;
+    return cells.every(function (c) { return /^:?-+:?$/.test(c.trim()); });
+  }
+  // Split a pipe row into trimmed cells, dropping the empty cells produced by a
+  // leading/trailing pipe. A backslash-escaped \| is kept as a literal pipe.
+  function splitRow(line) {
+    var s = String(line).trim().replace(/^\|/, '').replace(/\|$/, '');
+    var cells = s.split(/(?<!\\)\|/).map(function (c) {
+      return c.replace(/\\\|/g, '|').trim();
+    });
+    return cells;
+  }
+  // Map a separator cell to an alignment keyword from its colons.
+  function cellAlign(sep) {
+    var t = String(sep).trim();
+    var l = t.charAt(0) === ':', r = t.charAt(t.length - 1) === ':';
+    if (l && r) return 'center';
+    if (r) return 'right';
+    if (l) return 'left';
+    return '';
+  }
+  function alignAttr(a) { return a ? ' style="text-align:' + a + '"' : ''; }
+
+  // Block-level pass. ``escaped`` is the WHOLE message already run through esc().
+  // Returns the inner HTML for a rendered markdown block.
+  function mdBlocks(escaped) {
+    var lines = String(escaped == null ? '' : escaped).split('\n');
+    var out = [];
+    var i = 0;
+    var para = [];        // buffered consecutive text lines → one <p>
+    function flushPara() {
+      if (!para.length) return;
+      out.push('<p>' + para.map(mdInline).join('<br>') + '</p>');
+      para = [];
+    }
+    while (i < lines.length) {
+      var line = lines[i];
+      // Fenced code block ``` … ``` (lang tag after the opener is ignored).
+      var fence = line.match(/^\s*```+\s*([^\s`]*)\s*$/);
+      if (fence) {
+        flushPara();
+        var buf = [];
+        i++;
+        while (i < lines.length && !/^\s*```+\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++;  // skip closing fence (or run off the end if unterminated)
+        // Already escaped → emit verbatim, no inline rules inside code.
+        out.push('<pre class="md-pre"><code>' + buf.join('\n') + '</code></pre>');
+        continue;
+      }
+      // ATX heading (# .. ###; 4+ hashes degrade to h3).
+      var h = line.match(/^\s*(#{1,6})\s+(.*)$/);
+      if (h) {
+        flushPara();
+        var lvl = Math.min(h[1].length, 3);
+        out.push('<h' + lvl + ' class="md-h md-h' + lvl + '">' + mdInline(h[2].trim()) + '</h' + lvl + '>');
+        i++;
+        continue;
+      }
+      // GFM-lite pipe table: a header row `| a | b |`, a separator row
+      // `| --- | :--: |` (colons set per-column alignment), then 0+ body rows.
+      // Operates on already-escaped text; every cell still runs through mdInline
+      // so it stays XSS-safe (no raw HTML ever reaches the DOM here).
+      if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+        flushPara();
+        var headerCells = splitRow(line);
+        var aligns = splitRow(lines[i + 1]).map(cellAlign);
+        i += 2;  // consume header + separator
+        var thead = '<thead><tr>' + headerCells.map(function (cell, ci) {
+          return '<th' + alignAttr(aligns[ci]) + '>' + mdInline(cell) + '</th>';
+        }).join('') + '</tr></thead>';
+        var bodyRows = [];
+        while (i < lines.length && isTableRow(lines[i])) {
+          var cells = splitRow(lines[i]);
+          bodyRows.push('<tr>' + headerCells.map(function (_h, ci) {
+            // Pad/truncate to the header's column count so ragged rows stay valid.
+            return '<td' + alignAttr(aligns[ci]) + '>' + mdInline(cells[ci] || '') + '</td>';
+          }).join('') + '</tr>');
+          i++;
+        }
+        out.push('<table class="md-tbl">' + thead +
+          (bodyRows.length ? '<tbody>' + bodyRows.join('') + '</tbody>' : '') + '</table>');
+        continue;
+      }
+      // Unordered list (-, *, +) — consume the contiguous run.
+      if (/^\s*[-*+]\s+/.test(line)) {
+        flushPara();
+        var ul = [];
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+          ul.push('<li>' + mdInline(lines[i].replace(/^\s*[-*+]\s+/, '')) + '</li>');
+          i++;
+        }
+        out.push('<ul class="md-list">' + ul.join('') + '</ul>');
+        continue;
+      }
+      // Ordered list (1. 2. …) — consume the contiguous run.
+      if (/^\s*\d+[.)]\s+/.test(line)) {
+        flushPara();
+        var ol = [];
+        while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+          ol.push('<li>' + mdInline(lines[i].replace(/^\s*\d+[.)]\s+/, '')) + '</li>');
+          i++;
+        }
+        out.push('<ol class="md-list">' + ol.join('') + '</ol>');
+        continue;
+      }
+      // Blank line → paragraph break.
+      if (/^\s*$/.test(line)) { flushPara(); i++; continue; }
+      // Otherwise a normal text line → buffer into the current paragraph.
+      para.push(line);
+      i++;
+    }
+    flushPara();
+    return out.join('');
+  }
+
+  // Public entry: RAW text → safe rendered-markdown HTML. Escape first (the XSS
+  // boundary), then run the block + inline passes on the escaped text.
+  function mdToHtml(raw) {
+    return mdBlocks(esc(raw));
+  }
+
+  // Channel-mention system (works for Discord <#id> too): a #name in a message is
+  // clickable and switches to that channel — resolved by real key, dm-<name>, or
+  // the agent's display name, so #아린 / #dm-아린 / #서유나 all land on the right DM.
+  function resolveChannelMention(raw) {
+    var name = (raw || '').replace(/^#/, '');
+    if (!name) return null;
+    for (var i = 0; i < channels.length; i++) {
+      var c = channels[i];
+      if (c.channel === name) return c;
+      if (c.channel === 'dm-' + name) return c;
+      if ((c.name || '') === name) return c;
+      if ((c.channel || '').replace(/^dm-/, '') === name) return c;
+    }
+    return null;
+  }
+  document.addEventListener('click', function (e) {
+    var span = e.target && e.target.closest && e.target.closest('span.ch');
+    if (!span) return;
+    var target = resolveChannelMention(span.getAttribute('data-ch') || span.textContent);
+    if (target) { e.preventDefault(); selectChannel(target); }
+  });
 
   function apiBase() {
     // Workspace: per-workspace prefix (/w/{id}/chat). Community: /community/{cid}/chat.
@@ -170,6 +422,63 @@
       : '/api/avatar?id=' + encodeURIComponent(agentId) +
         (COMMUNITY ? '&community=' + encodeURIComponent(COMMUNITY) : '') + ver;
   }
+  // Full-body portrait URL (variant=full) — same routing as avatarUrl() but asks
+  // the avatar endpoint for the un-cropped full-body image used by the lightbox.
+  function fullAvatarUrl(agentId) {
+    return avatarUrl(agentId) + '&variant=full';
+  }
+  // Per-agent DETAIL PAGE url, built identically to dashboard.js openAgent's
+  // detail link: Workspace → {WS_BASE}/agent/{id}; Community → /agent/{id}?community=.
+  // Standalone kernel demo (neither WS_BASE nor COMMUNITY) has no such route → null
+  // so callers can hide the affordance.
+  function agentDetailUrl(agentId) {
+    if (!agentId) return null;
+    if (WS_BASE) return WS_BASE + '/agent/' + encodeURIComponent(agentId);
+    if (COMMUNITY) return '/agent/' + encodeURIComponent(agentId) +
+      '?community=' + encodeURIComponent(COMMUNITY);
+    return null;
+  }
+
+  // ==== Lightbox (full-body profile / inline image) ====
+  // Self-contained: depends ONLY on the #chat-lightbox markup shipped in
+  // _chat_shell.html, NOT on dashboard.js / _core.html — so the standalone /chat
+  // page (which loads only chat.js) opens the lightbox too.
+  function openLightbox(src, caption) {
+    if (!$lightbox || !$lightboxImg) return;
+    $lightboxImg.src = src;
+    $lightboxImg.alt = caption || '';
+    if ($lightboxCap) $lightboxCap.textContent = caption || '';
+    $lightbox.classList.add('open');
+    $lightbox.setAttribute('aria-hidden', 'false');
+    document.documentElement.classList.add('lb-open');  // lock body scroll
+  }
+  function closeLightbox() {
+    if (!$lightbox) return;
+    $lightbox.classList.remove('open');
+    $lightbox.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('lb-open');
+    if ($lightboxImg) { $lightboxImg.src = ''; }
+  }
+  // Open the FULL-BODY portrait for an agent. The owner has no portrait → no-op
+  // (the message avatar there is a monogram, not an image).
+  function openProfileLightbox(agentId, name) {
+    if (!agentId) return;
+    openLightbox(fullAvatarUrl(agentId), name || '');
+  }
+  if ($lightboxClose) $lightboxClose.addEventListener('click', closeLightbox);
+  if ($lightbox) {
+    // Click the dimmed backdrop (outside the panel) to close.
+    $lightbox.addEventListener('click', function (e) {
+      var panel = e.target.closest && e.target.closest('.lb-panel');
+      if (!panel) closeLightbox();
+    });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && $lightbox && $lightbox.classList.contains('open')) {
+      e.stopPropagation();
+      closeLightbox();
+    }
+  });
 
   function initialOf(name) {
     var s = (name || '').trim();
@@ -211,6 +520,78 @@
     return Math.floor(diff / 86400000) + 'd';
   }
 
+  // Display name for a channel. The server names internal-owner "오너의 검토"
+  // (KO source); on the EN UI swap to "Owner's review" so the chrome stays
+  // English. All other channels use the server-provided name verbatim.
+  function channelDisplayName(c) {
+    if (!c) return '';
+    // internal-owner = the owner's own read-only notes channel — keep the
+    // server-provided name (workspace: "자동 진행 메모"; community: "오너의 검토"),
+    // EN swaps to "Owner's review". It is NOT a between-two-agents pair.
+    if (c.channel === 'internal-owner') {
+      return EN ? "Owner's review" : (c.name || c.channel || '');
+    }
+    // Between-agents pair: resolve the participants to their display names and join
+    // with ' · ' (e.g. "시니어 엔지니어 · 테크 라이터"). Generic — no role names
+    // hardcoded; names come from the members' DM rows / the agents map.
+    var members = internalMembers(c);
+    if (members.length >= 2) {
+      return members.map(agentNameOf).filter(Boolean).join(' · ');
+    }
+    // Generic safety net: an internal backchannel whose name is still a raw slug
+    // ('internal-a-b') and that carries no members — strip 'internal-' and join the
+    // remaining '-'-separated tokens with ' · '. The server normally supplies a
+    // nicer name, so this only fires when it hasn't.
+    var isInternal = c.kind === 'internal' ||
+      (c.channel || '').indexOf('internal-') === 0;
+    var label = c.name || c.channel || '';
+    if (isInternal && /^internal-/.test(label)) {
+      var parts = label.replace(/^internal-/, '').split('-').filter(Boolean);
+      if (parts.length) return parts.join(' · ');
+    }
+    return label;
+  }
+
+  // Small avatar markup for a single agent member in a between-agents pair row —
+  // a compact circle (image with monogram fallback). Inline-styled so it stays
+  // self-contained (no new CSS class); the pair wrapper overlaps them slightly.
+  function pairAvHtml(id, idx) {
+    var nm = agentNameOf(id);
+    var overlap = idx > 0 ? 'margin-left:-8px;' : '';
+    return '<span class="ava pair-av" style="width:22px;height:22px;font-size:var(--fs-xs);' +
+      overlap + 'border:2px solid var(--panel);background:' + avBg(id) + '">' +
+      '<img src="' + escAttr(avatarUrl(id)) + '" alt="" ' +
+      'onerror="this.replaceWith(document.createTextNode(\'' + esc(initialOf(nm)) + '\'))"></span>';
+  }
+  // The side-by-side (slightly overlapping) avatar cluster that prefixes a
+  // between-agents pair row — visually scannable as a two-party channel.
+  function pairAvCluster(members) {
+    var avs = members.slice(0, 2).map(function (id, i) { return pairAvHtml(id, i); }).join('');
+    return '<span class="pair-avs" aria-hidden="true" ' +
+      'style="display:inline-flex;align-items:center;flex:0 0 auto">' + avs + '</span>';
+  }
+
+  // Resolve an agent_id → its human display name. The chat client never gets a
+  // standalone agents map, but every persona surfaces as a DM channel, so the DM
+  // row's server-provided ``name`` is the canonical display name. Fall back to the
+  // raw id when the agent has no DM listed (e.g. a manager-only participant).
+  function agentNameOf(id) {
+    if (!id) return '';
+    for (var i = 0; i < channels.length; i++) {
+      var c = channels[i];
+      if (c.kind === 'dm' && c.agent_id === id) return c.name || id;
+    }
+    return id;
+  }
+
+  // The agent members of an internal (between-agents) channel — the two (or more)
+  // participants whose backchannel this is. internal-owner is the owner's own
+  // read-only notes channel, NOT a between-two-agents pair, so it never qualifies.
+  function internalMembers(c) {
+    if (!c || c.channel === 'internal-owner') return [];
+    return (c.members || []).filter(Boolean);
+  }
+
   // Role tag for the active channel's type (DM) / owner.
   function activeChannelType() {
     var c = channels.filter(function (x) { return x.channel === CHANNEL; })[0];
@@ -223,6 +604,33 @@
       if (activeChannelType() === 'mgr') return { cls: 'mgr', label: 'Manager' };
     }
     return null;
+  }
+
+  // ==== Bootstrap guard — chat-client init ONLY when the chat shell is present ===
+  // chat.js is loaded on two kinds of surface: (1) the chat shell itself
+  // (_chat_shell.html → #chat-shell + #chat-feed/#chat-stream/#chat-input …), and
+  // (2) other pages that only want the shared markdown primitive (e.g.
+  // agent_detail.html, which calls GlimiChat.mdToHtml to render transcripts). On a
+  // non-chat surface the chat DOM doesn't exist, so any further DOM binding below
+  // (e.g. $feed.addEventListener) would throw, AND the auto-boot at the bottom
+  // would open a WebSocket / poll for nothing — which is exactly what hung the
+  // agent-detail page on "불러오는 중" (networkidle never settled). So: if the
+  // chat shell root is absent, expose ONLY the pure render helpers and RETURN
+  // before any DOM binding / connection. (mdToHtml/rich/esc are all defined above
+  // this point, so they're safe to export here.)
+  if (!$shell || !$feed || !$stream) {
+    window.GlimiChat = {
+      mdToHtml: mdToHtml,
+      renderText: function (raw) { return mdToHtml(raw); },
+      // No chat client on this surface — these are no-ops so callers that probe
+      // for them (graph→chat jump, tab re-entry) don't throw on a non-chat page.
+      init: function () {},
+      refit: function () {},
+      selectChannelById: function () {},
+      channelForAgent: function () { return null; },
+      openAgentChannel: function () {}
+    };
+    return;
   }
 
   // ==== Pinned autoscroll (gated) ====
@@ -240,13 +648,23 @@
   }
 
   // ==== Avatar markup ====
+  // For the MESSAGE-row avatar (cls 'av') a non-owner image is made clickable —
+  // it opens the full-body portrait lightbox (data-* read by the $stream click
+  // delegation). The owner avatar is a monogram (no portrait) → not clickable.
+  // The sidebar rail avatar (cls 'ava') is NOT tagged here: its row already
+  // routes a click to the DM (selectChannel), which is the right action there.
   function avHtml(speakerId, name, isUser, cls) {
     cls = cls || 'av';
+    var clickable = (cls === 'av') && !isUser && !!speakerId;
+    var dataAttrs = clickable
+      ? ' data-profile-id="' + escAttr(speakerId) + '" data-profile-name="' + escAttr(name || '') +
+        '" role="button" tabindex="0" title="' + escAttr(EN ? 'View profile' : '프로필 보기') + '"'
+      : '';
     if (isUser) {
       return '<span class="' + cls + '" style="background:' + avBg(OWNER_NAME) + '">' + esc(initialOf(OWNER_NAME)) + '</span>';
     }
     if (speakerId) {
-      return '<span class="' + cls + '" style="background:' + avBg(speakerId) + '">' +
+      return '<span class="' + cls + '"' + dataAttrs + ' style="background:' + avBg(speakerId) + '">' +
         '<img src="' + escAttr(avatarUrl(speakerId)) + '" alt="" ' +
         'onerror="this.replaceWith(document.createTextNode(\'' + esc(initialOf(name)) + '\'))"></span>';
     }
@@ -323,11 +741,20 @@
   }
 
   function linesHtml(m) {
-    var out = m.lines.map(function (l) { return '<div class="txt">' + rich(esc(l)) + '</div>'; }).join('');
+    var out = '';
+    // Normal messages render as GFM-lite markdown (the whole blob is ONE
+    // markdown document so multi-line replies get headings/lists/code/paragraphs).
+    // System / error rows stay a plain pre-wrap line (short notices, no markdown).
+    if (m.kind === 'sys' || m.kind === 'err') {
+      out = m.lines.map(function (l) { return '<div class="txt">' + rich(esc(l)) + '</div>'; }).join('');
+    } else if (m.lines && m.lines.length) {
+      var body = mdToHtml(m.lines.join('\n'));
+      if (body) out = '<div class="txt md">' + body + '</div>';
+    }
     (m.images || []).forEach(function (im) {
       if (im && im.url) {
         out += '<img class="chat-img" src="' + escAttr(im.url) + '" alt="' + escAttr(im.caption || 'image') + '">';
-        if (im.caption) out += '<div class="txt">' + rich(esc(im.caption)) + '</div>';
+        if (im.caption) out += '<div class="txt md">' + mdToHtml(im.caption) + '</div>';
       }
     });
     return out;
@@ -337,6 +764,7 @@
   // root that HAS replies (this row is itself a thread_root referenced by some
   // reply) — we render it lazily and refresh it as replies arrive / on cold-load.
   function threadAffordanceHtml(m) {
+    if (!THREADS_ENABLED) return '';
     // Persisted/optimistic ids only (temp 'm…' client ids have no server thread).
     var rootId = m.id;
     if (!isServerId(rootId)) return '';
@@ -377,16 +805,24 @@
 
   function actsPopHtml(m) {
     var canReact = isServerId(m.id);
+    // Reply + thread actions are gated behind THREADS_ENABLED (default OFF) so the
+    // hover pop only offers the live reaction affordance — the chat stays a clean
+    // single stream. When the flag is off and the row can't be reacted to, the pop
+    // is empty (CSS hides an empty pop); leave the markup minimal.
+    var threadActions = THREADS_ENABLED
+      ? (canReact ? '<span class="sep"></span>' : '') +
+        '<b class="reply-btn" data-reply="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Reply">' +
+          '<i class="ti ti-arrow-back-up" aria-hidden="true"></i></b>' +
+        '<span class="sep"></span>' +
+        '<b class="thread-btn" data-thread="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Thread">' +
+          '<i class="ti ti-messages" aria-hidden="true"></i></b>'
+      : '';
     return '<div class="acts-pop">' +
       (canReact
         ? '<b class="react-btn" data-react="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="React">' +
-            '<i class="ti ti-heart" aria-hidden="true"></i></b><span class="sep"></span>'
+            '<i class="ti ti-heart" aria-hidden="true"></i></b>'
         : '') +
-      '<b class="reply-btn" data-reply="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Reply">' +
-        '<i class="ti ti-arrow-back-up" aria-hidden="true"></i></b>' +
-      '<span class="sep"></span>' +
-      '<b class="thread-btn" data-thread="' + escAttr(String(m.id)) + '" tabindex="0" role="button" aria-label="Thread">' +
-        '<i class="ti ti-messages" aria-hidden="true"></i></b>' +
+      threadActions +
       '</div>';
   }
 
@@ -488,6 +924,7 @@
   // reply's target) belongs to. The root is the parent's thread_root if the
   // parent is itself a reply, else the parent id.
   function refreshThreadAffordance(parentId) {
+    if (!THREADS_ENABLED) return;
     var parent = msgIndex[parentId];
     var rootId = parent ? rootIdOf(parent) : parentId;
     var rootEl = $stream.querySelector('.msg[data-mid="' + cssEsc(rootId) + '"]');
@@ -516,6 +953,16 @@
     msgIndex = {};
     typingRows = {};
     pendingByClientId = {};
+    // Reset backwards-pagination cursor for the freshly opened channel.
+    oldestLoadedId = null;
+    loadingOlder = false;
+    noMoreOlder = false;
+  }
+  // Track the smallest server id seen so the next older page can request before it.
+  function noteOldest(id) {
+    if (!isServerId(id)) return;
+    var n = Number(id);
+    if (oldestLoadedId == null || n < oldestLoadedId) oldestLoadedId = n;
   }
 
   // ==== Typing (typefoot + in-stream landing spot) ====
@@ -616,6 +1063,13 @@
         break;
       case 'thread':
         renderThreadFromServer(frame.root, frame.messages || []);
+        break;
+      case 'auto':
+        // Autonomous owner-driver lifecycle (workspace only). The owner
+        // instruction + reasoning arrive as ordinary {type:'text'} frames and
+        // render in their channels with zero extra logic; this just keeps the
+        // toggle + status pill in sync with the loop's phase.
+        handleAutoFrame(frame);
         break;
       case 'interrupted':
         showTyping(false);
@@ -732,14 +1186,17 @@
 
   // ==== History cold-load ====
   function loadHistory() {
-    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=50';
+    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=' + HISTORY_PAGE;
     return fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : { messages: [] }; })
       .then(function (data) {
         clearStream();
         pinned = true;
         var msgs = (data && data.messages) || [];
+        // Fewer than a full page means there's nothing older to fetch.
+        if (msgs.length < HISTORY_PAGE) noMoreOlder = true;
         msgs.forEach(function (row) {
+          noteOldest(row.id);
           // Capture the owner's speaker id once so reaction "mine" state matches.
           if (row.is_user && row.speaker_id && OWNER_ID == null) OWNER_ID = row.speaker_id;
           var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
@@ -769,6 +1226,129 @@
       .catch(function () { /* leave whatever is shown */ });
   }
 
+  // ==== Load older (scroll-to-top pagination) ====
+  // Fetch the page of messages OLDER than oldestLoadedId and PREPEND it, keeping
+  // the viewport visually stable (the row the user was looking at stays put).
+  // Grouping is computed WITHIN the older batch (the seam to the existing first
+  // row may show a fresh avatar — honest + cheap, no full re-render).
+  function loadOlder() {
+    if (loadingOlder || noMoreOlder || oldestLoadedId == null || !CHANNEL) return;
+    loadingOlder = true;
+    var cursor = oldestLoadedId;
+    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) +
+      '&limit=' + HISTORY_PAGE + '&before_id=' + encodeURIComponent(cursor);
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { messages: [] }; })
+      .then(function (data) {
+        var msgs = (data && data.messages) || [];
+        // Dedup against what's already rendered (defensive — server pages by id).
+        msgs = msgs.filter(function (row) {
+          return row.id == null || !msgIndex[row.id];
+        });
+        if (!msgs.length) { noMoreOlder = true; return; }
+        if (msgs.length < HISTORY_PAGE) noMoreOlder = true;
+        prependOlder(msgs);
+      })
+      .catch(function () { /* transient — a later scroll-up retries */ })
+      .then(function () { loadingOlder = false; });
+  }
+
+  // Build the older batch into a fragment (own grouping + day dividers) and insert
+  // it before the current first child, then restore scrollTop so the viewport
+  // doesn't jump.
+  function prependOlder(msgs) {
+    var frag = document.createDocumentFragment();
+    var prev = null;  // grouping anchor WITHIN this batch
+    msgs.forEach(function (row) {
+      noteOldest(row.id);
+      if (row.is_user && row.speaker_id && OWNER_ID == null) OWNER_ID = row.speaker_id;
+      var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
+      var m = frameToMsg(
+        row.speaker_id, row.display_name || row.speaker_id || '',
+        !!row.is_user, row.text || '', parseTs(row.timestamp),
+        {
+          id: row.id != null ? row.id : undefined,
+          images: row.images || [], reactions: row.reactions || [],
+          replyTo: rt, replyMeta: row.reply_to || null,
+          threadRoot: row.thread_root != null ? row.thread_root : null
+        }
+      );
+      msgIndex[m.id] = m;
+      // Day divider when the day changes within the batch.
+      var dayChanged = !prev || dateKeyOf(prev.ts) !== dateKeyOf(m.ts);
+      if (dayChanged) {
+        var div = document.createElement('div');
+        div.className = 'daydiv';
+        div.innerHTML = '<span class="ln"></span><span class="lb">' +
+          esc(dayLabelOf(m.ts)) + '</span><span class="ln"></span>';
+        frag.appendChild(div);
+      }
+      var isCont = !!prev && m.kind === 'msg' && prev.kind === 'msg' &&
+        prev.speakerId === m.speakerId && prev.isUser === m.isUser &&
+        (m.ts - prev.ts) <= GROUP_WINDOW && !dayChanged && m.replyTo == null;
+      var el = buildRow(m, !isCont);
+      el.classList.add('in');  // no enter animation on backfill
+      frag.appendChild(el);
+      prev = { speakerId: m.speakerId, isUser: m.isUser, ts: m.ts, kind: m.kind };
+    });
+
+    // Insert at the top + preserve scroll position (anchor on scrollHeight delta).
+    var before = $feed.scrollHeight;
+    var firstChild = $stream.firstChild;
+    $stream.insertBefore(frag, firstChild);
+    var after = $feed.scrollHeight;
+    $feed.scrollTop += (after - before);
+
+    // Now that older rows are indexed, refresh thread affordances on any roots
+    // whose replies were loaded after them in this batch.
+    msgs.forEach(function (row) {
+      if (row.reply_to && row.reply_to.id != null) refreshThreadAffordance(String(row.reply_to.id));
+    });
+  }
+
+  // Trigger an older-page fetch when the feed is scrolled near the very top.
+  $feed.addEventListener('scroll', function () {
+    if ($feed.scrollTop < 120) loadOlder();
+  });
+
+  // ==== Live poll ====
+  // The WebSocket only carries messages that flow through THIS web process. The
+  // Discord adapter (and any other transport) writes to the same DB in a separate
+  // process, so those messages never hit the socket. Re-fetch the active channel's
+  // tail on an interval and append only unseen ids (dedup via msgIndex; the owner's
+  // own optimistic rows are already reconciled to their server id by the WS, so
+  // they're skipped). This makes the chat live regardless of who wrote the message.
+  function pollNew() {
+    if (!CHANNEL) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    var url = apiBase() + '/history?channel=' + encodeURIComponent(CHANNEL) + '&limit=50';
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { messages: [] }; })
+      .then(function (data) {
+        var msgs = (data && data.messages) || [];
+        var added = false;
+        msgs.forEach(function (row) {
+          if (row.id == null || msgIndex[row.id]) return;  // unseen ids only
+          if (row.is_user && row.speaker_id && OWNER_ID == null) OWNER_ID = row.speaker_id;
+          var rt = (row.reply_to && row.reply_to.id != null) ? row.reply_to.id : null;
+          appendMessage(frameToMsg(
+            row.speaker_id, row.display_name || row.speaker_id || '',
+            !!row.is_user, row.text || '', parseTs(row.timestamp),
+            {
+              id: row.id, images: row.images || [], reactions: row.reactions || [],
+              replyTo: rt, replyMeta: row.reply_to || null,
+              threadRoot: row.thread_root != null ? row.thread_root : null
+            }
+          ), true);
+          if (rt != null) refreshThreadAffordance(String(rt));
+          added = true;
+        });
+        if (added) updateChannelPreviewFromHistory(msgs);
+      })
+      .catch(function () { /* transient — next tick retries */ });
+  }
+  setInterval(pollNew, 3000);
+
   // Derive the active channel's last-message preview/time from its history.
   function updateChannelPreviewFromHistory(msgs) {
     if (!msgs || !msgs.length) return;
@@ -781,9 +1361,12 @@
   }
 
   // ==== Channel list ====
-  function groupLabel(text, count) {
+  // `section` is a stable key ('groups'|'dms'|'internal') the onboarding tour
+  // anchors on (header text is i18n/app-dependent, so never anchor by text).
+  function groupLabel(text, count, section) {
     var li = document.createElement('li');
     li.className = 'grp-l' + (count === 0 || $channelList.children.length === 0 ? ' first' : '');
+    if (section) li.dataset.section = section;
     li.innerHTML = '<span>' + esc(text) + '</span><span class="count">' + count + '</span>';
     return li;
   }
@@ -799,16 +1382,25 @@
     li.dataset.agent = c.agent_id || '';
 
     var html = '<span class="tick"></span>';
+    var pairMembers = (c.kind === 'internal') ? internalMembers(c) : [];
     if (c.kind === 'dm' && c.agent_id) {
       html += '<span class="ava" style="background:' + avBg(c.agent_id) + '">' +
         '<img src="' + escAttr(avatarUrl(c.agent_id)) + '" alt="" ' +
         'onerror="this.replaceWith(document.createTextNode(\'' + esc(initialOf(c.name)) + '\'))">' +
         '<span class="pres online"></span></span>';
+    } else if (c.kind === 'internal' && pairMembers.length >= 2) {
+      // Between-agents pair: two small avatars side-by-side instead of a glyph, so
+      // the row reads at a glance as a conversation BETWEEN two participants. The
+      // names follow in .meta (channelDisplayName → "name · name").
+      html += pairAvCluster(pairMembers);
+    } else if (c.kind === 'internal') {
+      // internal-owner (the owner's notes) or a member-less backchannel → glyph.
+      html += '<i class="ti ti-arrows-left-right hash" aria-hidden="true"></i>';
     } else {
       html += '<i class="ti ti-hash hash" aria-hidden="true"></i>';
     }
     var preview = c._preview ? '<span class="p">' + esc(c._preview) + '</span>' : '';
-    html += '<span class="meta"><span class="t">' + esc(c.name || c.channel) + '</span>' + preview + '</span>';
+    html += '<span class="meta"><span class="t">' + esc(channelDisplayName(c)) + '</span>' + preview + '</span>';
 
     // Right-edge slot: exactly one of pill > time > lock.
     if (u > 0) {
@@ -825,6 +1417,20 @@
     return li;
   }
 
+  // Most-recent-activity sort key (DESC) for a channel: prefer the live preview ts
+  // (set as the active channel updates), else the server-seeded last.timestamp.
+  function activityTs(c) {
+    if (c._ts) return c._ts;
+    if (c.last && c.last.timestamp) return parseTs(c.last.timestamp) || 0;
+    return 0;
+  }
+  function byRecencyDesc(a, b) {
+    var d = activityTs(b) - activityTs(a);
+    if (d) return d;
+    // Stable tiebreak so equal-ts rows keep a deterministic order.
+    return (a.name || a.channel || '').localeCompare(b.name || b.channel || '');
+  }
+
   function renderChannels() {
     if (!$channelList) return;
     var q = ($search && $search.value || '').trim().toLowerCase();
@@ -832,23 +1438,39 @@
       if (!q) return true;
       return (c.name || c.channel || '').toLowerCase().indexOf(q) !== -1;
     };
-    var dms = channels.filter(function (c) { return c.kind === 'dm' && match(c); });
-    var grps = channels.filter(function (c) { return c.kind === 'group' && match(c); });
+    // Discord/Slack ordering: group channels (rooms) FIRST, then DMs sorted by
+    // most-recent activity, then the agent-to-agent backchannels ("Between agents"
+    // / "에이전트끼리" — ONE user-facing term everywhere). Managers no longer get a
+    // separate pinned section — they sort by recency like everyone else (the row
+    // still carries a manager tag/badge).
+    var grps = channels.filter(function (c) { return c.kind === 'group' && match(c); })
+      .sort(byRecencyDesc);
+    var dms = channels.filter(function (c) { return c.kind === 'dm' && match(c); })
+      .sort(byRecencyDesc);
+    // agent-to-agent backchannels — the owner WATCHES (read-only). Core of Glimi:
+    // friends talking to each other behind the scenes.
+    var internal = channels.filter(function (c) { return c.kind === 'internal' && match(c); })
+      .sort(byRecencyDesc);
 
+    var ROOMS_LABEL = WS_BASE ? (EN ? 'Rooms' : '룸') : (EN ? 'Groups' : '그룹');
+    var DMS_LABEL = WS_BASE ? (EN ? 'Team' : '팀') : (EN ? 'Direct messages' : '다이렉트 메시지');
     $channelList.innerHTML = '';
-    if (dms.length) {
-      $channelList.appendChild(groupLabel('Direct', dms.length));
-      dms.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
-    }
     if (grps.length) {
-      $channelList.appendChild(groupLabel('Channels', grps.length));
+      $channelList.appendChild(groupLabel(ROOMS_LABEL, grps.length, 'groups'));
       grps.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
     }
+    if (dms.length) {
+      $channelList.appendChild(groupLabel(DMS_LABEL, dms.length, 'dms'));
+      dms.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
+    }
+    if (internal.length) {
+      $channelList.appendChild(groupLabel(EN ? 'Between agents' : '에이전트끼리', internal.length, 'internal'));
+      internal.forEach(function (c) { $channelList.appendChild(rowFor(c)); });
+    }
 
-    // Sidebar sub-header: derive friend/online counts from /channels (no
-    // presence API → online == DM count as a neutral default).
+    // Sidebar sub-header: friend/member count = persona DMs (managers excluded).
     if ($sideSub) {
-      var n = dms.length;
+      var n = dms.filter(function (c) { return c.agent_type === 'persona'; }).length;
       if (EN) {
         var noun = WS_BASE ? 'members' : 'friends';
         $sideSub.textContent = n + ' ' + noun + ' · ' + n + ' online';
@@ -882,18 +1504,33 @@
   function syncHead() {
     var c = channels.filter(function (x) { return x.channel === CHANNEL; })[0];
     if (c) {
-      setChannelLabel(c.name || c.channel);
+      setChannelLabel(channelDisplayName(c));
       if ($headIcon) {
-        $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash' : 'ti ti-hash hash');
+        $headIcon.className = (c.kind === 'dm' ? 'ti ti-at hash'
+          : c.kind === 'internal' ? 'ti ti-arrows-left-right hash' : 'ti ti-hash hash');
+      }
+      // Profile ↗: only on a DM channel whose partner has a detail route. The DM
+      // partner id is the channel's agent_id (web DM keys are opaque — never
+      // reconstruct from the name). Hidden otherwise (groups / internal / demo).
+      if ($headProfile) {
+        var detailUrl = (c.kind === 'dm') ? agentDetailUrl(c.agent_id) : null;
+        if (detailUrl) { $headProfile.href = detailUrl; $headProfile.hidden = false; }
+        else { $headProfile.hidden = true; $headProfile.removeAttribute('href'); }
       }
       if ($input) {
-        var nm = c.name || c.channel;
-        $input.setAttribute('data-ph', EN ? ('Message ' + nm + '…') : (nm + '에게 메시지…'));
-        $input.setAttribute('aria-label', EN ? ('Message ' + nm) : (nm + '에게 메시지'));
+        var nm = channelDisplayName(c);
+        if (c.postable === false) {
+          $input.setAttribute('data-ph', EN ? "Read-only — you're watching" : '관전 전용 — 에이전트끼리 대화');
+          $input.setAttribute('aria-label', EN ? 'Read-only channel' : '관전 전용 채널');
+        } else {
+          $input.setAttribute('data-ph', EN ? ('Message ' + nm + '…') : (nm + '에게 메시지…'));
+          $input.setAttribute('aria-label', EN ? ('Message ' + nm) : (nm + '에게 메시지'));
+        }
       }
     } else {
       setChannelLabel('# ' + CHANNEL);
     }
+    applyChannelComposerState();
   }
 
   function selectChannel(c) {
@@ -1070,8 +1707,34 @@
   }
   function clearField() { $input.innerHTML = ''; syncComposer(); }
 
+  function currentChannelObj() {
+    for (var i = 0; i < channels.length; i++) {
+      if (channels[i].channel === CHANNEL) return channels[i];
+    }
+    return null;
+  }
+  function chanReadonly() {
+    var c = currentChannelObj();
+    return !!(c && c.postable === false);
+  }
+  // Per-channel composer lock — internal (agent-to-agent) channels are watch-only
+  // even in a non-demo community. Distinct from the demo-wide READONLY.
+  function applyChannelComposerState() {
+    if (READONLY) return;  // demo-wide lock already applied
+    var ro = chanReadonly();
+    if ($input) {
+      $input.setAttribute('contenteditable', ro ? 'false' : 'true');
+      if (ro) $input.setAttribute('aria-disabled', 'true');
+      else $input.removeAttribute('aria-disabled');
+    }
+    var composer = $cbox ? $cbox.closest('.composer') : null;
+    if (composer) composer.classList.toggle('readonly', ro);
+    if ($cbox) $cbox.classList.toggle('readonly', ro);
+    syncSendDisabled();
+  }
+
   function syncSendDisabled() {
-    if (READONLY) { if ($send) $send.disabled = true; return; }
+    if (READONLY || chanReadonly()) { if ($send) $send.disabled = true; return; }
     var open = ws && ws.readyState === WebSocket.OPEN;
     var has = fieldText().trim().length > 0;
     if ($send) $send.disabled = !(open && has);
@@ -1197,6 +1860,16 @@
     var row = e.target.closest && e.target.closest('.msg[data-mid]');
     return row ? row.dataset.mid : null;
   }
+  // Coarse pointer (touch): the action-pop is hover-hidden (no flash on scroll),
+  // so reveal it on an explicit TAP of the message row instead. One row open at a
+  // time; tapping elsewhere (or a fresh tap on the same row) closes it.
+  var COARSE = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+  function closeActsOpen(except) {
+    var open = $stream.querySelectorAll('.msg.acts-open');
+    for (var i = 0; i < open.length; i++) {
+      if (open[i] !== except) open[i].classList.remove('acts-open');
+    }
+  }
   $stream.addEventListener('click', function (e) {
     // A reaction pill toggles its own emoji on this row.
     var pill = e.target.closest && e.target.closest('.react[data-emoji]');
@@ -1213,9 +1886,48 @@
     if (threadBtn) { openThreadPanel(threadBtn.getAttribute('data-thread')); return; }
     var jump = e.target.closest && e.target.closest('[data-jump]');
     if (jump) { jumpToMessage(jump.getAttribute('data-jump')); return; }
+    // A message-row avatar opens the speaker's FULL-BODY portrait lightbox
+    // (distinct from the sidebar row, which opens the DM).
+    var prof = e.target.closest && e.target.closest('[data-profile-id]');
+    if (prof) {
+      e.preventDefault(); e.stopPropagation();
+      openProfileLightbox(prof.getAttribute('data-profile-id'), prof.getAttribute('data-profile-name'));
+      return;
+    }
+    // An inline content image opens in the lightbox at its own src (real image,
+    // not an avatar → no variant=full upgrade).
+    var cimg = e.target.closest && e.target.closest('img.chat-img');
+    if (cimg) {
+      e.preventDefault(); e.stopPropagation();
+      openLightbox(cimg.getAttribute('src'), cimg.getAttribute('alt') || '');
+      return;
+    }
+    // Touch: a bare tap on a message row (not a link/button/image/pill) toggles
+    // its action-pop so react/reply/thread are reachable without a hover.
+    if (COARSE) {
+      if (e.target.closest && e.target.closest('a, button, b, img, .acts-pop, .react, .quote, .ch, .mention')) return;
+      var row = e.target.closest && e.target.closest('.msg[data-mid]');
+      if (!row || row.classList.contains('sys') || row.classList.contains('err')) { closeActsOpen(null); return; }
+      var wasOpen = row.classList.contains('acts-open');
+      closeActsOpen(row);
+      row.classList.toggle('acts-open', !wasOpen);
+    }
   });
+  // Touch: tapping anywhere outside the message stream closes an open action-pop.
+  if (COARSE) {
+    document.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('#chat-stream .msg')) return;
+      closeActsOpen(null);
+    });
+  }
   $stream.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
+    var prof = e.target.closest && e.target.closest('[data-profile-id]');
+    if (prof) {
+      e.preventDefault();
+      openProfileLightbox(prof.getAttribute('data-profile-id'), prof.getAttribute('data-profile-name'));
+      return;
+    }
     var b = e.target.closest && e.target.closest('[data-react],[data-reply],[data-thread],.react[data-emoji]');
     if (!b) return;
     e.preventDefault();
@@ -1306,6 +2018,7 @@
     return el;
   }
   function openThreadPanel(rootId) {
+    if (!THREADS_ENABLED) return;  // thread panel gated off (clean single-stream)
     // Resolve the actual thread root: if the clicked row is itself a reply, open
     // its thread_root; else it IS the root.
     var clicked = msgIndex[rootId];
@@ -1366,6 +2079,260 @@
     });
   })();
 
+  // ==== Auto-run (workspace autonomous owner-driver) ====
+  // The work-clone analogue of the Community's autonomous social sim: the owner
+  // hands the team a goal + brief, then the loop runs goal→work→review→next on
+  // its own. This UI half is the toggle (header), the brief modal, and a status
+  // pill. EVERYTHING here is inert unless WS_BASE is truthy AND the surface isn't
+  // read-only — chat.js keys app mode off WS_BASE (Community/kernel never see it),
+  // and the demo (READONLY) never exposes it (the demo showcases via a scripted
+  // loop, never the live driver — POST /auto/start 403s there anyway).
+  var AUTORUN_ENABLED = !!WS_BASE && !READONLY;
+  var autoState = { running: false, auto_run: false, rounds_run: 0, max_rounds: 5, goal: '' };
+  var autoPollTimer = null;
+
+  function autorunUrl(path) { return WS_BASE + '/auto/' + path; }
+
+  // Reveal the toggle for the workspace surface only. Called once after boot.
+  function initAutorunUi() {
+    if (!AUTORUN_ENABLED) return;  // toggle stays hidden (default) everywhere else
+    if ($autorunToggle) {
+      $autorunToggle.hidden = false;
+      $autorunToggle.addEventListener('click', onToggleClick);
+    }
+    bindBriefModal();
+    // Restore state on load (toggle reflects auto_run; pill shows if running).
+    refreshAutoStatus();
+    // Light poll so the toggle/pill recover if the loop ends while the owner is
+    // on another channel (the per-ws WS fan-out also pushes {type:'auto'} frames,
+    // but the poll is the belt-and-suspenders restore on tab re-entry / reconnect).
+    if (autoPollTimer) clearInterval(autoPollTimer);
+    autoPollTimer = setInterval(function () {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshAutoStatus();
+    }, 5000);
+  }
+
+  function onToggleClick() {
+    if (!AUTORUN_ENABLED) return;
+    if (autoState.running) {
+      stopAutorun();
+    } else {
+      openBriefModal();
+    }
+  }
+
+  // GET /auto/status → reflect running/auto_run/rounds into the toggle + pill.
+  // The status endpoint is the source of truth for the terminal reset: a
+  // max_rounds exit fires NO {type:'auto'} WS frame (the loop just ends), so the
+  // poll is what flips the toggle back off. A running→idle edge also refreshes
+  // the channel list (the loop may have created internal-owner).
+  function refreshAutoStatus() {
+    if (!AUTORUN_ENABLED) return;
+    fetch(autorunUrl('status'), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var wasRunning = autoState.running;
+        autoState.running = !!d.running;
+        autoState.auto_run = !!d.auto_run;
+        autoState.rounds_run = d.rounds_run || 0;
+        autoState.max_rounds = d.max_rounds || autoState.max_rounds;
+        renderAutoToggle();
+        // Edge transition (idle→running OR running→idle): the loop created
+        // internal-owner on round 1 and may have ended — re-pull the channel
+        // list so "오너의 검토" appears / preview updates without a manual refresh.
+        if (wasRunning !== autoState.running) loadChannels();
+      })
+      .catch(function () { /* transient — next tick retries */ });
+  }
+
+  // Pull goal + a persisted brief from the snapshot so the modal prefills.
+  function loadAutoBrief() {
+    fetch(WS_BASE + '/api/snapshot', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var a = d.auto || {};
+        var cm = d.community_meta || {};
+        autoState.goal = a.goal || cm.name || '';
+        if ($briefGoal) $briefGoal.value = autoState.goal;
+        if ($briefMaxRounds && a.max_rounds) $briefMaxRounds.value = a.max_rounds;
+        if ($briefContext && a.context && !$briefContext.value) $briefContext.value = a.context;
+        if ($briefBacklog && a.backlog && a.backlog.length && !$briefBacklog.value) {
+          $briefBacklog.value = a.backlog.join('\n');
+        }
+      })
+      .catch(function () { /* leave the modal defaults */ });
+  }
+
+  // The ONE global run/stop control (design_system §5.1):
+  //   • stopped → ink CTA "가동" / "Run" (the screen's single primary action),
+  //     play icon. The toggle is the only run affordance.
+  //   • running → the toggle becomes the single STOP (stop icon, --err intent via
+  //     aria), and the quiet status pill shows "자동 진행 중" + a green dot + round.
+  // There are NO per-channel / per-chat run or stop buttons — this is the only one.
+  function renderAutoToggle() {
+    if (!$autorunToggle) return;
+    var running = autoState.running;
+    $autorunToggle.setAttribute('aria-pressed', running ? 'true' : 'false');
+    $autorunToggle.classList.toggle('on', running);
+    var ico = $autorunToggle.querySelector('i');
+    if (ico) ico.className = (running ? 'ti ti-player-stop' : 'ti ti-player-play');
+    // Stopped = the ink CTA "가동"/"Run"; running = the single "중지"/"Stop".
+    var lbl = running ? (EN ? 'Stop' : '중지') : (EN ? 'Run' : '가동');
+    $autorunToggle.setAttribute('aria-label', lbl);
+    $autorunToggle.setAttribute('title', lbl);
+    renderAutoPill();
+  }
+  function renderAutoPill() {
+    if (!$autorunPill) return;
+    if (autoState.running) {
+      var n = autoState.rounds_run || 0;
+      var txt = EN
+        ? ('Running' + (n ? ' · round ' + n : '…'))
+        : ('자동 진행 중' + (n ? ' · 라운드 ' + n : '…'));
+      $autorunPill.hidden = false;
+      $autorunPill.classList.add('show');
+      // Quiet pill + a green running dot (§5.1: state via dot, not a filled face).
+      // Inline-styled dot to stay self-contained (no new CSS class).
+      $autorunPill.innerHTML = '<span aria-hidden="true" style="width:6px;height:6px;' +
+        'border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px;' +
+        'flex:0 0 auto"></span>' + esc(txt);
+    } else {
+      $autorunPill.classList.remove('show');
+      $autorunPill.hidden = true;
+      $autorunPill.textContent = '';
+    }
+  }
+
+  // {type:'auto', phase} frames from the live driver fan-out. round_done bumps
+  // the pill; terminal phases flip the toggle off + surface a brief status.
+  function handleAutoFrame(frame) {
+    if (!AUTORUN_ENABLED) return;
+    var phase = frame && frame.phase;
+    switch (phase) {
+      case 'round_done':
+        autoState.running = true;
+        autoState.rounds_run = frame.round || autoState.rounds_run;
+        renderAutoToggle();
+        break;
+      case 'done':
+      case 'cancelled':
+      case 'budget_exhausted':
+      case 'error':
+        autoState.running = false;
+        autoState.auto_run = false;
+        renderAutoToggle();
+        flashAutoStatus(phase);
+        loadChannels();  // refresh previews / surface internal-owner
+        break;
+      default:
+        // Any other auto phase still means the loop is live — keep the pill on.
+        autoState.running = true;
+        renderAutoToggle();
+        break;
+    }
+  }
+  // A brief, self-clearing pill message on terminal phases (no toast dependency).
+  function flashAutoStatus(phase) {
+    if (!$autorunPill) return;
+    var msg = phase === 'done' ? (EN ? 'Done' : '완료')
+      : phase === 'budget_exhausted' ? (EN ? 'Budget reached' : '예산 한도')
+      : phase === 'error' ? (EN ? 'Stopped' : '중단됨')
+      : (EN ? 'Stopped' : '중지됨');
+    $autorunPill.hidden = false;
+    $autorunPill.classList.add('show');
+    $autorunPill.textContent = msg;
+    setTimeout(function () {
+      if (!autoState.running) { $autorunPill.classList.remove('show'); $autorunPill.hidden = true; }
+    }, 4000);
+  }
+
+  // ==== Brief modal ====
+  function bindBriefModal() {
+    if ($briefClose) $briefClose.addEventListener('click', closeBriefModal);
+    if ($briefCancel) $briefCancel.addEventListener('click', closeBriefModal);
+    if ($briefStart) $briefStart.addEventListener('click', submitBrief);
+    if ($briefModal) {
+      // Click the dimmed backdrop (outside the panel) to close.
+      $briefModal.addEventListener('click', function (e) {
+        var panel = e.target.closest && e.target.closest('.wbm-panel');
+        if (!panel) closeBriefModal();
+      });
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && $briefModal && !$briefModal.hidden) {
+        e.stopPropagation();
+        closeBriefModal();
+      }
+    });
+  }
+  function openBriefModal() {
+    if (!$briefModal) return;
+    loadAutoBrief();  // prefill goal + any persisted brief
+    $briefModal.hidden = false;
+    $briefModal.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(function () { $briefModal.classList.add('open'); });
+    if ($briefContext) { try { $briefContext.focus(); } catch (e) {} }
+  }
+  function closeBriefModal() {
+    if (!$briefModal) return;
+    $briefModal.classList.remove('open');
+    $briefModal.setAttribute('aria-hidden', 'true');
+    setTimeout(function () { if (!$briefModal.classList.contains('open')) $briefModal.hidden = true; }, 200);
+  }
+
+  // POST /auto/start with the brief. Body matches the server contract:
+  // {context?, backlog?:[str]|str, max_rounds?} — goal lives on the workspace.
+  function submitBrief() {
+    if (!AUTORUN_ENABLED) return;
+    var context = $briefContext ? $briefContext.value.trim() : '';
+    var backlog = $briefBacklog
+      ? $briefBacklog.value.split('\n').map(function (s) { return s.trim(); })
+          .filter(function (s) { return s.length; })
+      : [];
+    var maxRounds = 5;
+    if ($briefMaxRounds) {
+      var v = parseInt($briefMaxRounds.value, 10);
+      if (!isNaN(v)) maxRounds = Math.max(1, Math.min(v, 10));
+    }
+    if ($briefStart) $briefStart.disabled = true;
+    fetch(autorunUrl('start'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: context, backlog: backlog, max_rounds: maxRounds })
+    })
+      .then(function (r) { return r.ok ? r.json() : r.json().catch(function () { return { ok: false }; }); })
+      .then(function (d) {
+        if (d && d.ok) {
+          autoState.running = true;
+          autoState.auto_run = true;
+          autoState.rounds_run = 0;
+          autoState.max_rounds = d.max_rounds || maxRounds;
+          renderAutoToggle();
+          closeBriefModal();
+          // The driver creates internal-owner on round 1 — re-pull the channel
+          // list shortly after so "오너의 검토" appears in the sidebar.
+          setTimeout(loadChannels, 1500);
+        }
+      })
+      .catch(function () { /* leave the modal open so the owner can retry */ })
+      .then(function () { if ($briefStart) $briefStart.disabled = false; });
+  }
+
+  // POST /auto/stop (idempotent). Optimistically flip off; status reconciles.
+  function stopAutorun() {
+    if (!AUTORUN_ENABLED) return;
+    autoState.running = false;
+    autoState.auto_run = false;
+    renderAutoToggle();
+    fetch(autorunUrl('stop'), { method: 'POST', credentials: 'same-origin' })
+      .catch(function () { /* the loop is also externally bounded; status reconciles */ })
+      .then(function () { refreshAutoStatus(); });
+  }
+
   // ==== Boot / public API ====
   // The DOM consts + listener bindings above run ONCE at load (idempotent, bind
   // to the single #view-chat / chat.html instance). Only the data-loading boot
@@ -1375,11 +2342,19 @@
   function _boot() {
     setChannelLabel('# ' + CHANNEL);
     loadChannels().then(function () {
-      // If the seeded default channel isn't a real one (e.g. an empty 'dm-mgr'
-      // placeholder), fall back to the first actual channel so the chat opens on
-      // a live conversation instead of a blank pane.
+      // If the seeded default channel isn't a real one (every community seeds the
+      // same 'dm-mgr' default, but a real community's manager DM is keyed by the
+      // manager's id/name — e.g. 'dm-서유나' — so 'dm-mgr' is absent), fall back to
+      // a real channel so the chat opens on a live conversation, not a blank pane.
+      // Prefer the first POSTABLE channel (a DM/group the owner can open) over a
+      // read-only internal backchannel, so high-volume communities whose only
+      // 'dm-mgr' is absent still land on their busiest real DM.
       if (channels.length && !channels.some(function (x) { return x.channel === CHANNEL; })) {
-        var c = channels[0];
+        var c = null;
+        for (var i = 0; i < channels.length; i++) {
+          if (channels[i].postable !== false) { c = channels[i]; break; }
+        }
+        if (!c) c = channels[0];  // all read-only → at least show one
         CHANNEL = c.channel;
         AGENT = c.agent_id || AGENT;
         renderChannels();
@@ -1387,6 +2362,9 @@
       }
       loadHistory().then(function () { connect(); });
     });
+    // Workspace-only: reveal + wire the auto-run toggle / brief modal (no-op
+    // everywhere else — Community/kernel never have WS_BASE, the demo is read-only).
+    initAutorunUi();
   }
   window.GlimiChat = {
     // Idempotent: first call boots (channels + history + WS); later calls no-op.
@@ -1395,6 +2373,12 @@
       _inited = true;
       _boot();
     },
+    // Shared markdown primitive: RAW text in → safe rendered-markdown HTML out.
+    // mdToHtml escapes internally (the XSS boundary) before block + inline passes,
+    // so callers MUST pass raw, never pre-escaped, text. This is the single source
+    // of markdown rendering for every Glimi app (chat, detail pages, transcripts).
+    mdToHtml: mdToHtml,
+    renderText: function (raw) { return mdToHtml(raw); },
     // Graph→chat jump: switch to channelId on the single live WS. Reuses
     // selectChannel (history reload + WS reconnect on channel change). If not
     // yet inited, seed the target then boot straight onto it.
@@ -1412,6 +2396,26 @@
       // channel — that's correct here (the channel is already live; the caller
       // has already shown the tab), so the jump is a safe no-op in that case.
       selectChannel({ channel: channelId, agent_id: resolvedAgent });
+    },
+    // Graph NODE→chat jump: resolve an agent_id to its DM channel from the loaded
+    // channel list (the web DM key is opaque — dm-<id> in workspace, dm-<name> in
+    // community — so match on the channel's agent_id, never reconstruct the key).
+    // Returns the channel id, or null when the agent has no DM listed.
+    channelForAgent: function (agentId) {
+      if (!agentId) return null;
+      for (var i = 0; i < channels.length; i++) {
+        if (channels[i].kind === 'dm' && channels[i].agent_id === agentId) {
+          return channels[i].channel;
+        }
+      }
+      return null;
+    },
+    // Graph NODE→chat jump: open the agent's DM. Resolves the channel from the
+    // loaded list; falls back to dm-<id> if the list isn't loaded yet (boot path).
+    openAgentChannel: function (agentId) {
+      if (!agentId) return;
+      var ch = window.GlimiChat.channelForAgent(agentId) || ('dm-' + agentId);
+      window.GlimiChat.selectChannelById(ch, agentId);
     },
     // Re-entry into the Chat tab: re-pin the feed to bottom (the WS is untouched).
     refit: function () { if ($feed) { pinned = true; $feed.scrollTop = $feed.scrollHeight; } }

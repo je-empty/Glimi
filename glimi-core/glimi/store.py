@@ -32,7 +32,13 @@ class KernelStore(ABC):
     def increment_channel_turn(self, channel: str) -> int: ...
 
     @abstractmethod
-    def get_recent_messages(self, channel: str, limit: int = 20) -> list[dict]: ...
+    def get_recent_messages(
+        self, channel: str, limit: int = 20, before_id: Optional[int] = None
+    ) -> list[dict]:
+        """The newest ``limit`` messages in ``channel`` (ASC by id). When
+        ``before_id`` is given, returns the ``limit`` messages OLDER than that id
+        instead (backwards pagination for "load older on scroll-to-top")."""
+        ...
 
     @abstractmethod
     def get_messages_by_range(self, channel: str, after_id: int, limit: int = 15) -> list[dict]: ...

@@ -156,6 +156,10 @@ AVAILABLE_MODELS = [
      "kind": "local", "provider": "ollama", "tier": "balanced", "icon": "🖥️"},
     {"id": "ollama:huihui_ai/gemma-4-abliterated:e2b", "label": "Gemma4 E2B (local)",
      "kind": "local", "provider": "ollama", "tier": "fast", "icon": "🖥️"},
+    # Grok (xAI) — grok CLI 백엔드. 실제 grok 모델은 env GLIMI_GROK_MODEL 따름
+    # (기본 grok-composer-2.5-fast). id "grok" 선택 시 _resolve_provider 가 grok_cli 로 라우팅.
+    {"id": "grok", "label": "Grok (xAI)",
+     "kind": "cloud", "provider": "grok", "tier": "balanced", "icon": "☁️"},
     # 향후: vllm / llamacpp provider.
 ]
 
@@ -234,6 +238,8 @@ def _resolve_provider(agent_type: str, model: str) -> str:
                     return "ollama"
                 if v in ("claude_cli", "anthropic_sdk", "claude"):
                     return "claude"
+                if v in ("grok", "grok_cli"):
+                    return "grok_cli"
                 if v:  # 기타 명시 백엔드 (echo 등) 은 그대로 위임
                     return v
         except Exception:
@@ -244,15 +250,24 @@ def _resolve_provider(agent_type: str, model: str) -> str:
         return "ollama"
     if glob in ("claude_cli", "anthropic_sdk", "claude"):
         return "claude"
+    if glob in ("grok", "grok_cli"):
+        return "grok_cli"
     if glob:  # echo 등 — community.llm.generate(backend=glob) 로 위임
         return glob
     # 3) model id prefix
     if model.startswith("ollama:"):
         return "ollama"
+    if model.startswith("grok"):  # "grok" / "grok-*" id → grok_cli
+        return "grok_cli"
     # 4) 레지스트리
     for mm in AVAILABLE_MODELS:
         if mm["id"] == model:
-            return "ollama" if mm.get("provider") == "ollama" else "claude"
+            prov = mm.get("provider")
+            if prov == "ollama":
+                return "ollama"
+            if prov == "grok":
+                return "grok_cli"
+            return "claude"
     return "claude"
 
 
@@ -567,10 +582,14 @@ class AgentRuntime:
 
     def __init__(self):
         self._active_agents: dict[str, dict] = {}
-        # 최근 응답에서 추출한 tool_calls 저장소 (key=agent_id, consume 후 삭제)
-        self._last_tool_calls: dict[str, list[ToolCall]] = {}
-        # 다음 호출 시 prompt에 주입할 <tool_results> 블록 (key=agent_id:channel)
-        self._pending_tool_results: dict[str, str] = {}
+        # 최근 응답에서 추출한 tool_calls 저장소.
+        # key = (community_id, agent_id) — 한 프로세스가 N 커뮤니티를 서빙하며 agent_id 가
+        # 커뮤니티 간 충돌(mgr-001 등)하므로 community 로 격리. community_id 는 active community
+        # contextvar(`community_id()`) 에서 자동 주입 → 기존 호출부는 시그니처 변경 없이 격리됨.
+        # consume(pop) 후 삭제.
+        self._last_tool_calls: dict[tuple, list[ToolCall]] = {}
+        # 다음 호출 시 prompt에 주입할 <tool_results> 블록 (key=(community_id, agent_id, channel))
+        self._pending_tool_results: dict[tuple, str] = {}
 
         _glob = os.environ.get("GLIMI_LLM_BACKEND", "").strip().lower()
         if _glob == "ollama":
@@ -795,14 +814,33 @@ class AgentRuntime:
 
         return "\n".join(prompt_parts)
 
-    def pop_tool_calls(self, agent_id: str) -> list[ToolCall]:
-        """generate_response 이후 마지막 tool_calls 꺼내서 소비 (재호출 시 덮어씀)"""
-        calls = self._last_tool_calls.pop(agent_id, [])
+    # ── tool-stash keying (community-isolated) ─────────────────────
+    # 모든 write/pop 이 이 헬퍼로 키를 만든다. community_id 는 active community
+    # contextvar 에서 자동 — 기존 호출부 시그니처는 그대로(community 인자 없음)인데도
+    # 멀티커뮤니티 프로세스에서 같은 agent_id 가 서로의 stash 를 덮어쓰지 않게 격리.
+    # channel=None: community 단위 키 (기존 동작과 1:1) — pop_tool_calls 레거시 경로.
+    # channel=<str>: 채널까지 좁힌 키 — _pending_tool_results 같이 채널별로 구분돼야 하는 경우.
+
+    @staticmethod
+    def _stash_key(agent_id: str, channel: Optional[str] = None) -> tuple:
+        cid = community_id()  # active community contextvar (미설정=None → standalone)
+        if channel is None:
+            return (cid, agent_id)
+        return (cid, agent_id, channel)
+
+    def pop_tool_calls(self, agent_id: str, channel: Optional[str] = None) -> list[ToolCall]:
+        """generate_response 이후 마지막 tool_calls 꺼내서 소비 (재호출 시 덮어씀).
+
+        backward-compat: ``pop_tool_calls(agent_id)`` (channel 미지정) 은 community 단위
+        키로 pop — write site 도 channel 없이 stash 하므로 기존 동작과 정확히 동일
+        (단, 이제 community 경계를 넘지 않음). channel 을 주면 채널까지 좁혀서 pop.
+        """
+        calls = self._last_tool_calls.pop(self._stash_key(agent_id, channel), [])
         return calls
 
     def stash_tool_results(self, agent_id: str, channel: str, results_block: str):
         """다음 generate_response 호출 시 prompt에 주입될 <tool_results> 블록 저장"""
-        key = f"{agent_id}:{channel}"
+        key = self._stash_key(agent_id, channel)
         if results_block:
             self._pending_tool_results[key] = results_block
         else:
@@ -810,8 +848,7 @@ class AgentRuntime:
 
     def _consume_tool_results(self, agent_id: str, channel: str) -> str:
         """stash된 tool_results 꺼내고 제거"""
-        key = f"{agent_id}:{channel}"
-        return self._pending_tool_results.pop(key, "")
+        return self._pending_tool_results.pop(self._stash_key(agent_id, channel), "")
 
     def _build_prompt(self, agent_info: dict, channel: str, recent: list[dict],
                       user_message: str, speaker_name: str = "") -> tuple[str, str, str]:
@@ -1288,7 +1325,7 @@ class AgentRuntime:
                 # 이전엔 force 경로가 parse 안 해서 dev/mgr 의 tool 호출이 모두 chat 으로 leak +
                 # 실제 호출 0건. (e.g. 세나 dev_organize 가 호출 안 돼 status 'pending' 무한 정체)
                 parsed = parse_tools_in_output(raw)
-                self._last_tool_calls[agent_id] = parsed.tool_calls
+                self._last_tool_calls[self._stash_key(agent_id)] = parsed.tool_calls
                 if parsed.errors:
                     _observer.system(f"[Tools] 강제 지시 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                 responses = self._parse_response(parsed.chat, agent_name=name)
@@ -1489,7 +1526,7 @@ class AgentRuntime:
 
                 # <tools> 블록 먼저 파싱 → calls는 stash, chat만 메시지 분리
                 parsed = parse_tools_in_output(raw)
-                self._last_tool_calls[agent_id] = parsed.tool_calls
+                self._last_tool_calls[self._stash_key(agent_id)] = parsed.tool_calls
                 if parsed.errors:
                     _observer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                 return self._parse_response(parsed.chat, agent_name=name)
@@ -1536,7 +1573,7 @@ class AgentRuntime:
             _observer.system(f"⚠ ollama 빈 응답 ({name})")
             return []
         parsed = parse_tools_in_output(raw)
-        self._last_tool_calls[agent_id] = parsed.tool_calls
+        self._last_tool_calls[self._stash_key(agent_id)] = parsed.tool_calls
         if parsed.errors:
             _observer.system(f"[Tools] ollama 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
         return self._parse_response(parsed.chat, agent_name=name)
@@ -1568,7 +1605,7 @@ class AgentRuntime:
             _observer.system(f"⚠ {backend} 빈 응답 ({name})")
             return []
         parsed = parse_tools_in_output(raw)
-        self._last_tool_calls[agent_id] = parsed.tool_calls
+        self._last_tool_calls[self._stash_key(agent_id)] = parsed.tool_calls
         if parsed.errors:
             _observer.system(f"[Tools] {backend} 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
         return self._parse_response(parsed.chat, agent_name=name)
@@ -1811,7 +1848,7 @@ class AgentRuntime:
                 if tool_buffer:
                     try:
                         parsed = parse_tools_in_output("\n".join(tool_buffer))
-                        self._last_tool_calls[agent_id] = parsed.tool_calls
+                        self._last_tool_calls[self._stash_key(agent_id)] = parsed.tool_calls
                         if parsed.errors:
                             _observer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                     except Exception as e:
@@ -1903,7 +1940,7 @@ class AgentRuntime:
             if tool_buffer:
                 try:
                     parsed = parse_tools_in_output("\n".join(tool_buffer))
-                    self._last_tool_calls[agent_id] = parsed.tool_calls
+                    self._last_tool_calls[self._stash_key(agent_id)] = parsed.tool_calls
                     if parsed.errors:
                         _observer.system(f"[Tools] 파싱 에러 ({name}): {'; '.join(parsed.errors[:3])}")
                 except Exception as e:
@@ -2226,7 +2263,7 @@ class AgentRuntime:
                         # (이전에는 이 경로에서 <tools> 파싱이 빠져서 internal-dm에서
                         # 유나가 finish_tutorial 호출해도 원문이 채팅으로 새고 실행 안 됨)
                         parsed = parse_tools_in_output(result.stdout.strip())
-                        self._last_tool_calls[speaker_id] = parsed.tool_calls
+                        self._last_tool_calls[self._stash_key(speaker_id)] = parsed.tool_calls
                         if parsed.errors:
                             _observer.system(
                                 f"[Tools] 파싱 에러 (A2A {speaker_name}): {'; '.join(parsed.errors[:3])}"

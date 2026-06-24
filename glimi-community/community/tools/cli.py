@@ -286,7 +286,7 @@ def dashboard_mode():
         if not user_input:
             continue
 
-        responses = runtime.generate_response(mgr_id, "mgr-dashboard", user_input)
+        responses = runtime.generate_response(mgr_id, f"dm-{name}", user_input)
         for msg in responses:
             console.print(f"  [{color} bold]{name}[/{color} bold]  {msg}")
             time.sleep(0.2)

@@ -36,12 +36,18 @@ def test_build_population(built):
     assert len(snap["agents"]) == 4
     ids = {a["id"] for a in snap["agents"]}
     assert ids == {"coordinator", "researcher", "builder", "critic"}
-    # The full interaction web: 3 DMs + owner DM + 2 A2A + group + approvals = 8.
+    # The full interaction web: the owner DM + 3 behind-the-scenes coordinator↔
+    # specialist delegation channels (internal-coordinator-<id>) + 2 specialist↔
+    # specialist A2A + group + approvals + the owner-agent's read-only reasoning
+    # channel (internal-owner) = 9. (Delegation is internal: dm-<id> is reserved
+    # OWNER↔specialist, so the demo's coordinator delegation lands on internal-*.)
     channels = {c["channel"] for c in snap["channels"]}
     assert channels == {
-        "dm-coordinator", "dm-researcher", "dm-builder", "dm-critic",
+        "dm-coordinator",
+        "internal-coordinator-researcher", "internal-coordinator-builder",
+        "internal-coordinator-critic",
         "internal-researcher-critic", "internal-builder-researcher",
-        "group-team", "mgr-approvals",
+        "group-team", "mgr-approvals", "internal-owner",
     }
     # Every relationship edge the graph draws (lead + 3 manages + 2 collaborator).
     assert len(snap["relationships"]) == 6

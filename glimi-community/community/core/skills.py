@@ -6,6 +6,11 @@ Skills 로더 — 에이전트별 공용 행동 패턴 주입
 - frontmatter(YAML)로 메타데이터, 본문은 에이전트 프롬프트에 주입될 텍스트
 - applies-to 필드로 대상 에이전트 타입 필터링
 
+검색 경로 (코어 → 앱 순, 같은 name 이면 앱이 override):
+- **코어 기본 행동** = `glimi` 패키지의 `glimi/skills/` (ambient-awareness, emotional-expression 등 범용)
+- **커뮤니티 도메인** = 이 패키지의 `community/skills/` (meta-question-handling 등 — 중립 커널에 못 넣는 정책)
+  → "코어가 기본 스킬을 ship 하고 커뮤니티가 확장/override" (core extension 모델)
+
 Frontmatter 스키마:
 ---
 name: 스킬 이름
@@ -18,15 +23,28 @@ priority: 1  # 정렬 우선순위 (낮을수록 먼저)
 
 로더 동작:
 - 봇 시작 시 1회 스캔 (캐시)
-- load_skills_for_agent_type(type)으로 타입별 매치된 스킬 본문 합쳐서 반환
+- build_skills_section(agent_type)으로 타입별 매치된 스킬 본문 합쳐서 반환
 - 파일 수정 시 invalidate_cache()로 재스캔
 """
-import os
 from pathlib import Path
 from typing import Optional
 
 _SKILLS_CACHE: Optional[list[dict]] = None
-_SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
+
+
+def _skills_dirs() -> list[Path]:
+    """스킬 검색 경로 — 코어(glimi 패키지) 먼저, 그다음 이 커뮤니티 앱.
+
+    같은 name 의 스킬이 양쪽에 있으면 뒤(커뮤니티)가 코어를 override 한다.
+    """
+    dirs: list[Path] = []
+    try:
+        import glimi
+        dirs.append(Path(glimi.__file__).resolve().parent / "skills")   # glimi-core/glimi/skills
+    except Exception:
+        pass
+    dirs.append(Path(__file__).resolve().parent.parent / "skills")      # glimi-community/community/skills
+    return dirs
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
@@ -60,27 +78,30 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def _scan_skills() -> list[dict]:
-    """skills/ 디렉토리 전체 스캔."""
-    skills = []
-    if not _SKILLS_DIR.exists():
-        return skills
+    """검색 경로 전체 스캔 (코어 → 커뮤니티, name 충돌 시 커뮤니티 우선)."""
+    by_name: dict[str, dict] = {}
 
-    for skill_file in sorted(_SKILLS_DIR.rglob("SKILL.md")):
-        try:
-            text = skill_file.read_text(encoding="utf-8")
-            meta, body = _parse_frontmatter(text)
-            skills.append({
-                "path": str(skill_file),
-                "name": meta.get("name", skill_file.parent.name),
-                "description": meta.get("description", ""),
-                "applies_to": meta.get("applies-to", "all"),
-                "when_to_use": meta.get("when-to-use", ""),
-                "priority": int(meta.get("priority", "10") or "10"),
-                "body": body.strip(),
-            })
-        except Exception as e:
-            print(f"[Skills] 로드 실패 {skill_file}: {e}")
+    for skills_dir in _skills_dirs():
+        if not skills_dir.exists():
+            continue
+        for skill_file in sorted(skills_dir.rglob("SKILL.md")):
+            try:
+                text = skill_file.read_text(encoding="utf-8")
+                meta, body = _parse_frontmatter(text)
+                name = meta.get("name", skill_file.parent.name)
+                by_name[name] = {
+                    "path": str(skill_file),
+                    "name": name,
+                    "description": meta.get("description", ""),
+                    "applies_to": meta.get("applies-to", "all"),
+                    "when_to_use": meta.get("when-to-use", ""),
+                    "priority": int(meta.get("priority", "10") or "10"),
+                    "body": body.strip(),
+                }
+            except Exception as e:
+                print(f"[Skills] 로드 실패 {skill_file}: {e}")
 
+    skills = list(by_name.values())
     skills.sort(key=lambda s: s["priority"])
     return skills
 

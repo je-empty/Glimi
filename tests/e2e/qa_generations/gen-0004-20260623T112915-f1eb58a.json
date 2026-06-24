@@ -1,0 +1,92 @@
+{
+  "generation_no": 4,
+  "run_id": "community-e2e-20260623-201642",
+  "generated_at": "2026-06-23T11:29:15.290458+00:00",
+  "git": {
+    "sha": "f1eb58a",
+    "dirty": true,
+    "branch": "develop"
+  },
+  "owner_name": "사용자",
+  "goal": "오너가 AI 친구 몇 명과 DM 으로 안부·질문·후속 대화를 나눈다",
+  "backend": "claude_cli",
+  "judged": true,
+  "overall_score": 56.9,
+  "passed": false,
+  "min_overall": 70,
+  "failing": [
+    "friend_creation",
+    "conversation_quality",
+    "no_hallucination"
+  ],
+  "dimensions": [
+    {
+      "key": "onboarding",
+      "label": "온보딩",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "오너가 유나한테 인사 → 유나 응답 27건 (온보딩 정상)",
+      "critical": false
+    },
+    {
+      "key": "friend_creation",
+      "label": "친구 생성",
+      "kind": "structural",
+      "weight": 1.5,
+      "score": 0.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "새 친구가 생성되지 않음 (유나·하나 DM 뿐 — create_agent_profile 미발동)",
+      "critical": true
+    },
+    {
+      "key": "conversation_quality",
+      "label": "대화 품질",
+      "kind": "judge",
+      "weight": 2.0,
+      "score": 4.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "5축 [in_character 6.0 · coherence 3.0 · naturalness 3.0 · engagement 3.0 · no_meta 6.0] — 따뜻한 매니저 캐릭터는 좋으나 후반부에서 오너의 신호(여러 번 \"뭐 물어보고 싶은 거 있으면 물어봐\")에도 같은 질문을 반복하며 coherence 붕괴. 사람 친구라면 오너의 암묵적 신호를 받아 다른 주제로 전환할 ",
+      "critical": false
+    },
+    {
+      "key": "no_hallucination",
+      "label": "환각 없음",
+      "kind": "judge",
+      "weight": 1.5,
+      "score": 5.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "유나가 처음 '뭐 하시는 분이에요?'로 직업을 물었고, 오너가 '뭐 물어보려 했어?'라고 재촉하자 '취미!'라고 인정했으나, 직후 '직업이 뭔지 궁금했어'라며 직업을 새로 묻기 시작 — 대화 맥락 일관성 결함.",
+      "critical": false
+    },
+    {
+      "key": "no_leaks",
+      "label": "누수 없음",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)",
+      "critical": false
+    },
+    {
+      "key": "responsiveness",
+      "label": "응답성",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "1/1 DM 응답",
+      "critical": false
+    }
+  ],
+  "report_md": "/Users/jbsim/Documents/GitHub/Glimi/tests/e2e/results/community-report-20260623-112724.md",
+  "report_pdf": ""
+}

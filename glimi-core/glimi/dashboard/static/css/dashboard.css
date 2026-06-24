@@ -98,7 +98,9 @@
     display: grid;
     grid-template-columns: 204px 1fr;
     grid-template-rows: auto 1fr;
-    height: 100vh;
+    /* dvh (dynamic viewport) — on mobile 100vh includes the area behind the URL
+       bar, pushing the chat composer below the fold; dvh tracks the visible area. */
+    height: 100dvh;
   }
 
   header.status {
@@ -106,26 +108,36 @@
     padding: 10px 20px;
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 14px;
+    /* --sp-2 gap so a row of trailing controls reads as one set (8765 fix);
+       the brand block keeps its own internal spacing. */
+    display: flex; align-items: center; gap: var(--sp-2, 8px);
     z-index: 100;
     min-height: 54px;
     position: relative;
   }
+  /* give the brand a touch more separation from the first control */
+  header.status .brand { margin-right: var(--sp-1, 4px); }
   .brand {
     display: flex; align-items: center; gap: 10px; white-space: nowrap;
   }
+  /* The whole brand block is one home link (logo + name). */
+  .brand-home {
+    display: flex; align-items: center; gap: 10px;
+    color: inherit; text-decoration: none; border-radius: 8px;
+  }
+  .brand-home:hover .brand-name { color: var(--accent); }
   .brand-logo {
     width: 32px; height: 32px; object-fit: contain; border-radius: 7px;
     display: block;
   }
-  .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
+  .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); transition: color 0.15s; }
 
   /* ==== Community switcher — quiet pill (상태는 dot 색으로만, §5.1) ==== */
   .community-btn {
-    position: relative; display: flex; align-items: center; gap: 8px;
+    position: relative; display: inline-flex; align-items: center; gap: 8px;
     background: var(--panel-2); color: var(--text); border: 0;
-    border-radius: 999px; padding: 7px 13px 7px 12px; font-size: 12.5px;
-    font-weight: 600; cursor: pointer;
+    height: var(--ctl-h, 32px); border-radius: 999px; padding: 0 13px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer; flex: 0 0 auto;
     transition: background 0.15s ease-out;
   }
   .community-btn:hover { background: var(--panel-3); }
@@ -180,18 +192,19 @@
   .lang-menu .li .li-check { color: var(--accent); font-weight: 700; opacity: 0; }
   .lang-menu .li.active .li-check { opacity: 1; }
   .lang-menu .li.active .li-check::before { content: '✓'; }
+  /* quiet pill — 무보더 면(§5.1). 상태는 면을 채우지 말고 dot+텍스트로만. */
   .pill {
     font-size: 11px; font-weight: 500; padding: 4px 11px; border-radius: 999px;
-    background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border-soft);
+    background: var(--panel-2); color: var(--text-dim); border: 0;
     display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   }
   .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
-  .pill.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); background: color-mix(in srgb, var(--ok) 10%, var(--panel-2)); }
-  .pill.on::before { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
-  .pill.off { color: var(--err); border-color: color-mix(in srgb, var(--err) 30%, transparent); background: color-mix(in srgb, var(--err) 10%, var(--panel-2)); }
+  .pill.on { color: var(--ok); }
+  .pill.on::before { background: var(--ok); }
+  .pill.off { color: var(--err); }
   .pill.off::before { background: var(--err); }
   .pill.neutral b { color: var(--text); font-weight: 600; }
-  .stats-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .stats-right { margin-left: auto; display: flex; gap: var(--sp-2, 8px); align-items: center; }
 
   select {
     background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 9px;
@@ -199,23 +212,29 @@
     transition: border-color 0.15s, background 0.15s;
   }
   select:hover { border-color: var(--accent); }
-  /* punched 아이콘 버튼 — 보더 없이 면 단차로 (§5.1) */
+  /* punched 아이콘 버튼 — 보더 없이 면 단차로 (§5.1).
+     --ctl-h 로 같은 헤더의 quiet pill 들과 높이/베이스라인 통일 (8765 fix). */
   .btn-icon {
-    width: 32px; height: 32px; padding: 0;
+    width: var(--ctl-h, 32px); height: var(--ctl-h, 32px); padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
     background: var(--panel-2); color: var(--text-dim);
     border: 0; border-radius: 50%; font-size: 15px; cursor: pointer;
+    flex: 0 0 auto;
     transition: background 0.15s ease-out, color 0.15s ease-out;
   }
   .btn-icon:hover { background: var(--panel-3); color: var(--text); }
+  .btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* is-live 토글 (supervisor 등) — accent 채움 (§5.1 punched 활성) */
+  .btn-icon.active, .btn-icon.is-live { background: var(--accent); color: var(--accent-fg); }
 
-  /* ==== 플랫폼 서버 컨트롤 — 컨트롤 3문법 (design_system §5.1) ==== */
-  .gp-server-ctrl { display: flex; align-items: center; gap: 7px; }
+  /* ==== 플랫폼 서버 컨트롤 — 컨트롤 3문법 (design_system §5.1).
+     한 줄의 status pill·CTA·devlink 가 --ctl-h 로 같은 높이/베이스라인 공유. ==== */
+  .gp-server-ctrl { display: inline-flex; align-items: center; gap: var(--sp-2, 8px); }
   .gp-status {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 6px 12px; border-radius: 999px;
+    height: var(--ctl-h, 32px); padding: 0 12px; border-radius: 999px;
     font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em;
-    background: var(--panel-2); color: var(--text-dim); white-space: nowrap;
+    background: var(--panel-2); color: var(--text-dim); white-space: nowrap; flex: 0 0 auto;
   }
   .gp-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
   .gp-status.running { color: var(--ok); }
@@ -223,15 +242,17 @@
   .gp-uptime {
     font-family: "JetBrains Mono", monospace; font-size: 11px;
     color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap;
+    display: inline-flex; align-items: center;
   }
   .gp-ctrl-btn {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 7px 14px; border-radius: 999px; border: 0; cursor: pointer;
-    font-size: 12px; font-weight: 500; font-family: inherit;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    height: var(--ctl-h, 32px); padding: 0 14px; border-radius: 999px; border: 0; cursor: pointer;
+    font-size: 12px; font-weight: 500; font-family: inherit; flex: 0 0 auto;
     background: var(--panel-2); color: var(--text-dim);
     transition: background 0.15s ease-out, color 0.15s ease-out;
   }
   .gp-ctrl-btn:hover { background: var(--panel-3); color: var(--text); }
+  .gp-ctrl-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .gp-ctrl-btn .ti { font-size: 13px; }
   /* 주행동 1개 = 잉크 CTA */
   .gp-ctrl-btn.start { background: var(--accent); color: var(--accent-fg); }
@@ -241,12 +262,12 @@
   .gp-ctrl-btn.stop:hover { background: color-mix(in srgb, var(--err) 10%, var(--panel-2)); color: var(--err); }
   .gp-devlink {
     display: inline-flex; align-items: center; gap: 6px;
-    margin: 0 6px; padding: 7px 14px; border-radius: 999px;
+    height: var(--ctl-h, 32px); padding: 0 14px; border-radius: 999px; flex: 0 0 auto;
     font-size: 12px; font-weight: 500; color: var(--text-dim); text-decoration: none;
     background: var(--panel-2);
     transition: background 0.15s ease-out, color 0.15s ease-out;
   }
-  .gp-devlink:hover { background: var(--panel-3); color: var(--text); }
+  .gp-devlink:hover { background: var(--panel-3); color: var(--text); text-decoration: none; }
   .gp-devlink .ti { font-size: 13px; }
 
   /* ==== Tabs — 좌측 레일 (je-empty paper rail) ==== */
@@ -854,6 +875,125 @@
     text-transform: uppercase; letter-spacing: 0.08em; margin: 18px 0 8px;
   }
 
+  /* ==== Channels tab — card grid grouped by kind ==== */
+  .ch-section-title {
+    font-size: 11px; font-weight: 700; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.1em; margin: 22px 2px 10px;
+  }
+  .ch-section-title:first-child { margin-top: 4px; }
+  .ch-card-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+  }
+  .ch-card {
+    background: var(--panel-2); border: 1px solid var(--border-soft); border-radius: 14px;
+    padding: 13px 15px; display: flex; flex-direction: column; gap: 9px; cursor: pointer;
+    /* §1.1: hover 는 색·면 전환만 (transform 들썩임 제거) */
+    transition: background 0.18s ease-out, border-color 0.18s ease-out;
+  }
+  .ch-card:hover { background: var(--panel-3); border-color: var(--border); }
+  .ch-card.kind-dm:hover { border-color: var(--accent); }
+  .ch-card.kind-group:hover { border-color: var(--ok); }
+  .ch-card.kind-mgr:hover { border-color: var(--mgr); }
+  .ch-card.kind-internal-dm:hover, .ch-card.kind-internal-group:hover { border-color: var(--creator); }
+  .ch-card-head { display: flex; gap: 11px; align-items: center; min-width: 0; }
+  .ch-card-head .avatar { width: 38px; height: 38px; flex-shrink: 0; }
+  .ch-card-icon {
+    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--panel-3); color: var(--text-dim); font-size: 17px;
+  }
+  .ch-card-icon.kind-group { color: var(--ok); }
+  .ch-card-icon.kind-mgr { color: var(--mgr); }
+  .ch-card-icon.kind-internal-dm, .ch-card-icon.kind-internal-group { color: var(--creator); }
+  .ch-card-id { min-width: 0; flex: 1; }
+  .ch-card-name {
+    font-size: 13.5px; font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ch-card-sub { display: flex; gap: 7px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
+  .ch-card-meta { font-size: 10.5px; color: var(--text-dim); display: flex; gap: 6px; align-items: center; }
+  .ch-card-meta .sep { color: var(--text-faint); }
+  .ch-card-preview {
+    font-size: 12px; color: var(--text-dim); line-height: 1.45;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ch-card-preview b { color: var(--text); font-weight: 600; }
+  .ch-card-preview.muted { color: var(--text-faint); font-style: italic; }
+  /* kind badge — small pill with icon, shared by Channels tab + Overview feed */
+  .ch-kind-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--panel-3); color: var(--text-dim);
+  }
+  .ch-kind-badge .ti { font-size: 11px; }
+  .ch-kind-badge.kind-dm { background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); color: var(--accent); }
+  .ch-kind-badge.kind-group { background: color-mix(in srgb, var(--ok) 14%, var(--panel-2)); color: var(--ok); }
+  .ch-kind-badge.kind-mgr { background: color-mix(in srgb, var(--mgr) 14%, var(--panel-2)); color: var(--mgr); }
+  .ch-kind-badge.kind-internal-dm, .ch-kind-badge.kind-internal-group {
+    background: color-mix(in srgb, var(--creator) 14%, var(--panel-2)); color: var(--creator);
+  }
+
+  /* ==== Overview — recent conversations grouped by channel (compact) ====
+     A calm, bounded glance — NOT a full ledger. The feed is capped to the few
+     most-recent channels (JS: RC_MAX_CHANNELS) with a handful of single-line
+     previews each (RC_MAX_PER_CHANNEL), and the whole thing lives in a fixed
+     max-height scroll container so it never dominates the Overview page. */
+  #overview-msgs {
+    display: flex; flex-direction: column; gap: 10px; border-top: 0;
+    max-height: 360px; overflow-y: auto;
+    /* room for the scrollbar so rows don't sit flush under it */
+    padding-right: 2px;
+  }
+  .rc-group {
+    background: var(--panel-2); border: 1px solid var(--border-soft); border-radius: 12px;
+    padding: 4px 12px 6px; display: flex; flex-direction: column;
+  }
+  .rc-head {
+    display: flex; gap: 8px; align-items: center; cursor: pointer;
+    padding: 6px 2px 6px; border-bottom: 1px solid var(--border-soft); margin-bottom: 2px;
+  }
+  .rc-head:hover .rc-ch-name { color: var(--accent); }
+  .rc-ch-name {
+    font-size: 12.5px; font-weight: 700; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: color 0.15s;
+  }
+  /* Overview rows reuse the canonical .msg component inside a .msg-list. The
+     group header already carries the divider, so drop the ledger's own top
+     hairline and the last row's bottom hairline for a clean grouped card. */
+  .rc-group .msg-list { border-top: 0; }
+  /* Tight single-line rows — a preview glance, not a roomy transcript. */
+  .rc-group .msg-list .msg { font-size: 12.5px; padding: 7px 2px; gap: 9px; align-items: center; }
+  /* Smaller avatar so each preview row stays on a single line height. */
+  .rc-group .msg-list .msg .msg-avatar { width: 22px; height: 22px; }
+  /* Collapse the canonical two-line body into one row: name + time inline, then a
+     single truncated message line. No multi-line dump. */
+  .rc-group .msg-list .msg .head { margin-bottom: 0; }
+  .rc-group .msg-list .msg .text {
+    line-height: 1.45;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* A truncated preview shouldn't render block markdown (lists/quotes/images)
+     as stacked blocks — keep it to one calm line. */
+  .rc-group .msg-list .msg .text :where(p, ul, ol, blockquote, pre) {
+    display: inline; margin: 0;
+  }
+  .rc-group .msg-list .msg .chat-img { display: none; }
+  .rc-group .msg-list .msg:last-child { border-bottom: 0; }
+  /* "전체 보기 / View all" — quiet pill (DS §5.1), jumps to the Chat tab. No
+     shadow, no hover-transform (DS §1.1): background/colour shift only. */
+  .rc-viewall {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 2px; padding: 7px 14px;
+    background: var(--panel-2); color: var(--text-dim);
+    border: 0; border-radius: var(--r-pill);
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .rc-viewall:hover { background: var(--panel-3); color: var(--text); }
+  .rc-viewall .ti { font-size: 14px; }
+
   /* ==== Messages — 헤어라인 레저 행 (je-empty ledger) ==== */
   .msg-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }
   .msg {
@@ -890,52 +1030,101 @@
   .msg .ch:hover { color: var(--accent); }
   .msg .ts { color: var(--text-faint); font-size: 10.5px; margin-left: auto; }
   .msg .text { color: var(--text); word-break: break-word; white-space: pre-wrap; }
-  .msg-del-btn {
-    position: absolute; top: 8px; right: 8px;
-    background: transparent; border: 1px solid transparent; color: var(--text-faint);
-    width: 24px; height: 24px; border-radius: 6px; font-size: 12px; cursor: pointer;
-    opacity: 0; transition: opacity 0.15s, border-color 0.15s, color 0.15s;
-    display: flex; align-items: center; justify-content: center;
+
+  /* ==== Rendered markdown tables (GlimiChat.mdToHtml → table.md-tbl) ====
+     chat.css owns the rest of `.txt.md`; the table primitive has no dedicated
+     rule there, so style it here for dashboard surfaces (chat tab + detail).
+     thead/tbody/tr/th/td are plain — don't force text-align (per-column align
+     arrives as an inline style on th/td when the separator row used colons). */
+  .txt.md table.md-tbl {
+    border-collapse: collapse;
+    margin: var(--sp-2, 8px) 0;
+    font-size: var(--fs-sm, 12.5px);
+    max-width: 100%;
+    /* 좁은 폭에서 표가 페이지를 밀지 않게 — 표 자체가 가로 스크롤 박스 */
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-variant-numeric: tabular-nums;
   }
-  .msg:hover .msg-del-btn { opacity: 1; }
-  .msg-del-btn:hover { color: var(--err); border-color: var(--err); }
+  .txt.md table.md-tbl:first-child { margin-top: 0; }
+  .txt.md table.md-tbl:last-child { margin-bottom: 0; }
+  .txt.md table.md-tbl th,
+  .txt.md table.md-tbl td {
+    border: 1px solid var(--border-soft);
+    padding: var(--sp-1, 4px) var(--sp-2, 8px);
+    vertical-align: top;
+    line-height: 1.5;
+    /* text-align 은 chat.js 가 컬럼별 인라인으로 지정 — 강제하지 않음 */
+  }
+  .txt.md table.md-tbl thead th {
+    background: var(--panel-2);
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .txt.md table.md-tbl tbody td { color: var(--text); }
+  .txt.md table.md-tbl tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+  }
 
   /* ==== Lightbox (full avatar) ==== */
+  /* je-empty paradigm: dimmed backdrop + soft fade, image fits to viewport with
+     object-fit:contain (never cropped). Token-driven (no hardcoded hex). */
   .lightbox {
     display: none; position: fixed !important; inset: 0 !important;
-    background: rgba(0,0,0,0.85);
-    backdrop-filter: blur(10px); z-index: 2147483640 !important;
-    align-items: center; justify-content: center; padding: 40px; cursor: zoom-out;
+    background: rgba(8, 10, 14, 0.74);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    z-index: 2147483640 !important;
+    align-items: center; justify-content: center; padding: 3vh 3vw; cursor: zoom-out;
   }
-  .lightbox.open { display: flex; }
-  .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
-  .lightbox .lb-caption { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 0.3px; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+  .lightbox.open { display: flex; animation: lightboxIn 0.18s ease; }
+  .lightbox img {
+    max-width: 90vw; max-height: 90vh; width: auto; height: auto;
+    object-fit: contain;
+    border-radius: var(--r-lg); border: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .lightbox .lb-caption {
+    position: absolute; bottom: 3vh; left: 50%; transform: translateX(-50%);
+    color: var(--accent-fg); background: rgba(8, 10, 14, 0.6);
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+  }
+  @keyframes lightboxIn { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .lightbox.open { animation: none; } }
 
   /* ==== Events ==== */
-  /* 레거시 이벤트 행 — 레저(헤어라인) 문법, 좌측 색 바 금지 */
-  .event-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }
+  /* 이벤트 탭 — 잔잔한 종이 행. event-card 가 채워진 면 카드 대신 헤어라인으로
+     구분된 평면 행으로 읽히게: 컨테이너가 리듬을 잡고 카드는 면을 덜어낸다.
+     좌측 색 바 금지(§1.1) — 구분은 ev-badge 색으로만. */
+  .event-list { display: flex; flex-direction: column; gap: 0; }
+  /* 레거시 이벤트 행 — 레저(헤어라인) 문법. type 색은 차분한 보조잉크로. */
   .event {
     padding: 9px 4px; font-size: 11.5px;
     background: transparent; border: 0;
     border-bottom: 1px solid var(--border-soft);
   }
-  .event .type { color: var(--cmd); font-weight: 600; margin-right: 8px; }
+  .event .type { color: var(--text-dim); font-weight: 600; margin-right: 8px; }
   .event .desc { color: var(--text-dim); }
-  .event .ts { color: var(--text-faint); font-size: 10px; margin-left: 6px; }
+  .event .ts { color: var(--text-faint); font-size: 10px; margin-left: 6px; font-variant-numeric: tabular-nums; }
 
-  /* event-card — 신 디자인. 카드 형태, 헤더(뱃지+참여자+시간) + description. */
+  /* event-card — 잔잔한 종이 행. 면을 채우지 않고 헤어라인으로만 구분,
+     hover 시에만 옅은 면 단차. 헤더(뱃지+참여자+시간) + description. */
   .event-card {
-    display: flex; flex-direction: column; gap: 6px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
-    background: var(--panel-2);
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 11px 8px;
+    margin-bottom: 0;
+    background: transparent;
     border: 0;
-    border-radius: 12px;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 0;
     transition: background 0.2s ease-out;
   }
-  .event-card:hover { background: var(--panel-3); }
-  .event-card .ev-badge { background: var(--panel); }
-  .event-card .ev-parts .ev-part { background: var(--panel); }
+  .event-list > .event-card:last-child { border-bottom: 0; }
+  .event-card:hover { background: var(--panel-2); }
+  .event-card .ev-badge { background: var(--panel-2); }
+  .event-card .ev-parts .ev-part { background: var(--panel-2); }
   .event-card .ev-head {
     display: flex; flex-wrap: wrap; align-items: center;
     gap: 8px; min-width: 0;
@@ -1459,6 +1648,8 @@
     .gp-server-ctrl .gp-uptime { display: none; }
     .gp-server-ctrl .gp-ctrl-btn { padding: 6px 10px; font-size: 11px; }
     .brand-name { display: none; } /* 모바일: 로고+커뮤니티 필만 */
+    /* 로고만 남아도 탭 타깃은 ≥44px 유지 (로고가 곧 홈 버튼) */
+    .brand-home { min-width: 44px; min-height: 44px; justify-content: center; }
     .community-btn { max-width: 130px; }
     .community-btn #community-btn-name { overflow: hidden; text-overflow: ellipsis; }
     /* admin Dev Requests — 모바일은 펜딩 배지만 노출 */
@@ -1504,9 +1695,9 @@
     .overview-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
     .kpi { padding: 10px 12px; }
 
-    /* Graph — 짧은 높이 + 가운데 정렬 */
+    /* Graph — 원형 레이아웃이라 너비≈높이 라야 13+ 노드가 상하 안 잘림 */
     .graph-panel { padding: 10px 12px; margin-bottom: 14px; }
-    .graph-stage { height: 320px; }
+    .graph-stage { height: min(96vw, 52vh); }
     .graph-panel .graph-head h3 { font-size: 10.5px; letter-spacing: 0.8px; }
     .graph-panel .graph-head .note { font-size: 10px; }
 
@@ -1582,10 +1773,10 @@
     .filters, .toolbar { gap: 6px; flex-wrap: wrap; }
     .chip { padding: 4px 10px; font-size: 11.5px; }
 
-    /* F3 — 44px 탭 타깃 (base.css button/.btn 을 안 타는 것들) */
-    nav.tabs button, .gp-ctrl-btn, .community-btn { min-height: 44px; }
+    /* F3 — 44px 탭 타깃. --ctl-h(=44px @≤720, base.css)로 헤더 컨트롤은 자동 추종;
+       여기선 그 레버를 안 타는 것들만 보강. */
+    nav.tabs button { min-height: 44px; }
     .act-btn { min-height: 44px; display: inline-flex; align-items: center; }
-    .btn-icon { width: 44px; height: 44px; }
     .graph-ctl, .graph-ctl button { min-width: 44px; min-height: 44px; }
     .graph-ctl button { width: 44px; height: 44px; }
     /* 모달 내 JS-생성 테이블 가로 스크롤 (F5) */
@@ -1605,7 +1796,7 @@
     /* KPI 1열은 스크롤이 너무 길어짐 — 2열 컴팩트 유지 */
     .overview-grid { grid-template-columns: repeat(2, 1fr); }
     .kpi .value { font-size: 14px; }
-    .graph-stage { height: 280px; }
+    .graph-stage { height: min(94vw, 50vh); }
     .view { padding: 10px 8px; }
 
     /* 모달 — 아주 좁은 폭에선 backdrop 여백 더 줄여 풀스크린에 근접 */
@@ -1734,3 +1925,100 @@
   white-space: nowrap;
 }
 .tool-row .tc-time { color: var(--text-faint); white-space: nowrap; }
+
+/* ============================================================================
+   Onboarding coachmark tour (community-only). Built by GlimiTour in dashboard.js.
+   Dependency-free spotlight + tooltip. Layers above the community boot/greeting
+   wait overlay (z-index 2147483641) so the offer/tour are reachable during it.
+   ========================================================================== */
+.tour-root {
+  position: fixed; inset: 0; z-index: 2147483646;
+  /* Transparent by default — the spotlight's box-shadow IS the dim (a real cutout
+     around the anchor). When no anchor is measurable the root falls back to a flat
+     scrim via .tour-root.no-spot below. */
+  background: transparent;
+  pointer-events: auto;
+}
+.tour-root.no-spot { background: rgba(10, 12, 18, 0.55); }
+.tour-spot {
+  position: fixed; left: 0; top: 0; width: 0; height: 0;
+  border-radius: var(--r-md);
+  /* Bright accent ring + a 9999px outer shadow that dims the whole viewport
+     EXCEPT the anchor rectangle — the classic coachmark cutout. */
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 9999px rgba(10, 12, 18, 0.55);
+  transition: left 0.22s var(--ease), top 0.22s var(--ease),
+              width 0.22s var(--ease), height 0.22s var(--ease), opacity 0.18s;
+  pointer-events: none;
+}
+.tour-tip {
+  position: fixed; max-width: 320px; min-width: 240px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg); padding: 16px 16px 12px;
+  transition: left 0.22s var(--ease), top 0.22s var(--ease);
+}
+.tour-tip-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.tour-tip-body { font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+.tour-tip-nav { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.tour-tip-spacer { flex: 1; }
+.tour-dots { display: flex; gap: 5px; align-items: center; }
+.tour-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.tour-dot.on { background: var(--accent); }
+.tour-btn {
+  font: inherit; font-size: 12.5px; cursor: pointer;
+  padding: 7px 14px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.tour-btn:hover { color: var(--text); border-color: var(--text-faint); }
+.tour-btn.tour-next, .tour-btn.tour-offer-yes, .tour-btn.tour-greet-jump {
+  background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600;
+}
+.tour-btn.tour-next:hover, .tour-btn.tour-offer-yes:hover, .tour-btn.tour-greet-jump:hover {
+  filter: brightness(1.06);
+}
+.tour-skip { padding-left: 0; padding-right: 0; border: none; color: var(--text-faint); }
+.tour-skip:hover { border: none; color: var(--text-dim); }
+
+/* Offer prompt — shown during the "유나 준비 중" wait, above the boot overlay. */
+.tour-offer {
+  position: fixed; inset: 0; z-index: 2147483645;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(10, 12, 18, 0.4);
+}
+.tour-offer-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg); padding: 24px 26px; max-width: 360px; text-align: center;
+}
+.tour-offer-emoji { font-size: 34px; margin-bottom: 8px; }
+.tour-offer-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+.tour-offer-body { font-size: 13.5px; color: var(--text-dim); line-height: 1.6; }
+.tour-offer-acts { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+
+/* Greeted toast — 유나's first message arrived. */
+.tour-greet-toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  z-index: 2147483645; display: flex; align-items: center; gap: 10px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-pill);
+  box-shadow: var(--shadow-lg); padding: 10px 12px 10px 16px;
+  animation: tour-greet-in 0.3s var(--ease);
+}
+@keyframes tour-greet-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.tour-greet-emoji { font-size: 18px; }
+.tour-greet-text { font-size: 13.5px; font-weight: 600; }
+.tour-greet-jump { padding: 6px 14px; }
+.tour-greet-close {
+  font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+  background: none; border: none; color: var(--text-faint); padding: 0 4px;
+}
+.tour-greet-close:hover { color: var(--text); }
+
+@media (max-width: 720px) {
+  .tour-tip { max-width: calc(100vw - 24px); min-width: 0; }
+  .tour-greet-toast { left: 12px; right: 12px; transform: none; bottom: 16px; }
+  @keyframes tour-greet-in { from { opacity: 0; } to { opacity: 1; } }
+}

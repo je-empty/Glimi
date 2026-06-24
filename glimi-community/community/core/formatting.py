@@ -15,8 +15,8 @@ from __future__ import annotations
 # 언급하는 누출이 발생 (QA 회귀). agent_type 별로 안전한 예시만 제공.
 
 _PERSONA_EXAMPLES = "`#dm-수연`, `#group-빈이-수연-하린`"
-_STAFF_EXAMPLES = "`#mgr-creator`, `#dm-이수아`, `#mgr-dashboard`"
-_STAFF_LIST_EXAMPLE = "`#mgr-creator, #mgr-dashboard, #mgr-system-log`"
+_STAFF_EXAMPLES = "`#dm-윤하나`, `#dm-이수아`, `#dm-서유나`"
+_STAFF_LIST_EXAMPLE = "`#dm-윤하나, #dm-서유나`"
 _PERSONA_LIST_EXAMPLE = "`#dm-수연, #group-빈이-수연`"
 
 
@@ -29,7 +29,7 @@ def get_formatting_guide(agent_type: str = "persona") -> str:
     else:
         single_ex = _STAFF_EXAMPLES
         list_ex = _STAFF_LIST_EXAMPLE
-        plain_ex = "`mgr-creator` 나 `dm-이수아`"
+        plain_ex = "`dm-윤하나` 나 `dm-이수아`"
     return f"""[Formatting rules — Discord rendering — 반드시 준수]
 - 채널 언급은 **항상 `#` 접두사 필수**. 예: {single_ex}.
   평문 {plain_ex} 처럼 `#` 빼면 클릭 링크 안 되고 그냥 텍스트로 뜸.

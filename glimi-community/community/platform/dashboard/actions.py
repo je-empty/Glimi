@@ -7,8 +7,8 @@ from .context import maintenance_on, maintenance_off, require_server_stopped
 
 
 # 메시지 동기화 제외 채널 — 존재 여부만 체크하고, DB↔Discord 메시지 카운트 drift 는 무시.
-# mgr-system-log 는 봇 런타임이 로그를 webhook 으로 쏘는 채널이라 매 기동마다 메시지 누적되고
-# DB 기록과 달라 매번 "drift" 로 잡힘. 유저한테 의미 없는 노이즈.
+# mgr-system-log 디코 채널은 폐지됐지만, 레거시 커뮤니티에 orphan 으로 남아 있을 수 있어
+# back-compat 으로 제외 유지 (런타임 로그가 쌓여 매번 의미 없는 drift 노이즈였던 채널).
 MSG_SYNC_EXCLUDED = {"mgr-system-log"}
 
 

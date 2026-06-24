@@ -3,7 +3,7 @@
 dev_requests / dev_runs 는 **platform.db 글로벌 테이블** — 모든 community 의 요청이 한 곳에
 모이고 admin 이 통합 페이지에서 batch 검토/승인/실행. helper 들은 platform DB 직접 접근.
 
-세나 자체는 community-local 에이전트 — community 별로 mgr-dev-request 채널에서 활동.
+세나 자체는 community-local 에이전트 — community 별로 dm-<세나> 채널에서 활동.
 시각적으로는 admin 만 보임 (가시성 필터는 monitor.py + snapshot 라우터 책임).
 """
 from __future__ import annotations
@@ -17,7 +17,10 @@ from community import db, log_writer
 
 DEV_ID = "agent-dev-001"
 DEV_NAME = "한세나"
-DEV_CHANNEL = "mgr-dev-request"
+# 세나 owner↔dev DM 채널 키 = id 기반 정본 (``dm-agent-dev-001``). 표시 이름(한세나/Sena)
+# 은 로케일 종속이라 채널 키에 새기지 않는다(i18n). 채널 키의 단일 출처는 core.channels.
+# (런타임 resolve 가 필요하면 community.core.channels.dev_channel() — legacy dm-<이름> 폴백.)
+from community.core.channels import DEV_CHANNEL  # noqa: E402  (= "dm-agent-dev-001")
 
 
 def _platform_conn() -> sqlite3.Connection:

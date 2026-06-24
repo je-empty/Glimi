@@ -44,7 +44,7 @@ from ..auth import get_current_user
 from ..config import SESSION_COOKIE_NAME
 from ..sessions import verify_session
 from .. import chat_hub
-from community.core.channels import channel_kind, is_user_postable
+from community.core.channels import channel_kind, is_system_channel, is_user_postable
 
 router = APIRouter()
 
@@ -271,22 +271,23 @@ def _agent_exists(community_id: str, agent_id: str) -> bool:
 # ── read APIs (channel list + history) — community-scoped ──────────────
 
 def _list_postable_channels(community_id: str) -> list[dict]:
-    """The owner's user-postable channels for this community.
+    """The owner's conversation channels — DATA-DRIVEN from the channel registry
+    (plus any channel that already has messages), so it works identically for
+    Discord-driven and web-driven communities.
 
-    DMs are synthesized per agent as ``dm-<agent_id>`` (the web convention,
-    matching pages.py / chat.js) with display name + avatar url. Group channels
-    are taken from the registered channel list, filtered to ``group-*`` (the
-    only registered channels a user may post into). ``mgr-*`` / ``internal-*``
-    are EXCLUDED (not user-postable).
+    Each channel resolves by participants: 1 agent → a DM (carrying the agent's
+    name + ``agent_type`` so managers vs personas are distinguishable — in the web
+    model ``mgr-dashboard`` / ``mgr-creator`` are simply DMs with those managers);
+    2+ agents → a group. System (``mgr-system-log``) and agent-to-agent
+    (``internal-*``) channels are hidden. The channel KEY stays the real channel
+    name, so web reads/writes stay in sync with the Discord adapter (bidirectional).
     """
     def _query() -> list[dict]:
         from community import db
         from community.core import monitor
 
         def _last(channel_key: str):
-            """The channel's most recent message, display-ready, for a sidebar
-            preview — so recent activity shows WITHOUT opening each channel
-            (mirrors the per-row shape ``updateChannelPreviewFromHistory`` reads)."""
+            """The channel's most recent message, display-ready, for a sidebar preview."""
             try:
                 recent = monitor.get_recent_messages(limit=1, channel=channel_key)
             except Exception:
@@ -301,55 +302,141 @@ def _list_postable_channels(community_id: str) -> list[dict]:
                 "timestamp": r.get("timestamp") or "",
             }
 
-        out: list[dict] = []
-        # DM-per-agent. Order: mgr → creator → dev → persona, then by id.
+        agents: dict[str, dict] = {}
         try:
-            agents = db.list_agents()
+            for a in db.list_agents():
+                if a.get("id"):
+                    agents[a["id"]] = a
         except Exception:
-            agents = []
-        type_rank = {"mgr": 0, "creator": 1, "dev": 2, "persona": 3}
-        agents.sort(key=lambda a: (type_rank.get(a.get("type", ""), 9), a.get("id", "")))
-        for a in agents:
-            aid = a.get("id")
-            if not aid:
-                continue
-            out.append({
-                "channel": f"dm-{aid}",
-                "kind": "dm",
-                "agent_id": aid,
-                "name": a.get("name") or aid,
-                "type": a.get("type", ""),
-                "avatar_url": f"/api/avatar?community={community_id}&id={aid}",
-                "last": _last(f"dm-{aid}"),
-            })
-        # Registered group channels (user-postable, multi-agent). Exclude
-        # mgr-/internal-/dm- via is_user_postable + explicit group prefix.
-        try:
-            channels = monitor.get_channels()
-        except Exception:
-            channels = []
-        for ch in channels:
-            name = ch.get("name") or ""
-            if not name.startswith("group-"):
-                continue
-            if not is_user_postable(name):
-                continue
-            out.append({
-                "channel": name,
-                "kind": "group",
-                "agent_id": None,
-                "name": name,
-                "type": "group",
-                "avatar_url": None,
+            pass
+
+        def _dm_entry(name: str, agent_id):
+            a = agents.get(agent_id, {}) if agent_id else {}
+            return {
+                "channel": name, "kind": "dm", "agent_id": agent_id,
+                "agent_type": a.get("type", ""),
+                "name": a.get("name") or agent_id or name,
+                "type": a.get("type", ""), "postable": True,
+                "avatar_url": (f"/api/avatar?community={community_id}&id={agent_id}"
+                               if agent_id else None),
                 "last": _last(name),
-            })
+            }
+
+        def _group_entry(name: str):
+            return {
+                "channel": name, "kind": "group", "agent_id": None,
+                "agent_type": "group", "name": name, "type": "group",
+                "postable": True, "avatar_url": None, "last": _last(name),
+            }
+
+        def _internal_entry(name: str, parts: list):
+            # agent-to-agent backchannel — the owner WATCHES (read-only). The whole
+            # point of Glimi Community: friends talking to each other.
+            # Display the RAW channel id (e.g. "internal-dm-서유나-윤하나") rather than
+            # an "A ↔ B" rephrasing — the owner asked to see the real channel name.
+            return {
+                "channel": name, "kind": "internal", "agent_id": None,
+                "agent_type": "internal", "name": name,
+                "type": "internal", "postable": False, "members": parts or [],
+                "avatar_url": (f"/api/avatar?community={community_id}&id={parts[0]}"
+                               if parts else None),
+                "last": _last(name),
+            }
+
+        # Dev assistant ids/names (한세나) — resolve a dm-<id> OR dm-<name> to its type.
+        _dev_ids = {aid for aid, a in agents.items() if a.get("type") == "dev"}
+        _dev_names = {a.get("name") for a in agents.values()
+                      if a.get("type") == "dev" and a.get("name")}
+
+        def _is_dev_agent(agent_id) -> bool:
+            return bool(agent_id) and agents.get(agent_id, {}).get("type") == "dev"
+
+        def _resolve(name: str, parts: list):
+            k = channel_kind(name)
+            if k in ("internal-dm", "internal-group"):
+                return _internal_entry(name, parts)
+            if k == "group" or len(parts) >= 2:
+                return _group_entry(name)
+            return _dm_entry(name, parts[0] if parts else None)
+
+        def _is_dev_channel(name: str, parts: list) -> bool:
+            """The dev assistant (한세나, agent_type='dev') is internal-only — its DM
+            must NOT surface in the owner's chat list. Match a dev participant OR the
+            conventional dm-<dev-id>/dm-<dev-name> channel id (monitor keys owner DMs
+            by the agent's NAME, e.g. ``dm-한세나``)."""
+            if channel_kind(name) != "dm":
+                return False
+            if any(_is_dev_agent(p) for p in (parts or [])):
+                return True
+            if name == "dm-agent-dev-001":
+                return True
+            suffix = name[3:] if name.startswith("dm-") else ""
+            return suffix in _dev_ids or suffix in _dev_names
+
+        out: list[dict] = []
+        seen: set[str] = set()
+
+        # 1) Registered channels carry explicit participant lists — the precise source.
+        try:
+            registered = monitor.get_channels()
+        except Exception:
+            registered = []
+        for ch in registered:
+            name = ch.get("name") or ""
+            if not name or name in seen or is_system_channel(name):
+                continue
+            parts = ch.get("participants") or []
+            if _is_dev_channel(name, parts):
+                continue
+            seen.add(name)
+            out.append(_resolve(name, parts))
+
+        # 2) Any channel that already has messages but isn't registered — robustness
+        #    ("show messages regardless of transport"). Agent participants are the
+        #    distinct agent speakers seen in that channel.
+        try:
+            conn = db.get_conn()
+            spk_rows = conn.execute(
+                "SELECT channel, speaker, COUNT(*) n FROM conversations "
+                "WHERE speaker LIKE 'agent-%' GROUP BY channel, speaker "
+                "ORDER BY n DESC"
+            ).fetchall()
+            all_chans = conn.execute(
+                "SELECT DISTINCT channel FROM conversations"
+            ).fetchall()
+            conn.close()
+        except Exception:
+            spk_rows, all_chans = [], []
+        speakers_by_ch: dict[str, list] = {}
+        for r in spk_rows:
+            speakers_by_ch.setdefault(r["channel"], []).append(r["speaker"])
+        for r in all_chans:
+            name = r["channel"]
+            if not name or name in seen or is_system_channel(name):
+                continue
+            parts = speakers_by_ch.get(name, [])
+            if _is_dev_channel(name, parts):
+                continue
+            seen.add(name)
+            out.append(_resolve(name, parts))
+
+        kind_rank = {"dm": 0, "group": 1, "internal": 2}
+        type_rank = {"mgr": 0, "creator": 1, "dev": 2, "persona": 3}
+        out.sort(key=lambda c: (
+            kind_rank.get(c["kind"], 3),
+            type_rank.get(c.get("agent_type", ""), 5),
+            c.get("name", ""),
+        ))
         return out
 
     from community.platform.community_ctx import run_in_community
     return run_in_community(community_id, _query)
 
 
-def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dict]:
+def _channel_history(
+    community_id: str, channel_id: str, limit: int,
+    before_id: Optional[int] = None,
+) -> list[dict]:
     """Recent messages for ``channel_id``, ASC (newest-last), display-ready.
 
     Uses the display-resolving read API (``monitor.get_recent_messages``) so the
@@ -359,10 +446,15 @@ def _channel_history(community_id: str, channel_id: str, limit: int) -> list[dic
     the parent row when one is in the loaded window, else ``{id}``) so a
     cold-loaded message shows the SAME affordances as a live frame — ONE client
     contract for history + WS.
+
+    ``before_id`` pages backwards: returns the ``limit`` messages OLDER than that
+    id (for "load older on scroll-to-top"). Reply quotes still resolve only within
+    the returned window (a bare ``{id}`` pointer otherwise) — same contract.
     """
     def _query() -> list[dict]:
         from community.core import monitor
-        rows = monitor.get_recent_messages(limit=limit, channel=channel_id)
+        rows = monitor.get_recent_messages(
+            limit=limit, channel=channel_id, before_id=before_id)
         # Index rows by id so a reply can resolve its parent's preview/author
         # from the already-loaded window (no extra query for the common case).
         by_id = {r.get("id"): r for r in rows if r.get("id") is not None}
@@ -610,6 +702,15 @@ async def _run_turn(
         # Scope the community inside the worker thread; the kernel reads
         # process-global state guarded by the community lock.
         def _call():
+            # The kernel stashes <tools> calls keyed by the community_id() CONTEXTVAR.
+            # run_in_community's _set_active_community is idempotent on the module
+            # GLOBAL, so if another thread already pinned this cid it SKIPS applying
+            # it here — leaving THIS worker thread's contextvar unset (None) and the
+            # stash landing under (None, agent_id), which the loop-side pop misses.
+            # Set the kernel contextvar EXPLICITLY in this worker thread so the
+            # stash key matches the pop in parse_and_execute_actions (Phase 4.1 / 3.0).
+            from community.core.runtime import set_active_community as _sac
+            _sac(community_id)
             # Load this community's CONFIGURED backend keys before the runtime
             # call (Phase-1 _apply_community switches DB/caches but NOT the .env).
             _load_community_llm_env()
@@ -655,6 +756,17 @@ async def _run_turn(
     # scope churn). Falls back to None on any failure.
     emotion = run_in_community(community_id, _agent_emotion)
 
+    def _meta_filter(line: str) -> str:
+        """Scrub a meta-speech leak from one agent line (core/meta_filter — the
+        safety net the web path lacked). DB-marking is best-effort; a failure
+        returns the original line so a turn never breaks on the guard."""
+        try:
+            from community.core.meta_filter import filter_meta_speech
+            from community import db
+            return filter_meta_speech(line, agent_id, channel_id, db)
+        except Exception:
+            return line
+
     await outbox.set_typing(channel_id, speaker, True)
     fut = loop.run_in_executor(None, _generate)
     lines: list[str] = []
@@ -664,6 +776,18 @@ async def _run_turn(
             item = await asyncio.wait_for(queue.get(), timeout=60.0)
             if item is SENTINEL:
                 break
+            # Meta-speech filter FIRST (before persist + broadcast) — the web turn
+            # previously had no leak guard, so a persona could say "I'm an AI" and
+            # it would persist + render. Runs inside the community scope (db mark).
+            try:
+                item = await loop.run_in_executor(
+                    None, lambda ln=item: run_in_community(
+                        community_id, lambda: _meta_filter(ln)),
+                )
+            except Exception:
+                pass
+            if not (item or "").strip():
+                continue
             lines.append(item)
             # Persist-then-broadcast: the frame must carry the persisted id so the
             # client can anchor reactions / replies. Persist in an executor thread
@@ -684,6 +808,62 @@ async def _run_turn(
         await outbox.set_typing(channel_id, speaker, False)
         try:
             await fut
+        except Exception:
+            pass
+
+    # ── Tool execution (Phase 4.1 — THE headline web fix) ──────────────────
+    # The kernel stashed any <tools> calls during generate (keyed by the active
+    # community contextvar). The generate ran in an executor thread, so the loop's
+    # contextvar is NOT set — pin the active community on the loop synchronously
+    # (brief, in the community lock) so pop_tool_calls/stash see the right key, then
+    # run the dispatcher through the web ChannelAdapter so the agent's tools ACTUALLY
+    # execute (create_room / edit_profile / create_agent / finish_tutorial / …).
+    # Best-effort: a tool failure must never break the chat reply already streamed.
+    try:
+        from community.core.channel_adapter import get_channel_adapter
+        from community.core.mgr_actions import parse_and_execute_actions
+        from community.core.runtime import set_active_community
+        # Pin the active community on THIS loop thread. The kernel stashes tool
+        # calls keyed by the community_id() contextvar; the generate ran in an
+        # executor thread so that contextvar is task/thread-local and unset here.
+        # _set_active_community is idempotent on the module global so it may skip
+        # re-applying — set the kernel contextvar EXPLICITLY on this loop thread so
+        # pop_tool_calls keys off the SAME community the stash used.
+        run_in_community(community_id, lambda: None)
+        set_active_community(community_id)
+        # parse_and_execute_actions returns [stripped input lines] (+ any query
+        # follow-up analysis appended at the tail). The input lines were already
+        # streamed; only the tail beyond them is new. Mirror its own input-cleaning
+        # (strip + drop empties) so the tail index lines up exactly.
+        n_input = len([ln for ln in lines if ln and ln.strip()])
+        followups = await parse_and_execute_actions(
+            channel_id, lines,
+            channels=get_channel_adapter(),
+            caller_agent_id=agent_id,
+        )
+        # A query tool can produce a follow-up analysis line — persist + broadcast
+        # the NEW lines (those beyond what we already streamed) the same way.
+        for extra in (followups or [])[n_input:]:
+            extra = (extra or "").strip()
+            if not extra:
+                continue
+            try:
+                mid = await loop.run_in_executor(
+                    None, lambda ln=extra: run_in_community(
+                        community_id, lambda: _persist_line(ln, emotion)),
+                )
+            except Exception:
+                mid = None
+            await outbox.send_text(channel_id, speaker, extra, message_id=mid)
+    except Exception as e:
+        try:
+            from community.core import log_writer as _lw  # noqa: F401
+        except Exception:
+            pass
+        # Surface to the system log, never to the user (the reply already landed).
+        try:
+            from community import log_writer
+            log_writer.system(f"[web-tools] parse_and_execute_actions 오류: {type(e).__name__}: {e}")
         except Exception:
             pass
 
@@ -749,25 +929,35 @@ async def chat_channels(cid: str, request: Request):
 @router.get("/community/{cid}/chat/history")
 async def chat_history(
     cid: str, request: Request,
-    channel: str = "", limit: int = 50,
+    channel: str = "", limit: int = 50, before_id: int = 0,
 ):
     """Recent messages for a channel, newest-last, display-ready.
 
-    Auth-gated + per-community access. Rejects non-user-postable channels so the
-    history surface matches the postable channel list.
+    Auth-gated + per-community access. READING is allowed for any conversation
+    channel — dm/group (postable) AND the agent-to-agent backchannels
+    (``internal-*``) the owner WATCHES ("Behind the scenes"). Only the genuine
+    system/log channels (``mgr-system-log`` / bare ``mgr``) stay hidden. POSTING
+    is still gated separately (the WS ``text``/reaction path rejects
+    non-user-postable channels), so internal channels remain read-only.
+    ``before_id`` (>0) pages backwards — the ``limit`` messages older than that id.
     """
     _api_user(request, cid)
     channel = (channel or "").strip()
     if not channel:
         return JSONResponse({"error": "missing channel"}, status_code=400)
-    if not is_user_postable(channel):
-        return JSONResponse({"error": "channel is not user-postable"}, status_code=400)
+    if is_system_channel(channel):
+        return JSONResponse({"error": "channel is not readable"}, status_code=400)
     try:
         limit = max(1, min(int(limit), 200))
     except (TypeError, ValueError):
         limit = 50
     try:
-        messages = _channel_history(cid, channel, limit)
+        before = int(before_id)
+    except (TypeError, ValueError):
+        before = 0
+    before = before if before > 0 else None
+    try:
+        messages = _channel_history(cid, channel, limit, before_id=before)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     return JSONResponse({"community_id": cid, "channel": channel, "messages": messages})

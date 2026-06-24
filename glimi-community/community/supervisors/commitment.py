@@ -2,8 +2,8 @@
 
 문제:
   유나가 internal-dm-서유나-윤하나 에서 "하나야 ~~ 부탁해" 요청 →
-  하나가 "ㅋㅋ 알겠어, mgr-creator 가서 빈이한테 물어볼게" 약속 →
-  내부 대화 끝남. 이후 trigger 없으면 하나가 mgr-creator 에 가서 발화 안 함.
+  하나가 "ㅋㅋ 알겠어, 내 DM 가서 빈이한테 물어볼게" 약속 →
+  내부 대화 끝남. 이후 trigger 없으면 하나가 자기 DM 채널에 가서 발화 안 함.
   결과: 약속 묵음 + 빈이 무한 대기.
 
 해결:
@@ -25,9 +25,9 @@ from community.supervisors.base import Supervisor
 
 
 # Commitment 발화 감지 — "(channel) 가볼게" 류 패턴.
-# Group 1: 채널 (mgr-creator 등). Group 2: 약속 동사 (가볼게/할게/물어볼게/부탁할게/등).
+# Group 1: 채널 (dm-윤하나 등; 레거시 mgr-* 도 매칭). Group 2: 약속 동사 (가볼게/할게/등).
 _COMMIT_PATTERNS = [
-    # 채널명 #mgr-creator 가볼게 / mgr-creator 에 가볼게
+    # 채널명 #dm-윤하나 가볼게 / dm-윤하나 에 가볼게 (레거시 mgr-* 도 매칭)
     _re.compile(r"#?(mgr-[a-z\-가-힣]+|dm-[\w가-힣]+|group-[\w가-힣\-]+)\s*(?:에|로)?\s*가\s*(?:볼게|봐야|볼래|볼)|"
                 r"#?(mgr-[a-z\-가-힣]+|dm-[\w가-힣]+|group-[\w가-힣\-]+)\s*에서\s*(?:할|물어|가)",
                 _re.IGNORECASE),
@@ -44,11 +44,21 @@ _GENERIC_COMMIT = _re.compile(
     r"적용할게|반영할게|넣어둘게|넣어볼게)",
 )
 
-# Channel hints — 내부 commitment 만 있을 때 디폴트 target 결정용
-_DEFAULT_TARGET_BY_AGENT_TYPE = {
-    "creator": "mgr-creator",  # 하나는 mgr-creator 가 본거지
-    "mgr": "mgr-dashboard",
-}
+# Channel hints — 내부 commitment 만 있을 때 디폴트 target 결정용.
+# 스태프(유나/하나/세나) DM 채널 키는 id 기반 정본 (dm-<agent-id>) — 표시 이름은
+# 로케일 종속이라 채널 키에 새기지 않는다(i18n). resolver 가 legacy dm-<이름> 폴백 처리.
+def _default_target_for_type(agent_type: str) -> Optional[str]:
+    """agent_type (mgr/creator/dev) → 그 스태프의 owner↔manager DM 채널 키 (dm-<id>)."""
+    from community.core.channels import mgr_channel, creator_channel, dev_channel
+    return {
+        "mgr": mgr_channel, "creator": creator_channel, "dev": dev_channel,
+    }.get(agent_type, lambda: None)()
+
+
+def _mgr_dm_channel_name() -> str:
+    """mgr (유나) 의 owner↔mgr DM 채널 키 — yuna_force_agent 호출 컨텍스트용 (id 기반)."""
+    from community.core.channels import mgr_channel
+    return mgr_channel()
 
 NUDGE_AFTER_SEC = 5 * 60      # 5 분 안에 안 가면 nudge
 RENUDGE_COOLDOWN_SEC = 15 * 60  # 같은 (agent, target) 쌍 15 분에 1회만 nudge
@@ -76,8 +86,9 @@ class CommitmentSupervisor(Supervisor):
         return any((now - ts) < 30 * 60 for ts in self._last_nudge.values())
 
     async def check(self, ctx: dict) -> None:
+        channels = ctx.get("channels")
         guild = ctx.get("guild")
-        if guild is None:
+        if channels is None and guild is None:
             return
 
         commitments = self._scan_recent_commitments()
@@ -114,7 +125,7 @@ class CommitmentSupervisor(Supervisor):
                 continue  # 약속 이행됨
 
             # invoke_agent 로 nudge
-            await self._nudge_agent(guild, agent_id, agent_name, target_ch, commit_msg)
+            await self._nudge_agent(channels, guild, agent_id, agent_name, target_ch, commit_msg)
             self._last_nudge[key] = now
 
     # ── helpers ───────────────────────────────────────────────
@@ -180,7 +191,7 @@ class CommitmentSupervisor(Supervisor):
                     break
             # 2) generic + agent type 디폴트
             if not target and _GENERIC_COMMIT.search(msg):
-                target = _DEFAULT_TARGET_BY_AGENT_TYPE.get(d["agent_type"])
+                target = _default_target_for_type(d["agent_type"])
             if not target:
                 continue
             out.append({
@@ -214,25 +225,38 @@ class CommitmentSupervisor(Supervisor):
         except Exception:
             return False
 
-    async def _nudge_agent(self, guild, agent_id: str, agent_name: str,
+    async def _nudge_agent(self, channels, guild, agent_id: str, agent_name: str,
                             target_channel: str, commit_msg: str) -> None:
-        """invoke_agent 로 강제 nudge — 해당 agent 가 target_channel 에서 약속 이행 발화."""
+        """invoke_agent 로 강제 nudge — 해당 agent 가 target_channel 에서 약속 이행 발화.
+
+        Phase 3.4: yuna_force_agent 새 시그니처 (channel_name, args_str, ctx) +
+        adapter-first. args_str 는 "이름 채널 지시" 공백 구분 (split(None,2)).
+        """
         from community.supervisors.events import log_event as _log_sup_event
         try:
-            from community.bot.mgr_system import yuna_force_agent
-            import json as _json
-            # invoke_agent payload 형식: {name, target, instruction}
             instruction = (
                 f"방금 internal-dm 에서 한 약속 이행 차례 — '{commit_msg[:120]}'. "
                 f"#{target_channel} 가서 약속한 작업 시작. 빈이가 기다리고 있어."
             )
-            payload = _json.dumps({
-                "name": agent_name,
-                "target": target_channel,
-                "instruction": instruction,
-            }, ensure_ascii=False)
-            mgr_ch = next((c for c in guild.text_channels if c.name == "mgr-dashboard"), None)
-            await yuna_force_agent(mgr_ch, payload, guild)
+            args_str = f"{agent_name} {target_channel} {instruction}"
+            _mgr_dm = _mgr_dm_channel_name()
+
+            if channels is not None:
+                # adapter-first (web). BEFORE community.bot import.
+                from community.core.mgr_actions import yuna_force_agent, MGR_ID
+                from glimi.tools.dispatcher import ToolContext
+                ctx = ToolContext(caller_agent_id=MGR_ID, caller_agent_type="mgr",
+                                  channel_name=_mgr_dm, channels=channels)
+                await yuna_force_agent(_mgr_dm, args_str, ctx)
+            else:
+                # guild-fallback (Discord — Phase-6-doomed).
+                from community.bot.mgr_system import core_mgr_actions
+                from community.adapters.discord.channels import get_discord_adapter
+                from community.core.mgr_actions import MGR_ID
+                from glimi.tools.dispatcher import ToolContext
+                ctx = ToolContext(caller_agent_id=MGR_ID, caller_agent_type="mgr",
+                                  channel_name=_mgr_dm, channels=get_discord_adapter())
+                await core_mgr_actions.yuna_force_agent(_mgr_dm, args_str, ctx)
             log_writer.system(
                 f"[commitment] {agent_name} → #{target_channel} nudge 발송 (commit: {commit_msg[:80]})"
             )

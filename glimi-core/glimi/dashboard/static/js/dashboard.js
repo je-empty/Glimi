@@ -14,7 +14,15 @@ const API_BASE = (typeof document !== 'undefined' && document.body &&
 // hide sim-only tabs (scenes/achievements/supervisors/sync/events/health/logs).
 let CAPS = null;
 try { CAPS = JSON.parse((document.body && document.body.getAttribute('data-caps')) || 'null'); } catch (e) { CAPS = null; }
-function capOn(name) { return !CAPS || CAPS[name] !== false; }
+// Capabilities that are OFF by default for EVERY app (including Community, where
+// CAPS is null = everything-on). The Sync tab + all Discord-specific plumbing are
+// hidden unless an app opts in with an explicit `data-caps` of {"sync":true} /
+// {"discord":true}. Backend routes are untouched — this only hides the UI.
+const CAP_DENY_BY_DEFAULT = ['sync', 'discord', 'dbdelete'];
+function capOn(name) {
+  if (CAP_DENY_BY_DEFAULT.includes(name)) return !!(CAPS && CAPS[name] === true);
+  return !CAPS || CAPS[name] !== false;
+}
 // Avatar cache-bust suffix — a host app (Workspace) injects __GLIMI_ASSET_VER__
 // so a returning visitor never gets a stale cached avatar after the route's
 // output changes (anime portrait → role monogram). Community: unset → ''.
@@ -68,7 +76,7 @@ const I18N_UNUSED_OLD = {
     empty_community_hint: '서버 시작',
     // KPI
     kpi_server: 'Server Status',
-    kpi_bot: 'Discord Bot',
+    kpi_bot: 'Runtime',
     kpi_owner: 'Owner',
     kpi_scene: 'Active Scene',
     kpi_msgs: 'Messages',
@@ -161,7 +169,7 @@ const I18N_UNUSED_OLD = {
     empty_community_title: '📭 This community is empty',
     empty_community_msg: "No agents or conversations yet. Start the community server to populate data.",
     empty_community_hint: 'Start server',
-    kpi_server: 'Server Status', kpi_bot: 'Discord Bot', kpi_owner: 'Owner',
+    kpi_server: 'Server Status', kpi_bot: 'Runtime', kpi_owner: 'Owner',
     kpi_scene: 'Active Scene', kpi_msgs: 'Messages',
     online: '● Online', offline_short: '○ Offline',
     running: '● Running', stopped: '○ Stopped',
@@ -386,15 +394,21 @@ function applySupVisibility() {
 applySupVisibility();
 
 // ==== Capability gating (host apps hide sim-only tabs) ====
-// Community: CAPS null → every tab shown (unchanged). A host like Workspace
-// injects data-caps to hide tabs it has no backend for (scenes/achievements/
-// supervisors/sync/events/health/logs); we hide their nav + toggles so the rich
-// dashboard degrades to the workspace-relevant surface.
+// Community: CAPS null → every tab shown EXCEPT the deny-by-default ones
+// (sync/discord — see CAP_DENY_BY_DEFAULT). A host like Workspace injects
+// data-caps to hide tabs it has no backend for (scenes/achievements/
+// supervisors/events/health/logs); we hide their nav + toggles so the rich
+// dashboard degrades to the workspace-relevant surface. Always runs (no early
+// return on null CAPS) so the Sync tab + Discord controls stay hidden for ALL
+// apps unless explicitly opted in.
 function applyCaps() {
-  if (!CAPS) return;
   document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
     if (!capOn(btn.dataset.tab)) btn.style.display = 'none';
   });
+  // Discord/sync-specific surfaces inside still-visible views (e.g. the channel
+  // detail modal's destructive buttons, the Sync view body) carry .cap-sync /
+  // .cap-discord so they collapse with the same gate.
+  if (!capOn('sync')) document.getElementById('view-sync')?.style.setProperty('display', 'none');
   if (!capOn('supervisors')) {
     const st = document.getElementById('supervisor-toggle');
     if (st) st.style.display = 'none';
@@ -514,6 +528,13 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     }
     if (btn.dataset.tab === 'tools') {
       loadToolTimeline();
+    }
+    if (btn.dataset.tab === 'channels') {
+      // Eager paint from the last snapshot so the grid isn't blank until the next
+      // poll (tick() re-renders on a 1.5s cadence; this fills the gap on click).
+      const snap = window.__GLIMI_LAST_SNAP__;
+      const el = document.getElementById('channels-full');
+      if (snap && el) { el.innerHTML = renderChannelsTab(snap); lastChannelsSig = null; }
     }
     if (btn.dataset.tab === 'chat' && window.GlimiChat) {
       // First entry boots the embedded chat (channels + history + WS); re-entry
@@ -710,6 +731,8 @@ function openFullAvatar(agentId, name) {
 document.addEventListener('click', (e) => {
   const img = e.target.closest('img');
   if (!img) return;
+  // 브랜드/헤더 로고는 줌 대신 감싼 <a> 로 네비게이트 (chrome agent 가 링크 래핑)
+  if (img.closest && img.closest('.brand, .gp-brand')) return;
   // 이미 lightbox 안의 이미지거나 미니 상태면 스킵
   if (img.closest('.lightbox')) return;
   // 아바타/로고는 별도 핸들러 우선 (onclick이 있으면 자동 스킵)
@@ -717,6 +740,12 @@ document.addEventListener('click', (e) => {
   // 그 외 일반 이미지: 원본 띄우기
   e.stopPropagation();
   openImgLightbox(img.src, img.alt || '');
+});
+// Esc 로 lightbox 닫기 (기존엔 backdrop 클릭만 가능했음).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const box = document.getElementById('lightbox');
+  if (box && box.classList.contains('open')) box.classList.remove('open');
 });
 
 function _fmtMsgTime(iso) {
@@ -731,16 +760,47 @@ function _fmtMsgTime(iso) {
   return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function renderMessage(m) {
+// Canonical dashboard message row (avatar + name + #channel + time + text).
+// Shared by the Messages ledger, the channel-detail modal, AND the Overview
+// recent feed (so all three look identical). opts.suppressChannel hides the
+// per-row #channel chip when the rows are already grouped under a channel header
+// (the Overview panel), avoiding a redundant chip on every line.
+function renderMessage(m, opts) {
+  opts = opts || {};
+  const chChip = opts.suppressChannel
+    ? ''
+    : `<span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>`;
+  // Markdown: pass RAW text to GlimiChat.mdToHtml (it escapes internally — the XSS
+  // boundary). Guard for chat.js load order; fall back to plain esc() if absent.
+  const raw = m.message;
+  const textHtml = (window.GlimiChat && GlimiChat.mdToHtml)
+    ? GlimiChat.mdToHtml(raw)
+    : esc(raw);
+  // Inline community images, mirroring chat.js linesHtml (m.images[].url/.caption).
+  // Rendered only when the payload carries them (Community monitor adds them;
+  // the kernel reader does not). esc() covers " so it's attribute-safe.
+  let imgHtml = '';
+  (m.images || []).forEach(im => {
+    if (im && im.url) {
+      imgHtml += `<img class="chat-img" src="${esc(im.url)}" alt="${esc(im.caption || 'image')}">`;
+      if (im.caption) {
+        const capHtml = (window.GlimiChat && GlimiChat.mdToHtml)
+          ? GlimiChat.mdToHtml(im.caption)
+          : esc(im.caption);
+        imgHtml += `<div class="text txt md">${capHtml}</div>`;
+      }
+    }
+  });
   return `<div class="msg ${roleClass(m)}">
     ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
     <div class="msg-body">
       <div class="head">
         <span class="who">${esc(m.speaker)}</span>
-        <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
+        ${chChip}
         <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
       </div>
-      <div class="text">${esc(m.message)}</div>
+      <div class="text txt md">${textHtml}</div>
+      ${imgHtml}
     </div>
   </div>`;
 }
@@ -775,6 +835,197 @@ function renderChannelsGrouped(channels) {
     html += `<div class="channel-grid">${groups[k].map(renderChannelCard).join('')}</div>`;
   }
   return html || '<div class="empty">no channels</div>';
+}
+
+// ── Channel display helpers (shared by Channels tab + Overview recent feed) ───
+// Resolve a channel's human-facing title:
+//   dm-<id> / dm-<name>  → the agent's display name (the DM partner)
+//   group-* / internal-* → the channel id with the kind prefix stripped
+// Agents are looked up by id first, then by name (the DM key is opaque — dm-<id>
+// in workspace, dm-<name> in a real community).
+function _agentMaps(snap) {
+  const byId = {}, byName = {};
+  (snap.agents || []).forEach(a => { byId[a.id] = a; if (a.name) byName[a.name] = a; });
+  return { byId, byName };
+}
+function _channelAgent(c, maps) {
+  if (c.kind !== 'dm') return null;
+  const key = (c.name || '').replace(/^dm-/, '');
+  if (maps.byId[key]) return maps.byId[key];
+  if (maps.byName[key]) return maps.byName[key];
+  // fall back to the channel's first participant id
+  const pid = (c.participants || [])[0];
+  return pid ? (maps.byId[pid] || null) : null;
+}
+// Resolve a single agent id to its display name (falls back to the id). Used to
+// turn the raw sides of an internal pair channel into friendly names.
+function _resolveAgentName(id, maps) {
+  if (!id) return id;
+  const a = maps.byId[id] || maps.byName[id];
+  return (a && (a.name || a.id)) || id;
+}
+function channelDisplayName(c, maps) {
+  const ag = _channelAgent(c, maps);
+  if (ag) return ag.name || ag.id;
+  const nm = c.name || c.channel || '';
+  // internal-owner — the read-only autonomous-owner review channel. Mirror the
+  // server label (KO "자동 진행 메모" / EN "Owner's review") so the chrome reads
+  // friendly, never the raw slug.
+  if (nm === 'internal-owner') {
+    return currentLang() === 'en' ? "Owner's review" : '자동 진행 메모';
+  }
+  // internal-<a>-<b> — a behind-the-scenes pair (coordinator↔specialist or
+  // specialist↔specialist). Resolve each side to its display name and join with
+  // " ↔ ". Mirrors server _internal_pair_label: prefer the channel's two stored
+  // participants (robust to ids that contain hyphens, e.g. 'culture-coach'),
+  // then fall back to a naive split of the slug. Generic — no role names
+  // hardcoded (these files are shared with Community).
+  if (nm.indexOf('internal-') === 0) {
+    const parts = (c.participants || []).filter(Boolean);
+    if (parts.length >= 2) {
+      return parts.slice(0, 2).map(p => _resolveAgentName(p, maps)).join(' ↔ ');
+    }
+    const rest = nm.slice('internal-'.length);
+    const bits = rest.split('-', 2);
+    if (bits.length === 2 && bits[0] && bits[1]) {
+      return bits.map(b => _resolveAgentName(b, maps)).join(' ↔ ');
+    }
+    return rest || nm;
+  }
+  // strip the kind prefix for the remaining non-DM channels so the user never
+  // sees raw ids
+  return nm.replace(/^(group-|mgr-)/, '') || nm;
+}
+const _CH_KIND_BADGE = {
+  'mgr':            { label_en: 'Manager',  label_ko: '매니저',     icon: 'ti-clipboard-text' },
+  'dm':             { label_en: 'Direct',   label_ko: 'DM',         icon: 'ti-at' },
+  'group':          { label_en: 'Room',     label_ko: '단톡',       icon: 'ti-hash' },
+  'internal-dm':    { label_en: 'Backstage',label_ko: '비하인드',   icon: 'ti-arrows-left-right' },
+  'internal-group': { label_en: 'Backstage',label_ko: '비하인드',   icon: 'ti-arrows-left-right' },
+  'other':          { label_en: 'Channel',  label_ko: '채널',       icon: 'ti-hash' },
+};
+function _kindBadge(kind) {
+  const m = _CH_KIND_BADGE[kind] || _CH_KIND_BADGE.other;
+  const label = currentLang() === 'en' ? m.label_en : m.label_ko;
+  return `<span class="ch-kind-badge kind-${kind}"><i class="ti ${m.icon}" aria-hidden="true"></i>${esc(label)}</span>`;
+}
+// Last message per channel, derived from the aggregated recent_messages feed.
+// (The channel object itself carries no preview text.) Returns {speaker, message, ts}.
+function _lastMsgByChannel(snap) {
+  const out = {};
+  (snap.recent_messages || []).forEach(m => { out[m.channel] = m; });  // feed is ASC → last wins
+  return out;
+}
+
+// Channels tab — a clickable card grid grouped by kind. Clicking a card jumps to
+// that channel in the Chat tab. DMs sorted by recency desc.
+function renderChannelCardRich(c, maps, lastMap) {
+  const ag = _channelAgent(c, maps);
+  const title = channelDisplayName(c, maps);
+  const avatar = ag
+    ? avatarHtml({ id: ag.id, name: ag.name, emoji: ag.emoji, emotion: ag.emotion }, '', { clickOpen: false, hideBadge: true })
+    : `<div class="ch-card-icon kind-${c.kind}"><i class="ti ${(_CH_KIND_BADGE[c.kind] || _CH_KIND_BADGE.other).icon}" aria-hidden="true"></i></div>`;
+  const lm = lastMap[c.name];
+  const en = currentLang() === 'en';
+  const preview = lm
+    ? `<div class="ch-card-preview"><b>${esc(lm.speaker)}:</b> ${esc((lm.message || '').slice(0, 80))}</div>`
+    : `<div class="ch-card-preview muted">${en ? 'No messages yet' : '대화 없음'}</div>`;
+  const memberBit = c.kind === 'group'
+    ? `<span class="sep">·</span><span>${c.participant_count}${en ? (c.participant_count === 1 ? ' member' : ' members') : '명'}</span>`
+    : '';
+  return `<div class="ch-card kind-${c.kind}" onclick="jumpToChat('${esc(c.name)}')" title="${esc(c.name)}">
+    <div class="ch-card-head">
+      ${avatar}
+      <div class="ch-card-id">
+        <div class="ch-card-name">${esc(title)}</div>
+        <div class="ch-card-sub">${_kindBadge(c.kind)}<span class="ch-card-meta"><span>${c.msg_count} ${en ? 'msgs' : '개'}</span>${memberBit}<span class="sep">·</span><span>${esc(c.last_ago || '—')}</span></span></div>
+      </div>
+    </div>
+    ${preview}
+  </div>`;
+}
+function renderChannelsTab(snap) {
+  const channels = snap.channels || [];
+  if (!channels.length) return '<div class="empty">no channels</div>';
+  const maps = _agentMaps(snap);
+  const lastMap = _lastMsgByChannel(snap);
+  const en = currentLang() === 'en';
+  // Three buckets matching the chat sidebar order: Groups/Rooms → DMs → Backstage.
+  const groups = channels.filter(c => c.kind === 'group' || c.kind === 'mgr');
+  const dms = channels.filter(c => c.kind === 'dm')
+    .slice().sort((a, b) => String(b.last_ts || '').localeCompare(String(a.last_ts || '')));
+  const internal = channels.filter(c => c.internal || c.kind === 'internal-dm' || c.kind === 'internal-group');
+  const section = (titleEn, titleKo, list) => {
+    if (!list.length) return '';
+    return `<div class="ch-section-title">${en ? titleEn : titleKo} · ${list.length}</div>
+      <div class="ch-card-grid">${list.map(c => renderChannelCardRich(c, maps, lastMap)).join('')}</div>`;
+  };
+  return (
+    section('Groups & rooms', '그룹 · 단톡방', groups) +
+    section('Direct messages', '다이렉트 메시지', dms) +
+    section('Behind the scenes', '비하인드', internal)
+  ) || '<div class="empty">no channels</div>';
+}
+
+// Overview — recent conversations grouped by channel. Deliberately COMPACT so it
+// never dominates the page: cap to the few most-recently-active channels, only a
+// handful of single-line previews per channel, all inside a fixed max-height
+// scroll container (#overview-msgs in dashboard.css). A "View all" affordance
+// jumps to the full Chat tab. Channels ordered by their most-recent message.
+const RC_MAX_CHANNELS = 5;   // most-recently-active channels shown in the feed
+const RC_MAX_PER_CHANNEL = 3; // single-line previews per channel
+function renderRecentByChannel(snap) {
+  const msgs = snap.recent_messages || [];
+  if (!msgs.length) return '<div class="empty">no conversations yet</div>';
+  const maps = _agentMaps(snap);
+  const chById = {};
+  (snap.channels || []).forEach(c => { chById[c.name] = c; });
+  // group preserving order; track each channel's latest ts for sorting
+  const order = [];
+  const byCh = {};
+  msgs.forEach(m => {
+    if (!byCh[m.channel]) { byCh[m.channel] = []; order.push(m.channel); }
+    byCh[m.channel].push(m);
+  });
+  order.sort((a, b) => {
+    const la = byCh[a][byCh[a].length - 1].timestamp || '';
+    const lb = byCh[b][byCh[b].length - 1].timestamp || '';
+    return String(lb).localeCompare(String(la));
+  });
+  const en = currentLang() === 'en';
+  const shown = order.slice(0, RC_MAX_CHANNELS);
+  const groups = shown.map(chName => {
+    const c = chById[chName] || { name: chName, kind: _channelKindOf(chName) };
+    const title = channelDisplayName(c, maps);
+    // Compact single-line previews — only the last few lines per channel, rendered
+    // with the SAME canonical .msg component the Messages tab / channel modal use
+    // (so avatars get the square clip / object-fit:cover for free), but the
+    // .rc-group .msg-list .text is clamped to one truncated line in CSS. The
+    // per-row #channel chip is suppressed since the group header already names it.
+    const lines = byCh[chName].slice(-RC_MAX_PER_CHANNEL)
+      .map(m => renderMessage(m, { suppressChannel: true })).join('');
+    return `<div class="rc-group">
+      <div class="rc-head" onclick="jumpToChat('${esc(chName)}')" title="${esc(chName)}">
+        <span class="rc-ch-name">${esc(title)}</span>
+        ${_kindBadge(c.kind || _channelKindOf(chName))}
+      </div>
+      <div class="msg-list">${lines}</div>
+    </div>`;
+  }).join('');
+  // Calm "View all" affordance → jumps to the Chat tab. Shown whenever there are
+  // more channels than we list (or simply to lead into the full conversation view).
+  const viewAll = `<button type="button" class="rc-viewall" onclick="jumpToChat()">${en ? 'View all' : '전체 보기'}<i class="ti ti-arrow-right" aria-hidden="true"></i></button>`;
+  return groups + viewAll;
+}
+// Mirror of server _channel_kind for channels that appear only in the message feed.
+function _channelKindOf(name) {
+  const n = name || '';
+  if (n.startsWith('internal-dm')) return 'internal-dm';
+  if (n.startsWith('internal-group')) return 'internal-group';
+  if (n.startsWith('dm-')) return 'dm';
+  if (n.startsWith('group-')) return 'group';
+  if (n.startsWith('mgr')) return 'mgr';
+  return 'other';
 }
 
 // 이벤트 타입 → 한글 라벨 + 이모지 매핑.
@@ -1359,7 +1610,23 @@ async function openAgent(id) {
     }
   }
 
+  // "채팅으로 열기" — only when the embedded chat surface is available AND the
+  // agent has a real DM (personas + mgr/creator; supervisors/dev have none).
+  // jumpToAgentChat resolves the opaque DM key (dm-<id> vs dm-<name>) via the
+  // chat client's loaded channel list.
+  const _chatAvailable = !!(window.GlimiChat &&
+    document.querySelector('nav.tabs button[data-tab="chat"]'));
+  const _hasDm = !d.is_supervisor && d.type !== 'dev';
+  const openChatCta = (_chatAvailable && _hasDm)
+    ? `<div class="detail-section" style="margin-top:0">
+         <button class="act-btn primary" style="width:100%" onclick="event.stopPropagation(); jumpToAgentChat('${esc(d.id)}')">
+           <i class="ti ti-message" aria-hidden="true"></i> ${currentLang() === 'en' ? 'Open in chat' : '채팅으로 열기'}
+         </button>
+       </div>`
+    : '';
+
   const body = `
+    ${openChatCta}
     ${supEventsHtml}
     <div class="detail-section" style="margin-top:0">
       <h4>📊 상태</h4>
@@ -1410,17 +1677,24 @@ async function openChannel(name) {
   // is belt-and-suspenders — internal channels carry the `internal-` prefix.
   const postable = (name.startsWith('dm-') || name.startsWith('group-')) && !name.startsWith('internal-');
   const openChatBtn = postable
-    ? `<button class="act-btn small primary" onclick="jumpToChat('${esc(name)}')">💬 채팅 열기</button>`
+    ? `<button class="act-btn small primary" onclick="jumpToChat('${esc(name)}')"><i class="ti ti-message" aria-hidden="true"></i> ${currentLang() === 'en' ? 'Open in chat' : '채팅으로 열기'}</button>`
     : '';
-  const actions = `
+  // Destructive DB-delete affordances (clear messages / delete channel) are hidden
+  // by default — capOn('dbdelete') is false unless an app opts in via data-caps.
+  // Backend routes (doChannelClear/doChannelDelete) stay intact and callable.
+  const dangerBtns = capOn('dbdelete')
+    ? `<button class="act-btn danger small" onclick="doChannelClear('${esc(name)}')">🧹 메시지 전체 삭제 (DB만)</button>
+       ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : ''}`
+    : '';
+  // Only show the Actions section when it has at least one visible control.
+  const actions = (openChatBtn || dangerBtns) ? `
     <div class="detail-section">
       <h4>Actions</h4>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${openChatBtn}
-        <button class="act-btn danger small" onclick="doChannelClear('${esc(name)}')">🧹 메시지 전체 삭제 (DB만)</button>
-        ${!protected_ch ? `<button class="act-btn danger small" onclick="doChannelDelete('${esc(name)}')">🗑 채널 삭제</button>` : ''}
+        ${dangerBtns}
       </div>
-    </div>`;
+    </div>` : '';
   const body = `
     <div class="detail-section">
       <h4>Participants · ${d.participants.length}</h4>
@@ -1429,7 +1703,6 @@ async function openChannel(name) {
     ${actions}
     <div class="detail-section">
       <h4>All Messages · ${d.message_count}</h4>
-      <div style="color:var(--text-dim);font-size:11px;margin-bottom:8px">각 메시지 우측 🗑 버튼으로 개별 trash 이동</div>
       <div class="msg-list" id="ch-messages-${esc(name)}">${msgs || '<div class="empty">no messages</div>'}</div>
     </div>`;
   openModal(chIcon(name), '#' + name, body);
@@ -1441,30 +1714,39 @@ async function openChannel(name) {
 // WS. The edge's channel id IS the chat channel id — no translation. Agent is
 // derived for dm-* (group-* passes undefined → server defaults agent→mgr).
 function jumpToChat(name) {
-  if (!name) return;
   closeModal();
   document.body.classList.remove('graph-fullscreen');
   const chatTab = document.querySelector('nav.tabs button[data-tab="chat"]');
   if (chatTab) chatTab.click();  // switch + lazy-init via the tab handler
+  // No channel name (e.g. the Overview "View all" affordance) → just open the
+  // Chat tab and let it keep its current/last channel.
+  if (!name) return;
   const agent = name.indexOf('dm-') === 0 ? name.slice(3) : undefined;
   if (window.GlimiChat) window.GlimiChat.selectChannelById(name, agent);
 }
 
-function renderMessageWithActions(m, channelName) {
-  return `<div class="msg ${roleClass(m)}" data-msg-id="${m.id || ''}" style="position:relative">
-    ${miniAvatarHtml(m.speaker_id, m.is_user, m.speaker)}
-    <div class="msg-body" style="padding-right:28px">
-      <div class="head">
-        <span class="who">${esc(m.speaker)}</span>
-        <span class="ch" onclick="event.stopPropagation(); openChannel('${esc(m.channel)}')">#${esc(m.channel)}</span>
-        <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
-      </div>
-      <div class="text">${esc(m.message)}</div>
-    </div>
-    ${m.id ? `<button class="msg-del-btn" onclick="event.stopPropagation(); doTrashMessage('${esc(channelName)}', ${m.id}, this)" title="이 메시지 Trash로 이동">🗑</button>` : ''}
-  </div>`;
+// Graph NODE→chat: open the clicked agent's DM in the Chat tab. The agent id is
+// the node id; GlimiChat resolves it to the right DM channel from its loaded list
+// (the DM key is opaque — dm-<id> vs dm-<name>). Same tab-switch + leave-fullscreen
+// dance as jumpToChat so the chat isn't hidden under the graph overlay.
+function jumpToAgentChat(agentId) {
+  if (!agentId) return;
+  closeModal();
+  document.body.classList.remove('graph-fullscreen');
+  const chatTab = document.querySelector('nav.tabs button[data-tab="chat"]');
+  if (chatTab) chatTab.click();
+  if (window.GlimiChat) window.GlimiChat.openAgentChannel(agentId);
 }
 
+// Channel-detail message row. The per-message delete (🗑) control was removed
+// from the UI (the backend doTrashMessage + /api/action/trash_message endpoint
+// are kept and callable). This now renders identically to renderMessage.
+function renderMessageWithActions(m, channelName) {
+  return renderMessage(m);
+}
+
+// Trash a message (move to Trash, recoverable). Backend kept intact — no UI
+// button wires this anymore; callable programmatically / from the console.
 async function doTrashMessage(channel, msgId, btn) {
   if (!confirm('이 메시지를 trash로 옮길까? (복구 가능)')) return;
   const r = await postJson(q('/api/action/trash_message'), {channel, message_id: msgId});
@@ -2577,7 +2859,7 @@ function mountCytoscapeGraph(snap) {
   cyInstance = cytoscape({
     container,
     elements: { nodes, edges },
-    minZoom: 0.5,
+    minZoom: 0.28,   // fit() 가 노드 많아도(13+) 컨테이너 안에 다 수렴하게 (구 0.5 → 모바일 상하 잘림)
     maxZoom: 2.5,
     boxSelectionEnabled: false,
     autounselectify: true,
@@ -2836,6 +3118,10 @@ function mountCytoscapeGraph(snap) {
   });
 
   // ===== Interactivity =====
+  // A graph tap opens a PREVIEW popup (info + an "Open in chat" button) — not a
+  // direct jump. Node → agent detail (with a DM "Open in chat" button), edge →
+  // channel detail (with a "Open in chat" button when the channel is postable).
+  // Node (agent) → agent detail modal. Sup nodes also → detail (no DM).
   cyInstance.on('tap', 'node.agent', (evt) => openAgent(evt.target.id()));
   cyInstance.on('tap', 'node.sup', (evt) => openAgent(evt.target.id()));
   // 오너 노드 — QA 커뮤니티에서만 clickable (심재빈 = LLM 주도 test user, agent 상세 있음).
@@ -2843,6 +3129,8 @@ function mountCytoscapeGraph(snap) {
   cyInstance.on('tap', 'node.owner', () => {
     if (COMMUNITY === 'qa') openAgent('test-user-bot');
   });
+  // Edge → channel detail modal (carries the channel id). The modal's "Open in
+  // chat" button does the actual navigation.
   cyInstance.on('tap', 'edge', (evt) => {
     const ch = evt.target.data('channel');
     if (ch) openChannel(ch);
@@ -3346,8 +3634,7 @@ async function tick() {
   // 헤더 pills/meta는 제거됨 — 모든 정보는 KPI 카드에 있음
 
   document.getElementById('tc-agents').textContent = snap.agents.length;
-  document.getElementById('tc-channels').textContent = snap.channels.length;
-  document.getElementById('tc-messages').textContent = snap.recent_messages.length;
+  { const _tcc = document.getElementById('tc-channels'); if (_tcc) _tcc.textContent = (snap.channels || []).length; }
   document.getElementById('tc-scenes').textContent = (snap.scenes || []).filter(s => s.status === 'active').length;
   document.getElementById('tc-events').textContent = snap.events.length;
 
@@ -3438,24 +3725,25 @@ async function tick() {
     lastAgentsSig = aSig;
   }
 
-  // 메시지 — 새 메시지 있을 때만 재렌더 (스크롤 위치 보존)
+  // Overview 최근 대화 — 채널별 그룹핑. 새 메시지 있을 때만 재렌더 (스크롤 위치 보존)
   const ovMsgs = document.getElementById('overview-msgs');
-  const fm = document.getElementById('messages-full');
   const mSig = messagesSignature(snap.recent_messages);
-  if (mSig !== lastMsgSig) {
-    const keepOv = atBottom(ovMsgs), keepFm = atBottom(fm);
-    ovMsgs.innerHTML = snap.recent_messages.slice(-10).map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
-    fm.innerHTML = snap.recent_messages.map(renderMessage).join('') || '<div class="empty">no conversations yet</div>';
+  if (ovMsgs && mSig !== lastMsgSig) {
+    const keepOv = atBottom(ovMsgs);
+    ovMsgs.innerHTML = renderRecentByChannel(snap);
     if (keepOv) ovMsgs.scrollTop = ovMsgs.scrollHeight;
-    if (keepFm) fm.scrollTop = fm.scrollHeight;
     lastMsgSig = mSig;
   }
 
-  // 채널 — 구조/카운트 변화 시만
-  const chSig = channelsSignature(snap.channels);
-  if (chSig !== lastChannelsSig) {
-    document.getElementById('channels-full').innerHTML = renderChannelsGrouped(snap.channels);
-    lastChannelsSig = chSig;
+  // Channels 탭 — 카드 그리드 (Groups / DMs / Behind the scenes). 채널 또는
+  // 최근 대화 변화 시 재렌더 (마지막 메시지 미리보기가 recent_messages 에서 옴).
+  const chFull = document.getElementById('channels-full');
+  if (chFull) {
+    const cSig = channelsSignature(snap.channels) + '|' + mSig;
+    if (cSig !== lastChannelsSig) {
+      chFull.innerHTML = renderChannelsTab(snap);
+      lastChannelsSig = cSig;
+    }
   }
   // Scenes 탭: 각 씬 카드 (active/completed/not_started 상태별 스타일)
   const scenesEl = document.getElementById('scenes-full');
@@ -3464,14 +3752,17 @@ async function tick() {
     scenesEl.innerHTML = renderScenes(scenes);
   }
 
-  // Events 탭: events 테이블 — 발생한 일들의 로그 (멤버간 사건 기록)
+  // Events 탭: 발생한 일들의 로그 (관계 변화·갈등·화해 등). .event-list 컨테이너에는
+  // .event-card 행만 — 설명 캡션은 정적 #events-intro 형제 요소가 담당 (DS §EVENTS 계약:
+  // .event-list 의 직계 자식은 hairline .event-card 행만). 빈 상태면 캡션 숨김.
   const eventsEl = document.getElementById('events-full');
   if (eventsEl) {
-    eventsEl.innerHTML = snap.events.length
-      ? `<div style="color:var(--text-dim);font-size:11.5px;margin-bottom:12px">
-           커뮤니티에서 발생한 사건 기록 — 관계 변화, 갈등, 화해 등 persona들의 내면 이벤트
-         </div>` + snap.events.map(renderEvent).join('')
-      : '<div class="empty">기록된 이벤트 없음</div>';
+    const evCount = (snap.events || []).length;
+    eventsEl.innerHTML = evCount
+      ? snap.events.map(renderEvent).join('')
+      : `<div class="empty">${currentLang() === 'en' ? 'No events recorded' : '기록된 이벤트 없음'}</div>`;
+    const intro = document.getElementById('events-intro');
+    if (intro) intro.style.display = evCount ? '' : 'none';
   }
 
   // Health
@@ -3486,7 +3777,7 @@ async function tick() {
         <div class="section-title" style="margin-top:0">Processes</div>
         <div class="health-grid">
           <div class="health-card">
-            <h4>Discord Bot</h4>
+            <h4>Runtime</h4>
             <div class="big">${health.bot_alive ? '<span style="color:var(--ok)">● Running</span>' : '<span style="color:var(--err)">○ Stopped</span>'}</div>
             ${health.pid ? `<div class="sub">PID: ${esc(health.pid)}</div>` : ''}
           </div>
@@ -3552,7 +3843,11 @@ async function tick() {
     // Server Control 은 플랫폼 상단 바로 이관됨 — Health 탭에는 server-log 없음
   }
 
-  // Sync tab — sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
+  // Sync tab — Discord↔DB sync UI. Hidden by default for every app (capOn('sync')
+  // is false unless an app opts in via data-caps); the backend routes stay live.
+  // Skip the whole render when the tab is gated off so no Discord chrome paints.
+  if (capOn('sync') && document.getElementById('sync-full')) {
+  // sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
   const serverRunning = b.bot_alive;
   const guardNote = serverRunning
     ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--text)">ℹ 서버 실행 중 — Sync 버튼 클릭 시 <b>자동으로 서버 중단 → 작업 → 재시작</b> 진행. 취소 버튼 제공됨.</div>`
@@ -3598,6 +3893,7 @@ async function tick() {
   // Scan 결과 테이블 복원 (tick 마다 사라지지 않도록)
   renderScanTable();
   loadTrash();
+  }  // end capOn('sync') guard — Sync/Discord UI hidden by default
 
   // (legacy "Dev" tab 제거됨 — 새 글로벌 admin 페이지 /admin/dev-requests 로 이전)
 
@@ -3864,3 +4160,295 @@ window.addEventListener('pageshow', () => {
   loadCommunities();
   loadAchievements();
 });
+
+// ============================================================================
+// Onboarding coachmark tour (community-only)
+// ----------------------------------------------------------------------------
+// A small, dependency-free, accessible spotlight tour over the REAL chat UI.
+// Offered during the post-create "유나 준비 중" wait (the wait overlay in
+// _community_server_control.html calls GlimiTour.offer()). Steps walk the
+// friends/DM list, group rooms, the read-only "에이전트끼리" section, the
+// relationship graph, and the message composer. When 유나's first message
+// arrives the wait overlay calls GlimiTour.greeted(mgrId) → a toast offering
+// to jump to 유나's DM. A per-community localStorage flag prevents re-show.
+//
+// Gating: community-only. Mounted only when window.__GLIMI_COMMUNITY__ is set
+// (workspace renders the same shell but leaves it null) AND the offer is driven
+// by community-only snapshot signals (meta.tutorial_phase). So it never fires
+// spuriously in the workspace, which has no first-run/greeting gate.
+// ============================================================================
+(function () {
+  const CID = (typeof window !== 'undefined' && window.__GLIMI_COMMUNITY__) || null;
+  const DONE_KEY = CID ? ('glimi-tour-done-' + CID) : null;
+
+  function isDone() {
+    if (!DONE_KEY) return true;            // no CID → workspace/kernel → never run
+    try { return localStorage.getItem(DONE_KEY) === '1'; } catch (e) { return false; }
+  }
+  function markDone() {
+    if (!DONE_KEY) return;
+    try { localStorage.setItem(DONE_KEY, '1'); } catch (e) {}
+  }
+
+  // --- DOM helpers -----------------------------------------------------------
+  function el(tag, cls, html) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+  function tabBtn(name) { return document.querySelector('nav.tabs button[data-tab="' + name + '"]'); }
+  function clickTab(name) { const b = tabBtn(name); if (b) b.click(); }
+
+  // --- Step definitions ------------------------------------------------------
+  // Each step resolves a live anchor at run-time (so we wait for the chat tab to
+  // paint). `optional:true` steps silently skip when their anchor is absent
+  // (e.g. a community with no group rooms or no behind-the-scenes channels).
+  function steps() {
+    return [
+      {
+        tab: 'chat',
+        anchor: () => document.querySelector('#chat-channel-list [data-section="dms"]') ||
+                      document.getElementById('chat-channel-list'),
+        title: () => t('tour_dms_title'),
+        body: () => t('tour_dms_body')
+      },
+      {
+        tab: 'chat',
+        optional: true,
+        anchor: () => document.querySelector('#chat-channel-list [data-section="groups"]'),
+        title: () => t('tour_groups_title'),
+        body: () => t('tour_groups_body')
+      },
+      {
+        tab: 'chat',
+        optional: true,
+        anchor: () => document.querySelector('#chat-channel-list [data-section="internal"]'),
+        title: () => t('tour_internal_title'),
+        body: () => t('tour_internal_body')
+      },
+      {
+        tab: 'overview',
+        anchor: () => document.getElementById('graph-panel') || tabBtn('overview'),
+        title: () => t('tour_graph_title'),
+        body: () => t('tour_graph_body')
+      },
+      {
+        tab: 'chat',
+        anchor: () => document.getElementById('chat-cbox') || document.getElementById('chat-input'),
+        title: () => t('tour_composer_title'),
+        body: () => t('tour_composer_body')
+      }
+    ];
+  }
+
+  // --- Tour runtime ----------------------------------------------------------
+  let _root = null, _spot = null, _tip = null, _seq = [], _i = 0, _onKey = null, _onResize = null;
+
+  function teardown() {
+    if (_onKey) { document.removeEventListener('keydown', _onKey, true); _onKey = null; }
+    if (_onResize) { window.removeEventListener('resize', _onResize); _onResize = null; }
+    if (_root && _root.parentNode) _root.parentNode.removeChild(_root);
+    _root = _spot = _tip = null;
+    _seq = []; _i = 0;
+  }
+
+  function finish() { teardown(); markDone(); }
+
+  function position(target) {
+    const pad = 6;
+    let r;
+    try { r = target.getBoundingClientRect(); } catch (e) { r = null; }
+    if (!r || (r.width === 0 && r.height === 0)) {
+      // Anchor not measurable — flat scrim on the root, hide the spotlight cutout,
+      // center the tooltip.
+      _root.classList.add('no-spot');
+      _spot.style.opacity = '0';
+      _tip.style.left = '50%';
+      _tip.style.top = '50%';
+      _tip.style.transform = 'translate(-50%, -50%)';
+      return;
+    }
+    _root.classList.remove('no-spot');
+    _spot.style.opacity = '1';
+    _spot.style.left = (r.left - pad) + 'px';
+    _spot.style.top = (r.top - pad) + 'px';
+    _spot.style.width = (r.width + pad * 2) + 'px';
+    _spot.style.height = (r.height + pad * 2) + 'px';
+
+    // Place the tooltip: prefer right of the anchor, else below, else above.
+    const tw = _tip.offsetWidth || 300, th = _tip.offsetHeight || 160;
+    const vw = window.innerWidth, vh = window.innerHeight, gap = 14;
+    let left, top;
+    if (r.right + gap + tw <= vw) {           // right
+      left = r.right + gap; top = Math.max(12, Math.min(r.top, vh - th - 12));
+    } else if (r.bottom + gap + th <= vh) {   // below
+      top = r.bottom + gap; left = Math.max(12, Math.min(r.left, vw - tw - 12));
+    } else if (r.top - gap - th >= 0) {       // above
+      top = r.top - gap - th; left = Math.max(12, Math.min(r.left, vw - tw - 12));
+    } else {                                   // fallback: clamp into view
+      left = Math.max(12, Math.min(r.left, vw - tw - 12));
+      top = Math.max(12, Math.min(r.bottom + gap, vh - th - 12));
+    }
+    _tip.style.transform = '';
+    _tip.style.left = left + 'px';
+    _tip.style.top = top + 'px';
+  }
+
+  function render() {
+    const step = _seq[_i];
+    if (!step) { finish(); return; }
+    if (step.tab) clickTab(step.tab);
+
+    // Build tooltip body
+    const last = _i === _seq.length - 1;
+    const first = _i === 0;
+    _tip.innerHTML = '';
+    const h = el('div', 'tour-tip-title', esc(step.title()));
+    const p = el('div', 'tour-tip-body', esc(step.body()));
+    const nav = el('div', 'tour-tip-nav');
+    const skip = el('button', 'tour-btn tour-skip', esc(t('tour_skip')));
+    skip.addEventListener('click', finish);
+    const spacer = el('div', 'tour-tip-spacer');
+    const dots = el('div', 'tour-dots');
+    for (let k = 0; k < _seq.length; k++) {
+      dots.appendChild(el('span', 'tour-dot' + (k === _i ? ' on' : '')));
+    }
+    nav.appendChild(skip);
+    nav.appendChild(spacer);
+    nav.appendChild(dots);
+    if (!first) {
+      const prev = el('button', 'tour-btn tour-prev', esc(t('tour_prev')));
+      prev.addEventListener('click', () => { _i--; afterTabPaint(render); });
+      nav.appendChild(prev);
+    }
+    const next = el('button', 'tour-btn tour-next', esc(last ? t('tour_done') : t('tour_next')));
+    next.addEventListener('click', () => {
+      if (last) { finish(); return; }
+      _i++; afterTabPaint(render);
+    });
+    nav.appendChild(next);
+    _tip.appendChild(h);
+    _tip.appendChild(p);
+    _tip.appendChild(nav);
+
+    // Resolve anchor (skip optional steps whose anchor is missing).
+    const target = step.anchor();
+    if (!target && step.optional) {
+      if (last) { finish(); return; }
+      _i++; afterTabPaint(render); return;
+    }
+    if (target && target.scrollIntoView) {
+      try { target.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
+    }
+    // Position after layout settles.
+    requestAnimationFrame(() => position(target || document.body));
+  }
+
+  // Tab switches re-render #view-chat lazily; give the DOM a beat before measuring.
+  function afterTabPaint(fn) {
+    requestAnimationFrame(() => setTimeout(fn, 60));
+  }
+
+  function start() {
+    if (isDone()) return;
+    teardown();
+    _seq = steps();
+    _i = 0;
+    _root = el('div', 'tour-root');
+    _root.setAttribute('role', 'dialog');
+    _root.setAttribute('aria-modal', 'true');
+    _spot = el('div', 'tour-spot');
+    _tip = el('div', 'tour-tip');
+    _root.appendChild(_spot);
+    _root.appendChild(_tip);
+    document.body.appendChild(_root);
+
+    _onKey = function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(); }
+      else if (e.key === 'ArrowRight') { const b = _tip.querySelector('.tour-next'); if (b) b.click(); }
+      else if (e.key === 'ArrowLeft') { const b = _tip.querySelector('.tour-prev'); if (b) b.click(); }
+    };
+    document.addEventListener('keydown', _onKey, true);
+    _onResize = function () { const s = _seq[_i]; if (s) { const tgt = s.anchor(); position(tgt || document.body); } };
+    window.addEventListener('resize', _onResize);
+
+    // Make sure the chat tab is booted + channels painted before measuring step 1.
+    clickTab('chat');
+    if (window.GlimiChat && window.GlimiChat.init) { try { window.GlimiChat.init(); } catch (e) {} }
+    waitForChannels(() => afterTabPaint(render));
+  }
+
+  // Poll for the channel rail to have painted at least one row (init is async).
+  function waitForChannels(cb) {
+    let tries = 0;
+    (function poll() {
+      const list = document.getElementById('chat-channel-list');
+      if ((list && list.children.length > 0) || tries > 40) { cb(); return; }
+      tries++; setTimeout(poll, 150);
+    })();
+  }
+
+  // --- Offer prompt (shown during the boot/greeting wait) --------------------
+  let _offered = false;
+  function offer() {
+    if (isDone() || _offered || !CID) return;
+    if (document.getElementById('tour-offer')) return;
+    _offered = true;
+    const wrap = el('div', 'tour-offer', '');
+    wrap.id = 'tour-offer';
+    const card = el('div', 'tour-offer-card', '');
+    card.appendChild(el('div', 'tour-offer-emoji', '🧭'));
+    card.appendChild(el('div', 'tour-offer-title', esc(t('tour_offer_title'))));
+    card.appendChild(el('div', 'tour-offer-body', esc(t('tour_offer_body'))));
+    const acts = el('div', 'tour-offer-acts', '');
+    const no = el('button', 'tour-btn tour-offer-no', esc(t('tour_offer_decline')));
+    no.addEventListener('click', () => { wrap.remove(); /* not 'done' — may re-offer next visit */ });
+    const yes = el('button', 'tour-btn tour-offer-yes', esc(t('tour_offer_accept')));
+    yes.addEventListener('click', () => { wrap.remove(); start(); });
+    acts.appendChild(no);
+    acts.appendChild(yes);
+    card.appendChild(acts);
+    wrap.appendChild(card);
+    document.body.appendChild(wrap);
+  }
+
+  // --- 유나 greeted → toast offering to jump to her DM ------------------------
+  let _greeted = false;
+  function greeted(mgrId) {
+    if (_greeted || !CID || CID === 'demo') return;
+    _greeted = true;
+    // Dismiss any pending offer silently (a running tour can coexist with the
+    // non-blocking bottom toast).
+    const off = document.getElementById('tour-offer'); if (off) off.remove();
+    const toast = el('div', 'tour-greet-toast', '');
+    toast.appendChild(el('span', 'tour-greet-emoji', '💌'));
+    const txt = el('span', 'tour-greet-text', esc(t('tour_greeted')));
+    toast.appendChild(txt);
+    if (mgrId) {
+      const jump = el('button', 'tour-btn tour-greet-jump', esc(t('tour_greeted_jump')));
+      jump.addEventListener('click', () => {
+        toast.remove();
+        clickTab('chat');
+        if (window.GlimiChat && window.GlimiChat.openAgentChannel) {
+          try { window.GlimiChat.openAgentChannel(mgrId); } catch (e) {}
+        }
+      });
+      toast.appendChild(jump);
+    }
+    const x = el('button', 'tour-greet-close', '×');
+    x.setAttribute('aria-label', 'close');
+    x.addEventListener('click', () => toast.remove());
+    toast.appendChild(x);
+    document.body.appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 12000);
+  }
+
+  window.GlimiTour = {
+    offer: offer,        // show the "둘러볼까요?" prompt (wait overlay calls this)
+    start: start,        // run the coachmark sequence directly
+    greeted: greeted,    // 유나's first message arrived → toast + jump CTA
+    isDone: isDone,
+    reset: function () { try { if (DONE_KEY) localStorage.removeItem(DONE_KEY); } catch (e) {} _offered = false; _greeted = false; }
+  };
+})();

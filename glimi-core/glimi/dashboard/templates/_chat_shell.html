@@ -64,7 +64,27 @@
       <span class="ttl" id="chat-channel-label"># {{ channel }}</span>
       <i class="ti ti-chevron-down head-nav-cue" id="chat-head-nav-cue" aria-hidden="true"></i>
       <span class="topic" id="chat-head-topic" hidden></span>
+      {# Auto-run status pill — workspace only, shown while the autonomous loop is
+         running (chat.js toggles .show + fills the round count). Read-only chrome. #}
+      <span class="chat-autorun-pill" id="ws-autorun-pill" role="status" aria-live="polite" hidden></span>
       <div class="acts">
+        {# Profile ↗ — opens the active DM partner's full detail page. chat.js sets
+           the href + reveals it only on DM channels that have a detail route
+           (Community/Workspace); hidden by default (standalone demo has no route).
+           Generic across apps — no role names hardcoded. #}
+        <a class="ib chat-head-profile" id="chat-head-profile" href="#" target="_self"
+           rel="noopener" aria-label="{{ 'View profile' if EN else '프로필 보기' }}"
+           title="{{ 'View profile' if EN else '프로필 보기' }}" hidden>
+          <i class="ti ti-user-circle" aria-hidden="true"></i>
+        </a>
+        {# 가동 / Run toggle — the ONE global run/stop control (design_system §5.1).
+           Workspace-only (chat.js reveals it when WS_BASE is truthy AND the surface
+           isn't read-only). Hidden by default. chat.js flips its label play↔stop. #}
+        <button type="button" class="ib ws-only" id="ws-autorun-toggle" data-ws-only
+                aria-pressed="false" aria-label="{{ 'Run' if EN else '가동' }}"
+                title="{{ 'Run' if EN else '가동' }}" hidden>
+          <i class="ti ti-player-play" aria-hidden="true"></i>
+        </button>
         <button type="button" class="ib" id="chat-thread-toggle" aria-label="Thread"
                 hidden><i class="ti ti-messages" aria-hidden="true"></i></button>
       </div>
@@ -94,7 +114,6 @@
           </button>
         </div>
         <div class="ctop">
-          <span class="plus" aria-hidden="true"><i class="ti ti-plus"></i></span>
           <div class="ta" id="chat-input" contenteditable="true" role="textbox"
                aria-multiline="true" aria-label="{{ 'Send a message' if EN else '메시지 입력' }}"
                data-ph="{{ 'Message…' if EN else '메시지…' }}"></div>
@@ -105,10 +124,8 @@
           </div>
         </div>
         <div class="cfoot">
-          <span class="seg"><i class="ti ti-paperclip" aria-hidden="true"></i>{{ 'Drag files or photos' if EN else '파일이나 사진을 끌어다 놓기' }}</span>
           <span class="grow"></span>
           <span class="cnt" id="chat-cnt" hidden>0</span>
-          <span class="seg"><span class="kbd">Shift</span><span class="plus-sign">+</span><span class="kbd">Enter</span>{{ 'new line' if EN else '줄바꿈' }}</span>
         </div>
       </div>
     </div>
@@ -127,4 +144,61 @@
       <div class="tp-foot" id="chat-thread-foot"></div>
     </aside>
   </section>
+
+  {# Full-body profile / image lightbox. Ships WITH the chat shell so it works on
+     every surface (embedded dashboard tab, standalone /chat, future workspace
+     chat) without depending on dashboard.js / _core.html. chat.js owns the
+     open/close + Esc + backdrop-close wiring; the dashboard's own #lightbox in
+     _core.html is a separate instance for dashboard-tab images. #}
+  <div class="lightbox chat-lightbox" id="chat-lightbox" aria-hidden="true">
+    <div class="lb-panel" role="dialog" aria-modal="true" aria-label="{{ 'Image' if EN else '이미지' }}">
+      <div class="lb-bar">
+        <span class="lb-title" id="chat-lightbox-caption"></span>
+        <button type="button" class="lb-close" id="chat-lightbox-close"
+                aria-label="{{ 'Close' if EN else '닫기' }}"><i class="ti ti-x" aria-hidden="true"></i></button>
+      </div>
+      <div class="lb-stage">
+        <img id="chat-lightbox-img" src="" alt="">
+      </div>
+    </div>
+  </div>
+
+  {# 자동 진행 설정 / Auto-run setup modal — workspace only. The owner fills the
+     brief (goal is read-only from the workspace; context/backlog/max-rounds are
+     editable) then submits to POST /w/{id}/auto/start. chat.js owns open/close +
+     submit. Hidden by default; only ever shown when WS_BASE is truthy. #}
+  <div class="ws-brief-modal" id="ws-brief-modal" aria-hidden="true" hidden>
+    <div class="wbm-panel" role="dialog" aria-modal="true" aria-labelledby="ws-brief-title">
+      <header class="wbm-head">
+        <span class="wbm-title" id="ws-brief-title">{{ 'Auto-run setup' if EN else '자동 진행 설정' }}</span>
+        <button type="button" class="wbm-close" id="ws-brief-close"
+                aria-label="{{ 'Close' if EN else '닫기' }}"><i class="ti ti-x" aria-hidden="true"></i></button>
+      </header>
+      <div class="wbm-body">
+        <label class="wbm-field">
+          <span class="wbm-lbl">{{ 'Goal' if EN else '목표' }}</span>
+          <input type="text" id="ws-brief-goal" class="wbm-input" readonly aria-readonly="true">
+        </label>
+        <label class="wbm-field">
+          <span class="wbm-lbl">{{ 'Context' if EN else '컨텍스트' }}</span>
+          <textarea id="ws-brief-context" class="wbm-input wbm-area" rows="3"
+                    placeholder="{{ 'Anything the team should keep in mind…' if EN else '팀이 알아두면 좋은 점…' }}"></textarea>
+        </label>
+        <label class="wbm-field">
+          <span class="wbm-lbl">{{ 'Backlog' if EN else '백로그' }}</span>
+          <textarea id="ws-brief-backlog" class="wbm-input wbm-area" rows="3"
+                    placeholder="{{ 'One item per line' if EN else '한 줄에 하나씩' }}"></textarea>
+        </label>
+        <label class="wbm-field wbm-field-row">
+          <span class="wbm-lbl">{{ 'Max rounds' if EN else '최대 라운드' }}</span>
+          <input type="number" id="ws-brief-max-rounds" class="wbm-input wbm-num"
+                 min="1" max="10" step="1" value="5">
+        </label>
+      </div>
+      <footer class="wbm-foot">
+        <button type="button" class="wbm-btn wbm-cancel" id="ws-brief-cancel">{{ 'Cancel' if EN else '취소' }}</button>
+        <button type="button" class="wbm-btn wbm-go" id="ws-brief-start">{{ 'Start' if EN else '시작' }}</button>
+      </footer>
+    </div>
+  </div>
 </div>

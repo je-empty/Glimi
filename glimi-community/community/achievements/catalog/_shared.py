@@ -63,6 +63,31 @@ def is_manager_only_channel(ch_name: str) -> bool:
     return False
 
 
+def manager_owner_dm_channels() -> list[str]:
+    """오너↔매니저 1:1 DM 채널 (dm-<유나/하나/세나>) + 레거시 mgr-* 채널.
+
+    매니저(유나/하나/세나)도 페르소나처럼 dm-<이름> 채널을 쓴다. DB 의 mgr/creator/dev
+    에이전트 이름에서 도출. 레거시 커뮤니티(구 mgr-dashboard/mgr-creator) 도 함께 반환해
+    achievement 검사가 back-compat 유지."""
+    chans: list[str] = []
+    try:
+        for a in db.list_agents():
+            if a.get("type") in ("mgr", "creator", "dev"):
+                chans.append(f"dm-{a['name']}")
+    except Exception:
+        pass
+    # 레거시 back-compat (구 커뮤니티 채널명)
+    chans.extend(["mgr-dashboard", "mgr-creator"])
+    # 중복 제거 (순서 유지)
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in chans:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
 def check_event_count(event_types: list[str], threshold: int) -> Optional[dict]:
     """events 테이블의 특정 type 카운트 ≥ threshold 면 done."""
     conn = db.get_conn()

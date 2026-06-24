@@ -36,6 +36,8 @@ __all__ = [
 async def _execute_agent_tools(channel_name: str, speaker_id: str) -> None:
     """Run any ``<tools>`` a just-spoken agent emitted, against the Discord channel.
 
+    Discord-specific feeder kept for the (Phase-6-doomed) Discord transport. The
+    web/neutral feeder lives in ``community.core.conversation_bridge``.
     Lazy imports avoid a module-level import cycle with ``mgr_system``.
     """
     from community.bot.mgr_system import parse_and_execute_actions
@@ -51,6 +53,9 @@ async def _execute_agent_tools(channel_name: str, speaker_id: str) -> None:
     await parse_and_execute_actions(ch_obj, [], guild, caller_agent_id=speaker_id)
 
 
+# Phase 3.6: ``start_conversation`` 의 정본 홈은 core.conversation_bridge.
+# 디코 어댑터는 discord-specific ``_execute_agent_tools`` 를 써야 하므로 여기선
+# core.start_conversation 을 그대로 못 쓰고(거긴 web feeder), 자체 wiring 유지.
 async def start_conversation(
     channel_name: str,
     participants: list[str],
@@ -58,7 +63,7 @@ async def start_conversation(
     context: str = "",
     max_turns: int = _kc.DEFAULT_MAX_TURNS,
 ) -> ConversationState:
-    """App-facing entry: maintenance guard + dependency injection, then run."""
+    """App-facing entry (Discord): maintenance guard + DI (discord tool feeder)."""
     from community.community import is_maintenance_mode
     if is_maintenance_mode():
         from community import log_writer

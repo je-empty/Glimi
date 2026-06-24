@@ -79,12 +79,23 @@ from glimi.dashboard import (
 # whether loaded as ``workspace.server`` or from a flat dir on sys.path.
 try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
-    from run import run_workspace  # type: ignore
-    from team import TEAM  # type: ignore
+    from run import add_team_member, run_workspace, seed_team  # type: ignore
+    from team import RESERVED_IDS  # type: ignore
+    from driver import drive_workspace  # type: ignore
+    from owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL  # type: ignore
 except ImportError:  # imported as workspace.server
     from . import demo as _demo
-    from .run import run_workspace
-    from .team import TEAM
+    from .run import add_team_member, run_workspace, seed_team
+    from .team import RESERVED_IDS
+    from .driver import drive_workspace
+    from .owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL
+
+# Friendly display name + tooltip for the owner's read-only reasoning channel in
+# the chat sidebar (KO default; chat.js's i18n can override via the chat.owner_review
+# key). Renamed "오너의 검토" → "자동 진행 메모": when auto-run drives the workspace
+# on the owner's behalf, the manager's review notes land here.
+_OWNER_REVIEW_NAME = "자동 진행 메모"
+_OWNER_REVIEW_TOOLTIP = "자동 진행(오너 대리) 시 매니저 검토 메모"
 
 # The Core dashboard ships the canonical rich UI — assets (css/js), the shared
 # templates (dashboard/_core.html + _chat_shell.html), and the i18n dicts. This
@@ -164,27 +175,38 @@ def _load_i18n(lang: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-# Workspace chat avatars are role-based MONOGRAMS, not persona/anime faces. The
-# workspace team is functional (Coordinator / Researcher / Builder / Critic), so
-# a clean initial-on-tinted-disc reads better than a stock portrait — and keeps
+# Workspace chat avatars are role EMOJIS on a role-hued disc, not persona/anime
+# faces and not 2-letter monograms. The workspace team is functional (manager /
+# researcher / builder / critic), so a clear role icon reads instantly — and keeps
 # the avatar route dependency-free (no asset pool, always 200).
-_ROLE_MONOGRAM = {
-    "coordinator": "Co", "researcher": "Re", "builder": "Bu", "critic": "Cr",
+#   🧭 manager/coordinator · 🔬 researcher · 🛠 builder · 🔍 critic · ✍️ writer
+# A manager-proposed DYNAMIC role maps via its role keyword (designer→🎨, …); any
+# unknown id/keyword falls back to 🧩 (generic teammate), so the route is always 200.
+_ROLE_EMOJI = {
+    "coordinator": "🧭", "manager": "🧭", "lead": "🧭", "strategist": "🧭",
+    "researcher": "🔬", "research": "🔬", "analyst": "📊", "data": "📊",
+    "builder": "🛠", "engineer": "🛠", "developer": "🛠", "maker": "🛠",
+    "critic": "🔍", "reviewer": "🔍", "qa": "🔍", "tester": "🔍",
+    "writer": "✍️", "editor": "✍️", "copywriter": "✍️",
+    "designer": "🎨", "design": "🎨",
+    "marketer": "📣", "marketing": "📣", "growth": "📣",
+    "planner": "🗂", "pm": "🗂", "product": "🗂",
+    "advisor": "🧠", "expert": "🧠", "specialist": "🧩",
 }
+_GENERIC_EMOJI = "🧩"
 
 
-def _monogram(agent_id: str) -> str:
-    """A 1–2 char monogram for an agent id — role-aware and collision-free
-    (Coordinator→Co, Critic→Cr, so the two C-roles never clash)."""
-    s = (agent_id or "").strip()
-    if not s:
-        return "·"
-    if s.lower() in _ROLE_MONOGRAM:
-        return _ROLE_MONOGRAM[s.lower()]
-    parts = [p for p in s.replace("_", " ").replace("-", " ").split() if p]
-    if len(parts) >= 2:
-        return (parts[0][:1] + parts[1][:1]).upper()
-    return (s[:1].upper() + s[1:2].lower()) if len(s) >= 2 else s[:1].upper()
+def _role_emoji(agent_id: str, role_keyword: str = "") -> str:
+    """The role emoji for an agent — keyed by id first, then a role keyword (for a
+    dynamic role whose id isn't in the static map), with a 🧩 fallback so any id
+    always renders an icon (never a bare letter)."""
+    aid = (agent_id or "").strip().lower()
+    if aid in _ROLE_EMOJI:
+        return _ROLE_EMOJI[aid]
+    kw = (role_keyword or "").strip().lower()
+    if kw in _ROLE_EMOJI:
+        return _ROLE_EMOJI[kw]
+    return _GENERIC_EMOJI
 
 
 # Role-specific hues so the team reads as branded, distinct discs (not random):
@@ -192,14 +214,15 @@ def _monogram(agent_id: str) -> str:
 _ROLE_HUE = {"coordinator": 35, "researcher": 212, "builder": 265, "critic": 350}
 
 
-def _avatar_svg(agent_id: str) -> str:
-    """Inline SVG avatar: the agent's monogram on a soft vertical-gradient disc,
-    tinted by ROLE (Coordinator/Researcher/Builder/Critic) for a branded, less-flat
-    look. Always renders — no external asset, so the avatar route is always 200."""
-    mono = _monogram(agent_id)
+def _avatar_svg(agent_id: str, role_keyword: str = "") -> str:
+    """Inline SVG avatar: the agent's ROLE EMOJI (🧭/🔬/🛠/🔍/✍️, 🧩 fallback) on a
+    soft vertical-gradient disc, tinted by ROLE (manager/researcher/builder/critic)
+    for a branded, less-flat look. A dynamic role's emoji comes from ``role_keyword``
+    when its id isn't a known role. Always renders — no external asset, so the avatar
+    route is always 200."""
+    emoji = _role_emoji(agent_id, role_keyword)
     aid = (agent_id or "").strip().lower()
     hue = _ROLE_HUE.get(aid, int(hashlib.sha1(aid.encode("utf-8")).hexdigest(), 16) % 360)
-    fs = 38 if len(mono) >= 2 else 46
     gid = f"g{hue}"
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" '
@@ -208,9 +231,10 @@ def _avatar_svg(agent_id: str) -> str:
         f'<stop offset="0" stop-color="hsl({hue},60%,90%)"/>'
         f'<stop offset="1" stop-color="hsl({hue},52%,78%)"/></linearGradient></defs>'
         f'<rect width="96" height="96" rx="48" fill="url(#{gid})"/>'
-        f'<text x="48" y="51" font-family="-apple-system,Segoe UI,Roboto,sans-serif" '
-        f'font-size="{fs}" font-weight="700" fill="hsl({hue},55%,30%)" '
-        f'text-anchor="middle" dominant-baseline="central">{_esc(mono)}</text>'
+        '<text x="48" y="52" font-family="-apple-system,Segoe UI,Roboto,'
+        '\'Apple Color Emoji\',\'Segoe UI Emoji\',sans-serif" '
+        'font-size="50" text-anchor="middle" dominant-baseline="central">'
+        f'{_esc(emoji)}</text>'
         '</svg>'
     )
 
@@ -252,9 +276,19 @@ def _save_ws_meta(items: list) -> None:
         pass
 
 
-def _persist_ws_meta(ws_id: str, owner_name: str, goal: str, created_at: str) -> None:
+def _persist_ws_meta(ws_id: str, owner_name: str, goal: str, created_at: str, *,
+                     auto_run: bool = False, context: str = "",
+                     backlog: Optional[list] = None, max_rounds: int = 5) -> None:
+    """Persist a user workspace's metadata, replacing any prior entry by id. The
+    autonomous-loop brief (``auto_run`` / ``context`` / ``backlog`` / ``max_rounds``)
+    rides along so the toggle's state + brief survive a restart (the loop itself is
+    NOT auto-resumed — see ``_restore_user_workspaces``)."""
     items = [it for it in _load_ws_meta() if it.get("id") != ws_id]  # replace by id
-    items.append({"id": ws_id, "owner_name": owner_name, "goal": goal, "created_at": created_at})
+    items.append({
+        "id": ws_id, "owner_name": owner_name, "goal": goal, "created_at": created_at,
+        "auto_run": bool(auto_run), "context": context or "",
+        "backlog": list(backlog or []), "max_rounds": int(max_rounds),
+    })
     _save_ws_meta(items)
 
 
@@ -262,7 +296,14 @@ def _restore_user_workspaces(reg: "WorkspaceRegistry") -> None:
     """Rebuild persisted user workspaces at startup. The default echo backend is
     deterministic, so re-running ``create`` reproduces each workspace exactly (same
     id + timestamp). On a REAL backend, re-running would cost calls and drift, so
-    persisted entries are skipped (a store snapshot would be the follow-up)."""
+    persisted entries are skipped (a store snapshot would be the follow-up).
+
+    The autonomous-loop brief (``auto_run`` / ``context`` / ``backlog`` /
+    ``max_rounds``) is restored onto each Workspace, BUT the driver is deliberately
+    NOT auto-resumed: restore leaves ``_driver_task=None`` (running=False). A run
+    that the process lost mid-flight must not silently re-spend budget on boot — the
+    owner re-arms via the /auto/start toggle. (``auto_run=True`` here is just the
+    last-saved toggle state for the UI, not a live run.)"""
     meta = _load_ws_meta()
     if not meta:
         return
@@ -274,7 +315,11 @@ def _restore_user_workspaces(reg: "WorkspaceRegistry") -> None:
     for it in sorted(meta, key=lambda x: x.get("created_at", "")):
         try:
             reg.create(it.get("owner_name", "Owner"), it.get("goal", ""),
-                       ws_id=it.get("id"), created_at=it.get("created_at"), persist=False)
+                       ws_id=it.get("id"), created_at=it.get("created_at"), persist=False,
+                       auto_run=bool(it.get("auto_run", False)),
+                       context=it.get("context", "") or "",
+                       backlog=list(it.get("backlog", []) or []),
+                       max_rounds=int(it.get("max_rounds", 5) or 5))
             n += 1
         except Exception as e:  # noqa: BLE001 — one bad entry must not break startup
             print(f"[workspace] restore skipped {it.get('id')}: {e}")
@@ -285,7 +330,20 @@ def _restore_user_workspaces(reg: "WorkspaceRegistry") -> None:
 
 @dataclass
 class Workspace:
-    """One hosted workspace: its Glimi (→ store) plus display metadata."""
+    """One hosted workspace: its Glimi (→ store) plus display metadata.
+
+    The autonomous owner-driver loop (``workspace/driver.py``) adds a few fields:
+
+    - ``auto_run`` / ``context`` / ``backlog`` / ``max_rounds`` are the persisted
+      brief for the loop (round-tripped through ``_persist_ws_meta`` /
+      ``_restore_user_workspaces``). ``auto_run`` is opt-in (default False) so a
+      real-backend workspace never spends a cent unless the owner flips it on.
+    - ``rounds_run`` / ``driver_reason`` are live run state, surfaced by
+      ``GET /auto/status`` (not persisted — they reset per process).
+    - ``_driver_task`` / ``_driver_cancel`` / ``_subscribers`` are non-serializable
+      runtime handles (the asyncio task, its cancel Event, and the set of connected
+      chat WebSockets for live fan-out); kept off persistence (compare=False).
+    """
 
     id: str
     glimi: Glimi
@@ -294,9 +352,46 @@ class Workspace:
     kind: str  # "demo" (public read-only) | "user" (created workspace)
     created_at: str = field(default_factory=_now_utc_iso)
 
+    # ── build lifecycle (the initial team-forming + first round) ──
+    # "building" while the background create-build runs the first round; "ready"
+    # once it finishes (or "error" if it failed). The demo is born ready. The
+    # dashboard is reachable at /w/{id} the instant the record exists (status is
+    # surfaced in the snapshot so the UI can show a "team forming…" banner that
+    # clears on its own).
+    status: str = "ready"
+
+    # ── autonomous owner-driver brief (persisted) ──
+    auto_run: bool = False
+    context: str = ""
+    backlog: list = field(default_factory=list)
+    max_rounds: int = 5
+
+    # ── live run state (not persisted; reset per process) ──
+    rounds_run: int = 0
+    driver_reason: str = ""  # last terminal reason: done|max_rounds|cancelled|budget
+
+    # ── non-serializable runtime handles ──
+    _driver_task: object = field(default=None, repr=False, compare=False)    # asyncio.Task|None
+    _driver_cancel: object = field(default=None, repr=False, compare=False)  # threading.Event|None
+    _build_task: object = field(default=None, repr=False, compare=False)     # _DriverHandle|None (initial build)
+    _subscribers: set = field(default_factory=set, repr=False, compare=False)  # chat WS fan-out
+
     @property
     def store(self):
         return self.glimi.store
+
+    @property
+    def building(self) -> bool:
+        """True while the initial create-build (team-forming + first round) is in
+        flight on its background thread."""
+        t = self._build_task
+        return bool(t is not None and not getattr(t, "done", lambda: True)())
+
+    @property
+    def driver_running(self) -> bool:
+        """True while the owner-driver background task is in flight."""
+        t = self._driver_task
+        return bool(t is not None and not getattr(t, "done", lambda: True)())
 
     def reader(self) -> DashboardReader:
         """A fresh store-explicit reader for this workspace (read path is safe)."""
@@ -311,6 +406,9 @@ class Workspace:
             "title": self.title,
             "goal": self.goal,
             "kind": self.kind,
+            # Live build status so the home card + dashboard can show "팀 꾸리는 중…"
+            # the moment a workspace is created (before its first round finishes).
+            "status": ("building" if self.building else self.status),
             "agents": len(agents),
             "channels": len(snap.get("channels", [])),
             "avatars": [
@@ -349,39 +447,114 @@ class WorkspaceRegistry:
         self._seq += 1
         return f"ws{self._seq}"
 
-    def create(self, name: str, goal: str, *, ws_id: Optional[str] = None,
-               created_at: Optional[str] = None, persist: bool = True) -> Workspace:
-        """Build a real-topology workspace under the build lock, on the configured
-        backend (``_USER_BACKEND`` — echo by default; a real model when the operator
-        sets ``GLIMI_LLM_BACKEND``).
+    def create_record(self, name: str, goal: str, *, ws_id: Optional[str] = None,
+                      created_at: Optional[str] = None, persist: bool = True,
+                      auto_run: bool = False, context: str = "",
+                      backlog: Optional[list] = None, max_rounds: int = 5) -> Workspace:
+        """Create + register a workspace RECORD immediately, WITHOUT running the
+        first round — the fast, non-blocking half of create.
 
-        Serialized because ``run_workspace`` drives ``runtime.generate_*`` against
-        the process-global store; constructing the ``Glimi`` re-points that global to
-        this workspace's store, so only one build may be in flight at a time. On the
-        echo backend each build is instant + deterministic; on a real backend the
-        create runs the team on the goal (the workspace's first deliverable).
+        Constructing the ``Glimi`` is cheap (in-memory store, no LLM), so this
+        returns in milliseconds and the dashboard is reachable at ``/w/{id}`` the
+        instant it returns. The team-forming + first round (``seed_team`` +
+        ``run_workspace``, which DO drive ``runtime.generate_*``) are deferred to
+        :meth:`build_initial`, run on a background thread so the create request
+        never blocks the event loop. The record is born ``status="building"``.
+
+        Construction still happens under the build lock because ``Glimi()`` re-points
+        the kernel's process-global store to this workspace (last-wins); the lock
+        keeps that atomic with id allocation. The heavy build is scoped separately.
 
         ``ws_id`` / ``created_at`` / ``persist=False`` are used by restore-on-startup
-        to rebuild a persisted workspace with its original id + timestamp (and not
-        re-persist it).
+        to rebuild a persisted workspace with its original id + timestamp.
+        ``auto_run`` / ``context`` / ``backlog`` / ``max_rounds`` are the
+        autonomous-loop brief, stamped onto the Workspace.
         """
         owner_name = (name or "Owner").strip() or "Owner"
         goal = (goal or "").strip() or "Plan the public launch of our open-source project"
         with self._lock:
             g = Glimi(backend=_USER_BACKEND, owner_name=owner_name)
-            for aid, disp, atype, persona in TEAM:
-                g.add_agent(aid, name=disp, persona=persona, agent_type=atype)
-            # Real interaction topology (echo) → a genuine interaction web for goal.
-            run_workspace(g, owner_name, goal)
             if ws_id is None:
                 ws_id = self._next_user_id()
             elif ws_id.startswith("ws") and ws_id[2:].isdigit():
                 self._seq = max(self._seq, int(ws_id[2:]))  # keep new ids ahead of restored ones
             ws = Workspace(id=ws_id, glimi=g, title=goal, goal=goal, kind="user",
-                           created_at=created_at or _now_utc_iso())
+                           created_at=created_at or _now_utc_iso(),
+                           status="building",
+                           auto_run=bool(auto_run), context=context or "",
+                           backlog=list(backlog or []),
+                           max_rounds=max(1, min(int(max_rounds or 5), 10)))
             self.register(ws)
         if persist:
-            _persist_ws_meta(ws_id, owner_name, goal, ws.created_at)
+            _persist_ws_meta(ws_id, owner_name, goal, ws.created_at,
+                             auto_run=ws.auto_run, context=ws.context,
+                             backlog=ws.backlog, max_rounds=ws.max_rounds)
+        return ws
+
+    def build_initial(self, ws: "Workspace", *, on_event=None) -> None:
+        """Run the deferred team-forming + first round for a freshly-created record.
+
+        The slow half of create: ``seed_team`` (manager proposes a goal-appropriate
+        roster on a real backend; echo → the deterministic default 3) then
+        ``run_workspace`` (the full interaction topology + first deliverable). Both
+        drive ``runtime.generate_*``, so they MUST run scoped to ``ws`` — routed
+        through :meth:`run_in_ws` (the same per-workspace scoping lock chat turns +
+        the auto-run driver use), which re-points the kernel globals at this ws and
+        serializes against every other build/turn.
+
+        Idempotent + double-run-guarded: only runs while ``status=="building"`` and
+        the team isn't already seeded; flips ``status`` to ``"ready"`` on success
+        (``"error"`` on failure) so the UI's "forming…" banner clears. ``on_event``
+        streams the team-forming + each turn live to connected chat WebSockets.
+        """
+        # Double-run guard: only the building→ready transition runs the build.
+        if ws.status != "building":
+            return
+        owner_name = ws.glimi.owner.name()
+        goal = ws.goal
+
+        def _build():
+            # Skip if the team is already seeded (a racing/duplicate call).
+            try:
+                if ws.store.get_agent("coordinator"):
+                    return
+            except Exception:
+                pass
+            # Manager proposes a goal-appropriate roster (real backend), else the
+            # DEFAULT researcher/builder/critic (echo → deterministic). Runs AFTER
+            # run_in_ws has pointed the kernel globals at this ws's store.
+            seed_team(ws.glimi, goal, owner_name)
+            # Real interaction topology → a genuine interaction web for the goal,
+            # streaming each turn live via on_event (the create's "watch it build").
+            run_workspace(ws.glimi, owner_name, goal, on_event=on_event)
+
+        try:
+            self.run_in_ws(ws, _build)
+            ws.status = "ready"
+        except Exception:  # noqa: BLE001 — a failed build must not crash the thread
+            ws.status = "error"
+            raise
+
+    def create(self, name: str, goal: str, *, ws_id: Optional[str] = None,
+               created_at: Optional[str] = None, persist: bool = True,
+               auto_run: bool = False, context: str = "",
+               backlog: Optional[list] = None, max_rounds: int = 5) -> Workspace:
+        """Create a workspace AND run its first round INLINE (blocking).
+
+        The synchronous convenience used by restore-on-startup and the tests: it
+        creates the record then immediately runs the deferred build on the calling
+        thread, so the returned Workspace is fully ``"ready"``. On the echo backend
+        this is instant + deterministic (restore reproduces each workspace exactly).
+
+        The live, non-blocking create path (``POST /api/workspaces``) instead calls
+        :meth:`create_record` + :meth:`build_initial` on a background thread, so the
+        request returns immediately and the build streams to the dashboard.
+        """
+        ws = self.create_record(
+            name, goal, ws_id=ws_id, created_at=created_at, persist=persist,
+            auto_run=auto_run, context=context, backlog=backlog, max_rounds=max_rounds,
+        )
+        self.build_initial(ws)
         return ws
 
     def run_in_ws(self, ws: "Workspace", fn):
@@ -460,6 +633,69 @@ def _ws_speaker_name(ws: "Workspace", agent_id: str) -> str:
         return agent_id
 
 
+def _make_ws_broadcaster(ws: "Workspace", loop: "asyncio.AbstractEventLoop"):
+    """Build the driver's ``on_event`` sink: fan a frame out to every chat WS
+    currently subscribed to ``ws``.
+
+    The driver runs on its own background thread, so we can't ``await`` here — we
+    hop onto the SERVER's event loop (``loop``, the one the WebSockets live on) with
+    ``run_coroutine_threadsafe`` and ``send_json`` to each subscriber. A send to a
+    dead socket is swallowed + the socket dropped, so a disconnect can't stall the
+    loop. Best-effort: never raises into the driver, and tolerates zero subscribers
+    (a headless run / a test with no chat WS connected just no-ops)."""
+    def _emit(frame: dict) -> None:
+        if loop is None or not ws._subscribers:
+            return
+        async def _fanout():
+            for sock in list(ws._subscribers):
+                try:
+                    await sock.send_json(frame)
+                except Exception:
+                    ws._subscribers.discard(sock)
+        try:
+            asyncio.run_coroutine_threadsafe(_fanout(), loop)
+        except Exception:
+            pass
+    return _emit
+
+
+class _DriverHandle:
+    """A thread-backed handle for one autonomous owner-driver run.
+
+    The driver loop is an ``async`` coroutine, but anchoring it to a request's
+    asyncio task (``asyncio.create_task``) is fragile — anyio/Starlette cancel
+    child tasks when the spawning request scope exits, so the loop would die the
+    moment ``/auto/start`` returns. Instead we run it on a dedicated DAEMON THREAD
+    with its own private event loop, fully decoupled from any request and from the
+    server's loop. Cancellation flows through the shared ``threading.Event`` the
+    driver already polls (set by ``cancel()``); ``done()`` reports liveness so
+    ``driver_running`` + ``/auto/status`` work without touching the server loop."""
+
+    def __init__(self, coro_factory, cancel: "threading.Event", *, name: str) -> None:
+        self._cancel = cancel
+        self._done = threading.Event()
+
+        def _runner() -> None:
+            try:
+                asyncio.run(coro_factory())
+            finally:
+                self._done.set()
+
+        self._thread = threading.Thread(target=_runner, daemon=True, name=name)
+        self._thread.start()
+
+    def done(self) -> bool:
+        return self._done.is_set()
+
+    def cancel(self) -> None:
+        # The driver polls this Event at the top of each round + during its sleep,
+        # so setting it stops a sleeping or between-rounds driver promptly.
+        try:
+            self._cancel.set()
+        except Exception:
+            pass
+
+
 # ── chat read-APIs (per-workspace) — mirror src/platform/routers/chat.py shapes ─
 #
 # These are the EXACT JSON contracts the copied chat.js expects, rebuilt on the
@@ -504,6 +740,35 @@ def _last_preview(store, channel: str, owner_ids: set[str],
     }
 
 
+def _internal_pair_label(ws: "Workspace", channel: str,
+                         names: dict[str, str]) -> str:
+    """Friendly ``"A ↔ B"`` label for a behind-the-scenes ``internal-<a>-<b>``
+    channel, resolving each side's display name.
+
+    Robust to ids that themselves contain hyphens (e.g. ``culture-coach``, or the
+    coordinator side of ``internal-coordinator-<sid>``): prefer the channel's two
+    STORED participants over a naive hyphen split (which can't tell ``a-b-c-d``
+    apart). Falls back to the participants from the store, then to a naive split of
+    the channel id, then to the raw id — always returns a non-empty label."""
+    def _name(aid: str) -> str:
+        return names.get(aid) or (ws.store.get_agent(aid) or {}).get("name") or aid
+
+    # Preferred: the two stored participants (unambiguous for multi-hyphen ids).
+    try:
+        parts = [p for p in (ws.store.get_channel_participants(channel) or []) if p]
+    except Exception:
+        parts = []
+    if len(parts) >= 2:
+        return f"{_name(parts[0])} ↔ {_name(parts[1])}"
+
+    # Fallback: naive split of internal-<a>-<b> into two tokens (best-effort).
+    rest = channel[len("internal-"):] if channel.startswith("internal-") else channel
+    bits = rest.split("-", 1)
+    if len(bits) == 2 and bits[0] and bits[1]:
+        return f"{_name(bits[0])} ↔ {_name(bits[1])}"
+    return channel
+
+
 def _list_chat_channels(ws: "Workspace") -> list[dict]:
     """The workspace's chat channels: a DM per agent (synthesized ``dm-<id>``,
     ordered mgr/coordinator-ish first via ``reader.agents()``) plus the registered
@@ -516,6 +781,8 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
 
     out: list[dict] = []
     # DM-per-agent. reader.agents() is already mgr → creator → dev → persona → id.
+    # ``agent_type`` lets the shared chat.js section the list (coordinator=mgr →
+    # Coordinator/Managers; specialists=persona → Team).
     for a in reader.agents():
         aid = a.get("id")
         if not aid:
@@ -525,38 +792,59 @@ def _list_chat_channels(ws: "Workspace") -> list[dict]:
             "channel": dm_channel,
             "kind": "dm",
             "agent_id": aid,
+            "agent_type": a.get("type", ""),
             "name": a.get("name") or aid,
             "type": a.get("type", ""),
+            "postable": True,
             "avatar_url": f"/w/{ws.id}/api/avatar?id={aid}&v={_ASSET_VER}",
             "last": _last_preview(store, dm_channel, owner_ids, names, owner_name),
         })
-    # Registered group channels (multi-agent). The overview lists every channel;
-    # keep only ``group-*`` (mgr-/internal-/dm- are excluded by the prefix filter).
+    # group-* (multi-agent rooms) + internal-* (specialist↔specialist A2A — the team
+    # talking to each other, the workspace's whole point). internal-* is READ-ONLY
+    # ("Behind the scenes"): the owner watches, doesn't post.
     try:
         overview = store.get_channel_overview()
     except Exception:
         overview = []
     for c in overview:
         name = c.get("channel") or ""
-        if not name.startswith("group-"):
-            continue
-        out.append({
-            "channel": name,
-            "kind": "group",
-            "agent_id": None,
-            "name": name,
-            "type": "group",
-            "avatar_url": None,
-            "last": _last_preview(store, name, owner_ids, names, owner_name),
-        })
+        if name.startswith("group-"):
+            out.append({
+                "channel": name, "kind": "group", "agent_id": None,
+                "agent_type": "group", "name": name, "type": "group",
+                "postable": True, "avatar_url": None,
+                "last": _last_preview(store, name, owner_ids, names, owner_name),
+            })
+        elif name.startswith("internal-"):
+            # ``internal-owner`` is the read-only channel where the autonomous owner
+            # logs its per-round reasoning (the "owner thinking" the web shows). Give
+            # it a friendly display name + tooltip. Every OTHER internal-* is a
+            # behind-the-scenes pair (coordinator↔specialist delegation or
+            # specialist↔specialist A2A); show a friendly "A ↔ B" label resolved from
+            # its two agent ids, not the raw channel id.
+            is_owner_review = (name == _OWNER_REVIEW_CHANNEL)
+            disp = (_OWNER_REVIEW_NAME if is_owner_review
+                    else _internal_pair_label(ws, name, names))
+            out.append({
+                "channel": name, "kind": "internal", "agent_id": None,
+                "agent_type": "internal", "name": disp, "type": "internal",
+                "postable": False, "avatar_url": None,
+                "tooltip": _OWNER_REVIEW_TOOLTIP if is_owner_review else None,
+                "last": _last_preview(store, name, owner_ids, names, owner_name),
+            })
     return out
 
 
-def _chat_history(ws: "Workspace", channel: str, limit: int) -> list[dict]:
+def _chat_history(
+    ws: "Workspace", channel: str, limit: int, before_id: Optional[int] = None,
+) -> list[dict]:
     """Recent messages for ``channel`` (ASC by id), display-ready. Mirrors
     ``chat.py._channel_history``: resolves speaker → display name + is_user,
     passes the store's compact ``reactions`` summary through, and resolves a
     reply quote from the loaded window when the parent is present.
+
+    ``before_id`` pages backwards (the ``limit`` messages older than that id) for
+    "load older on scroll-to-top".
     """
     reader = ws.reader()
     store = ws.store
@@ -564,7 +852,7 @@ def _chat_history(ws: "Workspace", channel: str, limit: int) -> list[dict]:
     names = _agent_name_map(reader)
 
     try:
-        rows = store.get_recent_messages(channel, limit)
+        rows = store.get_recent_messages(channel, limit, before_id=before_id)
     except Exception:
         rows = []
     # get_recent_messages already returns oldest→newest within the window; sort by
@@ -630,6 +918,7 @@ def _render_core(request: "Request", ws: "Workspace", *, active_tab: str,
         "api_base": f"/w/{ws.id}",
         "caps_json": json.dumps(_WS_CAPS),
         "community_chrome": False,
+        "app_name": "Glimi Workspace",
         "brand_logo": True,            # show the Glimi logo (served at /logo) in the brand
         "active_tab": active_tab,
         "user": None,
@@ -660,8 +949,21 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
     thread. The server owns serving; the demo loop only mutates its own store.
     """
     reg = registry or WorkspaceRegistry()
-    app = FastAPI(title="Glimi Workspace — Server", docs_url=None, redoc_url=None)
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        # The autonomous driver runs on its OWN background thread (decoupled from any
+        # request scope), but its WS fan-out must post onto the SERVER's event loop.
+        # Capture it here so the broadcaster always targets the live socket loop.
+        app.state.main_loop = asyncio.get_running_loop()
+        yield
+
+    app = FastAPI(title="Glimi Workspace — Server", docs_url=None, redoc_url=None,
+                  lifespan=_lifespan)
     app.state.registry = reg
+    app.state.main_loop = None  # the server's event loop, captured at startup (WS fan-out)
 
     # All dashboard assets (css / js) are the canonical Core ones, served from the
     # installed glimi[dashboard] package — single source, no workspace-local copy.
@@ -697,6 +999,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                 "title": c["title"],
                 "desc": c.get("goal") or "",
                 "is_demo": (c["kind"] == "demo"),
+                "building": (c.get("status") == "building"),
                 "avatars": c.get("avatars") or [],
                 "more": max(0, c["agents"] - len(c.get("avatars") or [])),
                 "metas": metas,
@@ -706,10 +1009,10 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             create = {
                 "action": "/api/workspaces",
                 "heading": "Or start your own" if EN else "직접 만들어 보기",
-                "lede": ("Name yourself, give a goal, and a fresh Coordinator-led team spins up around it."
-                         if EN else "이름을 정하고 목표를 적으면, 코디네이터가 이끄는 새 팀이 그 주위로 꾸려져요."),
+                "lede": ("Name yourself, give a goal, and a fresh manager-led team spins up around it."
+                         if EN else "이름을 정하고 목표를 적으면, 매니저가 이끄는 새 팀이 그 주위로 꾸려져요."),
                 "name_label": "Your name" if EN else "이름",
-                "name_ph": "Owner" if EN else "예: 수민",
+                "name_ph": "Owner" if EN else "예: 오너",
                 "goal_label": "Goal" if EN else "목표",
                 "goal_ph": ("Plan the public launch of our open-source project"
                             if EN else "예: 오픈소스 프로젝트 공개 런칭 기획"),
@@ -720,11 +1023,11 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             "brand": "Glimi Workspace",
             "brand_sub": ("specialist teams on one Glimi Core" if EN
                           else "하나의 Glimi Core 위에서 움직이는 전문가 팀"),
-            "lede": ("Give a goal and a team forms around it — a Coordinator that delegates to "
+            "lede": ("Give a goal and a team forms around it — a manager that delegates to "
                      "Researcher, Builder, and Critic, who talk to each other and report back. "
-                     "Open the demo to watch one in motion. No login needed." if EN
-                     else "목표를 주면 그 주위로 팀이 꾸려져요 — 코디네이터가 리서처·빌더·크리틱에게 일을 나눠주고, "
-                          "서로 이야기하며 결과를 가져옵니다. 데모를 열어 직접 보세요. 로그인은 필요 없어요."),
+                     "Open the demo below to watch one in motion." if EN
+                     else "목표를 주면 그 주위로 팀이 꾸려집니다 — 매니저가 리서처·빌더·크리틱에게 일을 나누고, "
+                          "서로 의논해 결과를 가져옵니다. 아래 데모를 열면 그 과정이 그대로 보여요."),
             "items": items,
             "create": create,
         }
@@ -749,11 +1052,18 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
 
     @app.post("/api/workspaces", response_model=None)
     async def create_workspace(request: Request):
-        """Create a workspace from a form (browser) or JSON (API).
+        """Create a workspace from a form (browser) or JSON (API) — NON-BLOCKING.
 
-        Serialized by the registry's build lock (global-singleton WRITE path).
-        Form submits get a 303 redirect to the new dashboard; JSON callers get
-        ``{id, title, goal, kind, ...}``.
+        The record (its ``Glimi`` + store) is created IMMEDIATELY and this returns
+        right away (``status="building"``); the team-forming + first round run on a
+        dedicated background thread (``reg.build_initial`` via a ``_DriverHandle``,
+        the same machinery /auto/start uses), streaming each turn to connected chat
+        WebSockets via the per-ws broadcaster. So ``/w/{id}`` is reachable instantly
+        and the dashboard shows the team forming + the first round progressing LIVE,
+        exactly like watching an auto-run — not a link handed back after it finishes.
+
+        Form submits get a 303 redirect to the new dashboard (the page then opens its
+        chat WS and watches the build); JSON callers get the card with ``status``.
         """
         if _DEMO_ONLY:  # public showcase: only the seeded demo exists, no creation
             raise HTTPException(status_code=403, detail="this is a demo-only instance")
@@ -772,7 +1082,30 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             form = await request.form()
             name = str(form.get("name", "") or "")
             goal = str(form.get("goal", "") or "")
-        ws = reg.create(name, goal)
+
+        # 1) Create the record immediately (cheap: Glimi construction only) so the
+        #    dashboard is reachable at /w/{id} the instant we return.
+        ws = reg.create_record(name, goal)
+
+        # 2) Run the team-forming + first round on a background DAEMON THREAD,
+        #    streaming each turn to connected chat WebSockets via the per-ws
+        #    broadcaster (fan-out targets the SERVER's event loop, where the sockets
+        #    live). The fan-out tolerates zero subscribers, so the build runs whether
+        #    or not the owner's page has connected its WS yet.
+        server_loop = app.state.main_loop
+        broadcaster = _make_ws_broadcaster(ws, server_loop)
+
+        async def _build():
+            try:
+                broadcaster({"type": "auto", "phase": "building", "ws": ws.id})
+                reg.build_initial(ws, on_event=broadcaster)
+                broadcaster({"type": "auto", "phase": "ready", "ws": ws.id})
+            except Exception as e:  # noqa: BLE001 — never crash the build thread
+                broadcaster({"type": "auto", "phase": "error", "message": str(e)})
+
+        ws._build_task = _DriverHandle(_build, threading.Event(),
+                                       name=f"glimi-ws-build-{ws.id}")
+
         if is_form:
             return RedirectResponse(url=f"/w/{ws.id}", status_code=303)
         return JSONResponse(ws.card())
@@ -841,7 +1174,9 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         return JSONResponse({"channels": _list_chat_channels(ws)})
 
     @app.get("/w/{ws_id}/chat/history")
-    def w_chat_history(ws_id: str, channel: str = "", limit: int = 50) -> JSONResponse:
+    def w_chat_history(
+        ws_id: str, channel: str = "", limit: int = 50, before_id: int = 0,
+    ) -> JSONResponse:
         ws = _require(ws_id)
         channel = (channel or "").strip()
         if not channel:
@@ -850,9 +1185,14 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
             limit = max(1, min(int(limit), 200))
         except (TypeError, ValueError):
             limit = 50
+        try:
+            before = int(before_id)
+        except (TypeError, ValueError):
+            before = 0
+        before = before if before > 0 else None
         return JSONResponse({
             "channel": channel,
-            "messages": _chat_history(ws, channel, limit),
+            "messages": _chat_history(ws, channel, limit, before_id=before),
         })
 
     @app.websocket("/w/{ws_id}/chat/ws")
@@ -873,6 +1213,10 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         read_only = (ws.kind == "demo")
         await websocket.accept()
         loop = asyncio.get_event_loop()
+        # Subscribe this socket to the workspace's live fan-out so the autonomous
+        # owner-driver's per-turn + lifecycle frames stream to it (the same channel
+        # the demo's scripted loop can use). Discarded on disconnect (finally).
+        ws._subscribers.add(websocket)
         try:
             while True:
                 frame = await websocket.receive_json() or {}
@@ -935,15 +1279,211 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         except Exception:
             # Malformed frame / client gone — close quietly, never crash.
             pass
+        finally:
+            ws._subscribers.discard(websocket)
+
+    # ── autonomous owner-driver (auto-run) ──────────────────────────────────
+    # The work-clone analogue of the Community's autonomous social-sim: the
+    # owner-agent runs the goal → review → assign loop a human normally runs by hand.
+    # COST-safe: opt-in (auto_run default False), bounded by max_rounds AND the
+    # monthly budget cap (enforced inside the loop), externally cancellable, and on
+    # the offline echo backend entirely free. The public Demo NEVER starts a live
+    # run (kind=='demo' → 403); it showcases the loop via demo.py's scripted unfold.
+    @app.post("/w/{ws_id}/auto/start", response_model=None)
+    async def auto_start(ws_id: str, request: Request):
+        """Arm + launch the autonomous owner-driver loop for a writable workspace.
+
+        Body JSON (all optional): ``{context?:str, backlog?:[str]|str,
+        max_rounds?:int}`` — ``max_rounds`` is clamped 1..10 (default 5). Gating:
+        404 unknown · 403 on the read-only Demo · 409 if a run is already in flight.
+        The loop streams its turns + lifecycle frames to every connected chat WS via
+        the per-ws fan-out; budget is enforced INSIDE the loop (not at start) so a
+        mid-run cap trips cleanly."""
+        ws = _require(ws_id)
+        if ws.kind == "demo":
+            raise HTTPException(status_code=403, detail="demo is read-only")
+        if ws.driver_running:
+            raise HTTPException(status_code=409, detail="auto-run already in progress")
+
+        body = {}
+        try:
+            if "application/json" in (request.headers.get("content-type", "")):
+                body = await request.json()
+        except Exception:
+            body = {}
+        context = str((body or {}).get("context", "") or "").strip()
+        backlog_raw = (body or {}).get("backlog", None)
+        if isinstance(backlog_raw, str):
+            backlog = [ln.strip() for ln in backlog_raw.splitlines() if ln.strip()]
+        elif isinstance(backlog_raw, list):
+            backlog = [str(x).strip() for x in backlog_raw if str(x).strip()]
+        else:
+            backlog = []
+        try:
+            max_rounds = max(1, min(int((body or {}).get("max_rounds", ws.max_rounds or 5)), 10))
+        except (TypeError, ValueError):
+            max_rounds = 5
+
+        # Stamp + persist the brief (so the toggle + brief survive a restart; the
+        # loop itself is not auto-resumed on boot — see _restore_user_workspaces).
+        ws.auto_run = True
+        ws.context = context
+        ws.backlog = backlog
+        ws.max_rounds = max_rounds
+        ws.rounds_run = 0
+        ws.driver_reason = ""
+        _persist_ws_meta(ws.id, ws.glimi.owner.name(), ws.goal, ws.created_at,
+                         auto_run=True, context=context, backlog=backlog,
+                         max_rounds=max_rounds)
+
+        # The WS fan-out targets the SERVER's event loop (captured at startup), NOT
+        # the driver thread's private loop — that's where the chat WebSockets live.
+        server_loop = app.state.main_loop
+        cancel = threading.Event()
+        ws._driver_cancel = cancel
+        broadcaster = _make_ws_broadcaster(ws, server_loop)
+
+        # run_scoped routes every kernel-touching step through the registry's
+        # per-workspace scoping lock (reg.run_in_ws) so the global-singleton WRITE
+        # path stays serialized + pointed at THIS workspace, exactly like a chat turn.
+        def _run_scoped(fn):
+            return reg.run_in_ws(ws, fn)
+
+        async def _drive():
+            try:
+                result = await drive_workspace(
+                    ws.glimi, goal=ws.goal, context=ws.context, backlog=ws.backlog,
+                    owner_name=ws.glimi.owner.name(), max_rounds=ws.max_rounds,
+                    on_event=broadcaster, cancel=cancel, run_scoped=_run_scoped,
+                )
+                ws.rounds_run = int(result.get("rounds", 0))
+                ws.driver_reason = str(result.get("stopped_reason", "") or "")
+            except Exception as e:  # noqa: BLE001 — never crash the server thread
+                ws.driver_reason = "error"
+                broadcaster({"type": "auto", "phase": "error", "message": str(e)})
+            finally:
+                ws.auto_run = False
+                ws._driver_task = None
+                # Persist the toggle back OFF so a restart doesn't show it armed.
+                _persist_ws_meta(ws.id, ws.glimi.owner.name(), ws.goal, ws.created_at,
+                                 auto_run=False, context=ws.context,
+                                 backlog=ws.backlog, max_rounds=ws.max_rounds)
+
+        # Run on a dedicated daemon thread (decoupled from the request scope) so the
+        # loop survives /auto/start returning; cancellation flows via the Event.
+        ws._driver_task = _DriverHandle(
+            _drive, cancel, name=f"glimi-ws-driver-{ws.id}",
+        )
+        return JSONResponse({"ok": True, "running": True, "max_rounds": max_rounds})
+
+    @app.post("/w/{ws_id}/auto/stop", response_model=None)
+    async def auto_stop(ws_id: str):
+        """Cancel the autonomous loop (idempotent). 404 unknown; otherwise always
+        ``{ok:true, running:false}`` — sets the cancel Event + cancels the task so a
+        sleeping or mid-round driver stops promptly."""
+        ws = _require(ws_id)
+        if ws._driver_cancel is not None:
+            try:
+                ws._driver_cancel.set()
+            except Exception:
+                pass
+        t = ws._driver_task
+        if t is not None:
+            try:
+                t.cancel()
+            except Exception:
+                pass
+        ws.auto_run = False
+        _persist_ws_meta(ws.id, ws.glimi.owner.name(), ws.goal, ws.created_at,
+                         auto_run=False, context=ws.context,
+                         backlog=ws.backlog, max_rounds=ws.max_rounds)
+        return JSONResponse({"ok": True, "running": False})
+
+    @app.get("/w/{ws_id}/auto/status")
+    def auto_status(ws_id: str) -> JSONResponse:
+        """Reflect the loop's state so the toggle can restore on page load + poll:
+        ``{running, auto_run, rounds_run, reason, max_rounds}``. Reads ws fields; no
+        lock needed."""
+        ws = _require(ws_id)
+        return JSONResponse({
+            "running": ws.driver_running,
+            "auto_run": bool(ws.auto_run),
+            "rounds_run": int(ws.rounds_run),
+            "reason": ws.driver_reason or None,
+            "max_rounds": int(ws.max_rounds),
+        })
+
+    # ── dynamic team: add a specialist (owner-initiated) ────────────────────
+    # The OWNER-initiated path to grow the team — the owner IS the approver by
+    # calling this, so no HITL gate (the gate is for the MANAGER's mid-run ask,
+    # which the driver auto-approves under auto-run). The add is serialized +
+    # scoped through reg.run_in_ws so the global-singleton WRITE path stays pointed
+    # at THIS workspace (every ws reuses ids like 'coordinator'). The new agent
+    # appears in /chat/channels immediately; it SPEAKS from the next round/turn on
+    # (run_round re-derives the live roster each call).
+    @app.post("/w/{ws_id}/team/add", response_model=None)
+    async def team_add(ws_id: str, request: Request):
+        """Add a specialist to a writable workspace's team.
+
+        Body JSON: ``{role:str, name?:str, persona?:str, role_keyword?:str}`` —
+        ``role`` is the role id (slugged server-side). Gating: 404 unknown · 403 on
+        the read-only Demo · 400 missing role · 409 on a reserved/collision id.
+        Returns the new agent's card on success.
+        """
+        ws = _require(ws_id)
+        if ws.kind == "demo":
+            raise HTTPException(status_code=403, detail="demo is read-only")
+        body = {}
+        try:
+            if "application/json" in (request.headers.get("content-type", "")):
+                body = await request.json()
+        except Exception:
+            body = {}
+        role = str((body or {}).get("role", "") or "").strip().lower()
+        # Slug the role id the same way the manager's proposal is sanitized.
+        role = "".join(ch if (ch.isalnum() or ch == "-") else "-" for ch in role)
+        role = "-".join(p for p in role.split("-") if p)[:32]
+        if not role:
+            raise HTTPException(status_code=400, detail="role required")
+        if role in RESERVED_IDS:
+            raise HTTPException(status_code=409, detail=f"reserved id: {role}")
+        if ws.store.get_agent(role):
+            raise HTTPException(status_code=409, detail=f"id already on team: {role}")
+        name = str((body or {}).get("name", "") or "").strip() or role
+        persona = str((body or {}).get("persona", "") or "").strip()
+        if not persona:
+            persona = f"{name} is the team's {role}."
+        role_keyword = str((body or {}).get("role_keyword", "") or "").strip() or role
+
+        def _add():
+            return add_team_member(ws.glimi, role, name, persona, role_keyword)
+
+        ok = await asyncio.get_event_loop().run_in_executor(
+            None, reg.run_in_ws, ws, _add)
+        if not ok:
+            raise HTTPException(status_code=409, detail=f"could not add: {role}")
+        return JSONResponse({
+            "id": role,
+            "name": name,
+            "agent_type": "persona",
+            "avatar_url": f"/w/{ws.id}/api/avatar?id={role}&v={_ASSET_VER}",
+            "channel": f"dm-{role}",
+        })
 
     # ── per-workspace chat avatars (workspace layer; no kernel image field) ──
     @app.get("/w/{ws_id}/api/avatar")
     def w_avatar(ws_id: str, id: str = "") -> Response:
-        """Role-based monogram avatar (inline SVG). The workspace team is
-        functional (Coordinator/Researcher/Builder/Critic) — no persona/anime
-        portraits here. Always 200."""
-        _require(ws_id)
-        return Response(content=_avatar_svg(id), media_type="image/svg+xml",
+        """Role-based emoji avatar (inline SVG). The workspace team is functional
+        (Coordinator/Researcher/Builder/Critic + any manager-proposed role) — no
+        persona/anime portraits. A dynamic role's emoji comes from its stored
+        ``role_keyword`` when its id isn't a known role. Always 200."""
+        ws = _require(ws_id)
+        role_keyword = ""
+        try:
+            role_keyword = (ws.store.get_agent(id) or {}).get("role_keyword") or ""
+        except Exception:
+            role_keyword = ""
+        return Response(content=_avatar_svg(id, role_keyword), media_type="image/svg+xml",
                         headers={"Cache-Control": "no-cache"})
 
     @app.get("/w/{ws_id}/api/snapshot")
@@ -956,6 +1496,23 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         cm["name"] = ws.title
         payload["community_meta"] = cm
         payload["community_id"] = ws.id
+        # Surface the initial build status so the chat UI can show a "team forming…"
+        # banner the instant a workspace is created (cleared when status flips to
+        # "ready" — the create build runs in the background, streaming live).
+        payload["build"] = {
+            "status": ("building" if ws.building else ws.status),
+            "building": ws.building,
+        }
+        # Surface the autonomous-loop state so the chat UI can restore the toggle
+        # on load (writable workspaces only — the demo is read-only).
+        payload["auto"] = {
+            "running": ws.driver_running,
+            "auto_run": bool(ws.auto_run),
+            "rounds_run": int(ws.rounds_run),
+            "reason": ws.driver_reason or None,
+            "max_rounds": int(ws.max_rounds),
+            "writable": (ws.kind != "demo"),
+        }
         return JSONResponse(payload)
 
     @app.get("/w/{ws_id}/api/agent_detail")

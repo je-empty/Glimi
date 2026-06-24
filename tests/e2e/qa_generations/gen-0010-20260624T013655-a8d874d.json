@@ -1,0 +1,91 @@
+{
+  "generation_no": 10,
+  "run_id": "community-e2e-20260624-103644",
+  "generated_at": "2026-06-24T01:36:55.832023+00:00",
+  "git": {
+    "sha": "a8d874d",
+    "dirty": true,
+    "branch": "feat/web-native-onboarding"
+  },
+  "owner_name": "사용자",
+  "goal": "오너가 AI 친구 몇 명과 DM 으로 안부·질문·후속 대화를 나눈다",
+  "backend": "echo",
+  "judged": false,
+  "overall_score": 57.8,
+  "passed": false,
+  "min_overall": 70,
+  "failing": [
+    "friend_creation",
+    "responsiveness"
+  ],
+  "dimensions": [
+    {
+      "key": "onboarding",
+      "label": "온보딩",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "오너가 유나한테 인사 → 유나 응답 4건 (온보딩 정상)",
+      "critical": false
+    },
+    {
+      "key": "friend_creation",
+      "label": "친구 생성",
+      "kind": "structural",
+      "weight": 1.5,
+      "score": 0.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "새 친구가 생성되지 않음 (페르소나 0명 — create_agent_profile 미발동)",
+      "critical": true
+    },
+    {
+      "key": "conversation_quality",
+      "label": "대화 품질",
+      "kind": "judge",
+      "weight": 2.0,
+      "score": null,
+      "passed": null,
+      "skipped": true,
+      "detail": "echo / CLI 미존재 — judge 생략",
+      "critical": false
+    },
+    {
+      "key": "no_hallucination",
+      "label": "환각 없음",
+      "kind": "judge",
+      "weight": 1.5,
+      "score": null,
+      "passed": null,
+      "skipped": true,
+      "detail": "echo / CLI 미존재 — judge 생략",
+      "critical": false
+    },
+    {
+      "key": "no_leaks",
+      "label": "누수 없음",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)",
+      "critical": false
+    },
+    {
+      "key": "responsiveness",
+      "label": "응답성",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 6.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "1/1 DM 응답 · 반복응답 의심",
+      "critical": false
+    }
+  ],
+  "report_md": "",
+  "report_pdf": ""
+}

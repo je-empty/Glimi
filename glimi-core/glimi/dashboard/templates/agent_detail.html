@@ -4,13 +4,18 @@
 {% block head %}
 <!-- 에이전트 상세 페이지는 대시보드 모달 CSS (detail-section, mem-item, msg 등) 를 재사용 -->
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ asset_v }}">
+<!-- 전체 화면 transcript 가 채팅과 동일하게 markdown+테이블(table.md-tbl)을 렌더하도록
+     공유 chat.css 를 추가 로드 (renderMessage 가 GlimiChat.mdToHtml 결과를 .txt.md 로 표시). -->
+<link rel="stylesheet" href="/static/css/chat.css?v=uihotfix">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  /* dashboard.css 에 `html, body { height:100%; overflow:hidden }` 가 있어서
-     상세 페이지 body 스크롤이 막힌다. 여기서만 override.
+  /* dashboard.css 에 `html, body { height:100%; overflow:hidden }`,
+     그리고 추가된 chat.css 에 `body { height:100dvh; overflow:hidden; display:flex }`
+     가 있어 상세 페이지 body 스크롤이 막힌다. 이 인라인 <style> 은 두 stylesheet 보다
+     뒤에 오므로 아래 !important override 가 항상 이긴다 (chat.css 의 flex/dvh 도 무력화).
      + 앵커 점프 시 topbar 아래로 여백 확보 (scroll-padding-top). */
   html, body {
     height: auto !important;
@@ -19,6 +24,9 @@
     scroll-padding-top: 80px;
     scroll-behavior: smooth;
   }
+  /* chat.css 의 `body { display:flex; flex-direction:column }` 가 .agent-page 레이아웃을
+     flex item 으로 바꾸지 않게 일반 문서 흐름으로 되돌린다. */
+  body { display: block !important; }
   /* dashboard.css 의 `main { overflow:hidden; display:flex; ... }` 해제.
      앵커 점프 시 섹션이 topbar 에 가리지 않게 scroll-margin-top 지정. */
   main.page-body,
@@ -141,12 +149,13 @@
   }
 
   @media (max-width: 720px) {
-    /* 2-col grid → single column (사이드바 nav 를 상단 가로 스크롤 칩으로) */
+    /* 2-col grid → single column. side-nav 가 하단 고정 바라
+       마지막 섹션이 바 밑에 가리지 않게 bottom padding 으로 바 높이(≈68px)+안전영역 확보. */
     .agent-page {
       grid-template-columns: 1fr;
       gap: 14px;
       margin: 12px auto;
-      padding: 0 12px 56px;
+      padding: 0 12px calc(84px + env(safe-area-inset-bottom));
     }
 
     /* Page head — wrap 허용. avatar 축소, 이름/서브 truncate, back 버튼 도달 가능 */
@@ -180,15 +189,24 @@
       min-height: 44px; display: inline-flex; align-items: center;
     }
 
-    /* Side nav — 상단 가로 스크롤 칩 줄로 (sticky 해제) */
+    /* Side nav — 모바일에서는 화면 하단에 고정된 가로 스크롤 칩 바 (sticky bottom bar).
+       스크롤해도 항상 보여서 섹션 이동이 한 손 엄지로 가능. */
     aside.side-nav {
-      position: static; max-height: none;
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      z-index: 50;                 /* 본문 위 */
+      max-height: none;
+      border-radius: 0;
       flex-direction: row;
       gap: 6px;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       padding: 8px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom));  /* iOS 홈 인디케이터 */
       scrollbar-width: none;
+      background: var(--panel);
+      border-top: 1px solid var(--border-soft);  /* subtle 상단 구분선 */
+      box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.06);
     }
     aside.side-nav::-webkit-scrollbar { height: 0; }
     aside.side-nav .nav-title { display: none; }
@@ -257,7 +275,8 @@
   }
 
   @media (max-width: 420px) {
-    .agent-page { padding: 0 10px 48px; }
+    /* 좌우 여백만 줄이고 하단은 고정 nav 바 클리어런스 유지. */
+    .agent-page { padding: 0 10px calc(84px + env(safe-area-inset-bottom)); }
     .agent-page header.page-head .avatar-wrap { width: 48px; height: 48px; }
     .agent-page header.page-head .hd-name { font-size: 16px; }
     .agent-page header.page-head .hd-back {
@@ -306,6 +325,10 @@
   window.__GLIMI_BACK__ = {{ back_url|tojson }};             // dashboard URL to return to
   window.__GLIMI_INTERACTIVE__ = {{ interactive|tojson }};  // false → read-only (no model switch)
 </script>
+<!-- 공유 채팅 클라이언트 — window.GlimiChat (mdToHtml/renderText 등) 노출.
+     아래 인라인 스크립트가 GlimiChat.mdToHtml 를 호출하므로 반드시 그 앞에 로드.
+     (이 페이지는 chat 세션을 열지 않음 — GlimiChat 의 markdown 렌더 헬퍼만 사용) -->
+<script src="/static/js/chat.js?v=uihotfix"></script>
 <script>
 (function() {
   const CID = window.__GLIMI_COMMUNITY__;
@@ -468,7 +491,7 @@
           <span class="ch">#${esc(m.channel || '')}</span>
           <span class="ts" title="${esc(m.timestamp || '')}">${esc(_fmtMsgTime(m.timestamp))}</span>
         </div>
-        <div class="text">${esc(m.message)}</div>
+        <div class="text txt md">${(window.GlimiChat && GlimiChat.mdToHtml) ? GlimiChat.mdToHtml(m.message) : esc(m.message)}</div>
       </div>
     </div>`;
   }

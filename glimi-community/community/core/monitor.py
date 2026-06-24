@@ -26,6 +26,19 @@ from community import log_writer
 from community import community
 
 
+def _mgr_dm_channel() -> str:
+    """매니저(mgr/유나) 의 owner↔mgr DM 채널 키 — id 기반 정본 (``dm-agent-mgr-001``).
+
+    표시 이름(유나/서유나/…)은 로케일 종속이라 채널 키에 새기지 않는다(i18n). 정본 키가
+    아직 없고 legacy `dm-<이름>` 채널이 있으면 그걸 채택(resolver 가 처리).
+    (core 레이어라 community.bot import 회피 — discord 의존성 누수 방지.)"""
+    try:
+        from community.core.channels import mgr_channel
+        return mgr_channel()
+    except Exception:
+        return "dm-agent-mgr-001"
+
+
 # ── 프로세스 상태 ──────────────────────────────────────
 
 def _ps_has(pattern: str) -> bool:
@@ -372,12 +385,10 @@ def get_agent_thinking_logs(agent_id: str, n: int = 5) -> list[str]:
 def get_agent_recent_chat(agent_id: str, channel_hint: str = "", limit: int = 3) -> list[dict]:
     """특정 에이전트가 주로 말하는 채널의 최근 메시지."""
     if not channel_hint:
-        # 에이전트 타입으로 기본 채널 추정
+        # 에이전트 기본 채널 — 매니저 포함 전부 dm-<이름>
         try:
             a = db.get_agent(agent_id)
-            if a and a.get("type") == "mgr":
-                channel_hint = "mgr-dashboard"
-            elif a:
+            if a:
                 channel_hint = f"dm-{a['name']}"
         except Exception:
             return []
@@ -458,7 +469,11 @@ def get_channels() -> list[dict]:
 
 # ── 대화 ───────────────────────────────────────────────
 
-def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[dict]:
+def get_recent_messages(
+    limit: int = 30,
+    channel: Optional[str] = None,
+    before_id: Optional[int] = None,
+) -> list[dict]:
     """최근 대화. 시간순 ASC (오래된→최신). speaker는 에이전트/유저 이름으로 해석.
 
     정렬:
@@ -466,6 +481,10 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
       ties 는 id DESC 로 깔끔히 정렬) → 최신 N 건을 확보.
       이후 Python 에서 reverse 해서 ASC(오래된→최신) 로 반환 — 채팅 UI 가 위에서
       아래로 시간순 읽기에 자연스럽고, slice(-N) 이 최신 N 건을 가져오는 JS 관용 사용.
+
+    페이지네이션:
+      ``before_id`` 가 주어지면 그 id 보다 작은 (= 더 오래된) 메시지 N 건을 반환.
+      위로 스크롤해 이전 페이지를 불러올 때 사용 (채팅 UI 가 prepend). 여전히 ASC.
     """
     # reply_to/thread_root 컬럼은 마이그레이션 후에만 존재 — SELECT 에 포함하되
     # 컬럼 부재 (마이그레이션 전 DB) 면 빈 메타로 graceful degrade.
@@ -478,23 +497,24 @@ def get_recent_messages(limit: int = 30, channel: Optional[str] = None) -> list[
     def _select(col_list):
         conn = db.get_conn()
         try:
+            where = []
+            params: list = []
             if channel:
-                rows = conn.execute(
-                    f"SELECT {col_list} FROM conversations c "
-                    "LEFT JOIN agents a ON a.id = c.speaker "
-                    "LEFT JOIN users u ON u.id = c.speaker "
-                    "WHERE c.channel = ? "
-                    "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
-                    (channel, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    f"SELECT {col_list} FROM conversations c "
-                    "LEFT JOIN agents a ON a.id = c.speaker "
-                    "LEFT JOIN users u ON u.id = c.speaker "
-                    "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
+                where.append("c.channel = ?")
+                params.append(channel)
+            if before_id is not None:
+                where.append("c.id < ?")
+                params.append(before_id)
+            where_sql = ("WHERE " + " AND ".join(where) + " ") if where else ""
+            params.append(limit)
+            rows = conn.execute(
+                f"SELECT {col_list} FROM conversations c "
+                "LEFT JOIN agents a ON a.id = c.speaker "
+                "LEFT JOIN users u ON u.id = c.speaker "
+                f"{where_sql}"
+                "ORDER BY c.timestamp DESC, c.id DESC LIMIT ?",
+                tuple(params),
+            ).fetchall()
             return [dict(r) for r in rows]
         finally:
             conn.close()
@@ -823,13 +843,8 @@ def get_agent_detail(agent_id: str) -> dict:
         facts = []
         print(f"[Monitor] memory detail 로드 실패: {e}")
 
-    # 주 채널 이름 (atype 은 위에서 결정됨)
-    if atype == "mgr":
-        primary = "mgr-dashboard"
-    elif atype == "creator":
-        primary = "mgr-creator"
-    else:
-        primary = f"dm-{agent.get('name', '')}"
+    # 주 채널 이름 — 매니저 포함 전부 dm-<이름>
+    primary = f"dm-{agent.get('name', '')}"
 
     # 추론 로그 (agent_id 태그 필터)
     sys_lines = get_recent_system_logs(tail_lines=300)
@@ -922,8 +937,7 @@ def _get_supervisor_detail(sup_name: str) -> dict:
             a = db.get_agent(aid)
             if not a:
                 continue
-            atype = a.get("type", "persona")
-            ch = "mgr-dashboard" if atype == "mgr" else ("mgr-creator" if atype == "creator" else f"dm-{a['name']}")
+            ch = f"dm-{a['name']}"  # 매니저 포함 전부 dm-<이름>
             msgs = get_recent_messages(limit=5, channel=ch)
             primary_chat.extend(msgs)
         except Exception:
@@ -1038,7 +1052,7 @@ def _get_test_user_detail() -> dict:
         "relationships": [],
         "memories_by_channel": {},
         "thinking_logs": thinking_logs,
-        "primary_channel": "mgr-dashboard",
+        "primary_channel": _mgr_dm_channel(),
         "primary_chat": primary_chat,
         "model": "claude-haiku-4-5",
         "provider": "claude",
@@ -1462,11 +1476,12 @@ def get_scenes() -> list[dict]:
         complete_flag = log_dir / ".tutorial-complete"
         if complete_flag.exists():
             completed_at = datetime.fromtimestamp(complete_flag.stat().st_mtime).isoformat()
-        # 시작 시간: 유나의 첫 mgr-dashboard 메시지 timestamp
+        # 시작 시간: 유나의 첫 mgr DM 메시지 timestamp
         try:
             conn = db.get_conn()
             row = conn.execute(
-                "SELECT MIN(timestamp) as ts FROM conversations WHERE channel='mgr-dashboard'"
+                "SELECT MIN(timestamp) as ts FROM conversations WHERE channel=?",
+                (_mgr_dm_channel(),),
             ).fetchone()
             conn.close()
             if row and row["ts"]:

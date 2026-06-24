@@ -365,8 +365,10 @@
     } else if (phase === 'booting') {
       emoji.textContent = '🧸';
       title.textContent = '유나를 부르는 중...';
-      sub.innerHTML = '머리 빗고 옷 매무새 다듬는 중... 첫인상이 중요하니까.<br><span style="color:#f59e0b;font-size:13px;display:inline-block;margin-top:6px">⚠ 디스코드 미리 보면 안 돼 — 아직 준비 덜 된 모습이야 🙈</span>';
+      sub.innerHTML = '머리 빗고 옷 매무새 다듬는 중... 첫인상이 중요하니까.';
       _pollTutorialLog();
+      // 기다리는 동안 사용법 둘러보기 제안 (coachmark tour) — i18n 은 dashboard.js GlimiTour 가 담당.
+      if (window.GlimiTour && CID && CID !== 'demo') { try { window.GlimiTour.offer(); } catch (e) {} }
     } else if (phase === 'ready') {
       emoji.textContent = '✓';
       title.textContent = '준비 완료';
@@ -498,6 +500,11 @@
           const sub = document.getElementById('go-sub');
           title.textContent = '✓ 준비 완료';
           sub.textContent = '유나 소환 끝! 대시보드 사용 가능.';
+          // 유나가 인사를 보냄 → 토스트 + 유나 DM 으로 점프 제안 (coachmark module).
+          if (window.GlimiTour) {
+            const mgr = agents.find(a => a.type === 'mgr');
+            try { window.GlimiTour.greeted(mgr ? mgr.id : null); } catch (e) {}
+          }
           setTimeout(_hideOverlay, 1200);
           return;
         }

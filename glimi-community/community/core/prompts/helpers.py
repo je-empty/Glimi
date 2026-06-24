@@ -43,8 +43,8 @@ def tools_reference(agent_type: str) -> str:
 
 def formatting_guide(agent_type: str = "persona") -> str:
     """포맷 가이드 — 에이전트 프롬프트에 주입.
-    agent_type 별 예시 분기: persona 에겐 dm/group 만, staff(mgr/creator) 에겐 mgr-* 포함.
-    이전엔 persona 에게도 `#mgr-dashboard` 예시가 주입돼 메타 누출 회귀 발생.
+    agent_type 별 예시 분기: persona 에겐 자기 dm/group 만, staff(mgr/creator) 에겐 매니저 DM 포함.
+    이전엔 persona 에게도 매니저 채널 예시가 주입돼 메타 누출 회귀 발생.
 
     Platform decoupling: 이전엔 `community.bot.formatting` 에서 import 하는 소프트 누수였으나
     `community.core.formatting` 으로 이동됨 (Phase 2-C)."""

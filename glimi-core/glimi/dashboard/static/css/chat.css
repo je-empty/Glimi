@@ -369,14 +369,20 @@ body {
 .daydiv .ln { flex: 1; height: 1px; background: var(--border-soft); }
 .daydiv .lb { font-size: var(--fs-xs); font-weight: 600; color: var(--text-faint); letter-spacing: 0.3px; }
 
-.msg {
+/* Chat-feed rows are SCOPED to .chat-shell so the entrance-animation defaults
+   (opacity:0 + grid layout) never leak onto the dashboard's GLOBAL `.msg` ledger
+   (Messages / Overview / Sync / agent-detail lists), which would otherwise render
+   those rows invisible / mis-laid-out — chat.css loads after dashboard.css, so a
+   bare `.msg{opacity:0}` wins on the dashboard. The child/modifier rules below
+   stay unscoped (they only match chat-specific children that the ledger lacks). */
+.chat-shell .msg {
   position: relative;
   display: grid; grid-template-columns: 40px 1fr;
   gap: var(--sp-4);
   padding: 2px var(--sp-5);
   opacity: 0; transform: translateY(5px);
 }
-.msg.in { opacity: 1; transform: none; transition: opacity .24s var(--chat-ease), transform .24s var(--chat-ease); }
+.chat-shell .msg.in { opacity: 1; transform: none; transition: opacity .24s var(--chat-ease), transform .24s var(--chat-ease); }
 .msg.lead { margin-top: var(--sp-5); }
 .msg.cont { padding-top: 1px; padding-bottom: 1px; }
 /* The dashboard 'Messages' ledger styles a global `.msg` with a per-row
@@ -398,6 +404,11 @@ body {
   flex: 0 0 auto;
 }
 .msg .av img { width: 100%; height: 100%; object-fit: cover; }
+/* Message-row avatar with a portrait is clickable → opens the full-body
+   lightbox. The affordance (zoom-in cursor) marks it apart from the inert
+   monogram avatar (owner / no portrait). */
+.msg .av[data-profile-id] { cursor: zoom-in; }
+.msg .av[data-profile-id]:hover img { filter: brightness(1.04); }
 .msg.cont .hovertime {
   position: absolute; left: 0; top: 50%;
   transform: translateY(-50%);
@@ -445,14 +456,72 @@ body {
   border-radius: var(--r-sm);
   padding: 0 4px;
   font-weight: 500;
+  cursor: pointer;
 }
+.msg .txt .ch:hover { text-decoration: underline; }
 .msg .txt em { color: var(--text-faint); font-style: normal; }
+
+/* ── rendered GFM-lite markdown (scoped to .txt.md so plain .txt keeps its
+   pre-wrap, single-blob behaviour). white-space:normal lets the block layout
+   (paragraphs / lists / headings) own the spacing instead of literal newlines.
+   Tokens only — no hardcoded colours. ── */
+.msg .txt.md { white-space: normal; }
+.msg .txt.md > :first-child { margin-top: 0; }
+.msg .txt.md > :last-child { margin-bottom: 0; }
+.msg .txt.md p { margin: 0 0 var(--sp-2); }
+.msg .txt.md p:last-child { margin-bottom: 0; }
+.msg .txt.md strong { color: var(--text); font-weight: 600; }
+/* markdown emphasis is REAL italic (distinct from the legacy <em> dim marker) */
+.msg .txt.md em.md-em { color: inherit; font-style: italic; }
+.msg .txt.md a.md-link { color: var(--chat-accent-deep); text-decoration: underline; word-break: break-all; }
+.msg .txt.md a.md-link:hover { text-decoration: none; }
+.msg .txt.md .md-h {
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1.3;
+  margin: var(--sp-3) 0 var(--sp-2);
+}
+.msg .txt.md .md-h1 { font-size: var(--fs-lg); }
+.msg .txt.md .md-h2 { font-size: var(--fs-base); }
+.msg .txt.md .md-h3 { font-size: var(--fs-sm); letter-spacing: 0.2px; text-transform: none; }
+.msg .txt.md .md-list { margin: 0 0 var(--sp-2); padding-left: var(--sp-5); }
+.msg .txt.md .md-list:last-child { margin-bottom: 0; }
+.msg .txt.md .md-list li { margin: 2px 0; }
+.msg .txt.md ul.md-list { list-style: disc; }
+.msg .txt.md ol.md-list { list-style: decimal; }
+.msg .txt.md code.md-code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--panel-3);
+  border-radius: var(--r-sm);
+  padding: 1px 5px;
+  word-break: break-word;
+}
+.msg .txt.md pre.md-pre {
+  margin: 0 0 var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+}
+.msg .txt.md pre.md-pre:last-child { margin-bottom: 0; }
+.msg .txt.md pre.md-pre code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: none;
+  padding: 0;
+  white-space: pre;
+}
 .msg .chat-img {
   max-width: 100%;
   margin-top: var(--sp-2);
   border-radius: var(--r-md);
   border: 1px solid var(--border);
   display: block;
+  cursor: zoom-in;
 }
 
 /* system / error rows render as a centered note in the gutter span column */
@@ -560,6 +629,16 @@ body {
 .acts-pop b:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: -2px; }
 .acts-pop b.fav:hover { color: var(--chat-accent); }
 .acts-pop .sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+
+/* Touch devices synthesize :hover on tap/scroll, so the hover action-pop flashes
+   up while you're just scrolling messages — jarring on mobile. On coarse
+   pointers, suppress the hover-reveal (keeps the no-flash-on-scroll win) and
+   instead reveal the pop on an explicit TAP of the message: a tap toggles the
+   .acts-open class (chat.js) which shows the react/reply/thread buttons. */
+@media (hover: none) {
+  .msg:hover .acts-pop { opacity: 0; transform: translateY(3px); pointer-events: none; }
+  .msg.acts-open .acts-pop { opacity: 1; transform: none; pointer-events: auto; }
+}
 
 /* ── in-stream typing (reply landing spot) ── */
 .typing {
@@ -686,16 +765,7 @@ body {
 .reply-cue .x:hover { background: var(--panel-3); color: var(--text); }
 .reply-cue .x:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: -2px; }
 
-.ctop { display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); }
-.ctop .plus {
-  width: 34px; height: 34px;
-  border-radius: var(--r-md);
-  flex: 0 0 auto;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-faint);
-  font-size: var(--fs-xl);
-  background: var(--panel-2);
-}
+.ctop { display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
 .ctop .ta {
   flex: 1 1 auto; min-width: 0;
   min-height: 34px; max-height: 160px;
@@ -723,11 +793,12 @@ body {
   font-size: var(--fs-lg);
   cursor: pointer;
   border: none;
-  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease), transform .1s var(--chat-ease);
+  /* §1.1: 색·면 전환만 (transform 제거) */
+  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease);
 }
 .cbox.has .send { background: var(--chat-accent); color: var(--chat-accent-ink); }
 .cbox.has .send:hover { background: var(--chat-accent-deep); }
-.send:active { transform: scale(.92); }
+.cbox.has .send:active { background: var(--chat-accent); }
 .send:disabled { cursor: default; }
 .send:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 2px; }
 
@@ -877,7 +948,70 @@ body {
   .react .e { font-size: 16px; }
   .acts-pop b { width: 40px; height: 40px; }
   .thread-open { min-height: 36px; }
+  /* 채팅 헤더 아이콘 버튼 + 전송 버튼 — 44px 탭 타깃 (--tap-min) */
+  .head .ib { width: 44px; height: 44px; font-size: var(--fs-xl); }
+  .send { width: 44px; height: 44px; }
 }
+
+/* ============================================================
+   Lightbox — full-body profile portrait + inline image viewer.
+   je-empty paradigm: dimmed backdrop + a "paper" panel + hairline border,
+   NO drop-shadow. Token-driven so it auto-themes light/dark. Ships in
+   _chat_shell.html so it works standalone (no dashboard.js dependency).
+   ============================================================ */
+.chat-lightbox {
+  display: none; position: fixed; inset: 0; z-index: 2147483640;
+  align-items: center; justify-content: center;
+  padding: 3vh 3vw;
+  background: rgba(8, 10, 14, 0.74);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  animation: chatLbIn var(--dur) ease;
+}
+.chat-lightbox.open { display: flex; }
+.chat-lightbox .lb-panel {
+  display: flex; flex-direction: column;
+  width: min(96vw, 1100px); max-height: 94vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.chat-lightbox .lb-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.chat-lightbox .lb-title {
+  flex: 1; min-width: 0;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-lightbox .lb-close {
+  flex: 0 0 auto;
+  width: 34px; height: 34px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: var(--text-faint);
+  cursor: pointer; font-size: 18px;
+  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease);
+}
+.chat-lightbox .lb-close:hover { background: var(--panel-3); color: var(--text); }
+.chat-lightbox .lb-stage {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 14px;
+  background: var(--panel-2);
+}
+.chat-lightbox .lb-stage img {
+  max-width: 100%; max-height: calc(94vh - 70px);
+  width: auto; height: auto;
+  object-fit: contain;
+  border-radius: var(--r-md);
+  display: block;
+}
+@keyframes chatLbIn { from { opacity: 0; } to { opacity: 1; } }
+/* While open, lock body scroll (chat.js toggles .lb-open on <html>). */
+html.lb-open, html.lb-open body { overflow: hidden; }
 
 /* The on-screen keyboard pushes the composer up: chat.js sets --kb-inset from
    visualViewport so the composer + feed stay above the keyboard. 0 on desktop. */
@@ -893,7 +1027,137 @@ body {
   .bubble-dots i, .typefoot .dots span { animation: none; }
   .row .tick { transition: none; }
   .thread-panel, .side, .chat-scrim { transition: none; }
+  .chat-lightbox { animation: none; }
 }
 
 :focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 2px; }
 .ctop .ta:focus-visible { outline: none; }
+
+/* ============================================================
+   auto-run (workspace autonomous owner-driver) — toggle + status pill + brief
+   modal. Workspace-only: the toggle button ships hidden and chat.js reveals it
+   only when WS_BASE is truthy AND the surface isn't read-only. Tokens only.
+   ============================================================ */
+/* The toggle reuses .head .ib (hover/focus/.on already defined). While running
+   the .on state (amber) signals the live loop; the icon flips play↔stop in JS. */
+.head .ib.ws-only[hidden] { display: none; }
+
+/* Status pill — shown in the header while the loop runs (round count) or briefly
+   on a terminal phase. amber accent track, compact. */
+.chat-autorun-pill {
+  display: none;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: var(--sp-2);
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--chat-accent-deep);
+  background: var(--chat-accent-soft);
+  border: 1px solid var(--chat-accent-line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.chat-autorun-pill.show { display: inline-flex; }
+.chat-autorun-pill[hidden] { display: none; }
+
+/* Brief modal — same backdrop discipline as the chat lightbox. */
+.ws-brief-modal {
+  display: none; position: fixed; inset: 0; z-index: 2147483641;
+  align-items: center; justify-content: center;
+  padding: 4vh 4vw;
+  background: rgba(8, 10, 14, 0.74);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.ws-brief-modal:not([hidden]) { display: flex; }
+.ws-brief-modal .wbm-panel {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg, var(--r-md));
+  box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translateY(8px) scale(.98);
+  transition: opacity var(--dur) var(--chat-ease), transform var(--dur) var(--chat-ease);
+}
+.ws-brief-modal.open .wbm-panel { opacity: 1; transform: none; }
+.ws-brief-modal .wbm-head {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ws-brief-modal .wbm-title {
+  font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.3px;
+  color: var(--text); flex: 1 1 auto;
+}
+.ws-brief-modal .wbm-close {
+  width: 30px; height: 30px; flex: 0 0 auto;
+  border: none; background: transparent; cursor: pointer;
+  border-radius: var(--r-sm);
+  color: var(--text-dim); font-size: var(--fs-lg);
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease);
+}
+.ws-brief-modal .wbm-close:hover { background: var(--panel-2); color: var(--text); }
+.ws-brief-modal .wbm-body {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+.ws-brief-modal .wbm-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.ws-brief-modal .wbm-field-row {
+  flex-direction: row; align-items: center; justify-content: space-between;
+}
+.ws-brief-modal .wbm-lbl {
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.2px;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.ws-brief-modal .wbm-input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit; font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur) var(--chat-ease), background var(--dur) var(--chat-ease);
+}
+.ws-brief-modal .wbm-input:focus {
+  outline: none;
+  border-color: var(--chat-accent-line);
+  background: var(--panel);
+}
+.ws-brief-modal .wbm-input::placeholder { color: var(--text-faint); }
+.ws-brief-modal .wbm-input[readonly] {
+  color: var(--text-dim);
+  background: var(--panel-2);
+  cursor: default;
+}
+.ws-brief-modal .wbm-area { resize: vertical; min-height: 56px; line-height: 1.5; }
+.ws-brief-modal .wbm-num { width: 5.5em; text-align: center; }
+.ws-brief-modal .wbm-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+.ws-brief-modal .wbm-btn {
+  padding: var(--sp-2) var(--sp-4);
+  font: inherit; font-size: var(--fs-sm); font-weight: 600;
+  border-radius: var(--r-md); cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text);
+  transition: background var(--dur) var(--chat-ease), color var(--dur) var(--chat-ease),
+              border-color var(--dur) var(--chat-ease);
+}
+.ws-brief-modal .wbm-btn:hover { background: var(--panel-3); }
+.ws-brief-modal .wbm-go {
+  border-color: transparent;
+  background: var(--chat-accent); color: var(--chat-accent-ink);
+}
+.ws-brief-modal .wbm-go:hover { background: var(--chat-accent-deep); }
+.ws-brief-modal .wbm-go:disabled { opacity: .6; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .ws-brief-modal .wbm-panel { transition: none; }
+}

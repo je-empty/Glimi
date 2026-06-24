@@ -821,19 +821,11 @@ class DashboardScreen(Screen):
         # DB 채널 + 시스템 채널 + 스캔 데이터 병합
         ch_data = {ch["channel"]: ch for ch in _cache.channels}
 
-        # 시스템 채널 (대화 없어도 표시)
+        # owner↔에이전트 DM 채널 (대화 없어도 표시) — 매니저 포함 전부 dm-<이름>
         for a in _cache.all_agents.values():
-            if a["type"] == "mgr":
-                for sys_ch in ["mgr-dashboard", "mgr-system-log"]:
-                    if sys_ch not in ch_data:
-                        ch_data[sys_ch] = {"channel": sys_ch, "msg_count": 0, "last_active": None}
-            elif a["type"] == "creator":
-                if "mgr-creator" not in ch_data:
-                    ch_data["mgr-creator"] = {"channel": "mgr-creator", "msg_count": 0, "last_active": None}
-            else:
-                dm_ch = f"dm-{a['name']}"
-                if dm_ch not in ch_data:
-                    ch_data[dm_ch] = {"channel": dm_ch, "msg_count": 0, "last_active": None}
+            dm_ch = f"dm-{a['name']}"
+            if dm_ch not in ch_data:
+                ch_data[dm_ch] = {"channel": dm_ch, "msg_count": 0, "last_active": None}
 
         # 관계 기반 internal 채널 (대화 있는 것만 표시)
         conn = db.get_conn()
@@ -945,7 +937,7 @@ class DashboardScreen(Screen):
         type_map = {"mgr": "Mgr", "creator": "Cre", "persona": "Per"}
         type_str = type_map.get(agent.get("type", ""), "")
         agent_type = agent.get("type", "persona")
-        ch_name = "mgr-dashboard" if agent_type == "mgr" else f"dm-{agent['name']}"
+        ch_name = f"dm-{agent['name']}"  # 매니저 포함 전부 dm-<이름>
 
         if (thinking or speaking) and expanded:
             # ── 확장 카드 (추론/전송 중, 상단 배치) ──
@@ -1384,11 +1376,8 @@ class DashboardScreen(Screen):
         agent_type = agent.get("type", "persona")
         agent_name = agent["name"]
 
-        # 주 채널
-        if agent_type == "mgr":
-            primary_ch = "mgr-dashboard"
-        else:
-            primary_ch = f"dm-{agent_name}"
+        # 주 채널 — 매니저 포함 전부 dm-<이름>
+        primary_ch = f"dm-{agent_name}"
 
         # 관련 채널 찾기 (이 에이전트가 참여한 채널들)
         related_channels = []

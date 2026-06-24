@@ -1,0 +1,90 @@
+{
+  "generation_no": 3,
+  "run_id": "community-e2e-20260623-200646",
+  "generated_at": "2026-06-23T11:16:38.760905+00:00",
+  "git": {
+    "sha": "f1eb58a",
+    "dirty": true,
+    "branch": "develop"
+  },
+  "owner_name": "사용자",
+  "goal": "오너가 AI 친구 몇 명과 DM 으로 안부·질문·후속 대화를 나눈다",
+  "backend": "claude_cli",
+  "judged": true,
+  "overall_score": 72.5,
+  "passed": false,
+  "min_overall": 70,
+  "failing": [
+    "friend_creation"
+  ],
+  "dimensions": [
+    {
+      "key": "onboarding",
+      "label": "온보딩",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "오너가 유나한테 인사 → 유나 응답 21건 (온보딩 정상)",
+      "critical": false
+    },
+    {
+      "key": "friend_creation",
+      "label": "친구 생성",
+      "kind": "structural",
+      "weight": 1.5,
+      "score": 0.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "새 친구가 생성되지 않음 (유나·하나 DM 뿐 — create_agent_profile 미발동)",
+      "critical": true
+    },
+    {
+      "key": "conversation_quality",
+      "label": "대화 품질",
+      "kind": "judge",
+      "weight": 2.0,
+      "score": 8.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "5축 [in_character 8.5 · coherence 7.5 · naturalness 8.0 · engagement 8.5 · no_meta 8.0] — 유나의 성격이 선명하고 따뜻하며 일관되게 유지되고, 오너의 답변에 구체적으로 반응해 자연스러운 친구 톤이 난다. 다만 마지막에 오너가 유나의 질문(말투 확인)을 무시하고 정보를 반복하면서 대화 흐름에 약간의 어색함이",
+      "critical": false
+    },
+    {
+      "key": "no_hallucination",
+      "label": "환각 없음",
+      "kind": "judge",
+      "weight": 1.5,
+      "score": 8.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "환각/허위 없음. 유나는 오너가 제시한 정보(이름·MBTI·직업·취미)를 정확히 수신하고 일관되게 반응함. 자기 설정(매니저·카페 선호) 모순 없음. 다만 오너가 마지막 메시지에서 MBTI를 중복 소개했으나 이는 오",
+      "critical": false
+    },
+    {
+      "key": "no_leaks",
+      "label": "누수 없음",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)",
+      "critical": false
+    },
+    {
+      "key": "responsiveness",
+      "label": "응답성",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "1/1 DM 응답",
+      "critical": false
+    }
+  ],
+  "report_md": "/Users/jbsim/Documents/GitHub/Glimi/tests/e2e/results/community-report-20260623-111503.md",
+  "report_pdf": ""
+}

@@ -67,10 +67,12 @@
 <div class="app">
   <header class="status">
     <span class="brand">
-      {% if community_chrome or brand_logo %}
-      <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo"{% if community_chrome %} onclick="openImgLightbox('/logo', 'Glimi')" style="cursor:zoom-in" title="로고 크게 보기"{% endif %}>
-      {% endif %}
-      <a href="/" class="brand-name" style="color:inherit;text-decoration:none" title="Home">{{ 'Glimi' if community_chrome else (community_name or 'Glimi') }}</a>
+      <a class="brand-home" href="/" title="Home" aria-label="Home">
+        {% if community_chrome or brand_logo %}
+        <img src="/logo?v={{ asset_v }}" alt="Glimi" class="brand-logo">
+        {% endif %}
+        <span class="brand-name">{{ app_name or community_name or 'Glimi' }}</span>
+      </a>
     </span>
 
     {% if community_chrome %}
@@ -93,10 +95,16 @@
        title="모든 커뮤니티 dev requests 통합 관리 (admin)">
       <i class="ti ti-tool" aria-hidden="true"></i>Dev Requests
     </a>
+    <a id="admin-qa-link" class="gp-devlink" href="/admin/qa" target="_self"
+       title="EDD QA — 세대별 품질 트렌드 (admin)">
+      <i class="ti ti-chart-line" aria-hidden="true"></i>QA
+    </a>
     {% endif %}
-    <a id="dev-pending-badge" href="/admin/dev-requests" target="_self"
+    {# Pending dev-requests notifier — §5.1 quiet pill (.pill.off = err text + dot,
+       no filled surface). JS un-hides it (display:'') when the count > 0. #}
+    <a id="dev-pending-badge" class="pill off" href="/admin/dev-requests" target="_self"
        title="이 커뮤니티의 미처리 dev requests"
-       style="display:none;margin-right:8px;padding:3px 9px;border-radius:999px;font-size:11px;color:white;text-decoration:none;font-weight:700;background:var(--err);">
+       style="display:none;text-decoration:none">
       <span id="dev-pending-count">0</span>
     </a>
 
@@ -121,14 +129,16 @@
     <button data-tab="chat" class="{% if (active_tab or 'chat') == 'chat' %}active{% endif %}"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">Chat</span></button>
     <button data-tab="overview" class="{% if active_tab == 'overview' %}active{% endif %}"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
     <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">Agents</span> <span class="count" id="tc-agents">0</span></button>
-    <button data-tab="channels"><i class="ti ti-message-circle tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>
-    <button data-tab="messages"><i class="ti ti-mail tab-emoji" aria-hidden="true"></i><span class="tab-label">Messages</span> <span class="count" id="tc-messages">0</span></button>
+    <button data-tab="channels"><i class="ti ti-hash tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>
     <button data-tab="scenes"><i class="ti ti-movie tab-emoji" aria-hidden="true"></i><span class="tab-label">Scenes</span> <span class="count" id="tc-scenes">0</span></button>
     <button data-tab="achievements"><i class="ti ti-trophy tab-emoji" aria-hidden="true"></i><span class="tab-label">Achievements</span> <span class="count" id="tc-achievements">—</span></button>
     <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">Events</span> <span class="count" id="tc-events">0</span></button>
     <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i><span class="tab-label">Supervisors</span> <span class="count" id="tc-supervisors">0</span></button>
     <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i><span class="tab-label">Health</span></button>
-    <button data-tab="sync"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">Sync</span></button>
+    {# Sync tab (Discord↔DB) — hidden by default for every app. applyCaps()/capOn('sync')
+       keeps it gated off; rendered with display:none so it never flashes pre-JS, and
+       only un-hidden when an app opts in via data-caps {"sync":true}. #}
+    <button data-tab="sync" style="display:none"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">Sync</span></button>
     <button data-tab="usage"><i class="ti ti-chart-bar tab-emoji" aria-hidden="true"></i><span class="tab-label">Usage</span></button>
     <button data-tab="tools"><i class="ti ti-tool tab-emoji" aria-hidden="true"></i><span class="tab-label">Tools</span></button>
     <button data-tab="logs"><i class="ti ti-file-text tab-emoji" aria-hidden="true"></i><span class="tab-label">Logs</span></button>
@@ -149,7 +159,7 @@
       <div class="hero" id="hero"></div>
       <div class="overview-grid">
         <div class="kpi"><div class="label">Server Status</div><div class="value" id="kpi-server">—</div></div>
-        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">Discord Bot</div><div class="value" id="kpi-bot">—</div></div>
+        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label" data-i18n="kpi_bot">Runtime</div><div class="value" id="kpi-bot">—</div></div>
         <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
         <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">Active Scene</div><div class="value" id="kpi-scene">—</div></div>
         <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
@@ -165,7 +175,6 @@
 
     <div class="view" id="view-agents"><div class="agent-grid" id="agents-full"></div></div>
     <div class="view" id="view-channels"><div id="channels-full"></div></div>
-    <div class="view" id="view-messages"><div class="msg-list" id="messages-full"></div></div>
     <div class="view" id="view-scenes"><div id="scenes-full"></div></div>
     <div class="view" id="view-achievements">
       <div class="ach-header">
@@ -178,7 +187,10 @@
       </div>
       <div class="ach-grid" id="ach-grid"></div>
     </div>
-    <div class="view" id="view-events"><div class="event-list" id="events-full"></div></div>
+    <div class="view" id="view-events">
+      <div class="events-intro" id="events-intro">{% if language == 'en' %}A log of moments in the community — relationship shifts, conflicts, reconciliations.{% else %}커뮤니티에서 일어난 순간들 — 관계 변화, 갈등, 화해의 기록이에요.{% endif %}</div>
+      <div class="event-list" id="events-full"></div>
+    </div>
     <div class="view" id="view-health"><div class="health-grid" id="health-full"></div></div>
     <div class="view" id="view-sync"><div id="sync-full"></div></div>
     <div class="view" id="view-usage"><div id="usage-full"></div></div>

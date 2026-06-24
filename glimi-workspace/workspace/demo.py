@@ -41,27 +41,113 @@ except ImportError:  # imported as workspace.demo
     from .team import LABELS, SPECIALISTS, TEAM
 
 # ── the demo's fixed setup ───────────────────────────────────────────────────
-OWNER_NAME = "수민"
+OWNER_NAME = "오너"
 OWNER_ID = "owner"
 GOAL = "오픈소스 프로젝트 공개 런칭 기획"
 
 # Channels (mirror team.py's topology so the seeded demo and a real run look alike).
 DM_COORDINATOR = "dm-coordinator"
-DM = {"researcher": "dm-researcher", "builder": "dm-builder", "critic": "dm-critic"}
+# Coordinator↔specialist delegation is BEHIND THE SCENES (internal-coordinator-<id>):
+# the owner watches but doesn't participate. ``dm-<id>`` is reserved OWNER↔specialist.
+DM = {
+    "researcher": "internal-coordinator-researcher",
+    "builder": "internal-coordinator-builder",
+    "critic": "internal-coordinator-critic",
+}
 A2A_RC = "internal-researcher-critic"
 A2A_BR = "internal-builder-researcher"
 GROUP = "group-team"
 APPROVALS = "mgr-approvals"  # mgr-* system log convention (never a chat channel)
+# The read-only channel where the autonomous owner logs its per-round reasoning
+# (the "owner thinking out loud" the web shows). The demo seeds + unfolds believable
+# owner-review lines here so a visitor watches the FULL goal→work→review→next loop —
+# scripted + echo + store-only → $0, exactly how the demo already fakes liveness.
+OWNER_REVIEW = "internal-owner"
+
+# ── the final deliverable (the work PRODUCT — a structured markdown brief) ────
+# This is the centerpiece: the thing that proves a coordinated team produced REAL
+# work, not chat. A live run writes the deliverable through the kernel LLM
+# choke-point with a raised max_tokens + the document skeleton (run._DELIVERABLE_
+# TEMPLATE), so it comes back as a multi-section brief. The seeded demo must MATCH
+# that — a hand-authored brief on the SAME skeleton (## 한눈에 보기 / 결정 / 실행
+# 계획 / 리스크 / 다음 한 걸음), grounded in the exact specifics the seeded team
+# discussed (60초 데모, 화요일 9시 PT Show HN, 깨끗한 환경 퀵스타트 게이트, ~6시간
+# 지원 부하, 다섯 단계 체크리스트). The chat renderer (chat.js mdBlocks) turns the
+# `## ` / `- ` / `1.` into real headings + lists, so a visitor opening
+# dm-coordinator sees a genuine work document, not another chat bubble.
+DELIVERABLE_ROUND1 = (
+    "## 한눈에 보기\n"
+    "과장 없이 **신뢰를 주는 집중 런칭**으로 갑니다. 가장 시끄러운 멀티채널 푸시가 아니라, "
+    "**검증된 60초 데모 + 잔인할 만큼 명확한 '이게 무엇이고 무엇이 아닌지' README**를 앞세운 "
+    "단일 Show HN — 전환에 성공한 사례 네 건 중 셋이 실제로 이렇게 움직였어요. 출시는 "
+    "**화요일 오전 9시(PT)**.\n\n"
+    "## 결정 / 방향\n"
+    "- **단일 Show HN + 타이밍 맞춘 스레드 하나** — 산만한 멀티채널 푸시는 버립니다 "
+    "(리서처: 4건 중 3건에서 단일 채널이 멀티채널을 이김).\n"
+    "- **데모가 시선을 끌고, 퀵스타트가 그 시선을 붙잡는다** — 리서처↔크리틱이 토론 끝에 "
+    "합의한 핵심. 데모만으로는 '거의 동작한다'에서 무너져요.\n"
+    "- **탈락시킨 대안**: 대대적 사전 홍보·인플루언서 푸시 — 정직한 런칭 기조와 충돌하고, "
+    "데이터상 전환을 만들지도 못함.\n\n"
+    "## 실행 계획\n"
+    "1. **범위 확정 + 정직한 README 작성** — 빌더 (D-3). '무엇이 아닌지'를 상단에 명시.\n"
+    "2. **60초 데모 녹화** — 빌더 (D-2). 90초 넘으면 이탈하므로 60초 고정, 군말 없이 "
+    "동작하는 출력으로 끝냄 (리서처 데이터).\n"
+    "3. **깨끗한 환경 퀵스타트 검증 + 상단 고정 '알려진 이슈' 안내** — 크리틱 (D-2). "
+    "*이게 런칭 게이트입니다* (아래 리스크 참조).\n"
+    "4. **Show HN 글 + 첫 댓글 FAQ 준비** — 빌더+리서처 (D-1).\n"
+    "5. **화요일 오전 9시(PT) 출시 + 종일 지원 인원 다섯** — 백업 인원 지정 (리서처: "
+    "지원 부하는 한나절이 아니라 약 6시간 치솟음).\n\n"
+    "## 가장 큰 리스크와 완화책\n"
+    "- **데모와 맨바닥 설치 사이의 간극** *(크리틱, 최상위 리스크)* — 누가 클론 받고 첫 "
+    "5분 안에 벽에 부딪히면 그 스레드가 등을 돌립니다. 실제 한 사례는 '설치가 깨졌다'는 "
+    "최상단 댓글로 끝내 회복 못 했어요.\n"
+    "  - **완화책**: 깨끗한 환경에서 직접 검증한 '60초면 동작한다' 퀵스타트 + 상단 고정 "
+    "알려진 이슈. **퀵스타트가 깨끗한 환경 테스트를 통과하기 전엔 런칭하지 않습니다.**\n"
+    "- **런칭 당일 지원 부담** — 약 6시간 부하 집중. **완화책**: 종일 지원 다섯 명 + 백업 "
+    "인원 지정.\n\n"
+    "## 다음 한 걸음\n"
+    "크리틱에게 **깨끗한 환경 퀵스타트 검증**을 가장 먼저 돌리게 하세요 — 그게 통과해야 "
+    "나머지 일정이 의미가 있습니다. 통과 신호가 오면 화요일 진행을 확정합니다."
+)
+
+# Round-2 deliverable — the scheduled execution plan the owner asks for after the
+# quickstart gate passes (the live unfold's payoff: a SECOND real document, with
+# dates + owners locked in, so the demo ends on "ready to ship", not mid-air).
+DELIVERABLE_ROUND2 = (
+    "## 한눈에 보기\n"
+    "퀵스타트가 깨끗한 환경에서 통과했고(설치→첫 출력 48초), 데모는 58초로 확정됐어요. "
+    "이제 **날짜·담당까지 박은 실행 계획**으로 마무리합니다 — 화요일 오전 9시(PT) 진행 "
+    "**확정**.\n\n"
+    "## 일정 (화요일 = D-Day)\n"
+    "| 시점 | 할 일 | 담당 |\n"
+    "|---|---|---|\n"
+    "| D-2 (일) | 60초 데모 녹화 + 깨끗한 환경 퀵스타트 검증 | 빌더 · 크리틱 |\n"
+    "| D-1 (월) | README 최종 + Show HN 글/첫 댓글 FAQ + 알려진 이슈 고정 | 빌더 · 리서처 |\n"
+    "| **D-Day 09:00 PT** | **Show HN 게시 + 타이밍 스레드** | 매니저 |\n"
+    "| D-Day 09:00–15:00 | 지원 집중 창(부하 피크 ~6h) | 다섯 + 백업 |\n"
+    "| D-Day 15:00~ | 회고 메모 + 알려진 이슈 갱신 | 크리틱 |\n\n"
+    "## 담당 / 책임\n"
+    "- **매니저** — 출시 버튼, 스레드, 오너 보고.\n"
+    "- **빌더** — README·데모·체크리스트 산출물.\n"
+    "- **리서처** — Show HN 카피, FAQ, 지원 스크립트.\n"
+    "- **크리틱** — 퀵스타트 게이트, 알려진 이슈, 회고.\n\n"
+    "## 가장 큰 리스크와 완화책\n"
+    "- **막판 환경 변화로 퀵스타트가 깨질 가능성** — **완화책**: D-1 저녁 동결, D-Day "
+    "아침 깨끗한 환경 재검증 한 번 더. 실패 시 출시 보류 (게이트 유지).\n\n"
+    "## 다음 한 걸음\n"
+    "D-1 저녁 코드/문서 **동결**을 지금 공지하세요. 그러면 화요일 아침 재검증만 통과하면 "
+    "바로 출시입니다."
+)
 
 # ── the seeded transcript (hand-authored, believable — the finished work) ─────
-# (channel, speaker_id, text). speaker "owner" == 수민.
+# (channel, speaker_id, text). speaker "owner" == 오너.
 TRANSCRIPT: list[tuple[str, str, str]] = [
     # 1) Owner ↔ Coordinator — the goal lands, the Coordinator plans.
     (DM_COORDINATOR, OWNER_ID,
      "목표는 이거예요: 우리 오픈소스 프로젝트 공개 런칭을 기획하는 거. 근거 없는 과장은 "
      "싫어요 — 깔끔하고 정직한 런칭이면 좋겠어요. 어디서부터 시작할까요?"),
     (DM_COORDINATOR, "coordinator",
-     "알겠어요, 수민님 — 목표는 하나로 명확해요. 과장하지 않으면서도 신뢰를 주는 런칭. "
+     "알겠어요, 오너님 — 목표는 하나로 명확해요. 과장하지 않으면서도 신뢰를 주는 런칭. "
      "셋으로 나눠서 진행할게요. 리서처는 비슷한 프로젝트들이 실제로 어떻게 전환을 "
      "이끌어냈는지 파고들고, 빌더는 그 방향을 날짜와 담당자가 있는 순서 잡힌 체크리스트로 "
      "만들고, 크리틱은 런칭 당일에 터질 수 있는 지점들로 계획을 압박 검증해요. 종합은 제가 "
@@ -136,21 +222,17 @@ TRANSCRIPT: list[tuple[str, str, str]] = [
      "준비 완료라고 하기 전에 깨끗한 환경에서 퀵스타트 테스트하기 — 맨바닥 시작이 승부의 "
      "전부예요."),
 
-    # 5) The owner-approved deliverable, back in the owner DM.
-    (DM_COORDINATOR, "coordinator",
-     "수민님 — 종합 정리예요. 결정: 집중되고 정직한 런칭 — 화요일 오전 9시(PT) Show HN, "
-     "검증된 60초 데모와 명확한 '이게 무엇이고 무엇이 아닌지' README를 앞세움. 계획: (1) 범위 "
-     "확정 + 정직한 README, (2) 60초 데모 녹화, (3) Show HN 글 + 첫 댓글 FAQ 준비, "
-     "(4) 깨끗한 환경에서 검증한 퀵스타트 + 상단 고정 알려진 이슈, (5) 런칭 당일 종일 지원 "
-     "인원 다섯. 최대 리스크: 데모와 맨바닥 설치 사이의 간극 — 퀵스타트가 깨끗한 환경에서 "
-     "통과하기 전엔 런칭하지 않습니다. 그게 마지노선이에요."),
+    # 5) The owner-approved deliverable, back in the owner DM. THE work product —
+    #    a structured markdown brief (not a chat paragraph), exactly the shape a
+    #    real run produces. The chat renderer turns it into headings + lists.
+    (DM_COORDINATOR, "coordinator", DELIVERABLE_ROUND1),
 ]
 
-# The HITL approval trail for the one consequential action (delivering to 수민).
+# The HITL approval trail for the one consequential action (delivering to 오너).
 # Written to the mgr-approvals system-log channel (the convention from the
 # Workspace HITL gate), so it's inspectable in the same dashboard.
 APPROVAL_TRAIL: list[str] = [
-    "[HITL] 제안됨 · final_deliverable · 수민님을 위한 런칭 종합",
+    "[HITL] 제안됨 · final_deliverable · 오너님을 위한 런칭 종합",
     "[HITL] 결정 · 오너 승인 (수정: 최대 리스크 문구 더 단단하게)",
     "[HITL] 결과 · dm-coordinator 로 전달됨",
 ]
@@ -159,7 +241,7 @@ APPROVAL_TRAIL: list[str] = [
 # (a, b, type, intimacy, dynamics)
 RELATIONSHIPS: list[tuple[str, str, str, int, str]] = [
     ("coordinator", OWNER_ID, "lead", 82,
-     "수민님을 위해 워크스페이스를 이끔. 목표를 받아 종합을 전달함."),
+     "오너님을 위해 워크스페이스를 이끔. 목표를 받아 종합을 전달함."),
     ("coordinator", "researcher", "manages", 62,
      "'무엇이 전환을 만들었나' 방향을 배분하고 그 결과를 계획에 녹임."),
     ("coordinator", "builder", "manages", 62,
@@ -205,7 +287,7 @@ MEMORIES: list[tuple[str, str, int, str, int, bool]] = [
 
 # Semantic facts (Layer 3): (agent, subject, predicate, object).
 FACTS: list[tuple[str, str, str, str]] = [
-    ("coordinator", "수민", "원한다", "과장하지 않는 런칭"),
+    ("coordinator", "오너", "원한다", "과장하지 않는 런칭"),
     ("coordinator", "런칭", "출시한다", "화요일 오전 9시(PT)"),
     ("researcher", "Show HN", "보상한다", "'동작한다'; 벌한다 '거의 동작한다'"),
     ("builder", "지원 시간", "이어야 한다", "백업 인원을 지정한 런칭 당일 종일"),
@@ -241,14 +323,44 @@ CONTINUATION: list[tuple[str, str, str]] = [
     (GROUP, "critic",
      "깨끗한 환경 실행을 제가 직접 확인했어요. 4단계 보류 해제할게요."),
     (DM_COORDINATOR, "coordinator",
-     "수민님 — 퀵스타트가 깨끗한 환경에서 통과해요. 화요일 진행 가능합니다."),
+     "오너님 — 퀵스타트가 깨끗한 환경에서 통과해요. 화요일 진행 가능합니다."),
     (GROUP, "researcher",
      "데모 58초로 줄였어요 — 군말 없이 바로 동작하는 출력으로 끝나요."),
     (A2A_RC, "critic",
      "상단 고정 알려진 이슈 안내 초안 잡았어요. 우리 발목 잡을 거 하나 줄였네요."),
     (GROUP, "builder",
      "Show HN 글 + 첫 댓글 FAQ 준비됐어요. 지원 인원 다섯 명 확정됐고요."),
-    (DM_COORDINATOR, "coordinator", "전부 준비됐어요, 수민님. 진행 신호만 기다릴게요."),
+    # Round-2 payoff: the Coordinator delivers the SECOND structured document — the
+    # scheduled execution plan the owner asked for (dates + owners locked in). Lands
+    # in dm-coordinator as a real markdown brief, so the live unfold ends on a
+    # finished work product, not a one-line "준비됐어요".
+    (DM_COORDINATOR, "coordinator", DELIVERABLE_ROUND2),
+]
+
+# The owner's reasoning for the FINISHED first round — seeded into internal-owner so
+# the channel isn't empty on first load (a visitor switching to "오너의 검토" sees the
+# owner already reviewed round 1). Logged from OWNER_ID (read-only channel).
+OWNER_REVIEW_SEED: list[str] = [
+    "팀이 가져온 방향 좋아요 — 정직한 런칭 기조 맞고. 다만 '깨끗한 환경 퀵스타트'가 "
+    "진짜 통과하는지 확인이 빠졌네. 다음 라운드에 그거 검증부터 시켜야겠다.",
+]
+
+# The autonomous owner-driver loop, scripted for the demo ($0). Interleaved with the
+# CONTINUATION (team work) by the activity loop so a viewer watches the genuine
+# cycle: owner posts a new instruction to dm-coordinator → team turns appear → an
+# owner review lands in internal-owner. (channel, speaker_id, text). speaker == OWNER_ID
+# for both the instruction (to the Coordinator) and the review (to internal-owner).
+OWNER_TURNS: list[tuple[str, str, str]] = [
+    # Round 2 instruction — the owner hands down the next concrete ask, as a human would.
+    (DM_COORDINATOR, OWNER_ID,
+     "퀵스타트 검증이 통과했다니 좋네요. 이제 화요일에 실제로 굴릴 수 있게 일정과 담당자까지 "
+     "박은 실행 계획으로 마무리해 줘요 — 당장 시작할 수 있게."),
+    # Round 2 owner review — lands in internal-owner after the team's round-2 work shows.
+    (OWNER_REVIEW, OWNER_ID,
+     "퀵스타트 검증 통과 확인했고 데모 길이도 잡혔어요. 일정·담당까지 들어오면 화요일 진행 "
+     "충분합니다 — 거의 다 왔다."),
+    (OWNER_REVIEW, OWNER_ID,
+     "실행 계획까지 다 잡혔어요. 이 정도면 화요일 진행 충분합니다 — 여기서 마무리."),
 ]
 
 # Emotions the continuation nudges as the work lands (speaker → new emotion).
@@ -306,16 +418,23 @@ def seed(g: Glimi) -> None:
     # Participants per channel (so the graph + channel viewer know who's in each).
     store.set_channel_participants(DM_COORDINATOR, [OWNER_ID, "coordinator"])
     for sid in SPECIALISTS:
-        store.set_channel_participants(DM[sid], [OWNER_ID, "coordinator", sid])
+        # internal-coordinator-<sid>: coordinator + specialist (owner watches only).
+        store.set_channel_participants(DM[sid], ["coordinator", sid])
     store.set_channel_participants(A2A_RC, ["researcher", "critic"])
     store.set_channel_participants(A2A_BR, ["builder", "researcher"])
     store.set_channel_participants(GROUP, [OWNER_ID, "coordinator", *SPECIALISTS])
     store.set_channel_participants(APPROVALS, ["coordinator"])
+    # internal-owner: the owner's read-only reasoning channel (only the owner posts).
+    store.set_channel_participants(OWNER_REVIEW, [OWNER_ID])
 
     # The transcript (+ honest echo usage per agent turn).
     for channel, speaker, text in TRANSCRIPT:
         store.log_message(channel, speaker, text)
         _record_turn_usage(g, speaker, text)
+
+    # The owner's reasoning for the finished round 1 (so internal-owner isn't empty).
+    for line in OWNER_REVIEW_SEED:
+        store.log_message(OWNER_REVIEW, OWNER_ID, line)
 
     # The HITL approval trail (system-log channel).
     for line in APPROVAL_TRAIL:
@@ -379,19 +498,49 @@ class _Heartbeat:
             pass
 
 
+def _demo_script() -> list[tuple[str, str, str]]:
+    """The merged, ordered live script the activity loop unfolds one turn per tick.
+
+    Interleaves the autonomous owner-driver loop (OWNER_TURNS) with the team's work
+    (CONTINUATION) so a viewer watches the FULL cycle, not just the team talking:
+
+      owner instruction → team works → owner review → (loops)
+
+    Concretely: the round-2 owner instruction first (the owner hands down the next
+    ask in dm-coordinator), then the team's continuation turns (their round-2 work),
+    with the two owner reviews dropped in at natural beats so the owner's "thinking"
+    in internal-owner lands AFTER the work it's reacting to."""
+    instr2 = OWNER_TURNS[0]
+    reviews = OWNER_TURNS[1:]
+    cont = list(CONTINUATION)
+    script: list[tuple[str, str, str]] = [instr2]   # owner posts the next instruction
+    # Spread the work, slipping an owner review in mid-stream and one near the end so
+    # the review reads as a reaction to the work just shown (goal→work→review).
+    mid = max(1, len(cont) // 2)
+    script.extend(cont[:mid])
+    if reviews:
+        script.append(reviews[0])                   # interim review after the first half
+    script.extend(cont[mid:])
+    if len(reviews) > 1:
+        script.append(reviews[1])                   # final "충분합니다 — 마무리" review
+    return script
+
+
 def activity_loop(g: Glimi, stop: threading.Event, interval: float = 6.0) -> None:
-    """Unfold the launch-prep continuation one turn per tick, then heartbeat forever.
+    """Unfold the launch-prep + owner-driver continuation one turn per tick, then
+    heartbeat forever.
 
     Genuine store mutations on a timer → the auto-refreshing dashboard shows new
-    activity without a reload. All offline (echo), so it never costs anything.
-    """
-    # Phase 1 — unfold the continuation (one believable new turn per tick).
-    for channel, speaker, text in CONTINUATION:
+    activity without a reload. All offline (echo), so it never costs anything. The
+    script interleaves the autonomous owner loop (instruction → work → review) so
+    the demo VISIBLY showcases the owner-driver cycle, $0, no Claude calls."""
+    # Phase 1 — unfold the merged owner-driver + team script (one turn per tick).
+    for channel, speaker, text in _demo_script():
         if stop.wait(interval):
             return
         try:
             g.store.log_message(channel, speaker, text)
-            _record_turn_usage(g, speaker, text)
+            _record_turn_usage(g, speaker, text)  # skips OWNER_ID (owner turns are free)
             emo = _CONT_EMOTION.get(speaker)
             if emo:
                 g.store.set_agent_emotion(speaker, emo[0], emo[1])
@@ -439,7 +588,8 @@ def run_demo(*, host: str = "127.0.0.1", port: int = 8800,
     print("  Glimi Workspace — 라이브 데모")
     print("=" * 64)
     print(f"  목표    : {GOAL}")
-    print(f"  팀      : 코디네이터, 리서처, 빌더, 크리틱  (오너: {OWNER_NAME})")
+    print(f"  팀      : " + ", ".join(name for _, name, _, _ in TEAM)
+          + f"  (오너: {OWNER_NAME})")
     print(f"  백엔드  : {backend} (오프라인 — API 키 불필요, $0)")
     print(f"  보기    : {url}   ← 실시간으로 업데이트 (Ctrl-C 로 중지)")
     print("=" * 64 + "\n")
