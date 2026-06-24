@@ -10,8 +10,8 @@ type: software
 authors:
   - family-names: Sim
     given-names: Jaebin
-    alias: jaebinsim
-repository-code: "https://github.com/jaebinsim/glimi"
+    alias: je-empty
+repository-code: "https://github.com/je-empty/glimi"
 license: AGPL-3.0-or-later
 keywords:
   - generative-agents

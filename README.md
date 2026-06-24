@@ -1,4 +1,4 @@
-🇰🇷 [한국어 README](README.ko.md) · 📄 [START HERE — contributor onboarding](https://raw.githack.com/jaebinsim/Glimi/main/docs/START_HERE.html)
+🇰🇷 [한국어 README](README.ko.md) · 📄 [START HERE — contributor onboarding](https://raw.githack.com/je-empty/Glimi/main/docs/START_HERE.html)
 
 # Glimi
 
@@ -513,13 +513,13 @@ Note: **Discord is an adapter, not the kernel.** Glimi Core does not import `dis
 (Homebrew, Python, Node, Claude CLI), sets up the project, and opens your browser to
 the setup wizard:
 ```bash
-git clone https://github.com/jaebinsim/Glimi.git && cd Glimi && ./scripts/bootstrap.sh
+git clone https://github.com/je-empty/Glimi.git && cd Glimi && ./scripts/bootstrap.sh
 ```
 Already have Python 3.12+? Skip straight to `./run.sh` below.
 
 **macOS / Linux**:
 ```bash
-git clone https://github.com/jaebinsim/Glimi.git
+git clone https://github.com/je-empty/Glimi.git
 cd Glimi
 ./run.sh                    # platform + dashboard → http://localhost:8000
                             # first run opens the browser /setup wizard to set the admin password
@@ -528,7 +528,7 @@ cd Glimi
 
 **Windows** (native):
 ```powershell
-git clone https://github.com/jaebinsim/Glimi.git
+git clone https://github.com/je-empty/Glimi.git
 cd Glimi
 run.bat
 ```

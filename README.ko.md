@@ -1,4 +1,4 @@
-🇺🇸 [English README](README.md) · 📄 [START HERE — 기여자 온보딩](https://raw.githack.com/jaebinsim/Glimi/main/docs/START_HERE.html)
+🇺🇸 [English README](README.md) · 📄 [START HERE — 기여자 온보딩](https://raw.githack.com/je-empty/Glimi/main/docs/START_HERE.html)
 
 # Glimi
 
@@ -476,13 +476,13 @@ flowchart LR
 **아무것도 안 깔린 맥** — 한 줄이면 위 사전 요구(Homebrew·Python·Node·Claude CLI)를
 알아서 설치하고, 프로젝트 셋업까지 한 뒤 브라우저로 setup 위저드를 열어 준다:
 ```bash
-git clone https://github.com/jaebinsim/Glimi.git && cd Glimi && ./scripts/bootstrap.sh
+git clone https://github.com/je-empty/Glimi.git && cd Glimi && ./scripts/bootstrap.sh
 ```
 이미 Python 3.12+ 있으면 아래 `./run.sh` 로 바로 가도 된다.
 
 **macOS / Linux**:
 ```bash
-git clone https://github.com/jaebinsim/Glimi.git
+git clone https://github.com/je-empty/Glimi.git
 cd Glimi
 ./run.sh                    # 플랫폼 + 대시보드 → http://localhost:8000
                             # 첫 실행 시 브라우저 /setup 마법사가 열려 admin 비밀번호를 설정한다
@@ -496,7 +496,7 @@ wsl --install
 # WSL Ubuntu 안에서:
 sudo apt install python3.12-venv nodejs npm git
 npm install -g @anthropic-ai/claude-code
-git clone https://github.com/jaebinsim/Glimi.git
+git clone https://github.com/je-empty/Glimi.git
 cd Glimi
 ./run.sh
 ```
