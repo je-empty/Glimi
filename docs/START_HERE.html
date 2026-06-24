@@ -47,10 +47,7 @@
   header h1 {
     font-size: 48px;
     margin: 0 0 8px;
-    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--accent-blue);
     line-height: 1.1;
   }
   header .tagline {
@@ -172,10 +169,7 @@
   .umbrella .brand {
     font-size: 42px;
     font-weight: 700;
-    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--accent-blue);
   }
   .umbrella .role {
     color: var(--muted);
@@ -750,8 +744,8 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
         </div>
         <div>
           <h4>변경 파일</h4>
-          <p><strong>신규:</strong> <code>src/llm/ollama.py</code>, <code>tests/llm/test_ollama.py</code>, <code>docs/llm_backends.md</code><br>
-          <strong>수정:</strong> <code>src/llm/__init__.py</code> (factory), <code>src/core/runtime.py</code> (<code>AVAILABLE_MODELS</code> 활성화 + 라우팅)</p>
+          <p><strong>신규:</strong> <code>glimi/llm/ollama.py</code>, <code>tests/llm/test_ollama.py</code>, <code>docs/llm_backends.md</code><br>
+          <strong>수정:</strong> <code>glimi/llm/__init__.py</code> (factory), <code>glimi/runtime.py</code> (<code>AVAILABLE_MODELS</code> 활성화 + 라우팅)</p>
         </div>
         <div>
           <h4>비교 축</h4>
@@ -765,19 +759,19 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
 
       <h4 style="margin-top:24px;">시작 포인트</h4>
       <ul>
-        <li><code>src/llm/base.py</code> 의 <code>LLMBackend</code> ABC 가 추상 인터페이스 — 이걸 구현하면 됨</li>
-        <li><code>src/llm/claude_cli.py</code> 가 reference 구현 (subprocess 기반)</li>
-        <li><code>src/llm/anthropic_sdk.py</code> 가 또 다른 reference 구현 (SDK 기반)</li>
-        <li><code>src/core/runtime.py</code> 의 <code>AVAILABLE_MODELS</code> 에 stub 주석이 이미 있음 → 활성화 + 정식 등록</li>
+        <li><code>glimi/llm/base.py</code> 의 <code>LLMBackend</code> ABC 가 추상 인터페이스 — 이걸 구현하면 됨</li>
+        <li><code>glimi/llm/claude_cli.py</code> 가 reference 구현 (subprocess 기반)</li>
+        <li><code>glimi/llm/anthropic_sdk.py</code> 가 또 다른 reference 구현 (SDK 기반)</li>
+        <li><code>glimi/runtime.py</code> 의 <code>AVAILABLE_MODELS</code> 에 stub 주석이 이미 있음 → 활성화 + 정식 등록</li>
         <li>Ollama 로컬 설치: <a href="https://ollama.com/download">ollama.com/download</a>. <code>ollama pull gemma2</code>, <code>ollama pull qwen2.5</code> (구체 모델명은 ollama 최신 카탈로그 참조)</li>
       </ul>
 
       <h4 style="margin-top:18px;">기대 산출물</h4>
       <ol>
-        <li><code>src/llm/ollama.py</code> — <code>OllamaBackend(LLMBackend)</code> 구현</li>
+        <li><code>glimi/llm/ollama.py</code> — <code>OllamaBackend(LLMBackend)</code> 구현</li>
         <li><code>tests/llm/test_ollama.py</code> — 기본 unit test (request/response 형식)</li>
         <li><code>docs/llm_backends.md</code> — 모델별 비교표 (테스트 결과 표기)</li>
-        <li><code>src/core/runtime.py</code> <code>AVAILABLE_MODELS</code> 에 <code>local:gemma-4</code> · <code>local:qwen-3.5</code> 엔트리 정식 등록 + <code>_resolve_agent_model</code> 라우팅</li>
+        <li><code>glimi/runtime.py</code> <code>AVAILABLE_MODELS</code> 에 <code>local:gemma-4</code> · <code>local:qwen-3.5</code> 엔트리 정식 등록 + <code>_resolve_agent_model</code> 라우팅</li>
         <li>PR description 에 짧은 데모 영상 / 스크린샷 (선택)</li>
       </ol>
 
@@ -814,7 +808,7 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
       <p>이 repo 에서 Claude Code 를 실행하면 다음이 <strong>자동 주입</strong>됨:</p>
       <ul>
         <li><code>CLAUDE.md</code> (루트) — 아키텍처 원칙, 작업 규칙, do/don't, 브랜치 전략</li>
-        <li>각 subdirectory 의 <code>CLAUDE.md</code> 가 있다면 그것도 (예: <code>src/glimi_imagegen/CLAUDE.md</code>)</li>
+        <li>각 subdirectory 의 <code>CLAUDE.md</code> 가 있다면 그것도 (예: <code>community/glimi_imagegen/CLAUDE.md</code>)</li>
       </ul>
       <p>즉 너가 별도 설명 안 해도 Claude 가 "Discord = 어댑터", "AI co-author trailer 금지", "타임스탬프 UTC-aware" 같은 규칙을 이미 알고 시작.</p>
     </div>
@@ -999,16 +993,16 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
         <ul>
           <li>새 기능: "이 로직을 Telegram·웹챗 어댑터에서 재사용 가능한가?" 통과해야 Core 자격</li>
           <li>플랫폼 중립 타입만 사용 (<code>str</code>, <code>int</code>, dataclass)</li>
-          <li>Discord 결합 코드는 <code>src/bot/</code> 안에 (또는 향후 <code>apps/community/</code>)</li>
+          <li>Discord 결합 코드는 <code>community/bot/</code> 안에 (또는 향후 <code>apps/community/</code>)</li>
         </ul>
       </div>
       <div class="col dont">
         <h4>✗ Don't</h4>
         <ul>
-          <li><code>src/core/*</code> 에서 <code>import discord</code> — 절대 금지</li>
+          <li><code>community/core/*</code> 에서 <code>import discord</code> — 절대 금지</li>
           <li>Discord 타입이 코어 함수 시그니처에 새는 것</li>
-          <li><code>src/core/prompts/</code> 에서 <code>src/bot/</code> import</li>
-          <li>예외: <code>src/core/sync.py</code> 는 과도기적으로 OK</li>
+          <li><code>community/core/prompts/</code> 에서 <code>community/bot/</code> import</li>
+          <li>예외: <code>community/core/sync.py</code> 는 과도기적으로 OK</li>
         </ul>
       </div>
     </div>
@@ -1018,7 +1012,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
       <div class="col do">
         <h4>✓ Do</h4>
         <ul>
-          <li>위치: 범용 = <code>src/core/prompts/en/</code> · scene 전용 = <code>src/scenes/{scene}/</code></li>
+          <li>위치: 범용 = <code>community/core/prompts/en/</code> · scene 전용 = <code>community/scenes/{scene}/</code></li>
           <li>영어 정본. 한국 특화 (ㅇㅇ / 카톡) 는 <code>locale.py</code> helper</li>
           <li>모델 dialect 는 <code>model.tool_call_syntax_hint()</code> helper</li>
         </ul>
@@ -1059,8 +1053,8 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
         <div class="phase-label">✅ 완료</div>
         <h3>Phase 1 — 커널 추출 (메인테이너)</h3>
         <ul>
-          <li><code>src/core/{runtime, tools, memory, llm, conversation}</code> → 최상위 <code>glimi/</code> 패키지</li>
-          <li>도메인 종속 코드는 <code>src/</code> 에 잔류 (Glimi Community 앱)</li>
+          <li><code>community/core/{runtime, tools, memory, llm, conversation}</code> → 최상위 <code>glimi/</code> 패키지</li>
+          <li>도메인 종속 코드는 <code>community/</code> 에 잔류 (Glimi Community 앱)</li>
           <li><code>KernelStore</code> ABC + <code>AgentProfile</code> / <code>OwnerContext</code> / <code>KernelObserver</code> protocol 정의, DI 적용</li>
           <li>Discord/DB 의존 0 — standalone wheel 로 빌드</li>
         </ul>
@@ -1070,7 +1064,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
         <div class="phase-label">★ 진행 중 · 첫 contributor</div>
         <h3>Phase 1.5 — 로컬 모델 지원 (Ollama)</h3>
         <ul>
-          <li><code>src/llm/ollama.py</code> — Gemma 4, Qwen 3.5 비교</li>
+          <li><code>glimi/llm/ollama.py</code> — Gemma 4, Qwen 3.5 비교</li>
           <li>대시보드에서 per-agent 로컬 모델 할당</li>
           <li><code>docs/llm_backends.md</code> 비교표</li>
           <li>섹션 5 참조</li>
@@ -1138,14 +1132,14 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
       <tbody>
         <tr><td><span class="badge do">easy</span></td><td>새 example 추가 (<code>examples/</code> 도메인별)</td><td><code>examples/</code></td></tr>
         <tr><td><span class="badge do">easy</span></td><td>문서 / README 개선 · 다이어그램 추가</td><td><code>README.md</code>, <code>docs/</code></td></tr>
-        <tr><td><span class="badge do">easy</span></td><td>새 Community scene (birthday 등)</td><td><code>src/scenes/</code></td></tr>
-        <tr><td><span class="badge warn">medium</span></td><td><strong>★ Ollama 로컬 모델 백엔드 (첫 task)</strong></td><td><code>src/llm/</code></td></tr>
-        <tr><td><span class="badge warn">medium</span></td><td>vLLM / llama.cpp 백엔드</td><td><code>src/llm/</code></td></tr>
-        <tr><td><span class="badge warn">medium</span></td><td>대시보드 시각화 확장</td><td><code>src/platform/dashboard/</code></td></tr>
-        <tr><td><span class="badge warn">medium</span></td><td>새 ToolSpec (도구)</td><td><code>src/core/tools/registry.py</code></td></tr>
+        <tr><td><span class="badge do">easy</span></td><td>새 Community scene (birthday 등)</td><td><code>community/scenes/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td><strong>★ Ollama 로컬 모델 백엔드 (첫 task)</strong></td><td><code>glimi/llm/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td>vLLM / llama.cpp 백엔드</td><td><code>glimi/llm/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td>대시보드 시각화 확장</td><td><code>community/platform/dashboard/</code></td></tr>
+        <tr><td><span class="badge warn">medium</span></td><td>새 ToolSpec (도구)</td><td><code>community/core/tools/registry.py</code></td></tr>
         <tr><td><span class="badge tag">hard</span></td><td>네이티브 Windows 지원</td><td><code>run.ps1</code>, scripts</td></tr>
-        <tr><td><span class="badge tag">hard</span></td><td>Telegram 어댑터</td><td><code>src/adapters/telegram/</code> (신설)</td></tr>
-        <tr><td><span class="badge tag">hard</span></td><td>임베딩 기반 memory retrieval</td><td><code>src/core/memory.py</code></td></tr>
+        <tr><td><span class="badge tag">hard</span></td><td>Telegram 어댑터</td><td><code>community/adapters/telegram/</code> (신설)</td></tr>
+        <tr><td><span class="badge tag">hard</span></td><td>임베딩 기반 memory retrieval</td><td><code>glimi/memory.py</code></td></tr>
       </tbody>
     </table>
 

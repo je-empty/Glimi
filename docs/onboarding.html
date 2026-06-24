@@ -40,10 +40,7 @@
   header h1 {
     font-size: 38px;
     margin: 0 0 8px;
-    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--accent-blue);
   }
   header .subtitle { color: var(--muted); font-size: 15px; letter-spacing: 0.3px; }
   header .tagline { margin-top: 16px; font-size: 17px; font-style: italic; color: var(--text); opacity: 0.85; }
@@ -120,10 +117,7 @@
   .umbrella .brand {
     font-size: 40px;
     font-weight: 700;
-    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--accent-blue);
   }
   .umbrella .role {
     color: var(--muted);
@@ -394,7 +388,7 @@
       <h3>현재 상태 (May 2026)</h3>
       <ul>
         <li><span class="badge tag">전환 중</span> <strong>피벗 진행 중</strong>: 사업화 → OSS career capital 방향. <code>analysis/pivot_subagent_review.md</code> 참조 (gitignored, 메인테이너만 접근)</li>
-        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어 (<code>src/core/*</code>, <code>src/llm/*</code>) 를 최상위 <code>glimi/</code> 패키지로 추출 — Discord/DB 의존 0, standalone wheel 로 빌드. <code>pip install glimi</code> 는 PyPI 공개(0.1.0) 대기 중, 그 전엔 소스에서 설치</li>
+        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어 (<code>community/core/*</code>, <code>glimi/llm/*</code>) 를 최상위 <code>glimi/</code> 패키지로 추출 — Discord/DB 의존 0, standalone wheel 로 빌드. <code>pip install glimi</code> 는 PyPI 공개(0.1.0) 대기 중, 그 전엔 소스에서 설치</li>
         <li><span class="badge do">활성</span> <strong>Community 풀-스택 작동</strong>: 웹 우선 — 웹 채팅 + 대시보드 + 멀티 커뮤니티 가동 (<code>./run.sh</code>). Discord 는 어댑터(과도기)</li>
       </ul>
     </div>
@@ -468,7 +462,7 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
 
     <div class="card accent-yellow">
       <h4>주의: 첫 부팅</h4>
-      <p>첫 실행 시 자동으로 venv 생성하고 <code>requirements.txt</code> 설치. 5-10분 걸릴 수 있음. <code>--imagegen</code> 사용 시 추가로 <code>[imagegen]</code> extra (peft + diffusers) 1회 설치 + LoRA 가중치 (.safetensors 186MB) 가 <code>src/glimi_imagegen/loras/</code> 에 필요.</p>
+      <p>첫 실행 시 자동으로 venv 생성하고 <code>requirements.txt</code> 설치. 5-10분 걸릴 수 있음. <code>--imagegen</code> 사용 시 추가로 <code>[imagegen]</code> extra (peft + diffusers) 1회 설치 + LoRA 가중치 (.safetensors 186MB) 가 <code>community/glimi_imagegen/loras/</code> 에 필요.</p>
     </div>
 
     <h3>처음 동작 확인 체크리스트</h3>
@@ -488,21 +482,21 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
 
     <pre><code>📨 메시지 in
    │
-   ├─ 1·프롬프트 조립    [Core]  → src/core/prompts/
-   ├─ 2·Tool 프로토콜    [Core]  → src/core/tools/
-   ├─ 3·메모리 파이프    [Core]  → src/core/memory.py
+   ├─ 1·프롬프트 조립    [Core]  → community/core/prompts/
+   ├─ 2·Tool 프로토콜    [Core]  → community/core/tools/
+   ├─ 3·메모리 파이프    [Core]  → glimi/memory.py
    ├─ 4·채널 규율        [App]   → runtime.py _describe_channel
    ├─ 5·Anti-echo Guard  [App]
    │
    🤖 LLM 호출 (Haiku / Sonnet / Opus / 로컬)
    │
    ├─ parse · dispatch · dedup
-   ├─ 6·A2A 대화 루프    [Core]  → src/core/conversation.py
-   ├─ 7·자가 치유        [Tool]  → src/tools/dev_runner.py
+   ├─ 6·A2A 대화 루프    [Core]  → glimi/conversation.py
+   ├─ 7·자가 치유        [Tool]  → community/tools/dev_runner.py
    │
 📤 메시지 out                          → 비동기 Haiku → 메모리 추출 → DB
 
-⏱ 8·Supervisors  ⭐ [Core, proactive] → src/supervisors/, src/scenes/*/supervisor.py
+⏱ 8·Supervisors  ⭐ [Core, proactive] → community/supervisors/, community/scenes/*/supervisor.py
    tutorial (15초) · chat (15초) · orchestrator (3분)
    ↓
    nudge = 에이전트 본인의 "내면 생각" 처럼 주입</code></pre>
@@ -544,7 +538,7 @@ Retrieval scoring:
   <!-- ============================================ -->
   <section id="repo">
     <h2><span class="num">5</span>레포 구조</h2>
-    <p class="lead">커널 추출 완료 — 최상위 <code>glimi/</code> = Glimi Core 커널, <code>src/</code> = Glimi Community 앱 코드.</p>
+    <p class="lead">커널 추출 완료 — 최상위 <code>glimi/</code> = Glimi Core 커널, <code>community/</code> = Glimi Community 앱 코드.</p>
 
     <h3>현재 구조 (June 2026)</h3>
     <pre><code>Glimi/
@@ -556,7 +550,7 @@ Retrieval scoring:
 │   ├── conversation/           <span style="color:var(--muted)"># A2A loop</span>
 │   ├── context_budget.py       <span style="color:var(--muted)"># Elastic Memory (컨텍스트 예산)</span>
 │   └── store.py                <span style="color:var(--muted)"># KernelStore ABC (storage 중립)</span>
-├── src/                        <span style="color:var(--accent-orange)"># Glimi Community — 커널 위에 올린 앱</span>
+├── community/                        <span style="color:var(--accent-orange)"># Glimi Community — 커널 위에 올린 앱</span>
 │   ├── core/                   <span style="color:var(--muted)"># 앱측 runtime/memory wiring (커널 re-export + DI)</span>
 │   │   ├── prompts/            <span style="color:var(--muted)"># en/ + ko/ overlay, locale.py, model.py</span>
 │   │   ├── runtime.py          <span style="color:var(--muted)"># 커널에 KernelStore 등 주입 + API re-export</span>
@@ -581,7 +575,7 @@ Retrieval scoring:
 ├── LICENSE                     <span style="color:var(--muted)"># AGPL-3.0</span>
 └── CLAUDE.md</code></pre>
 
-    <p>커널은 <code>KernelStore</code> ABC + <code>AgentProfile</code> / <code>OwnerContext</code> / <code>KernelObserver</code> protocol 뒤에서 storage·platform 중립이고, 앱은 <code>src/adapters/</code> 에서 구체 구현을 주입한다. 남은 작업은 PyPI 0.1.0 공개.</p>
+    <p>커널은 <code>KernelStore</code> ABC + <code>AgentProfile</code> / <code>OwnerContext</code> / <code>KernelObserver</code> protocol 뒤에서 storage·platform 중립이고, 앱은 <code>community/adapters/</code> 에서 구체 구현을 주입한다. 남은 작업은 PyPI 0.1.0 공개.</p>
   </section>
 
   <!-- ============================================ -->
@@ -652,16 +646,16 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
         <ul>
           <li>새 기능: "이 로직을 Telegram·웹챗 어댑터에서 재사용 가능한가?" 통과해야 Core 자격</li>
           <li>플랫폼 중립 타입만 사용 (<code>str</code>, <code>int</code>, dataclass)</li>
-          <li>Discord 결합 코드는 <code>src/bot/</code> 또는 향후 <code>apps/community/</code> 안에</li>
+          <li>Discord 결합 코드는 <code>community/bot/</code> 또는 향후 <code>apps/community/</code> 안에</li>
         </ul>
       </div>
       <div class="col dont">
         <h4>✗ Don't</h4>
         <ul>
-          <li><code>src/core/*</code> 에서 <code>import discord</code> — 절대 금지</li>
+          <li><code>community/core/*</code> 에서 <code>import discord</code> — 절대 금지</li>
           <li>Discord 타입 (<code>Webhook</code>, <code>TextChannel</code>, <code>guild</code>) 이 코어 함수 시그니처에 새는 것</li>
-          <li><code>src/core/prompts/</code> 에서 <code>src/bot/</code> 를 import</li>
-          <li>예외: <code>src/core/sync.py</code> 는 과도기적으로 discord OK (어댑터 책임 — 추후 이동 예정)</li>
+          <li><code>community/core/prompts/</code> 에서 <code>community/bot/</code> 를 import</li>
+          <li>예외: <code>community/core/sync.py</code> 는 과도기적으로 discord OK (어댑터 책임 — 추후 이동 예정)</li>
         </ul>
       </div>
     </div>
@@ -671,7 +665,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
       <div class="col do">
         <h4>✓ Do</h4>
         <ul>
-          <li>위치: 범용 = <code>src/core/prompts/en/</code> · scene 전용 = <code>src/scenes/{scene}/</code></li>
+          <li>위치: 범용 = <code>community/core/prompts/en/</code> · scene 전용 = <code>community/scenes/{scene}/</code></li>
           <li>영어 정본. 한국 특화 (ㅇㅇ / 카톡 / 호칭) 은 <code>locale.py</code> helper 로 주입</li>
           <li>모델 dialect 차이는 <code>src.core.prompts.model.tool_call_syntax_hint()</code> 같은 helper 호출</li>
           <li>구조적으로 다르면 <code>ko/{module}.py</code> override</li>
@@ -719,7 +713,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
     <h3>안전성</h3>
     <div class="card accent-red">
       <h4>Sync safety brake</h4>
-      <p><code>src/core/sync.py</code> 에 catastrophic delete 회귀 방지 brake 가 있음. <strong>brake 발동 시 자동 재시도 절대 금지</strong> — 수동 점검 후 진행. 자세한 건 <code>analysis/edge_cases.md</code> 참조 (gitignored).</p>
+      <p><code>community/core/sync.py</code> 에 catastrophic delete 회귀 방지 brake 가 있음. <strong>brake 발동 시 자동 재시도 절대 금지</strong> — 수동 점검 후 진행. 자세한 건 <code>analysis/edge_cases.md</code> 참조 (gitignored).</p>
     </div>
   </section>
 
@@ -742,22 +736,22 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
       <div class="entry easy">
         <div class="label">시작용 · easy</div>
         <h4>새 Community scene</h4>
-        <p><code>src/scenes/</code> 패턴 따라 birthday · healing · outing 등. <code>docs/scenes_and_supervisors.md</code> 참조.</p>
+        <p><code>community/scenes/</code> 패턴 따라 birthday · healing · outing 등. <code>docs/scenes_and_supervisors.md</code> 참조.</p>
       </div>
       <div class="entry medium">
         <div class="label">중급 · medium</div>
         <h4>로컬 LLM 백엔드</h4>
-        <p>Ollama / vLLM / llama.cpp 구현. <code>src/llm/base.py</code> 의 추상화 + <code>AVAILABLE_MODELS</code> 슬롯이 이미 준비됨.</p>
+        <p>Ollama / vLLM / llama.cpp 구현. <code>glimi/llm/base.py</code> 의 추상화 + <code>AVAILABLE_MODELS</code> 슬롯이 이미 준비됨.</p>
       </div>
       <div class="entry medium">
         <div class="label">중급 · medium</div>
         <h4>관찰성 대시보드 확장</h4>
-        <p>새 메트릭, 새 시각화 (e.g. 메모리 그래프, supervisor heatmap). <code>src/platform/dashboard/</code>.</p>
+        <p>새 메트릭, 새 시각화 (e.g. 메모리 그래프, supervisor heatmap). <code>community/platform/dashboard/</code>.</p>
       </div>
       <div class="entry medium">
         <div class="label">중급 · medium</div>
         <h4>새 도구 (ToolSpec)</h4>
-        <p><code>src/core/tools/registry.py</code> 에 등록. 도구 design 가이드: 도메인 무관이면 Core, Community 종속이면 거기.</p>
+        <p><code>community/core/tools/registry.py</code> 에 등록. 도구 design 가이드: 도메인 무관이면 Core, Community 종속이면 거기.</p>
       </div>
       <div class="entry hard">
         <div class="label">고급 · hard</div>
@@ -767,12 +761,12 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
       <div class="entry hard">
         <div class="label">고급 · hard</div>
         <h4>비-Discord 어댑터</h4>
-        <p>Telegram, Slack, web-chat 어댑터. <code>src/adapters/</code> 디렉토리 신설. Core 와의 인터페이스 정립이 핵심.</p>
+        <p>Telegram, Slack, web-chat 어댑터. <code>community/adapters/</code> 디렉토리 신설. Core 와의 인터페이스 정립이 핵심.</p>
       </div>
       <div class="entry hard">
         <div class="label">고급 · hard</div>
         <h4>메모리 retrieval 개선</h4>
-        <p>현재는 엔티티 매칭 기반. 임베딩 기반 semantic 추가, scoring 함수 튜닝, retrieval eval. <code>src/core/memory.py</code>.</p>
+        <p>현재는 엔티티 매칭 기반. 임베딩 기반 semantic 추가, scoring 함수 튜닝, retrieval eval. <code>glimi/memory.py</code>.</p>
       </div>
     </div>
 
@@ -827,7 +821,7 @@ pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
         <tr><td><a href="execution.md">docs/execution.md</a></td><td>실행 명령 + 플랫폼 CLI + QA 자동화</td></tr>
         <tr><td><a href="yuna_knowledge.md">docs/yuna_knowledge.md</a></td><td>유나(매니저) 공개 FAQ — 씬/도전과제 추가 시 반드시 갱신</td></tr>
         <tr><td><a href="edge_cases.md">docs/edge_cases.md</a></td><td>특이 케이스 이력 (LLM placebo drift 등 재현 가능 anomaly + fix 기록)</td></tr>
-        <tr><td><a href="../src/glimi_imagegen/README.md">src/glimi_imagegen/README.md</a></td><td>로컬 LoRA 초상화 생성 (Animagine XL 4.0, opt-in)</td></tr>
+        <tr><td><a href="../community/glimi_imagegen/README.md">community/glimi_imagegen/README.md</a></td><td>로컬 LoRA 초상화 생성 (Animagine XL 4.0, opt-in)</td></tr>
       </tbody>
     </table>
 

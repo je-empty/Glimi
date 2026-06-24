@@ -40,8 +40,7 @@
   header .eyebrow { color: var(--muted); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
   header h1 {
     font-size: 40px; margin: 0 0 8px;
-    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    color: var(--accent-blue);  /* 디자인시스템: navy 단색 (그라데이션 비채택) */
     line-height: 1.15;
   }
   header .tagline { margin-top: 12px; font-size: 17px; color: var(--text); opacity: 0.85; }
@@ -172,7 +171,7 @@
     <tr><th>파트</th><th>범위</th><th>주도·상태</th></tr>
     <tr>
       <td>🧠 코어</td>
-      <td><code>src/core/</code> (runtime·memory·prompts·tools) · <code>src/llm/</code> · <code>src/db.py</code></td>
+      <td><code>community/core/</code> (runtime·memory·prompts·tools) · <code>glimi/llm/</code> · <code>community/db.py</code></td>
       <td>메인테이너 주도. <strong>미완성 — 개발 계속 진행 중.</strong> 필요시 누구나 수정 가능, 단 전부 리뷰 필수</td>
     </tr>
     <tr>
@@ -182,13 +181,13 @@
     </tr>
     <tr>
       <td>🖥️ 플랫폼</td>
-      <td><code>src/platform/</code> (FastAPI·대시보드·setup)</td>
+      <td><code>community/platform/</code> (FastAPI·대시보드·setup)</td>
       <td>메인테이너 주도</td>
     </tr>
     <tr>
       <td>🔌 어댑터</td>
-      <td><code>src/bot/</code> (Discord 출구 레이어)</td>
-      <td>과도기 — 추후 <code>src/adapters/</code> 분리 예정. 수정 시 decoupling 원칙 준수</td>
+      <td><code>community/bot/</code> (Discord 출구 레이어)</td>
+      <td>과도기 — 추후 <code>community/adapters/</code> 분리 예정. 수정 시 decoupling 원칙 준수</td>
     </tr>
     <tr>
       <td>⚙️ 인프라·릴리스</td>
@@ -203,12 +202,12 @@
     <tr><th>구역</th><th>경로</th><th>규칙</th></tr>
     <tr>
       <td><span class="zone free">자유</span></td>
-      <td><code>src/achievements/catalog/</code> · <code>src/scenes/&lt;새 씬&gt;/</code> · <code>docs/yuna_knowledge.md</code></td>
-      <td>콘텐츠 오너는 본인 판단으로 작업 → PR. <a href="#guardrails">가드레일</a> 통과 + 씬/도전과제 추가 시 <code>yuna_knowledge.md</code> 같이 갱신. 씬은 4종 세트 (scene + supervisor + handlers + prompts, 레퍼런스 <code>src/scenes/tutorial/</code>)</td>
+      <td><code>community/achievements/catalog/</code> · <code>community/scenes/&lt;새 씬&gt;/</code> · <code>docs/yuna_knowledge.md</code></td>
+      <td>콘텐츠 오너는 본인 판단으로 작업 → PR. <a href="#guardrails">가드레일</a> 통과 + 씬/도전과제 추가 시 <code>yuna_knowledge.md</code> 같이 갱신. 씬은 4종 세트 (scene + supervisor + handlers + prompts, 레퍼런스 <code>community/scenes/tutorial/</code>)</td>
     </tr>
     <tr>
       <td><span class="zone review">리뷰 필수</span></td>
-      <td>코어 전체 (<code>src/core/</code> · <code>src/llm/</code> · <code>src/db.py</code>) · <code>src/achievements/engine.py</code>·<code>definitions.py</code> · <code>src/supervisors/</code> · <code>src/bot/</code> · <code>src/platform/</code></td>
+      <td>코어 전체 (<code>community/core/</code> · <code>glimi/llm/</code> · <code>community/db.py</code>) · <code>community/achievements/engine.py</code>·<code>definitions.py</code> · <code>community/supervisors/</code> · <code>community/bot/</code> · <code>community/platform/</code></td>
       <td><strong>코어는 잠겨있지 않다</strong> — 개발이 계속 들어가는 영역이라 필요하면 수정 OK. 단 ① 작업 전 의도 1-2줄 공유, ② PR 에 "⚠ core 접점: 파일 — 이유" 명시, ③ 메인테이너 승인 후 머지. 새 도구·프롬프트는 각각 도구 절제 심사 / <code>docs/prompt_development.md</code> 규칙 통과</td>
     </tr>
     <tr>
@@ -368,7 +367,7 @@ supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</cod
     <tr><td>🔇 메타 용어</td><td>사용자 노출 텍스트에 "AI / 봇 / 에이전트 / 멤버" 금지 — 친구·사람·이름으로</td></tr>
     <tr><td>🧰 도구 절제</td><td>새 <code>&lt;tools&gt;</code> 도구는 "기존 도구로 대체 불가 + 감정 접점" 둘 다 통과해야 추가 (리뷰 필수 구역)</td></tr>
     <tr><td>🔌 플랫폼 중립</td><td>코어 로직에 Discord 타입 누출 금지 — "이거 텔레그램·웹챗에서도 재사용 가능한가?" NO 면 잘못된 레이어</td></tr>
-    <tr><td>🧬 코어 중립</td><td>코어(<code>src/core/</code>·<code>src/llm/</code>)에 <strong>특정 커뮤니티 콘텐츠 하드코딩 금지</strong> — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터 파일/설정에서 로드. "내 커뮤니티에서 잘 돌게" 만드는 수정은 환영하되, 그 데이터는 <code>communities/</code> 쪽 레이어로</td></tr>
+    <tr><td>🧬 코어 중립</td><td>코어(<code>community/core/</code>·<code>glimi/llm/</code>)에 <strong>특정 커뮤니티 콘텐츠 하드코딩 금지</strong> — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터 파일/설정에서 로드. "내 커뮤니티에서 잘 돌게" 만드는 수정은 환영하되, 그 데이터는 <code>communities/</code> 쪽 레이어로</td></tr>
     <tr><td>📖 문서 동기화</td><td>씬·도전과제 추가 시 <code>docs/yuna_knowledge.md</code> 같이 갱신 (유나가 사용자에게 설명하는 소스)</td></tr>
   </table>
 </section>
@@ -400,7 +399,7 @@ python -m tests.unit.test_community_isolation
     <li><strong><code>CLAUDE.md</code> 가 자동 로드된다</strong> — 브랜치 전략·커밋 규칙·금지사항을 Claude 가 이미 알고 시작. 웹 업로드로는 이 보호막이 전부 무효가 된다 (금지 이유 중 하나).</li>
     <li><strong>작업 시작 멘트 예시</strong>: <code>"develop 에서 feat/xxx 브랜치 따고, 오시카츠 도전과제 3종 추가해줘. tutorial 씬 패턴 참고."</code> — 브랜치 생성부터 시키면 develop 직커밋 사고가 없다.</li>
     <li><strong>마무리 멘트 예시</strong>: <code>"머지 전 체크 돌리고, 커밋 + push + develop 베이스로 PR 올려줘."</code></li>
-    <li><strong>씬·도전과제 만들 때</strong>: 레퍼런스(<code>src/scenes/tutorial/</code>, <code>src/achievements/catalog/oshikatsu.py</code>)를 프롬프트에 명시하면 패턴이 일관돼서 리뷰가 빨라진다.</li>
+    <li><strong>씬·도전과제 만들 때</strong>: 레퍼런스(<code>community/scenes/tutorial/</code>, <code>community/achievements/catalog/oshikatsu.py</code>)를 프롬프트에 명시하면 패턴이 일관돼서 리뷰가 빨라진다.</li>
     <li><strong>모르는 건 Claude 한테 먼저</strong>: "이 변경이 리뷰 필수 구역 건드려?" / "가드레일 위반 없어?" 같은 셀프 심사도 시킬 수 있다.</li>
     <li><strong>Claude 가 커밋 메시지에 Co-Authored-By 를 넣으려 하면 거부</strong> — CLAUDE.md 에 금지로 박혀 있어 보통 안 넣지만, 한 번 더 확인.</li>
   </ul>
