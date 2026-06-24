@@ -1588,7 +1588,8 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
         # title so the Overview/graph heading isn't blank (enrich_snapshot leaves it none).
         cm = dict(payload.get("community_meta") or {})
         cm["name"] = ws.title
-        cm["language"] = "ko"  # 워크스페이스 데모 = KO 1차(클라이언트 SERVER_LANG) → JS chrome 한국어. EN 은 🌐 토글.
+        # 클라이언트 SERVER_LANG → JS chrome 언어. demo-en = 영문 미러, 나머지 = KO 1차.
+        cm["language"] = "en" if ws.id == "demo-en" else "ko"
         payload["community_meta"] = cm
         payload["community_id"] = ws.id
         # 데모 워크스페이스만: 팀을 감시하는 supervisor 뷰(합성 관찰 데이터) 노출.
