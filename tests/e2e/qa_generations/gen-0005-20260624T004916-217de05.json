@@ -1,0 +1,91 @@
+{
+  "generation_no": 5,
+  "run_id": "community-e2e-20260624-094534",
+  "generated_at": "2026-06-24T00:49:16.780590+00:00",
+  "git": {
+    "sha": "217de05",
+    "dirty": true,
+    "branch": "feat/web-native-onboarding"
+  },
+  "owner_name": "사용자",
+  "goal": "오너가 AI 친구 몇 명과 DM 으로 안부·질문·후속 대화를 나눈다",
+  "backend": "claude_cli",
+  "judged": true,
+  "overall_score": 77.5,
+  "passed": true,
+  "min_overall": 70,
+  "failing": [
+    "onboarding",
+    "conversation_quality"
+  ],
+  "dimensions": [
+    {
+      "key": "onboarding",
+      "label": "온보딩",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 0.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "매니저(유나) DM 온보딩 흔적 없음",
+      "critical": false
+    },
+    {
+      "key": "friend_creation",
+      "label": "친구 생성",
+      "kind": "structural",
+      "weight": 1.5,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "진짜 친구 1명 생성 + 대화 (dm-유나)",
+      "critical": true
+    },
+    {
+      "key": "conversation_quality",
+      "label": "대화 품질",
+      "kind": "judge",
+      "weight": 2.0,
+      "score": 6.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "5축 [in_character 8.0 · coherence 8.0 · naturalness 6.0 · engagement 6.0 · no_meta 5.0] — 매니저로서 따뜻하고 구조적이나, '친구들이 자신을 사람이라 믿고 산다'는 직접적 메타 언급이 친구의 자연스러운 환상을 심각하게 훼손함",
+      "critical": false
+    },
+    {
+      "key": "no_hallucination",
+      "label": "환각 없음",
+      "kind": "judge",
+      "weight": 1.5,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "No hallucinations, fabricated memories, or contradictions. Identity consistent throughout; platform capabilities describ",
+      "critical": false
+    },
+    {
+      "key": "no_leaks",
+      "label": "누수 없음",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)",
+      "critical": false
+    },
+    {
+      "key": "responsiveness",
+      "label": "응답성",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "1/1 DM 응답",
+      "critical": false
+    }
+  ],
+  "report_md": "/Users/jbsim/Documents/GitHub/Glimi/tests/e2e/results/community-report-20260624-004801.md",
+  "report_pdf": ""
+}

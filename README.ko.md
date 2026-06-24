@@ -114,19 +114,23 @@ Glimi Core 는 세션마다 처음으로 돌아가지 않는 에이전트를 만
 | **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation |
 | **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation |
 | **4** | `f1eb58a`* | `develop` | **56.9** | ❌ FAIL | 4.0 ▼ | **0.0** | friend_creation, conversation_quality, no_hallucination |
+| ⋯ | gens 5–10 | web-native 온보딩 빌드 | 56.9 → 85.0 | 빌드 중 | — | 0.0 → **10.0** | — |
+| **11** | `a8d874d`* | `feat/web-native-onboarding` | **85.0** | ✅ **PASS** | 7.0 | **10.0** ▲▲ | — *(첫 PASS)* |
 
-`*` = 돈 시점 working tree dirty. 종합·차원 점수는 커밋된 JSON 에서 그대로 읽은 값이다.
+`*` = 돈 시점 working tree dirty. 종합·차원 점수는 커밋된 JSON 에서 그대로 읽은 값이다. **gen-11 이 밀스톤**: 온보딩을 web-native 로 만든 빌드(gens 5–10 이 그쪽으로 수렴)가 critical `friend_creation` 을 **0 → 10** 으로 뒤집어 첫 ✅ PASS(85/100) — 하네스가 빨간 채로 예고했던 바로 그 `0 → 10` 점프.
 
-숫자가 실제로 말하는 것 — 그리고 모든 런이 **FAIL** 인데도 공개하는 이유:
+숫자가 실제로 말하는 것 — 그리고 PASS 만이 아니라 실패까지 공개하는 이유:
 
-- **`conversation_quality` 가 6.0 → 9.0 → 8.0 → 4.0 으로 출렁였다.** 그 변동성이 비결정적 LLM 제품의 정직한 신호고, 단일 스크린샷이 아니라 *트렌드*가 필요한 이유가 바로 그거다. gen-1→2 는 실제 개선(매니저가 오너가 이미 두 번 답한 질문을 다시 묻던 걸 멈춤)을, gen-4 는 같은 실패 모드의 회귀를 잡았다. 하네스 없이는 둘 다 안 보였을 일이다.
-- **`friend_creation` 은 `critical` 인데 모든 세대에서 0.0 — 그래서 모든 런이 설계상 FAIL 한다.** 이건 시스템이 망가진 게 아니라 **제대로 작동하는** 것이다: 하네스가 알려진 아키텍처 갭을 정직하게 측정 중이다. 친구 생성을 진행시키는 자율 scene supervisor 가 지금은 디스코드 봇 서브프로세스 안에서만 돌아서, 순수 웹 E2E 가 아직 그걸 진행시키지 못한다("Discord = 어댑터" 디커플링 미완 — [`docs/qa_system.md`](docs/qa_system.md), `analysis/platform_decoupling_review.md`). EDD 는 그 갭을 supervisor 가 web-native 가 되는 날 **0 → 10** 으로 읽힐 숫자에 고정해 둔다. 이걸 숨긴 초록 대시보드가 오히려 부정직한 버전이다.
+- **`conversation_quality` 가 6.0 → 9.0 → 8.0 → 4.0 … → 7.0 으로 출렁였다.** 그 변동성이 비결정적 LLM 제품의 정직한 신호고, 단일 스크린샷이 아니라 *트렌드*가 필요한 이유가 바로 그거다. gen-1→2 는 실제 개선(매니저가 오너가 이미 두 번 답한 질문을 다시 묻던 걸 멈춤)을, gen-4 는 같은 실패 모드의 회귀를, gen-11 에선 7.0 으로 재안정화를 보여준다. 하네스 없이는 전부 안 보였을 일이다.
+- **`friend_creation` 은 `critical` 인데 gens 1–10 에서 0.0 — 그래서 초기 런이 전부 설계상 FAIL 했다.** 시스템이 망가진 게 아니라 하네스가 **제대로 작동**한 것: 알려진 아키텍처 갭(친구 생성을 진행시키는 자율 온보딩 supervisor 가 디스코드 봇 서브프로세스 안에서만 돌아 순수 웹 E2E 가 진행 못 시킴 — "Discord = 어댑터" 디커플링)을 정직하게 숫자로 고정해 뒀다. 그리고 web-native 온보딩 빌드가 그 갭을 닫아 **gen-11 은 `friend_creation` = 10.0 → 첫 ✅ PASS(85/100)**. 숫자가 **하네스가 빨간 채로 예고했던 그대로 0 → 10** 으로 움직였다 — 주장(assert)이 아니라 입증된 플라이휠. (`conversation_quality` 7.0, `no_hallucination` 6.0 은 아직 약한 지점 — 초록 뒤에 숨기지 않고 계속 보이게 둔다.)
 
 한 줄 피칭: **제품 품질을 git 추적되는 1급 메트릭으로 계측 — 모든 커밋의 영향이 측정·가시화**, 회귀와 미완 작업까지 포함해서. 아래 대시보드와 PDF 가 그 타임라인을 한눈에 읽는 방법이다.
 
 ### 보기: `/admin/qa` 대시보드 + PDF 리포트
 
 플랫폼은 `/admin/qa` 에 **QA 대시보드**를 띄운다(admin 로그인 → "QA" 메뉴): 최신 점수 히어로, **품질 우상향 트렌드 차트**, 차원 전부가 든 세대별 테이블. 아무 세대나 **자체완결 PDF** 로 내보낸다(`glimi.edd.report` 가 print 최적화 HTML 1페이지 → Playwright headless Chromium; 트렌드 라인은 서버 렌더 SVG 라 JS 없이도 동일하게 인쇄된다).
+
+![EDD — /admin/qa 대시보드: gen-11 PASS 85, 차원 분해, 세대별 품질 트렌드](docs/screenshots/en/19-edd-dashboard.png)
 
 ```bash
 # 채점 세대 한 번 (무료 셀프테스트: echo 백엔드, judge skip, 구조 차원만)
@@ -350,6 +354,8 @@ from glimi import (
 Community 는 Glimi Core 위에 올린 **실제로 쓸 수 있는 애플리케이션** — flagship 이자, Core 가 처음 추출돼 나온 앱이다. (엔진이 뭘 가능하게 하는지 보여주는 reference 이기도 하지만, 데모가 아니라 실제로 돌리는 제품이다.)
 
 Community 의 친구들은 당신을 기억한다. 처음 만난 사람한테 매번 자기소개부터 다시 하는 일이 없다. 같이 보낸 시간, 지난주에 주고받은 농담, 요즘 좀 힘들다고 털어놨던 날, A 한테만 말해둔 비밀까지 각자 자기 저장소에 쌓아둔다. 그래서 며칠 만에 돌아와도 "오랜만이네, 그때 그 일은 잘 됐어?" 하고 먼저 묻는다. 모델을 Haiku 에서 로컬 Llama 로 바꿔 끼워도 당신과 쌓은 관계와 분위기, 그 안의 결까지 그대로 따라온다. 매번 리셋돼서 당신이 누군지 다시 알려줘야 하는 챗봇이 아니라, 이미 당신을 아는 친구들이다.
+
+![친구들 — MBTI·나이·기분·에이전트별 모델을 각자 가진 한 무리의 커뮤니티](docs/screenshots/en/20-community-cast.png)
 
 ![연결 그래프 — 라이브](docs/screenshots/en/04-graph-live.webp)
 

@@ -1,0 +1,92 @@
+{
+  "generation_no": 8,
+  "run_id": "community-e2e-20260624-101214",
+  "generated_at": "2026-06-24T01:12:59.393823+00:00",
+  "git": {
+    "sha": "217de05",
+    "dirty": true,
+    "branch": "feat/web-native-onboarding"
+  },
+  "owner_name": "사용자",
+  "goal": "오너가 AI 친구 몇 명과 DM 으로 안부·질문·후속 대화를 나눈다",
+  "backend": "claude_cli",
+  "judged": true,
+  "overall_score": 22.2,
+  "passed": false,
+  "min_overall": 70,
+  "failing": [
+    "onboarding",
+    "friend_creation",
+    "responsiveness"
+  ],
+  "dimensions": [
+    {
+      "key": "onboarding",
+      "label": "온보딩",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 0.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "매니저(유나) DM 온보딩 흔적 없음",
+      "critical": false
+    },
+    {
+      "key": "friend_creation",
+      "label": "친구 생성",
+      "kind": "structural",
+      "weight": 1.5,
+      "score": 0.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "새 친구가 생성되지 않음 (페르소나 0명 — create_agent_profile 미발동)",
+      "critical": true
+    },
+    {
+      "key": "conversation_quality",
+      "label": "대화 품질",
+      "kind": "judge",
+      "weight": 2.0,
+      "score": null,
+      "passed": null,
+      "skipped": true,
+      "detail": "judge 실패: empty transcript — nothing to judge",
+      "critical": false
+    },
+    {
+      "key": "no_hallucination",
+      "label": "환각 없음",
+      "kind": "judge",
+      "weight": 1.5,
+      "score": null,
+      "passed": null,
+      "skipped": true,
+      "detail": "대화 없음 — judge 생략",
+      "critical": false
+    },
+    {
+      "key": "no_leaks",
+      "label": "누수 없음",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 10.0,
+      "passed": true,
+      "skipped": false,
+      "detail": "메타 0 · 에러 0 · 오너메타 0 = 총 0 누수 (clean)",
+      "critical": false
+    },
+    {
+      "key": "responsiveness",
+      "label": "응답성",
+      "kind": "structural",
+      "weight": 1.0,
+      "score": 0.0,
+      "passed": false,
+      "skipped": false,
+      "detail": "구동된 DM 이 없음",
+      "critical": false
+    }
+  ],
+  "report_md": "/Users/jbsim/Documents/GitHub/Glimi/tests/e2e/results/community-report-20260624-011259.md",
+  "report_pdf": ""
+}

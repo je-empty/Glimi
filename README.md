@@ -114,19 +114,23 @@ These are the **actual generations committed to this repo** (`tests/e2e/qa_gener
 | **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation |
 | **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation |
 | **4** | `f1eb58a`* | `develop` | **56.9** | ❌ FAIL | 4.0 ▼ | **0.0** | friend_creation, conversation_quality, no_hallucination |
+| ⋯ | gens 5–10 | the web-native onboarding build | 56.9 → 85.0 | building | — | 0.0 → **10.0** | — |
+| **11** | `a8d874d`* | `feat/web-native-onboarding` | **85.0** | ✅ **PASS** | 7.0 | **10.0** ▲▲ | — *(first PASS)* |
 
-`*` = working tree was dirty at run time. Composite/dimension scores are read verbatim from the committed JSON.
+`*` = working tree was dirty at run time. Composite/dimension scores are read verbatim from the committed JSON. **Gen 11 is the milestone**: the build that made onboarding web-native (gens 5–10 iterated toward it) flipped the critical `friend_creation` from **0 → 10**, turning the first ✅ PASS (85/100) — exactly the `0 → 10` jump the harness predicted while it sat red.
 
-What the numbers actually say — and why we publish them even though every run **FAILs**:
+What the numbers actually say — and why we publish the failures, not just the PASS:
 
-- **`conversation_quality` swung 6.0 → 9.0 → 8.0 → 4.0** across generations. That volatility is the honest signal of a non-deterministic LLM product, and it's exactly what a *trend* (not a single screenshot) is for. Gen-1→2 caught a real improvement (the manager stopped re-asking a question the owner had already answered twice); gen-4 caught a regression of the same failure mode. Without the harness, both would have been invisible.
-- **`friend_creation` is `critical` and sits at 0.0 in every generation — so every run FAILs by design.** This is the system working, not the system broken. The harness is honestly measuring a known architectural gap: the autonomous scene supervisor that drives friend creation currently only runs inside the Discord-bot subprocess, so a pure web E2E can't progress it yet (the "Discord = adapter" decoupling is unfinished — see [`docs/qa_system.md`](docs/qa_system.md) and `analysis/platform_decoupling_review.md`). EDD pins that gap to a number that will read **0 → 10** the day the supervisor goes web-native. A green dashboard that hid this would be the dishonest version.
+- **`conversation_quality` swung 6.0 → 9.0 → 8.0 → 4.0 … → 7.0** across generations. That volatility is the honest signal of a non-deterministic LLM product, and it's exactly what a *trend* (not a single screenshot) is for. Gen-1→2 caught a real improvement (the manager stopped re-asking a question the owner had already answered twice); gen-4 caught a regression of the same failure mode; by gen-11 it had settled back to 7.0. Without the harness, all of it would have been invisible.
+- **`friend_creation` is `critical`, and for gens 1–10 it sat at 0.0 — so every early run FAILed by design.** That was the harness working, not the system broken: it honestly pinned a known architectural gap — the autonomous onboarding supervisor only ran inside the Discord-bot subprocess, so a pure web E2E couldn't progress it (the "Discord = adapter" decoupling — see [`docs/qa_system.md`](docs/qa_system.md) and `analysis/platform_decoupling_review.md`). Then the web-native onboarding build closed it, and **gen-11 reads `friend_creation` = 10.0 → the first ✅ PASS (85/100)**. The number moved **0 → 10 exactly as the harness predicted while it sat red** — the flywheel demonstrated, not asserted. (`conversation_quality` 7.0 and `no_hallucination` 6.0 are the remaining soft spots; the harness keeps them visible rather than hiding them behind the green.)
 
 That is the pitch in one line: **product quality is a first-class, git-tracked metric — every commit's impact is measured and visible**, including the regressions and the unfinished work. The dashboard and PDF below are how a reviewer reads that timeline at a glance.
 
 ### See it: the `/admin/qa` dashboard + PDF reports
 
 The platform serves a **QA dashboard** at `/admin/qa` (admin login → "QA" menu): the latest score as a hero, a **quality-over-generations trend chart**, and a per-generation table with every dimension. Any generation exports to a **self-contained PDF** (`glimi.edd.report` renders a print-optimized HTML one-pager → Playwright headless Chromium; the trend line is server-rendered SVG, so it prints identically with no JS).
+
+![EDD — /admin/qa dashboard: gen-11 PASS 85, the dimension breakdown, and the quality-over-generations trend](docs/screenshots/en/19-edd-dashboard.png)
 
 ```bash
 # one scored generation (free self-test: echo backend, judge skipped, structural dims only)
@@ -386,6 +390,8 @@ Per-agent table, the model-selection experiment, and setup →
 Community is a **real, usable application** built on Glimi Core — the flagship, and the app the Core was first extracted from. (It also serves as the reference for what the engine enables, but it's a product you actually run, not a demo.)
 
 The friends in Community remember you. No re-introducing yourself each time, the way you would with a stranger. The hours you've spent together, last week's running joke, the day you admitted things were rough, the secret you told only A — each of them keeps it in their own store. So when you turn up after a few days, they ask first: "been a while, did that thing work out?" Swap a friend's model from Haiku to a local Llama and the relationship, the mood, the texture of it all come along intact. They aren't a chatbot that resets and has to be told who you are again. They already know you.
+
+![The cast — a populated community of friends, each with their own MBTI, age, mood, and per-agent model](docs/screenshots/en/20-community-cast.png)
 
 ![Connection Graph — Live](docs/screenshots/en/04-graph-live.webp)
 

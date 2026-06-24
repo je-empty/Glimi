@@ -10,6 +10,8 @@ Over **~11 weeks and 780 commits** (renamed Glimi the very next day, `4026bef`),
 
 The commit cadence tells the story honestly: **477 commits in April, 43 in May, 260 in June** — two intense build sprints bracketing a quiet, mostly-dormant May. What follows is what that velocity actually bought, what it cost, and where it broke.
 
+![Glimi Community today — a populated, living community: relationship graph, per-agent emotional state and model, live activity. The whole engine rendered in one web shell.](screenshots/en/11-community-dashboard.png)
+
 ## 2. The Major Architecture Pivots
 
 ### Pivot 1 — Terminal toy → multi-tenant web platform
@@ -71,6 +73,10 @@ Initially every LLM call was `subprocess.run(["claude", ...])`. The commit that 
 **Root cause:** under the `claude_cli -p` text backend there is **no native function-calling** — the model must *choose* to emit the `<tools>` text dialect. In isolated single-shot calls both agents emit it correctly; in multi-turn social conversation, natural chat wins and the commit point is skipped.
 
 **Fix attempt + honest limit (`b2e21cb`):** prompt rules — *"narration is not action — a friend request you didn't route never happens."* Measured via the EDD harness, this lifted conversation quality 6→9 and overall 69.4→75.0, but **`friend_creation` stayed 0/10**. The documented conclusion is candid: prompt tuning alone cannot make text-dialect tool emission reliable in multi-turn chat; the robust fix is a native tool-use backend. The QA system is deliberately built to **keep this failure visible** on a trend chart rather than hide it.
+
+**The resolution (`eb8ab23`, gen-11).** Keeping the failure on a chart is what made the fix legible. The actual root cause turned out to be deeper than tool-emission: the web platform *never registered the core tool handlers at all* (registration lived in the Discord-bot path), and the autonomous onboarding supervisor only ran in the Discord subprocess. Closing both — registering handlers in a platform-neutral `core/boot.py`, moving the supervisor web-native, and re-keying the kernel's per-agent tool stash by `(agent, channel)` — flipped `friend_creation` **0 → 10** and produced the first ✅ PASS (**85/100**). The harness had predicted exactly that jump while it sat red; the trend chart below is the before/after.
+
+![EDD trend: the web turn that never acted (gens 1–10, friend_creation 0, every run red) → the web-native onboarding milestone (gen-11, friend_creation 10, first PASS 85).](screenshots/en/19-edd-dashboard.png)
 
 ### The infrastructure traps — "the shell works but the daemon doesn't"
 
