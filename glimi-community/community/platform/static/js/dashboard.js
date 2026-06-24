@@ -3282,6 +3282,11 @@ function activeScenes(snap) {
   return (snap.scenes || []).filter(s => s.status === 'active');
 }
 
+function _sceneLabel(n) {
+  if (n === 'Conversation') return t('scene_conversation');
+  if (n === 'Tutorial') return t('scene_tutorial');
+  return n;
+}
 function firstActiveScene(snap) {
   return activeScenes(snap)[0] || null;
 }
@@ -3357,7 +3362,7 @@ function renderSceneCard(s) {
   return `<div class="scene-card" style="padding:16px 20px;margin-bottom:10px;background:var(--panel-2);border-radius:12px;${dim}">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
       <span style="font-size:22px">${s.icon || '🎭'}</span>
-      <span style="font-size:15px;font-weight:600;color:var(--text);flex:1">${esc(s.name)}</span>
+      <span style="font-size:15px;font-weight:600;color:var(--text);flex:1">${esc(_sceneLabel(s.name))}</span>
       <span style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;padding:3px 10px;border-radius:999px;${badgeStyle}">${statusLabel}</span>
     </div>
     <div style="color:var(--text-dim);font-size:12px;line-height:1.55;margin-bottom:8px">${esc(s.description)}</div>
@@ -3690,7 +3695,7 @@ async function tick() {
   const scene = firstActiveScene(snap);
   const actives = activeScenes(snap);
   document.getElementById('kpi-scene').innerHTML = scene
-    ? `<span style="color:var(--accent)">${esc(scene.icon || '')} ${esc(scene.name)}</span><small>${esc(scene.phase_desc || scene.status)}${actives.length > 1 ? ` +${actives.length - 1}` : ''}</small>`
+    ? `<span style="color:var(--accent)">${esc(scene.icon || '')} ${esc(_sceneLabel(scene.name))}</span><small>${esc(scene.phase_desc || scene.status)}${actives.length > 1 ? ` +${actives.length - 1}` : ''}</small>`
     : `<span style="color:var(--text-faint);font-size:15px">—</span><small>${t('nothing_active')}</small>`;
   document.getElementById('kpi-msgs').innerHTML = `${snap.total_messages}<small>${t('total')}</small>`;
   // Workspace-only KPIs (hidden for community via the template) — fill the row.

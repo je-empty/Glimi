@@ -138,5 +138,7 @@
   "type_creator": "CREATOR",
   "type_persona": "PERSONA",
   "type_supervisor": "SUPERVISOR",
-  "type_dev": "DEV"
+  "type_dev": "DEV",
+  "scene_conversation": "Conversation",
+  "scene_tutorial": "Tutorial"
 }

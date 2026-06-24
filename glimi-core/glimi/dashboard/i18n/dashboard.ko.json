@@ -138,5 +138,7 @@
   "type_creator": "크리에이터",
   "type_persona": "페르소나",
   "type_supervisor": "슈퍼바이저",
-  "type_dev": "개발"
+  "type_dev": "개발",
+  "scene_conversation": "대화",
+  "scene_tutorial": "튜토리얼"
 }
