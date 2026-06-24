@@ -471,7 +471,7 @@ class WorkspaceRegistry:
         autonomous-loop brief, stamped onto the Workspace.
         """
         owner_name = (name or "Owner").strip() or "Owner"
-        goal = (goal or "").strip() or "Plan the public launch of our open-source project"
+        goal = (goal or "").strip() or "Plan the launch of a new app / service"
         with self._lock:
             g = Glimi(backend=_USER_BACKEND, owner_name=owner_name)
             if ws_id is None:
