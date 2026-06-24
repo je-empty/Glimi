@@ -409,9 +409,10 @@ function applyCaps() {
   // detail modal's destructive buttons, the Sync view body) carry .cap-sync /
   // .cap-discord so they collapse with the same gate.
   if (!capOn('sync')) document.getElementById('view-sync')?.style.setProperty('display', 'none');
-  if (!capOn('supervisors')) {
+  {
+    // supervisor 토글: cap on 이면 노출, off 면 숨김 (community=caps null→on, workspace 데모만 on).
     const st = document.getElementById('supervisor-toggle');
-    if (st) st.style.display = 'none';
+    if (st) st.style.display = capOn('supervisors') ? '' : 'none';
   }
   // If the (server-)default-active view is one we just hid, fall back to chat.
   const active = document.querySelector('nav.tabs button.active[data-tab]');
