@@ -135,6 +135,9 @@ _ASSET_VER = _asset_ver()
 # retargets the shared dashboard.js — but the markup is the single shared source.
 from fastapi.templating import Jinja2Templates  # noqa: E402
 _TEMPLATES = Jinja2Templates(directory=[str(_APP_DIR / "templates"), str(_DASH_TEMPLATES)])
+# 공개 데모 배포에서만 설정 — 상단 랜딩(glimi.iruyo.com)으로 돌아가는 링크 노출.
+# 미설정(로컬/OSS)이면 빈 문자열 → 템플릿이 링크를 렌더하지 않는다.
+_TEMPLATES.env.globals["landing_url"] = os.environ.get("GLIMI_LANDING_URL", "")
 _I18N_DIR = _DASH_I18N
 # Tabs the workspace exposes; everything else (scenes/achievements/supervisors/
 # sync/events/health/logs) is a Community sim feature → hidden via data-caps.

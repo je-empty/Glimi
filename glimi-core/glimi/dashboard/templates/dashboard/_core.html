@@ -75,6 +75,9 @@
       </a>
     </span>
 
+    {% if landing_url %}<a class="brand-back" href="{{ landing_url }}" title="Glimi 홈으로"
+       style="font-size:12px;font-weight:600;color:var(--text-dim,#888);text-decoration:none;padding:5px 10px;border-radius:999px;background:var(--panel2);white-space:nowrap">← Glimi</a>{% endif %}
+
     {% if community_chrome %}
     <div style="position:relative" id="community-switcher-wrap">
       <button class="community-btn" id="community-btn" title="커뮤니티 전환">

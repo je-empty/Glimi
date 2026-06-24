@@ -11,6 +11,10 @@
   .dl-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 6px; }
   .dl-head h2 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
   .dl-head .sub { color: var(--muted); font-size: 13.5px; align-self: baseline; }
+  .dl-back { font-size: 12.5px; font-weight: 600; color: var(--muted); text-decoration: none;
+    background: var(--panel2); border-radius: 999px; padding: 6px 12px; white-space: nowrap;
+    transition: background .15s ease, color .15s ease; }
+  .dl-back:hover { background: var(--panel3); color: var(--text); }
   .dl-brand { display: inline-flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
   .dl-brand-logo { width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
     box-shadow: 0 1px 5px rgba(0,0,0,0.12); cursor: zoom-in; }
@@ -76,6 +80,7 @@
 {% block content %}
 {% set EN = (lang == 'en') %}
 <div class="dl-head">
+  {% if landing_url %}<a class="dl-back" href="{{ landing_url }}" title="Glimi">{{ '← Glimi home' if EN else '← Glimi 홈' }}</a>{% endif %}
   <a class="dl-brand" href="/" title="Glimi" aria-label="Glimi">
     <img src="/logo?v={{ asset_v }}" alt="Glimi" class="dl-brand-logo"
          onclick="event.preventDefault(); if (window.openLogoLightbox) openLogoLightbox();">
