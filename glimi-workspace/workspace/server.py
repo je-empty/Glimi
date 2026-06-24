@@ -1012,7 +1012,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                 "lede": ("Name yourself, give a goal, and a fresh manager-led team spins up around it."
                          if EN else "이름을 정하고 목표를 적으면, 매니저가 이끄는 새 팀이 그 주위로 꾸려져요."),
                 "name_label": "Your name" if EN else "이름",
-                "name_ph": "Owner" if EN else "예: 수민",
+                "name_ph": "Owner" if EN else "예: 오너",
                 "goal_label": "Goal" if EN else "목표",
                 "goal_ph": ("Plan the public launch of our open-source project"
                             if EN else "예: 오픈소스 프로젝트 공개 런칭 기획"),
@@ -1025,9 +1025,9 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                           else "하나의 Glimi Core 위에서 움직이는 전문가 팀"),
             "lede": ("Give a goal and a team forms around it — a manager that delegates to "
                      "Researcher, Builder, and Critic, who talk to each other and report back. "
-                     "Open the demo to watch one in motion. No login needed." if EN
-                     else "목표를 주면 그 주위로 팀이 꾸려져요 — 매니저가 리서처·빌더·크리틱에게 일을 나눠주고, "
-                          "서로 이야기하며 결과를 가져옵니다. 데모를 열어 직접 보세요. 로그인은 필요 없어요."),
+                     "Open the demo below to watch one in motion." if EN
+                     else "목표를 주면 그 주위로 팀이 꾸려집니다 — 매니저가 리서처·빌더·크리틱에게 일을 나누고, "
+                          "서로 의논해 결과를 가져옵니다. 아래 데모를 열면 그 과정이 그대로 보여요."),
             "items": items,
             "create": create,
         }

@@ -41,7 +41,7 @@ except ImportError:  # imported as workspace.demo
     from .team import LABELS, SPECIALISTS, TEAM
 
 # ── the demo's fixed setup ───────────────────────────────────────────────────
-OWNER_NAME = "수민"
+OWNER_NAME = "오너"
 OWNER_ID = "owner"
 GOAL = "오픈소스 프로젝트 공개 런칭 기획"
 
@@ -140,14 +140,14 @@ DELIVERABLE_ROUND2 = (
 )
 
 # ── the seeded transcript (hand-authored, believable — the finished work) ─────
-# (channel, speaker_id, text). speaker "owner" == 수민.
+# (channel, speaker_id, text). speaker "owner" == 오너.
 TRANSCRIPT: list[tuple[str, str, str]] = [
     # 1) Owner ↔ Coordinator — the goal lands, the Coordinator plans.
     (DM_COORDINATOR, OWNER_ID,
      "목표는 이거예요: 우리 오픈소스 프로젝트 공개 런칭을 기획하는 거. 근거 없는 과장은 "
      "싫어요 — 깔끔하고 정직한 런칭이면 좋겠어요. 어디서부터 시작할까요?"),
     (DM_COORDINATOR, "coordinator",
-     "알겠어요, 수민님 — 목표는 하나로 명확해요. 과장하지 않으면서도 신뢰를 주는 런칭. "
+     "알겠어요, 오너님 — 목표는 하나로 명확해요. 과장하지 않으면서도 신뢰를 주는 런칭. "
      "셋으로 나눠서 진행할게요. 리서처는 비슷한 프로젝트들이 실제로 어떻게 전환을 "
      "이끌어냈는지 파고들고, 빌더는 그 방향을 날짜와 담당자가 있는 순서 잡힌 체크리스트로 "
      "만들고, 크리틱은 런칭 당일에 터질 수 있는 지점들로 계획을 압박 검증해요. 종합은 제가 "
@@ -228,11 +228,11 @@ TRANSCRIPT: list[tuple[str, str, str]] = [
     (DM_COORDINATOR, "coordinator", DELIVERABLE_ROUND1),
 ]
 
-# The HITL approval trail for the one consequential action (delivering to 수민).
+# The HITL approval trail for the one consequential action (delivering to 오너).
 # Written to the mgr-approvals system-log channel (the convention from the
 # Workspace HITL gate), so it's inspectable in the same dashboard.
 APPROVAL_TRAIL: list[str] = [
-    "[HITL] 제안됨 · final_deliverable · 수민님을 위한 런칭 종합",
+    "[HITL] 제안됨 · final_deliverable · 오너님을 위한 런칭 종합",
     "[HITL] 결정 · 오너 승인 (수정: 최대 리스크 문구 더 단단하게)",
     "[HITL] 결과 · dm-coordinator 로 전달됨",
 ]
@@ -241,7 +241,7 @@ APPROVAL_TRAIL: list[str] = [
 # (a, b, type, intimacy, dynamics)
 RELATIONSHIPS: list[tuple[str, str, str, int, str]] = [
     ("coordinator", OWNER_ID, "lead", 82,
-     "수민님을 위해 워크스페이스를 이끔. 목표를 받아 종합을 전달함."),
+     "오너님을 위해 워크스페이스를 이끔. 목표를 받아 종합을 전달함."),
     ("coordinator", "researcher", "manages", 62,
      "'무엇이 전환을 만들었나' 방향을 배분하고 그 결과를 계획에 녹임."),
     ("coordinator", "builder", "manages", 62,
@@ -287,7 +287,7 @@ MEMORIES: list[tuple[str, str, int, str, int, bool]] = [
 
 # Semantic facts (Layer 3): (agent, subject, predicate, object).
 FACTS: list[tuple[str, str, str, str]] = [
-    ("coordinator", "수민", "원한다", "과장하지 않는 런칭"),
+    ("coordinator", "오너", "원한다", "과장하지 않는 런칭"),
     ("coordinator", "런칭", "출시한다", "화요일 오전 9시(PT)"),
     ("researcher", "Show HN", "보상한다", "'동작한다'; 벌한다 '거의 동작한다'"),
     ("builder", "지원 시간", "이어야 한다", "백업 인원을 지정한 런칭 당일 종일"),
@@ -323,7 +323,7 @@ CONTINUATION: list[tuple[str, str, str]] = [
     (GROUP, "critic",
      "깨끗한 환경 실행을 제가 직접 확인했어요. 4단계 보류 해제할게요."),
     (DM_COORDINATOR, "coordinator",
-     "수민님 — 퀵스타트가 깨끗한 환경에서 통과해요. 화요일 진행 가능합니다."),
+     "오너님 — 퀵스타트가 깨끗한 환경에서 통과해요. 화요일 진행 가능합니다."),
     (GROUP, "researcher",
      "데모 58초로 줄였어요 — 군말 없이 바로 동작하는 출력으로 끝나요."),
     (A2A_RC, "critic",
