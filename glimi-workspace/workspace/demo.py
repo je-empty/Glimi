@@ -64,6 +64,81 @@ APPROVALS = "mgr-approvals"  # mgr-* system log convention (never a chat channel
 # scripted + echo + store-only → $0, exactly how the demo already fakes liveness.
 OWNER_REVIEW = "internal-owner"
 
+# ── the final deliverable (the work PRODUCT — a structured markdown brief) ────
+# This is the centerpiece: the thing that proves a coordinated team produced REAL
+# work, not chat. A live run writes the deliverable through the kernel LLM
+# choke-point with a raised max_tokens + the document skeleton (run._DELIVERABLE_
+# TEMPLATE), so it comes back as a multi-section brief. The seeded demo must MATCH
+# that — a hand-authored brief on the SAME skeleton (## 한눈에 보기 / 결정 / 실행
+# 계획 / 리스크 / 다음 한 걸음), grounded in the exact specifics the seeded team
+# discussed (60초 데모, 화요일 9시 PT Show HN, 깨끗한 환경 퀵스타트 게이트, ~6시간
+# 지원 부하, 다섯 단계 체크리스트). The chat renderer (chat.js mdBlocks) turns the
+# `## ` / `- ` / `1.` into real headings + lists, so a visitor opening
+# dm-coordinator sees a genuine work document, not another chat bubble.
+DELIVERABLE_ROUND1 = (
+    "## 한눈에 보기\n"
+    "과장 없이 **신뢰를 주는 집중 런칭**으로 갑니다. 가장 시끄러운 멀티채널 푸시가 아니라, "
+    "**검증된 60초 데모 + 잔인할 만큼 명확한 '이게 무엇이고 무엇이 아닌지' README**를 앞세운 "
+    "단일 Show HN — 전환에 성공한 사례 네 건 중 셋이 실제로 이렇게 움직였어요. 출시는 "
+    "**화요일 오전 9시(PT)**.\n\n"
+    "## 결정 / 방향\n"
+    "- **단일 Show HN + 타이밍 맞춘 스레드 하나** — 산만한 멀티채널 푸시는 버립니다 "
+    "(리서처: 4건 중 3건에서 단일 채널이 멀티채널을 이김).\n"
+    "- **데모가 시선을 끌고, 퀵스타트가 그 시선을 붙잡는다** — 리서처↔크리틱이 토론 끝에 "
+    "합의한 핵심. 데모만으로는 '거의 동작한다'에서 무너져요.\n"
+    "- **탈락시킨 대안**: 대대적 사전 홍보·인플루언서 푸시 — 정직한 런칭 기조와 충돌하고, "
+    "데이터상 전환을 만들지도 못함.\n\n"
+    "## 실행 계획\n"
+    "1. **범위 확정 + 정직한 README 작성** — 빌더 (D-3). '무엇이 아닌지'를 상단에 명시.\n"
+    "2. **60초 데모 녹화** — 빌더 (D-2). 90초 넘으면 이탈하므로 60초 고정, 군말 없이 "
+    "동작하는 출력으로 끝냄 (리서처 데이터).\n"
+    "3. **깨끗한 환경 퀵스타트 검증 + 상단 고정 '알려진 이슈' 안내** — 크리틱 (D-2). "
+    "*이게 런칭 게이트입니다* (아래 리스크 참조).\n"
+    "4. **Show HN 글 + 첫 댓글 FAQ 준비** — 빌더+리서처 (D-1).\n"
+    "5. **화요일 오전 9시(PT) 출시 + 종일 지원 인원 다섯** — 백업 인원 지정 (리서처: "
+    "지원 부하는 한나절이 아니라 약 6시간 치솟음).\n\n"
+    "## 가장 큰 리스크와 완화책\n"
+    "- **데모와 맨바닥 설치 사이의 간극** *(크리틱, 최상위 리스크)* — 누가 클론 받고 첫 "
+    "5분 안에 벽에 부딪히면 그 스레드가 등을 돌립니다. 실제 한 사례는 '설치가 깨졌다'는 "
+    "최상단 댓글로 끝내 회복 못 했어요.\n"
+    "  - **완화책**: 깨끗한 환경에서 직접 검증한 '60초면 동작한다' 퀵스타트 + 상단 고정 "
+    "알려진 이슈. **퀵스타트가 깨끗한 환경 테스트를 통과하기 전엔 런칭하지 않습니다.**\n"
+    "- **런칭 당일 지원 부담** — 약 6시간 부하 집중. **완화책**: 종일 지원 다섯 명 + 백업 "
+    "인원 지정.\n\n"
+    "## 다음 한 걸음\n"
+    "크리틱에게 **깨끗한 환경 퀵스타트 검증**을 가장 먼저 돌리게 하세요 — 그게 통과해야 "
+    "나머지 일정이 의미가 있습니다. 통과 신호가 오면 화요일 진행을 확정합니다."
+)
+
+# Round-2 deliverable — the scheduled execution plan the owner asks for after the
+# quickstart gate passes (the live unfold's payoff: a SECOND real document, with
+# dates + owners locked in, so the demo ends on "ready to ship", not mid-air).
+DELIVERABLE_ROUND2 = (
+    "## 한눈에 보기\n"
+    "퀵스타트가 깨끗한 환경에서 통과했고(설치→첫 출력 48초), 데모는 58초로 확정됐어요. "
+    "이제 **날짜·담당까지 박은 실행 계획**으로 마무리합니다 — 화요일 오전 9시(PT) 진행 "
+    "**확정**.\n\n"
+    "## 일정 (화요일 = D-Day)\n"
+    "| 시점 | 할 일 | 담당 |\n"
+    "|---|---|---|\n"
+    "| D-2 (일) | 60초 데모 녹화 + 깨끗한 환경 퀵스타트 검증 | 빌더 · 크리틱 |\n"
+    "| D-1 (월) | README 최종 + Show HN 글/첫 댓글 FAQ + 알려진 이슈 고정 | 빌더 · 리서처 |\n"
+    "| **D-Day 09:00 PT** | **Show HN 게시 + 타이밍 스레드** | 매니저 |\n"
+    "| D-Day 09:00–15:00 | 지원 집중 창(부하 피크 ~6h) | 다섯 + 백업 |\n"
+    "| D-Day 15:00~ | 회고 메모 + 알려진 이슈 갱신 | 크리틱 |\n\n"
+    "## 담당 / 책임\n"
+    "- **매니저** — 출시 버튼, 스레드, 오너 보고.\n"
+    "- **빌더** — README·데모·체크리스트 산출물.\n"
+    "- **리서처** — Show HN 카피, FAQ, 지원 스크립트.\n"
+    "- **크리틱** — 퀵스타트 게이트, 알려진 이슈, 회고.\n\n"
+    "## 가장 큰 리스크와 완화책\n"
+    "- **막판 환경 변화로 퀵스타트가 깨질 가능성** — **완화책**: D-1 저녁 동결, D-Day "
+    "아침 깨끗한 환경 재검증 한 번 더. 실패 시 출시 보류 (게이트 유지).\n\n"
+    "## 다음 한 걸음\n"
+    "D-1 저녁 코드/문서 **동결**을 지금 공지하세요. 그러면 화요일 아침 재검증만 통과하면 "
+    "바로 출시입니다."
+)
+
 # ── the seeded transcript (hand-authored, believable — the finished work) ─────
 # (channel, speaker_id, text). speaker "owner" == 수민.
 TRANSCRIPT: list[tuple[str, str, str]] = [
@@ -147,14 +222,10 @@ TRANSCRIPT: list[tuple[str, str, str]] = [
      "준비 완료라고 하기 전에 깨끗한 환경에서 퀵스타트 테스트하기 — 맨바닥 시작이 승부의 "
      "전부예요."),
 
-    # 5) The owner-approved deliverable, back in the owner DM.
-    (DM_COORDINATOR, "coordinator",
-     "수민님 — 종합 정리예요. 결정: 집중되고 정직한 런칭 — 화요일 오전 9시(PT) Show HN, "
-     "검증된 60초 데모와 명확한 '이게 무엇이고 무엇이 아닌지' README를 앞세움. 계획: (1) 범위 "
-     "확정 + 정직한 README, (2) 60초 데모 녹화, (3) Show HN 글 + 첫 댓글 FAQ 준비, "
-     "(4) 깨끗한 환경에서 검증한 퀵스타트 + 상단 고정 알려진 이슈, (5) 런칭 당일 종일 지원 "
-     "인원 다섯. 최대 리스크: 데모와 맨바닥 설치 사이의 간극 — 퀵스타트가 깨끗한 환경에서 "
-     "통과하기 전엔 런칭하지 않습니다. 그게 마지노선이에요."),
+    # 5) The owner-approved deliverable, back in the owner DM. THE work product —
+    #    a structured markdown brief (not a chat paragraph), exactly the shape a
+    #    real run produces. The chat renderer turns it into headings + lists.
+    (DM_COORDINATOR, "coordinator", DELIVERABLE_ROUND1),
 ]
 
 # The HITL approval trail for the one consequential action (delivering to 수민).
@@ -259,7 +330,11 @@ CONTINUATION: list[tuple[str, str, str]] = [
      "상단 고정 알려진 이슈 안내 초안 잡았어요. 우리 발목 잡을 거 하나 줄였네요."),
     (GROUP, "builder",
      "Show HN 글 + 첫 댓글 FAQ 준비됐어요. 지원 인원 다섯 명 확정됐고요."),
-    (DM_COORDINATOR, "coordinator", "전부 준비됐어요, 수민님. 진행 신호만 기다릴게요."),
+    # Round-2 payoff: the Coordinator delivers the SECOND structured document — the
+    # scheduled execution plan the owner asked for (dates + owners locked in). Lands
+    # in dm-coordinator as a real markdown brief, so the live unfold ends on a
+    # finished work product, not a one-line "준비됐어요".
+    (DM_COORDINATOR, "coordinator", DELIVERABLE_ROUND2),
 ]
 
 # The owner's reasoning for the FINISHED first round — seeded into internal-owner so
