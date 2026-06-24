@@ -255,18 +255,23 @@ def _qa_store():
 @router.get("/admin/qa", response_class=HTMLResponse)
 async def admin_qa_page(
     request: Request,
+    lang: str = "ko",
     user: dict = Depends(require_admin),
 ):
     """글로벌 admin 페이지 — EDD QA 세대 히스토리 (품질 트렌드 + 런별 차원 분해).
 
     Reads the git-anchored generations ``community_e2e --qa`` writes through the
-    shared ``glimi.edd`` store — the flywheel data ``docs/qa_system.md`` describes."""
+    shared ``glimi.edd`` store — the flywheel data ``docs/qa_system.md`` describes.
+
+    ``?lang=en`` renders the chrome in English (for the English README shot);
+    the live product defaults to Korean."""
+    lang = "en" if str(lang).lower().startswith("en") else "ko"
     store = _qa_store()
     generations = store.load_generations()
     return templates.env.TemplateResponse(
         request,
         "admin/qa.html",
-        {"user": user, "generations": generations},
+        {"user": user, "generations": generations, "lang": lang, "EN": lang == "en"},
     )
 
 

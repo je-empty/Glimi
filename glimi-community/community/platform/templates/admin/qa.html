@@ -70,24 +70,38 @@
 <div class="qa-page">
   <div class="qa-head">
     <h1>QA — EDD generations</h1>
-    <span class="admin-tag">관리자</span>
+    <span class="admin-tag">{{ 'ADMIN' if EN else '관리자' }}</span>
     {% if generations %}
-    <a class="qa-pdf-btn" href="/admin/qa/pdf" target="_blank" title="최신 세대 리포트 PDF">
-      <i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF 내보내기
+    <a class="qa-pdf-btn" href="/admin/qa/pdf" target="_blank" title="{{ 'Latest generation report PDF' if EN else '최신 세대 리포트 PDF' }}">
+      <i class="ti ti-file-type-pdf" aria-hidden="true"></i> {{ 'PDF export' if EN else 'PDF 내보내기' }}
     </a>
     {% endif %}
   </div>
   <p class="lede">
+    {% if EN %}
+    Tracks a <b>0–100 quality score</b> — each session where the autonomous owner agent
+    drove the community from scratch, graded across multiple dimensions — per git generation (commit).
+    This is the eval-driven development flywheel. Data comes from the git-anchored generations
+    <code>community_e2e --qa</code> records. (<code>docs/qa_system.md</code>)
+    {% else %}
     자율 오너 에이전트가 커뮤니티를 처음부터 구동한 각 세션을 여러 차원으로 채점한
     <b>0–100 품질 점수</b>를 git 세대(commit)별로 추적합니다 — eval-driven development flywheel.
     데이터는 <code>community_e2e --qa</code> 가 기록한 git-앵커 세대입니다. (<code>docs/qa_system.md</code>)
+    {% endif %}
   </p>
 
   {% if not generations %}
   <div class="qa-empty">
+    {% if EN %}
+    No generations recorded yet.<br>
+    Run
+    <code>GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e --owner-agent --qa</code>
+    to record your first generation.
+    {% else %}
     아직 기록된 세대가 없습니다.<br>
     <code>GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e --owner-agent --qa</code>
     로 첫 세대를 남기세요.
+    {% endif %}
   </div>
   {% else %}
   {% set latest = generations[-1] %}
@@ -96,23 +110,23 @@
       <div class="qa-score-num" id="hero-score">
         {{ latest.overall_score if latest.overall_score is not none else '–' }}
       </div>
-      <div class="qa-score-sub">/ 100 · 통과선 {{ latest.min_overall or 70 }}</div>
+      <div class="qa-score-sub">/ 100 · {{ 'gate' if EN else '통과선' }} {{ latest.min_overall or 70 }}</div>
       <div class="qa-badge {{ 'qa-pass' if latest.passed else 'qa-fail' }}">
-        {{ '✅ 통과' if latest.passed else '❌ 실패' }}
+        {% if latest.passed %}{{ '✅ PASS' if EN else '✅ 통과' }}{% else %}{{ '❌ FAIL' if EN else '❌ 실패' }}{% endif %}
       </div>
     </div>
     <div>
       <div class="qa-meta">
-        <span>세대 <b>#{{ latest.generation_no }}</b></span>
+        <span>{{ 'gen' if EN else '세대' }} <b>#{{ latest.generation_no }}</b></span>
         <span>git <b class="qa-sha">{{ latest.git.sha }}{{ '*' if latest.git.dirty }}</b></span>
-        <span>백엔드 <b>{{ latest.backend }}</b></span>
+        <span>{{ 'backend' if EN else '백엔드' }} <b>{{ latest.backend }}</b></span>
         <span>{{ latest.generated_at[:19].replace('T',' ') }}Z</span>
-        {% if latest.failing %}<span class="qa-fail-dims">실패: {{ latest.failing|join(', ') }}</span>{% endif %}
+        {% if latest.failing %}<span class="qa-fail-dims">{{ 'Failing' if EN else '실패' }}: {{ latest.failing|join(', ') }}</span>{% endif %}
       </div>
       <div class="qa-dims">
         {% for d in latest.dimensions %}
         <div class="qa-dim {{ 'skip' if d.skipped }}">
-          <span class="qa-dim-label">{{ d.label }}</span>
+          <span class="qa-dim-label">{{ d.key if EN else d.label }}</span>
           <span class="qa-dim-score">{{ 'skip' if d.skipped else (d.score|string + '/10') }}</span>
           <span class="qa-bar"><span style="width: {{ 0 if d.skipped or d.score is none else (d.score*10)|round(0,'floor') }}%;
             background: {{ 'var(--border)' if d.skipped else ('#1f9d57' if d.passed else 'var(--err)') }};"></span></span>
@@ -123,24 +137,30 @@
   </div>
 
   <div class="qa-card">
-    <h2>세대별 품질 추이</h2>
-    <div class="sub">세대별 종합 점수 — 우상향이 곧 품질 개선의 측정 가능한 증거.</div>
+    <h2>{{ 'Quality over generations' if EN else '세대별 품질 추이' }}</h2>
+    <div class="sub">
+      {% if EN %}Overall score per generation — a rising line is measurable evidence of quality improvement.
+      {% else %}세대별 종합 점수 — 우상향이 곧 품질 개선의 측정 가능한 증거.{% endif %}
+    </div>
     <svg id="qa-trend" viewBox="0 0 800 200" preserveAspectRatio="none"></svg>
   </div>
 
   <div class="qa-card">
-    <h2>세대 목록</h2>
-    <div class="sub">{{ generations|length }} 세대 · 각 행은 한 commit 위의 한 QA 런.</div>
+    <h2>{{ 'Generations' if EN else '세대 목록' }}</h2>
+    <div class="sub">
+      {% if EN %}{{ generations|length }} generations · one QA run per commit.
+      {% else %}{{ generations|length }} 세대 · 각 행은 한 commit 위의 한 QA 런.{% endif %}
+    </div>
     <table class="qa-table">
       <thead><tr>
-        <th>#</th><th>점수</th><th></th><th>Git</th><th>백엔드</th><th>실패 차원</th><th>시각</th>
+        <th>#</th><th>{{ 'score' if EN else '점수' }}</th><th></th><th>Git</th><th>{{ 'Backend' if EN else '백엔드' }}</th><th>{{ 'Failing' if EN else '실패 차원' }}</th><th>{{ 'time' if EN else '시각' }}</th>
       </tr></thead>
       <tbody>
         {% for g in generations|reverse %}
         <tr>
           <td>{{ g.generation_no }}</td>
           <td><b>{{ g.overall_score if g.overall_score is not none else '–' }}</b></td>
-          <td><span class="qa-pill {{ 'qa-pass' if g.passed else 'qa-fail' }}">{{ '통과' if g.passed else '실패' }}</span></td>
+          <td><span class="qa-pill {{ 'qa-pass' if g.passed else 'qa-fail' }}">{% if g.passed %}{{ 'PASS' if EN else '통과' }}{% else %}{{ 'FAIL' if EN else '실패' }}{% endif %}</span></td>
           <td class="qa-sha">{{ g.git.sha }}{{ '*' if g.git.dirty }}</td>
           <td>{{ g.backend }}</td>
           <td class="qa-fail-dims">{{ g.failing|join(', ') if g.failing else '—' }}</td>
@@ -181,7 +201,7 @@
     // gate line at 70 (dashed)
     const gy = yAt(70);
     s += `<line x1="${padL}" y1="${gy}" x2="${W-padR}" y2="${gy}" stroke="${accent}" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>`;
-    s += `<text x="${W-padR}" y="${gy-4}" text-anchor="end" font-size="10" fill="${accent}">통과선 70</text>`;
+    s += `<text x="${W-padR}" y="${gy-4}" text-anchor="end" font-size="10" fill="${accent}">{{ 'gate' if EN else '통과선' }} 70</text>`;
     // line
     const path = pts.map((p, k) => `${k ? 'L' : 'M'}${xAt(p.i).toFixed(1)},${yAt(p.y).toFixed(1)}`).join(' ');
     s += `<path d="${path}" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linejoin="round"/>`;
