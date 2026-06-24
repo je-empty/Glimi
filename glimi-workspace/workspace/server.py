@@ -643,15 +643,18 @@ def _demo_ws_supervisors(payload: dict) -> list:
             "seconds_since_action": now % 55 + 8,
         },
     ]
-    label = {"group-team": "팀 전체", "mgr-approvals": "오너 승인",
-             "dm-coordinator": "팀장 DM", "internal-owner": "오너 채널"}
+    aname = {a.get("id"): a.get("name", "") for a in agents}
+    alias = {"owner": "오너", "approvals": "승인", "team": "팀 전체", "system": "시스템"}
 
     def _lbl(nm: str) -> str:
-        if nm in label:
-            return label[nm]
-        if nm.startswith("internal-"):
-            return nm[len("internal-"):].replace("-", "·")
-        return nm
+        rest = nm
+        for pre in ("internal-", "group-", "dm-", "mgr-"):
+            if nm.startswith(pre):
+                rest = nm[len(pre):]
+                break
+        if rest in alias:
+            return alias[rest]
+        return "·".join(aname.get(t, alias.get(t, t)) for t in rest.split("-"))
 
     chat_chs = [c for c in channels
                 if (c.get("name") or "").startswith(("internal-", "group-", "mgr-"))]

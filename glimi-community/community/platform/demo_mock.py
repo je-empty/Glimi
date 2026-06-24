@@ -28,16 +28,30 @@ def _capture_mode() -> bool:
     return os.environ.get("GLIMI_DEMO_CAPTURE", "").strip() in ("1", "true")
 
 
-def _chan_label(name: str) -> str:
-    """채널 id → 짧은 표시 라벨 (대화 supervisor 카드용)."""
+def _chan_label(name: str, idname: dict | None = None) -> str:
+    """채널 id → 사람 친화 라벨 (대화 supervisor 카드용). 에이전트 id 는 이름으로 해석."""
+    idname = idname or {}
     n = name or ""
-    if n.startswith("internal-"):
-        return n[len("internal-"):].replace("-", "·")
-    if n.startswith("group-"):
-        return n[len("group-"):] + " 단톡"
-    if n.startswith("dm-"):
-        return n[len("dm-"):]
-    return n
+    is_group = False
+    if n.startswith("internal-dm-"):
+        rest = n[len("internal-dm-"):]
+    elif n.startswith("internal-group-"):
+        rest = n[len("internal-group-"):]; is_group = True
+    elif n.startswith("internal-"):
+        rest = n[len("internal-"):]
+    elif n.startswith("group-"):
+        rest = n[len("group-"):]; is_group = True
+    elif n.startswith("dm-"):
+        rest = n[len("dm-"):]
+    elif n.startswith("mgr-"):
+        rest = n[len("mgr-"):]
+    else:
+        rest = n
+    if rest in idname:                       # 통째로 에이전트 id → 이름
+        rest = idname[rest]
+    else:                                    # 토큰별 해석 (이미 이름이면 그대로)
+        rest = "·".join(idname.get(t, t) for t in rest.split("-"))
+    return rest + (" 단톡" if is_group else "")
 
 
 def _demo_supervisors(snap: dict[str, Any], running_channel: str | None = None) -> list[dict]:
@@ -96,7 +110,7 @@ def _demo_supervisors(snap: dict[str, Any], running_channel: str | None = None) 
         is_running = (nm == running_channel)
         sups.append({
             "name": f"chat.{nm}", "kind": "chat",
-            "display_name": f"대화 · {_chan_label(nm)}", "icon": "💬",
+            "display_name": f"대화 · {_chan_label(nm, pname)}", "icon": "💬",
             "active": is_running or i < 2,
             "intervening": is_running,
             "target_agents": parts[:3],
