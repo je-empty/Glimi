@@ -79,12 +79,14 @@ from glimi.dashboard import (
 # whether loaded as ``workspace.server`` or from a flat dir on sys.path.
 try:  # script / flat-dir on sys.path
     import demo as _demo  # type: ignore
+    import demo_en as _demo_en  # type: ignore
     from run import add_team_member, run_workspace, seed_team  # type: ignore
     from team import RESERVED_IDS  # type: ignore
     from driver import drive_workspace  # type: ignore
     from owner_agent import OWNER_REVIEW_CHANNEL as _OWNER_REVIEW_CHANNEL  # type: ignore
 except ImportError:  # imported as workspace.server
     from . import demo as _demo
+    from . import demo_en as _demo_en
     from .run import add_team_member, run_workspace, seed_team
     from .team import RESERVED_IDS
     from .driver import drive_workspace
@@ -1657,6 +1659,18 @@ def _install_demo(reg: WorkspaceRegistry, *, interval: float = 6.0) -> Workspace
         name="glimi-workspace-server-demo",
     )
     thread.start()
+    # English mirror demo (/w/demo-en) — faithful EN of the KO demo, same shape.
+    try:
+        g_en = _demo_en.build()
+        ws_en = Workspace(id="demo-en", glimi=g_en, title="Launch-plan demo",
+                          goal=_demo_en.GOAL, kind="demo")
+        reg.register(ws_en)
+        threading.Thread(
+            target=_demo_en.activity_loop, args=(g_en, threading.Event(), interval),
+            daemon=True, name="glimi-workspace-server-demo-en",
+        ).start()
+    except Exception as e:  # noqa: BLE001 — EN demo is best-effort; never break startup
+        print(f"[ws] demo-en install skipped: {e}")
     # Daemon thread → dies with the process; server lifetime == demo lifetime, so
     # we don't expose a stop handle.
     return ws

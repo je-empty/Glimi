@@ -1,25 +1,28 @@
-"""English 'demo-en' community mockup seed — mirrors the 5-layer memory model.
+"""English 'demo-en' community mockup seed — faithful mirror of seed_demo_mockup.py.
 
 Run: python3 scripts/seed_demo_mockup_en.py
 
+This is the English counterpart of scripts/seed_demo_mockup.py (the live Korean
+"주제 없는 아지트" demo). Structure / logic / DB calls / agent ids / genders /
+MBTI / ages / relationship-types / channel-topology / event-structure /
+hidden-personas are 100% identical — only the COMMUNITY_ID and user-visible
+content strings differ (translated to natural English).
+
 Contents:
-- owner + 7 personas (friends / colleagues / partners only, no family)
+- owner + 10 personas defined (4F/4M visible + 2 hidden) — friends only, no family
+- mgr 유나→Yuna + creator 하나→Hana
 - assorted channels (DM, internal-dm, internal-group, group, mgr)
-- rich conversations (50+ messages per channel avg)
+- rich conversations + thread/reaction affordances
 - L1 / L2 / L3 episodic memory + importance · is_pinned · related_entities · mem_type
 - agent_facts (Layer 3 Semantic) — structured per-entity knowledge
 - relationship_history (Layer 4) — intimacy / dynamics inflection log
-- varied emotional states (1-10 intensity)
+- two personas (006 Grace · 007 Ryan) are HIDDEN_IN_DEMO: defined fully in the
+  seed but stripped from the demo DB at the end (mirrors the Korean seed exactly)
 
 Purpose: web dashboard showcase (English README) — http://localhost:8765/?community=demo-en
 
-NOTE: This is the English counterpart of scripts/seed_demo_mockup.py.
-Structure / logic / DB calls are 100% identical; only COMMUNITY_ID and the
-user-visible content strings differ (translated to natural English). agent_id
-values are intentionally unchanged (code depends on them).
-
 import-safe: all side effects live inside `seed()`. Importing this module does
-nothing.
+nothing (the first-run auto-seed has ensure_demo_seeded import → call seed()).
 """
 import json
 import os
@@ -35,11 +38,18 @@ ROOT = Path(__file__).resolve().parent.parent
 def _copy_seed_avatars(dest_dir: Path) -> None:
     """Copy avatars into the demo profile-images dir (best-effort, never crash).
 
-    Source priority:
-      1) communities/private/profile_images  (dev machine only — gitignored)
-      2) committed fallback: assets/sample_profile_images, assets/profile_images
-    If none exist, skip (serve_avatar falls back to a placeholder SVG). Must not
-    break on a fresh clone (no communities/ or data/).
+    Sources (every dir that exists; lower priority first → higher priority
+    overwrites):
+      1) committed samples: <community assets>/sample_profile_images,
+         .../profile_images (always present on a fresh clone / public deploy
+         glimi.iruyo.com). Male personas point their DB profile_image_filename
+         at one of these sample filenames (e.g.
+         agent-persona-m-25-intj-calm-analytical.png), so this copy makes the
+         demo dir self-contained.
+      2) communities/private/profile_images (dev machine only — gitignored).
+         id-based filenames ({aid}.png). Female persona avatars come from here.
+    If none exist, skip — serve_avatar resolves to the assets fallback /
+    placeholder SVG. Must not break on a fresh clone (no communities/ or data/).
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     for f in dest_dir.glob("*.png"):
@@ -48,19 +58,29 @@ def _copy_seed_avatars(dest_dir: Path) -> None:
         except OSError:
             pass
 
+    # The community package's ASSETS_DIR (= glimi-community/assets) is canonical.
+    # After the 3-repo split ROOT/"assets" no longer exists. Fall back on import
+    # failure.
+    try:
+        from community.community import ASSETS_DIR as _ASSETS
+        assets_dir = Path(_ASSETS)
+    except Exception:
+        assets_dir = ROOT / "assets"
+
+    # low priority → high priority. A later copy overwrites the same name.
     candidates = [
+        assets_dir / "sample_profile_images",
+        assets_dir / "profile_images",
         ROOT / "communities" / "private" / "profile_images",
-        ROOT / "assets" / "sample_profile_images",
-        ROOT / "assets" / "profile_images",
     ]
-    src_dir = next((c for c in candidates if c.exists()), None)
-    if src_dir is None:
-        return
-    for src in src_dir.glob("*.png"):
-        try:
-            shutil.copy(src, dest_dir / community.name)
-        except OSError:
-            pass
+    for src_dir in candidates:
+        if not src_dir.exists():
+            continue
+        for src in src_dir.glob("*.png"):
+            try:
+                shutil.copy(src, dest_dir / src.name)
+            except OSError:
+                pass
 
 
 def seed(community_id: str = "demo-en") -> None:
@@ -79,7 +99,11 @@ def seed(community_id: str = "demo-en") -> None:
     community.set_community(community_id)
 
     # ── 0. directory + DB reset ─────────────────────────────────
-    demo_dir = ROOT / "communities" / community_id
+    # After the 3-repo split the canonical communities dir is
+    # community.COMMUNITIES_DIR (= glimi-community/communities, where
+    # db.get_db_path reads). Use the canonical dir so a fresh clone doesn't make
+    # the seeder build the wrong dir and kill init_db() with FileNotFoundError.
+    demo_dir = community.get_community_dir()
     demo_dir.mkdir(parents=True, exist_ok=True)
     for suffix in ("", "-shm", "-wal"):
         p = demo_dir / f"community.db{suffix}"
@@ -114,15 +138,24 @@ def seed(community_id: str = "demo-en") -> None:
 
     # ── 2. agent insert helper ────────────────────────────────
     def insert_agent(aid, atype, name, age, gender, mbti, background,
-                     current_emotion="calm", intensity=5):
+                     current_emotion="calm", intensity=5, image=None):
+        # profile_image_filename: defaults to id-based ({aid}.png) — on a dev
+        # machine communities/private/profile_images holds avatars pre-named
+        # {aid}.png that _copy_seed_avatars copies verbatim. On a fresh clone /
+        # public deploy (glimi.iruyo.com) that dir is absent (gitignored), so
+        # storing a committed assets/sample_profile_images sample filename lets
+        # the resolver (community.get_profile_image_path) fall back to the sample
+        # directly. When image is given, use that sample filename and also record
+        # it in sample_source_file.
+        fname = image or f"{aid}.png"
         conn.execute("""
             INSERT INTO agents (id, type, name, status, current_emotion, emotion_intensity,
                                 birth_year, age, gender, mbti, background,
-                                profile_image_filename, version, created_at)
-            VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                                profile_image_filename, sample_source_file, version, created_at)
+            VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         """, (aid, atype, name, current_emotion, intensity,
               2026 - age, age, gender, mbti, background,
-              f"{aid}.png", datetime.now().isoformat()))
+              fname, image, datetime.now().isoformat()))
 
 
     insert_agent("agent-mgr-001", "mgr", "Yuna", 24, "female", "ENFJ",
@@ -131,10 +164,11 @@ def seed(community_id: str = "demo-en") -> None:
                  "New-member tutorial guide + persona designer. Warm and creative.")
 
 
-    # ── 3. 7 personas (friends only — no romance / coworkers-as-family) ─────────
+    # ── 3. 10 personas (4F/4M visible + 2 hidden · pure friendship only — no romance / coworkers / family) ───
     personas = [
         {
             "id": "agent-persona-001", "name": "Mia", "age": 24, "gender": "female",
+            "image": "agent-persona-f-21-infj-quiet-gentle.png",
             "mbti": "INFJ", "enneagram": "2",
             "bg": "A friend from a book club. Loves reading and writing. Quiet, prefers deep conversations.",
             "emotion": "serene", "intensity": 6,
@@ -146,9 +180,10 @@ def seed(community_id: str = "demo-en") -> None:
             "routine": "morning at the bookstore → afternoon work → evening cafe with friends",
         },
         {
-            "id": "agent-persona-002", "name": "Chloe", "age": 27, "gender": "female",
+            "id": "agent-persona-002", "name": "Theo", "age": 27, "gender": "male",
+            "image": "agent-persona-m-27-estp-bold-sporty.png",
             "mbti": "ESTP", "enneagram": "7",
-            "bg": "Friends since elementary school. Lives one neighborhood over so they hang out often. Totally casual, can even swear around each other.",
+            "bg": "Friends since elementary school. Lives one neighborhood over so they hang out often. Totally casual — can even swear around each other.",
             "emotion": "lively", "intensity": 8,
             "traits": ["energetic", "blunt", "loyal", "honest"],
             "likes": ["running", "craft beer", "traveling", "board games"],
@@ -159,6 +194,7 @@ def seed(community_id: str = "demo-en") -> None:
         },
         {
             "id": "agent-persona-003", "name": "Emma", "age": 22, "gender": "female",
+            "image": "agent-persona-f-19-esfp-cheerful-playful.png",
             "mbti": "ESFP", "enneagram": "7",
             "bg": "A college junior met at a department event. Bubbly and bright. The life of any gathering.",
             "emotion": "excited", "intensity": 9,
@@ -171,6 +207,7 @@ def seed(community_id: str = "demo-en") -> None:
         },
         {
             "id": "agent-persona-004", "name": "Sophie", "age": 24, "gender": "female",
+            "image": "agent-persona-f-26-enfp-cheerful-warm.png",
             "mbti": "ENFP", "enneagram": "4",
             "bg": "A friend met through Mia. Freelance illustrator. Held her first solo show last year. Sentimental and chatty.",
             "emotion": "happy", "intensity": 7,
@@ -183,6 +220,7 @@ def seed(community_id: str = "demo-en") -> None:
         },
         {
             "id": "agent-persona-005", "name": "Lily", "age": 20, "gender": "female",
+            "image": "agent-persona-f-19-infp-shy-dreamy.png",
             "mbti": "INFP", "enneagram": "9",
             "bg": "A younger friend met in a college club. Studying composition. Quiet but deep. Close with Emma.",
             "emotion": "calm", "intensity": 5,
@@ -195,6 +233,7 @@ def seed(community_id: str = "demo-en") -> None:
         },
         {
             "id": "agent-persona-006", "name": "Grace", "age": 30, "gender": "female",
+            "image": "agent-persona-f-34-esfj-calm-caring.png",
             "mbti": "ENTJ", "enneagram": "8",
             "bg": "An older friend met at a gym/pilates group. Demanding but full of good advice. A lot to learn from her.",
             "emotion": "focused", "intensity": 7,
@@ -206,7 +245,8 @@ def seed(community_id: str = "demo-en") -> None:
             "routine": "6am pilates → evening reading / planning camping trips",
         },
         {
-            "id": "agent-persona-007", "name": "Zoe", "age": 26, "gender": "female",
+            "id": "agent-persona-007", "name": "Ryan", "age": 26, "gender": "male",
+            "image": "agent-persona-m-24-isfj-gentle-steady.png",
             "mbti": "ISFJ", "enneagram": "6",
             "bg": "A friend met at a brunch group. Meticulous and attentive. Loves cooking and baking; they go on restaurant hunts together a lot.",
             "emotion": "serene", "intensity": 6,
@@ -217,11 +257,54 @@ def seed(community_id: str = "demo-en") -> None:
             "occupation": "Runs a neighborhood bakery",
             "routine": "early-morning baking → afternoon at the shop → evenings with friends",
         },
+        # ── male personas (008-010) — pure friends (no romance / coworkers / family) ─────────
+        # 1:1 matched to the male sample images in committed assets/sample_profile_images.
+        # "image" = that sample filename → resolves directly even on the public path (glimi.iruyo.com).
+        {
+            "id": "agent-persona-008", "name": "Daniel", "age": 25, "gender": "male",
+            "mbti": "INTJ", "enneagram": "5",
+            "bg": "A friend met in a grad-school study group. Analytical and composed. Got close organizing materials together.",
+            "emotion": "calm", "intensity": 5,
+            "traits": ["analytical", "composed", "logical", "careful"],
+            "likes": ["chess", "documentaries", "coffee", "data"],
+            "dislikes": ["last-minute changes", "small talk"],
+            "rel_owner": "friend", "duration": "2 years", "pet_name": "You",
+            "occupation": "Grad student (data analysis)",
+            "routine": "morning in the lab → afternoon study group → evening books/chess",
+            "image": "agent-persona-m-25-intj-calm-analytical.png",
+        },
+        {
+            "id": "agent-persona-009", "name": "Noah", "age": 23, "gender": "male",
+            "mbti": "ENFP", "enneagram": "7",
+            "bg": "A club junior. Bright and bursting with energy. The type who lifts the mood anywhere.",
+            "emotion": "excited", "intensity": 8,
+            "traits": ["bright", "energetic", "outgoing", "spontaneous"],
+            "likes": ["soccer", "busking", "traveling", "good restaurants"],
+            "dislikes": ["tiptoeing around people", "boredom"],
+            "rel_owner": "friend", "duration": "2 years", "pet_name": "man",
+            "occupation": "College student (junior)",
+            "routine": "classes → club → evening futsal with friends",
+            "image": "agent-persona-m-23-enfp-warm-energetic.png",
+        },
+        {
+            "id": "agent-persona-010", "name": "Jay", "age": 28, "gender": "male",
+            "mbti": "ISTP", "enneagram": "9",
+            "bg": "A friend met at a climbing group. Reserved and cool. Says little but always has your back.",
+            "emotion": "calm", "intensity": 5,
+            "traits": ["reserved", "cool", "good with his hands", "independent"],
+            "likes": ["climbing", "motorcycles", "camping", "machines"],
+            "dislikes": ["too much attention", "showing off"],
+            "rel_owner": "friend", "duration": "1 year", "pet_name": "You",
+            "occupation": "Automotive repair engineer",
+            "routine": "morning at the shop → evening at the climbing gym → weekend camping",
+            "image": "agent-persona-m-28-istp-cool-reserved.png",
+        },
     ]
 
     for p in personas:
         insert_agent(p["id"], "persona", p["name"], p["age"], p["gender"],
-                     p["mbti"], p["bg"], p["emotion"], p["intensity"])
+                     p["mbti"], p["bg"], p["emotion"], p["intensity"],
+                     image=p.get("image"))
         # profile satellite tables (JSON blob)
         conn.execute("INSERT INTO agent_personality (agent_id, data) VALUES (?, ?)",
                      (p["id"], json.dumps({
@@ -262,14 +345,18 @@ def seed(community_id: str = "demo-en") -> None:
     rel_pairs = [
         # (a, b, type, intimacy, dynamics) — all friendship-tier only
         ("agent-persona-001", "agent-persona-004", "best friends", 95, "college classmates, talk every day"),
-        ("agent-persona-001", "agent-persona-002", "friends", 72, "met through You. Chloe's bluntness is occasionally a lot for Mia"),
+        ("agent-persona-001", "agent-persona-002", "friends", 72, "met through You. Theo's bluntness is occasionally a lot for Mia"),
         ("agent-persona-002", "agent-persona-006", "friends", 68, "got close at the running/pilates group. mutual respect"),
         ("agent-persona-003", "agent-persona-005", "best friends", 92, "club seniors/juniors, on the phone nearly every day"),
         ("agent-persona-004", "agent-persona-005", "friends", 60, "met through Mia. Sophie loves Lily's work"),
         ("agent-persona-006", "agent-persona-007", "friends", 82, "go to the brunch/pilates groups together"),
         ("agent-persona-001", "agent-persona-003", "acquaintances", 45, "a few times at You's gatherings — Emma's vibe is slightly much for Mia"),
-        ("agent-persona-002", "agent-persona-003", "acquaintances", 50, "met at You's gatherings. Emma thinks Chloe is hilarious"),
+        ("agent-persona-002", "agent-persona-003", "acquaintances", 50, "met at You's gatherings. Emma thinks Theo is hilarious"),
         ("agent-persona-001", "agent-persona-007", "acquaintances", 55, "met at You's gatherings. both quiet types, they click"),
+        # male friends — tied together by sports/hobby groups (pure friendship)
+        ("agent-persona-009", "agent-persona-010", "friends", 78, "futsal/climbing regulars. opposite personalities but they click"),
+        ("agent-persona-008", "agent-persona-009", "friends", 64, "met at the sports group. Daniel finds Noah's energy fascinating"),
+        ("agent-persona-002", "agent-persona-010", "friends", 70, "running/climbing buddies"),
         ("agent-mgr-001", "agent-creator-001", "friends", 88, "Glimi manager & creator, lean on each other"),
     ]
     for a, b, rt, intim, dyn in rel_pairs:
@@ -299,10 +386,14 @@ def seed(community_id: str = "demo-en") -> None:
     # Group (owner included)
     add_channel("group-friends", ["agent-persona-001", "agent-persona-002", "agent-persona-004"])
     add_channel("group-brunch", ["agent-persona-006", "agent-persona-007"])
+    # sports/hobby group (male friends + the active crowd) — mixed friend group
+    add_channel("group-workout",
+                ["agent-persona-002", "agent-persona-008",
+                 "agent-persona-009", "agent-persona-010"])
     # Internal (between agents, owner read-only)
     add_channel("internal-dm-Mia-Sophie", ["agent-persona-001", "agent-persona-004"])
     add_channel("internal-dm-Emma-Lily", ["agent-persona-003", "agent-persona-005"])
-    add_channel("internal-dm-Grace-Zoe", ["agent-persona-006", "agent-persona-007"])
+    add_channel("internal-dm-Grace-Ryan", ["agent-persona-006", "agent-persona-007"])
     add_channel("internal-group-the-girls",
                 ["agent-persona-001", "agent-persona-003", "agent-persona-004", "agent-persona-005"])
 
@@ -333,9 +424,9 @@ def seed(community_id: str = "demo-en") -> None:
             ("owner", "yeah just gotta get through this week"),
             ("agent-persona-001", "next week we rest, properly. promise"),
         ],
-        # Chloe (20-year childhood friend)
+        # Theo (20-year childhood friend)
         "dm-agent-persona-002": [
-            ("agent-persona-002", "what are you up to this weekend"),
+            ("agent-persona-002", "yo what are you doing this weekend"),
             ("owner", "why"),
             ("agent-persona-002", "the old crew's getting drinks"),
             ("agent-persona-002", "saturday night"),
@@ -344,8 +435,8 @@ def seed(community_id: str = "demo-en") -> None:
             ("owner", "alright I'll ask"),
             ("agent-persona-002", "oh and I started running lately, you should come with me"),
             ("owner", "oh out of nowhere?"),
-            ("agent-persona-002", "the river course is so good. morning runs are amazing, you feel so fresh"),
-            ("owner", "hmm I could do a weekend morning"),
+            ("agent-persona-002", "the river course is so good. morning runs leave you feeling amazing"),
+            ("owner", "hmm a weekend morning could work"),
             ("agent-persona-002", "deal, I'll come pick you up sunday morning"),
             ("owner", "ok haha"),
         ],
@@ -355,7 +446,7 @@ def seed(community_id: str = "demo-en") -> None:
             ("owner", "what's up"),
             ("agent-persona-003", "you're coming to the club homecoming next week right?"),
             ("owner", "hmm gotta check my schedule"),
-            ("agent-persona-003", "pleaseee come, everyone's gonna be there"),
+            ("agent-persona-003", "pleaseee come, all the seniors will be there"),
             ("agent-persona-003", "also could you look over my presentation? pretty please ㅠㅠ"),
             ("owner", "what's the presentation about"),
             ("agent-persona-003", "career plans — graduation's coming up you know"),
@@ -398,10 +489,10 @@ def seed(community_id: str = "demo-en") -> None:
             ("owner", "ugh my neck really has been hurting lately"),
             ("agent-persona-006", "that's why you need to come. I'll start you on some stretches"),
             ("owner", "honestly don't know what I'd do without you haha"),
-            ("agent-persona-006", "we're going camping next week too, wanna come? Zoe's coming"),
+            ("agent-persona-006", "we're going camping next week too, wanna come? Ryan's coming"),
             ("owner", "oh nice"),
         ],
-        # Zoe (brunch-group friend, runs a neighborhood bakery)
+        # Ryan (brunch-group friend, runs a neighborhood bakery)
         "dm-agent-persona-007": [
             ("agent-persona-007", "I baked scones today, want me to bring you some?"),
             ("owner", "omg yes please"),
@@ -412,6 +503,43 @@ def seed(community_id: str = "demo-en") -> None:
             ("agent-persona-007", "saturday at 1? Grace is coming too"),
             ("owner", "sounds great haha"),
             ("agent-persona-007", "you'll love it, that place is the real deal"),
+        ],
+        # Daniel (grad-school study friend, INTJ · composed · analytical)
+        "dm-agent-persona-008": [
+            ("agent-persona-008", "I cleaned up this week's study materials and shared them"),
+            ("owner", "oh that was fast lol thanks"),
+            ("agent-persona-008", "I think I need to re-verify the data in chapter 3"),
+            ("owner", "yeah that part was a bit shaky"),
+            ("agent-persona-008", "if the basis is weak you can't trust the conclusion"),
+            ("owner", "thorough as always"),
+            ("agent-persona-008", "wanna finish going over it at a cafe this weekend?"),
+            ("owner", "saturday afternoon works"),
+            ("agent-persona-008", "2pm then. I'll grab somewhere quiet"),
+        ],
+        # Noah (club junior, ENFP · bright and energetic)
+        "dm-agent-persona-009": [
+            ("agent-persona-009", "man!! you're coming to futsal today right??"),
+            ("owner", "lol what time was it again"),
+            ("agent-persona-009", "8! don't be late, seriously"),
+            ("owner", "ok I'll be there"),
+            ("agent-persona-009", "chicken and beer after? deal?"),
+            ("owner", "obviously"),
+            ("agent-persona-009", "you're the best, man lol"),
+            ("agent-persona-009", "oh and come watch the club show next week too"),
+            ("owner", "oh what's happening"),
+            ("agent-persona-009", "I'm doing a busking set haha look forward to it"),
+        ],
+        # Jay (climbing-group friend, ISTP · reserved · cool)
+        "dm-agent-persona-010": [
+            ("agent-persona-010", "hitting the climbing gym today?"),
+            ("owner", "yeah I was thinking about it"),
+            ("agent-persona-010", "go around 7, it's not crowded"),
+            ("owner", "ok see you then"),
+            ("agent-persona-010", "try that red route again, the one from last time"),
+            ("owner", "my grip totally gave out on that one lol"),
+            ("agent-persona-010", "it's your grip position. I'll take a look when you're there"),
+            ("owner", "oh thanks"),
+            ("agent-persona-010", "we're going camping next week too, tell me if you're in"),
         ],
     }
     for ch, lines in DM_SCRIPTS.items():
@@ -454,6 +582,16 @@ def seed(community_id: str = "demo-en") -> None:
     msg("group-brunch", "owner", "haha if you're inviting me I'm there", 15, "fun")
     msg("group-brunch", "agent-persona-006", "deal. sunday at 12, let's go", 10, "calm")
 
+    # workout group (Theo · Daniel · Noah · Jay + owner) — mixed friend group
+    msg("group-workout", "agent-persona-009", "futsal this weekend, let's go?", 35, "excited")
+    msg("group-workout", "agent-persona-002", "I'm in, no question", 34, "lively")
+    msg("group-workout", "agent-persona-010", "I can join after climbing", 33, "calm")
+    msg("group-workout", "agent-persona-008", "how many people? I'll book the court", 32, "calm")
+    msg("group-workout", "owner", "I'll join too lol", 30, "fun")
+    msg("group-workout", "agent-persona-009", "oh nice, man lol so that's 5", 29, "excited")
+    msg("group-workout", "agent-persona-008", "got the court for saturday 8", 25, "calm")
+    msg("group-workout", "agent-persona-010", "ok", 24, "calm")
+
     # Dummy thread + reactions (to demo the chat UI's thread/reaction affordances)
     def _msg_id(channel, speaker, content, ago_min=0, emotion=None):
         ts = (datetime.now() - timedelta(minutes=ago_min)).isoformat()
@@ -476,22 +614,22 @@ def seed(community_id: str = "demo-en") -> None:
                         VALUES (?, ?, ?, ?)""", (message_id, actor_id, emoji, ts))
 
     _root = _msg_id("group-friends", "agent-persona-002", "yesterday's run 📸 6k along the river", 40, "excited")
-    _reply("group-friends", "agent-persona-001", "oh nice ㅋㅋ", _root, 39, "calm")
+    _reply("group-friends", "agent-persona-001", "oh nice haha", _root, 39, "calm")
     _reply("group-friends", "owner", "let's go together next time", _root, 38, "fun")
-    _reply("group-friends", "agent-persona-004", "great shot ㅎㅎ", _root, 37, "happy")
+    _reply("group-friends", "agent-persona-004", "great shot haha", _root, 37, "happy")
     _react(_root, "owner", "❤️")
     _react(_root, "agent-persona-001", "🔥")
     _react(_root, "agent-persona-004", "👍")
-    # A reaction in a DM too (Mia's DM)
-    _dm_msg = _msg_id("dm-agent-persona-001", "agent-persona-001", "wanna hit the bookshop tomorrow?", 30, "serene")
+    # A reaction in a DM too (last message of Mia's DM)
+    _dm_msg = _msg_id("dm-agent-persona-001", "agent-persona-001", "wanna hit the bookshop together tomorrow?", 30, "serene")
     _react(_dm_msg, "owner", "👍")
 
     # Internal — Mia·Sophie (worried about You + birthday prep)
-    INTERNAL_JIWOO_YERIN = [
+    INTERNAL_MIA_SOPHIE = [
         ("agent-persona-001", "Sophie, You's been looking so busy lately and I'm worried", 180),
         ("agent-persona-004", "haha you're in worry-mode again. You's pretty healthy you know", 178),
-        ("agent-persona-001", "still, he hasn't been sleeping well and he's stressed", 176),
-        ("agent-persona-004", "well he's got you by his side so he'll be fine"),
+        ("agent-persona-001", "still, he hasn't been sleeping well and he's been stressed", 176),
+        ("agent-persona-004", "well he's got you by his side, he'll be fine"),
         ("agent-persona-001", "haha thanks Sophie"),
         ("agent-persona-004", "oh but his birthday's next month right?", 90),
         ("agent-persona-001", "yeah, trying to figure out what to do for him", 88),
@@ -504,14 +642,14 @@ def seed(community_id: str = "demo-en") -> None:
         ("agent-persona-004", "and not a word to You okay lol"),
         ("agent-persona-001", "obviously haha"),
     ]
-    for i, entry in enumerate(INTERNAL_JIWOO_YERIN):
+    for i, entry in enumerate(INTERNAL_MIA_SOPHIE):
         sp, content = entry[0], entry[1]
-        ago = entry[2] if len(entry) > 2 else (len(INTERNAL_JIWOO_YERIN) - i) * 8
+        ago = entry[2] if len(entry) > 2 else (len(INTERNAL_MIA_SOPHIE) - i) * 8
         msg("internal-dm-Mia-Sophie", sp, content, ago_min=ago,
             emotion="serene" if sp == "agent-persona-001" else "happy")
 
     # Internal — Emma·Lily (malatang + the crush)
-    INTERNAL_SEOA_HARIN = [
+    INTERNAL_EMMA_LILY = [
         ("agent-persona-003", "what should we eat for dinner", 45),
         ("agent-persona-005", "hmm... malatang??", 44),
         ("agent-persona-003", "lol malatang again", 43),
@@ -525,20 +663,20 @@ def seed(community_id: str = "demo-en") -> None:
         ("agent-persona-003", "... am I that obvious"),
         ("agent-persona-005", "everyone already knows haha"),
         ("agent-persona-005", "but he's got Mia you know"),
-        ("agent-persona-003", "I know lol. it's just feelings, that's all"),
+        ("agent-persona-003", "I know lol. it's just a little crush, that's all"),
         ("agent-persona-003", "anyway, 6 today!"),
         ("agent-persona-005", "ok let's meet at Gangnam station"),
     ]
-    for i, entry in enumerate(INTERNAL_SEOA_HARIN):
+    for i, entry in enumerate(INTERNAL_EMMA_LILY):
         sp, content = entry[0], entry[1]
-        ago = entry[2] if len(entry) > 2 else (len(INTERNAL_SEOA_HARIN) - i) * 3
+        ago = entry[2] if len(entry) > 2 else (len(INTERNAL_EMMA_LILY) - i) * 3
         msg("internal-dm-Emma-Lily", sp, content, ago_min=ago,
             emotion="excited" if sp == "agent-persona-003" else "calm")
 
-    # Internal — Grace·Zoe (looking after You + birthday prep)
-    INTERNAL_JIHO_SUJIN = [
-        ("agent-persona-006", "Zoe, doesn't You look kind of tired lately?", 30),
-        ("agent-persona-007", "yeah, he's looking really run down..."),
+    # Internal — Grace·Ryan (looking after You + birthday prep)
+    INTERNAL_GRACE_RYAN = [
+        ("agent-persona-006", "Ryan, doesn't You look kind of tired lately?", 30),
+        ("agent-persona-007", "yeah, his color's been off..."),
         ("agent-persona-006", "it's because he doesn't work out. I'm gonna drag him out this weekend"),
         ("agent-persona-007", "haha I'll at least bring him some bread"),
         ("agent-persona-006", "yeah let's look after him a bit"),
@@ -546,10 +684,10 @@ def seed(community_id: str = "demo-en") -> None:
         ("agent-persona-006", "oh right. should we do something together?"),
         ("agent-persona-007", "yes let's!"),
     ]
-    for i, entry in enumerate(INTERNAL_JIHO_SUJIN):
+    for i, entry in enumerate(INTERNAL_GRACE_RYAN):
         sp, content = entry[0], entry[1]
-        ago = entry[2] if len(entry) > 2 else (len(INTERNAL_JIHO_SUJIN) - i) * 4
-        msg("internal-dm-Grace-Zoe", sp, content, ago_min=ago, emotion="calm")
+        ago = entry[2] if len(entry) > 2 else (len(INTERNAL_GRACE_RYAN) - i) * 4
+        msg("internal-dm-Grace-Ryan", sp, content, ago_min=ago, emotion="calm")
 
     # Internal group — the girls (Mia, Emma, Sophie, Lily)
     INTERNAL_GIRLS = [
@@ -588,7 +726,7 @@ def seed(community_id: str = "demo-en") -> None:
 
 
     # Mia (agent-persona-001) — book-cafe friend, daily life / taste focused (no private/work info)
-    JIWOO_MEMS = [
+    MIA_MEMS = [
         # Current channel L1s
         (1, "dm-You", "- had a long chat about the short-story collection You recently read\n- planning to recommend a sci-fi novel next time\n- You says he likes the way I underline passages",
          "event", 6, ["You"], 0),
@@ -597,7 +735,7 @@ def seed(community_id: str = "demo-en") -> None:
         (1, "dm-You", "- You's been collecting LPs lately (jazz / 70s-80s rock)\n- told him to bring some to the cafe next time\n- thinking of buying a turntable myself",
          "event", 5, ["You"], 2),
         # L2 chronicle
-        (2, "dm-You", "- was a regular since he started his part-time job → grew into friendship\n- similar taste in books / coffee / music makes conversation easy\n- text 3-4x a week, meet up occasionally on weekends",
+        (2, "dm-You", "- a regular since he started his part-time job → grew into friendship\n- similar taste in books / coffee / music makes conversation easy\n- text 3-4x a week, meet up occasionally on weekends",
          "relationship", 8, ["You"], 10),
         # Cross-channel
         (1, "internal-dm-Mia-Sophie", "- birthday gift ideas for You with Sophie\n- Sophie: draw an illustration / Mia: an LP You had his eye on\n- shopping together next week",
@@ -608,23 +746,23 @@ def seed(community_id: str = "demo-en") -> None:
         (1, "dm-You", "- visited the indie bookstore 'The Loft' that You recommended → loved the atmosphere\n- decided to go again together\n- he bragged about a photo book he picked up there",
          "event", 5, ["You"], 4),
     ]
-    for i, (lvl, ch, content, mt, imp, ents, ago) in enumerate(JIWOO_MEMS):
+    for i, (lvl, ch, content, mt, imp, ents, ago) in enumerate(MIA_MEMS):
         # pinned: only the 'early-morning walk' item (index 5)
         pinned = (i == 5)
         insert_memory("agent-persona-001", ch, content, mt, imp,
                       ents, knows=["Mia", "owner"] if "You" in ents else None,
                       is_pinned=pinned, ago_days=ago, level=lvl)
 
-    # Chloe — running / meetup memories
+    # Theo — running / meetup memories
     insert_memory("agent-persona-002", "dm-You",
-                  "- talked You into running together\n- sunday morning river course (Chloe picks him up)\n- teased him for never working out",
-                  "event", 6, ["You"], ["Chloe", "owner"], ago_days=0)
+                  "- talked You into running together\n- sunday morning river course (Theo picks him up)\n- teased him for never working out",
+                  "event", 6, ["You"], ["Theo", "owner"], ago_days=0)
     insert_memory("agent-persona-002", "dm-You",
                   "- You only has time on weekends lately (so busy)\n- old crew meetup saturday 7pm — confirming whether You will join\n- joked he needs Mia's permission",
-                  "event", 5, ["You"], ["Chloe", "owner"], ago_days=1)
+                  "event", 5, ["You"], ["Theo", "owner"], ago_days=1)
     insert_memory("agent-persona-002", "dm-You",
                   "- 20-year friends who trade opinions on every big life decision\n- the relationship where we tell each other the bluntest truths\n- I was the first to give advice when You started dating",
-                  "relationship", 9, ["You"], ["Chloe", "owner"], ago_days=14)
+                  "relationship", 9, ["You"], ["Theo", "owner"], ago_days=14)
 
     # Emma — has feelings for You (internal only)
     insert_memory("agent-persona-003", "dm-You",
@@ -656,15 +794,15 @@ def seed(community_id: str = "demo-en") -> None:
     insert_memory("agent-persona-006", "dm-You",
                   "- called out You's text neck / bad posture\n- told him to come to sunday morning pilates class\n- also going camping together next week",
                   "event", 6, ["You"], ["Grace", "owner"], ago_days=0)
-    insert_memory("agent-persona-006", "internal-dm-Grace-Zoe",
-                  "- You's been looking tired → decided to look after him with Zoe\n- planning to drag him out to exercise this weekend\n- preparing a birthday gift together too",
-                  "fact", 6, ["You", "Zoe"], ["Grace", "Zoe"],  # owner doesn't know
+    insert_memory("agent-persona-006", "internal-dm-Grace-Ryan",
+                  "- You's been looking tired → decided to look after him with Ryan\n- planning to drag him out to exercise this weekend\n- preparing a birthday gift together too",
+                  "fact", 6, ["You", "Ryan"], ["Grace", "Ryan"],  # owner doesn't know
                   ago_days=0)
 
-    # Zoe — baking + plans
+    # Ryan — baking + plans
     insert_memory("agent-persona-007", "dm-You",
                   "- baked scones to share at the shop\n- booked the pasta place for saturday (Grace coming too)",
-                  "event", 5, ["You", "Grace"], ["Zoe", "owner"], ago_days=0)
+                  "event", 5, ["You", "Grace"], ["Ryan", "owner"], ago_days=0)
 
 
     # ── 8. agent_facts (Layer 3 Semantic) ──────────────────
@@ -689,8 +827,8 @@ def seed(community_id: str = "demo-en") -> None:
     add_fact("agent-persona-001", "You", "birthday", "early next month", 7)
     add_fact("agent-persona-001", "Sophie", "role", "close friend · college classmate", 6)
 
-    # what Chloe knows about You
-    add_fact("agent-persona-002", "You", "exercise", "recently started running (with Chloe)", 5)
+    # what Theo knows about You
+    add_fact("agent-persona-002", "You", "exercise", "recently started running (with Theo)", 5)
     add_fact("agent-persona-002", "You", "disposition", "INTJ, analytical", 5)
     add_fact("agent-persona-002", "You", "drink_preference", "whisky > beer", 7)
     add_fact("agent-persona-002", "You", "relationship", "5 years with Mia", 8)
@@ -709,14 +847,14 @@ def seed(community_id: str = "demo-en") -> None:
     add_fact("agent-persona-004", "Mia", "worry", "You's health", 9)
     add_fact("agent-persona-004", "You", "gift_preference", "practical + a drink he likes", 7)
 
-    # what Grace knows about You/Zoe
+    # what Grace knows about You/Ryan
     add_fact("agent-persona-006", "You", "exercise", "barely works out (target of her nagging)", 6)
     add_fact("agent-persona-006", "You", "health", "text neck · lack of sleep", 7)
     add_fact("agent-persona-006", "You", "personality", "follows along when you look out for him", 5)
-    add_fact("agent-persona-006", "Zoe", "specialty", "baking · restaurant hunting", 6)
-    add_fact("agent-persona-006", "Zoe", "occupation", "runs a neighborhood bakery", 6)
+    add_fact("agent-persona-006", "Ryan", "specialty", "baking · restaurant hunting", 6)
+    add_fact("agent-persona-006", "Ryan", "occupation", "runs a neighborhood bakery", 6)
 
-    # what Zoe knows about Grace/You
+    # what Ryan knows about Grace/You
     add_fact("agent-persona-007", "Grace", "occupation", "pilates instructor", 6)
     add_fact("agent-persona-007", "You", "taste", "light, simple food · warm desserts", 5)
     add_fact("agent-persona-007", "You", "personality", "a careful INTJ", 5)
@@ -760,7 +898,7 @@ def seed(community_id: str = "demo-en") -> None:
         ("anniversary_approaching", ["owner", "agent-persona-001"],
          "You's birthday next month — Mia & Sophie preparing a joint gift", "positive"),
         ("weekend_plan", ["agent-persona-006", "agent-persona-007", "owner"],
-         "brunch + a river picnic with Grace & Zoe next week", "positive"),
+         "brunch + a river outing with Grace & Ryan next week", "positive"),
         ("work_milestone", ["agent-persona-004"],
          "Sophie's solo show is ready. opening the 15th next month", "positive"),
     ]
@@ -771,6 +909,37 @@ def seed(community_id: str = "demo-en") -> None:
             VALUES (?, ?, ?, ?, ?)""",
             (et, json.dumps(parts, ensure_ascii=False), desc, impact, ts))
 
+
+    # ── 12.5 demo display exclusion (seed code/data above is preserved as-is — hidden only in the DB) ──
+    # Grace(006) · Ryan(007) keep their full definitions / conversations / memories in
+    # the seed. Here we only pull them out of the demo DB so they don't show (10 agents
+    # = 8 personas + Yuna/Hana). To bring them back, empty the tuple.
+    HIDDEN_IN_DEMO = ("agent-persona-006", "agent-persona-007")
+    for _aid in HIDDEN_IN_DEMO:
+        for _t in ("agent_personality", "agent_appearance", "agent_daily_life", "agent_speech",
+                   "agent_relationship_templates", "memories", "agent_facts"):
+            conn.execute(f"DELETE FROM {_t} WHERE agent_id=?", (_aid,))
+        conn.execute("DELETE FROM agents WHERE id=?", (_aid,))
+        conn.execute("DELETE FROM relationships WHERE agent_a=? OR agent_b=?", (_aid, _aid))
+        conn.execute("DELETE FROM relationship_history WHERE agent_a=? OR agent_b=?", (_aid, _aid))
+        conn.execute("DELETE FROM conversations WHERE speaker=?", (_aid,))
+    # channels: delete dm-<hidden> + channels whose participants are all hidden (+ their convos);
+    # for mixed channels, just strip the hidden participants.
+    for _ch, _praw in conn.execute("SELECT channel, participants FROM channels").fetchall():
+        _parts = json.loads(_praw or "[]")
+        _remain = [p for p in _parts if p not in HIDDEN_IN_DEMO]
+        if _ch in tuple(f"dm-{h}" for h in HIDDEN_IN_DEMO) or (_parts and not _remain):
+            conn.execute("DELETE FROM channels WHERE channel=?", (_ch,))
+            conn.execute("DELETE FROM conversations WHERE channel=?", (_ch,))
+            conn.execute("DELETE FROM memories WHERE channel=?", (_ch,))
+        elif _remain != _parts:
+            conn.execute("UPDATE channels SET participants=? WHERE channel=?",
+                         (json.dumps(_remain, ensure_ascii=False), _ch))
+    # events: remove ones that mention a hidden participant / name
+    for _rid, _praw, _desc in conn.execute("SELECT rowid, participants, description FROM events").fetchall():
+        _parts = json.loads(_praw or "[]")
+        if any(h in _parts for h in HIDDEN_IN_DEMO) or "Grace" in (_desc or "") or "Ryan" in (_desc or ""):
+            conn.execute("DELETE FROM events WHERE rowid=?", (_rid,))
 
     conn.commit()
     conn.close()
@@ -796,7 +965,7 @@ def seed(community_id: str = "demo-en") -> None:
 
     print("✅ demo-en mockup seed complete (5-layer memory reflected)")
     print(f"   ├─ owner: {OWNER_NAME}")
-    print(f"   ├─ 9 agents: Yuna(mgr) / Hana(creator) / 7 personas (friends·colleagues·partners)")
+    print(f"   ├─ 10 agents: Yuna(mgr) / Hana(creator) / 8 visible personas (4F + 4M, pure friends)")
     print(f"   ├─ channels: {len(DM_SCRIPTS) + 8} (DM + internal + group + mgr)")
     print(f"   ├─ conversations: 100+ messages, 3 live channels")
     print(f"   ├─ memories: mixed L1/L2/L3 ~15 + 1 pinned")
