@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" role="img" aria-label="Glimi Workspace — a standing specialist team led by a manager, working a goal into a deliverable">
+  <defs>
+    <radialGradient id="wbg" cx="68%" cy="50%" r="62%">
+      <stop offset="0" stop-color="#2a2640"/>
+      <stop offset="0.55" stop-color="#1d1b32"/>
+      <stop offset="1" stop-color="#16142a"/>
+    </radialGradient>
+    <radialGradient id="whub" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#f3d9a8" stop-opacity="0.5"/>
+      <stop offset="0.5" stop-color="#f3d9a8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#f3d9a8" stop-opacity="0"/>
+    </radialGradient>
+    <!-- faceless standing teammate (currentColor) -->
+    <g id="wfig">
+      <ellipse cx="0" cy="-12" rx="21" ry="19" fill="#f3ecd2" opacity="0.06"/>
+      <ellipse cx="0" cy="-12" rx="13" ry="12" fill="#f3ecd2" opacity="0.10"/>
+      <path d="M-16 1 C-18 -20 -10 -27 0 -27 C10 -27 18 -20 16 1 C16 4 -16 4 -16 1 Z" fill="currentColor"/>
+      <circle cx="0" cy="-34" r="8.6" fill="currentColor"/>
+    </g>
+  </defs>
+
+  <rect width="1280" height="400" rx="20" fill="url(#wbg)"/>
+
+  <!-- scattered light -->
+  <g fill="#8f8bb0">
+    <circle cx="540" cy="60" r="1"/><circle cx="1180" cy="70" r="1.1"/><circle cx="1230" cy="300" r="1"/>
+    <circle cx="610" cy="330" r="0.9"/><circle cx="1150" cy="350" r="0.9"/><circle cx="980" cy="36" r="1"/>
+    <circle cx="660" cy="150" r="0.8"/><circle cx="1245" cy="180" r="0.8"/><circle cx="700" cy="360" r="0.8"/>
+  </g>
+
+  <!-- warm amber focus around the manager -->
+  <ellipse cx="868" cy="205" rx="215" ry="172" fill="url(#whub)"/>
+
+  <!-- manager → each teammate (delegation, directed) -->
+  <g stroke="#d8b478" fill="none" stroke-linecap="round">
+    <line x1="868" y1="205" x2="1000" y2="108" stroke-width="1.5" opacity="0.5"/>
+    <line x1="868" y1="205" x2="1066" y2="196" stroke-width="1.4" opacity="0.44"/>
+    <line x1="868" y1="205" x2="1012" y2="300" stroke-width="1.4" opacity="0.44"/>
+    <line x1="868" y1="205" x2="868" y2="332" stroke-width="1.4" opacity="0.42"/>
+    <line x1="868" y1="205" x2="724" y2="300" stroke-width="1.4" opacity="0.44"/>
+    <line x1="868" y1="205" x2="700" y2="196" stroke-width="1.4" opacity="0.42"/>
+    <line x1="868" y1="205" x2="736" y2="108" stroke-width="1.5" opacity="0.5"/>
+  </g>
+  <!-- specialists ↔ specialists back-channels (dashed) -->
+  <g stroke="#cbb488" fill="none" stroke-width="1" opacity="0.22" stroke-dasharray="1 6" stroke-linecap="round">
+    <line x1="1000" y1="108" x2="1066" y2="196"/>
+    <line x1="1066" y1="196" x2="1012" y2="300"/>
+    <line x1="724" y1="300" x2="700" y2="196"/>
+    <line x1="700" y1="196" x2="736" y2="108"/>
+  </g>
+
+  <!-- the deliverable the team converges toward (a structured doc + check) -->
+  <g transform="translate(1126,300)">
+    <rect x="-22" y="-28" width="44" height="56" rx="6" fill="#1d1b32" stroke="#e0a44c" stroke-width="1.6" opacity="0.95"/>
+    <line x1="-13" y1="-14" x2="13" y2="-14" stroke="#d8b478" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <line x1="-13" y1="-5" x2="13" y2="-5" stroke="#d8b478" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+    <line x1="-13" y1="4" x2="6" y2="4" stroke="#d8b478" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+    <path d="M-7 15 l5 6 l11 -13" fill="none" stroke="#7fd6a6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M1012 300 Q 1075 305 1104 300" fill="none" stroke="#7fd6a6" stroke-width="1.1" opacity="0.4" stroke-dasharray="1 5" stroke-linecap="round"/>
+
+  <!-- node sparkles -->
+  <g fill="#fdf2dc">
+    <circle cx="868" cy="150" r="1.6" opacity="0.85"/><circle cx="956" cy="158" r="1.5" opacity="0.8"/>
+    <circle cx="978" cy="216" r="1.6" opacity="0.8"/><circle cx="922" cy="268" r="1.5" opacity="0.8"/>
+    <circle cx="814" cy="268" r="1.5" opacity="0.8"/><circle cx="786" cy="216" r="1.6" opacity="0.85"/>
+    <circle cx="804" cy="158" r="1.5" opacity="0.8"/>
+  </g>
+
+  <!-- specialist teammates (faceless), role-tinted -->
+  <use href="#wfig" transform="translate(1000,108)" style="color:#9aa3ce"/>
+  <use href="#wfig" transform="translate(1066,196)" style="color:#7fbfa6"/>
+  <use href="#wfig" transform="translate(1012,300)" style="color:#c79bd6"/>
+  <use href="#wfig" transform="translate(868,332)" style="color:#d8b478"/>
+  <use href="#wfig" transform="translate(724,300)" style="color:#8aa0d8"/>
+  <use href="#wfig" transform="translate(700,196)" style="color:#e9e1c6"/>
+  <use href="#wfig" transform="translate(736,108)" style="color:#b0a0d0"/>
+
+  <!-- manager (center, amber hub) — the single point of contact, slightly larger -->
+  <ellipse cx="868" cy="193" rx="31" ry="28" fill="#e0a44c" opacity="0.17"/>
+  <use href="#wfig" transform="translate(868,205) scale(1.16)" style="color:#e0a44c"/>
+
+  <!-- wordmark (left) -->
+  <g font-family="Pretendard, -apple-system, 'Segoe UI', sans-serif">
+    <g transform="translate(72,118)">
+      <circle cx="6" cy="6" r="4.4" fill="#f3ecd2"/>
+      <path d="M14 2.5 A11 11 0 0 1 30.5 6.5" fill="none" stroke="#5b5680" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="32.5" cy="8.5" r="5" fill="#e0a44c"/>
+      <text x="50" y="11.5" font-size="12.5" letter-spacing="3" fill="#8f8bb0" font-family="'JetBrains Mono', Menlo, monospace">GLIMI WORKSPACE</text>
+    </g>
+    <text x="70" y="196" font-size="48" font-weight="650" letter-spacing="-0.5" fill="#f2f1f8">Glimi Workspace</text>
+    <text x="72" y="234" font-size="16.5" fill="#c6c0da">A standing specialist team that splits the work and brings back a result.</text>
+    <text x="72" y="262" font-size="14" fill="#8f8bb0">목표 하나를 향해 일을 나눠 맡고, 결과를 가져오는 전문가 팀</text>
+  </g>
+</svg>
