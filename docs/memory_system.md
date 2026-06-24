@@ -1,4 +1,6 @@
-# 5-Layer Memory System (`community/core/memory.py`)
+# Memory System — L0–L5 (`glimi-core/glimi/memory.py`)
+
+> 구현 정본은 커널 `glimi-core/glimi/memory.py`. `community/core/memory.py` 는 얇은 re-export shim (앱 어댑터 배선만).
 
 ## 설계 원칙
 각 에이전트마다 **통합 메모리 1개** + 엔티티 태그로 "누구에 관한 건지" 관리 (사람처럼). 저장은 영구, 주입만 budget 기반 선별.
@@ -32,9 +34,11 @@ score = 0.4·semantic + 0.3·importance + 0.2·recency_decay + 0.1·relational
 recency_decay = exp(-days/30)
 ```
 
-## 주입 Budget (~800 토큰/턴)
-- Pinned ~100 / Relationship ~50 / Working ~200 / Episodic(현) ~150
-- Episodic(retrieved) ~100 / Facts ~100 / Cross-channel peek ~100
+## 주입 Budget (문자 길이 기준 · ~4자 = 1토큰 · 합 ~4000자 ≈ ~1000 토큰/턴 · `num_ctx` 에 맞춰 동적 스케일)
+실제 상수 (`memory.py` `BUDGET_*`, 문자 수):
+- Pinned 400 / Relationship 200 / Episodic(현) 1800 / Episodic(retrieved) 400
+- Facts 400 / Self-recent(크로스채널) 500 / Reactions 300
+- ※ L1 워킹 윈도우(`RAW_WINDOW=15`, 최근 15개 raw)는 런타임이 직접 주입 — 이 budget 과 별개
 
 ## 도구
 - `recall_memory(query, entity, time_range)` — 에이전트가 직접 deep search
