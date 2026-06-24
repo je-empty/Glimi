@@ -181,6 +181,21 @@ def _load_i18n(lang: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+
+# 서버사이드 i18n — 대시보드 chrome(탭·KPI·섹션)을 언어에 맞게 렌더. 사용: {{ t('tab_overview', language) }}
+_I18N_T_CACHE: dict = {}
+
+
+def _t_global(key: str, lang: str = "ko") -> str:
+    lang = lang if lang in ("ko", "en") else "ko"
+    if lang not in _I18N_T_CACHE:
+        d = _load_i18n(lang)
+        _I18N_T_CACHE[lang] = d if "error" not in d else {}
+    return _I18N_T_CACHE[lang].get(key) or _I18N_T_CACHE.get("ko", {}).get(key) or key
+
+
+_TEMPLATES.env.globals["t"] = _t_global
+
 # Workspace chat avatars are role EMOJIS on a role-hued disc, not persona/anime
 # faces and not 2-letter monograms. The workspace team is functional (manager /
 # researcher / builder / critic), so a clear role icon reads instantly — and keeps

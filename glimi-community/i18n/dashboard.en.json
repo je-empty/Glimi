@@ -129,5 +129,7 @@
   "chat.brief_context": "Context",
   "chat.brief_backlog": "Backlog",
   "chat.brief_max_rounds": "Max rounds",
-  "chat.owner_review": "Owner's review"
+  "chat.owner_review": "Owner's review",
+  "kpi_agents": "Agents",
+  "kpi_channels": "Channels"
 }

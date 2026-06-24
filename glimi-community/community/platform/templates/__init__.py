@@ -25,3 +25,25 @@ env.env.globals["asset_v"] = str(int(time.time()))
 # 공개 데모 배포에서만 설정 — 상단 랜딩(glimi.iruyo.com)으로 돌아가는 링크 노출.
 # 미설정(로컬/OSS)이면 빈 문자열 → 템플릿이 링크를 렌더하지 않는다.
 env.env.globals["landing_url"] = os.environ.get("GLIMI_LANDING_URL", "")
+
+# 서버사이드 i18n — 대시보드 chrome(탭·KPI·섹션 제목)을 언어에 맞게 렌더.
+# 정적 마크업이 영어를 하드코딩하던 걸 Core 의 i18n dict(ko/en)로 치환.
+# 사용: {{ t('tab_overview', language) }}
+import json as _json  # noqa: E402
+
+_DASH_I18N = Path(_dashboard.__file__).resolve().parent / "i18n"
+_I18N_CACHE: dict = {}
+
+
+def _t(key: str, lang: str = "ko") -> str:
+    lang = lang if lang in ("ko", "en") else "ko"
+    if lang not in _I18N_CACHE:
+        try:
+            with open(_DASH_I18N / f"dashboard.{lang}.json", encoding="utf-8") as f:
+                _I18N_CACHE[lang] = _json.load(f)
+        except Exception:
+            _I18N_CACHE[lang] = {}
+    return _I18N_CACHE[lang].get(key) or _I18N_CACHE.get("ko", {}).get(key) or key
+
+
+env.env.globals["t"] = _t

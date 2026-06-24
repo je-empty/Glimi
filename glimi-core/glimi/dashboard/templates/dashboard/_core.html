@@ -129,22 +129,22 @@
   </header>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="overview" class="{% if (active_tab or 'overview') == 'overview' %}active{% endif %}"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">Overview</span></button>
-    <button data-tab="chat" class="{% if active_tab == 'chat' %}active{% endif %}"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">Chat</span></button>
-    <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">Agents</span> <span class="count" id="tc-agents">0</span></button>
-    <button data-tab="channels"><i class="ti ti-hash tab-emoji" aria-hidden="true"></i><span class="tab-label">Channels</span> <span class="count" id="tc-channels">0</span></button>
-    <button data-tab="scenes"><i class="ti ti-movie tab-emoji" aria-hidden="true"></i><span class="tab-label">Scenes</span> <span class="count" id="tc-scenes">0</span></button>
-    <button data-tab="achievements"><i class="ti ti-trophy tab-emoji" aria-hidden="true"></i><span class="tab-label">Achievements</span> <span class="count" id="tc-achievements">—</span></button>
-    <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">Events</span> <span class="count" id="tc-events">0</span></button>
-    <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i><span class="tab-label">Supervisors</span> <span class="count" id="tc-supervisors">0</span></button>
-    <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i><span class="tab-label">Health</span></button>
+    <button data-tab="overview" class="{% if (active_tab or 'overview') == 'overview' %}active{% endif %}"><i class="ti ti-home tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_overview', language) }}</span></button>
+    <button data-tab="chat" class="{% if active_tab == 'chat' %}active{% endif %}"><i class="ti ti-message tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_chat', language) }}</span></button>
+    <button data-tab="agents"><i class="ti ti-users tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_agents', language) }}</span> <span class="count" id="tc-agents">0</span></button>
+    <button data-tab="channels"><i class="ti ti-hash tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_channels', language) }}</span> <span class="count" id="tc-channels">0</span></button>
+    <button data-tab="scenes"><i class="ti ti-movie tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_scenes', language) }}</span> <span class="count" id="tc-scenes">0</span></button>
+    <button data-tab="achievements"><i class="ti ti-trophy tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_achievements', language) }}</span> <span class="count" id="tc-achievements">—</span></button>
+    <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_events', language) }}</span> <span class="count" id="tc-events">0</span></button>
+    <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_supervisors', language) }}</span> <span class="count" id="tc-supervisors">0</span></button>
+    <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_health', language) }}</span></button>
     {# Sync tab (Discord↔DB) — hidden by default for every app. applyCaps()/capOn('sync')
        keeps it gated off; rendered with display:none so it never flashes pre-JS, and
        only un-hidden when an app opts in via data-caps {"sync":true}. #}
-    <button data-tab="sync" style="display:none"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">Sync</span></button>
-    <button data-tab="usage"><i class="ti ti-chart-bar tab-emoji" aria-hidden="true"></i><span class="tab-label">Usage</span></button>
-    <button data-tab="tools"><i class="ti ti-tool tab-emoji" aria-hidden="true"></i><span class="tab-label">Tools</span></button>
-    <button data-tab="logs"><i class="ti ti-file-text tab-emoji" aria-hidden="true"></i><span class="tab-label">Logs</span></button>
+    <button data-tab="sync" style="display:none"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_sync', language) }}</span></button>
+    <button data-tab="usage"><i class="ti ti-chart-bar tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_usage', language) }}</span></button>
+    <button data-tab="tools"><i class="ti ti-tool tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_tools', language) }}</span></button>
+    <button data-tab="logs"><i class="ti ti-file-text tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_logs', language) }}</span></button>
   </nav>
 
   <main>
@@ -161,18 +161,18 @@
       </div>
       <div class="hero" id="hero"></div>
       <div class="overview-grid">
-        <div class="kpi"><div class="label">Server Status</div><div class="value" id="kpi-server">—</div></div>
-        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label" data-i18n="kpi_bot">Runtime</div><div class="value" id="kpi-bot">—</div></div>
-        <div class="kpi"><div class="label">Owner</div><div class="value" id="kpi-user">—</div></div>
-        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">Active Scene</div><div class="value" id="kpi-scene">—</div></div>
-        <div class="kpi"><div class="label">Messages</div><div class="value" id="kpi-msgs">0</div></div>
-        <div class="kpi" style="{% if community_chrome %}display:none{% endif %}"><div class="label">Agents</div><div class="value" id="kpi-agents">—</div></div>
-        <div class="kpi" style="{% if community_chrome %}display:none{% endif %}"><div class="label">Channels</div><div class="value" id="kpi-channels">—</div></div>
+        <div class="kpi"><div class="label">{{ t('kpi_server', language) }}</div><div class="value" id="kpi-server">—</div></div>
+        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">{{ t('kpi_bot', language) }}</div><div class="value" id="kpi-bot">—</div></div>
+        <div class="kpi"><div class="label">{{ t('kpi_owner', language) }}</div><div class="value" id="kpi-user">—</div></div>
+        <div class="kpi" style="{% if not community_chrome %}display:none{% endif %}"><div class="label">{{ t('kpi_scene', language) }}</div><div class="value" id="kpi-scene">—</div></div>
+        <div class="kpi"><div class="label">{{ t('kpi_msgs', language) }}</div><div class="value" id="kpi-msgs">0</div></div>
+        <div class="kpi" style="{% if community_chrome %}display:none{% endif %}"><div class="label">{{ t('kpi_agents', language) }}</div><div class="value" id="kpi-agents">—</div></div>
+        <div class="kpi" style="{% if community_chrome %}display:none{% endif %}"><div class="label">{{ t('kpi_channels', language) }}</div><div class="value" id="kpi-channels">—</div></div>
       </div>
       <div class="graph-panel" id="graph-panel"></div>
-      <div class="section-title">Agents</div>
+      <div class="section-title">{{ t('section_active_members', language) }}</div>
       <div class="agent-grid" id="overview-agents"></div>
-      <div class="section-title">Recent Conversations</div>
+      <div class="section-title">{{ t('section_recent_conv', language) }}</div>
       <div class="msg-list" id="overview-msgs"></div>
     </div>
 
