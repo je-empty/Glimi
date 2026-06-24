@@ -64,6 +64,11 @@
       {%- if api_base %} data-api-base="{{ api_base }}" data-ws-base="{{ api_base }}"{% endif %}
       {%- if caps_json %} data-caps='{{ caps_json|safe }}'{% endif %}
       {%- if refresh_ms %} data-refresh-ms="{{ refresh_ms }}"{% endif %}>
+{% if read_only %}
+<div class="demo-banner" role="status">
+  {% if language == 'en' %}<b>Demo</b> · mock data — browse only, not real data or accounts.{% else %}<b>데모</b> · 목업 데이터 — 둘러보기 전용이에요. 실제 데이터·계정이 아니에요.{% endif %}
+</div>
+{% endif %}
 <div class="app">
   <header class="status">
     <span class="brand">
