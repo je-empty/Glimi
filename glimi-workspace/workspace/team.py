@@ -549,7 +549,7 @@ def propose_new_member(g, goal: str, have_roles: list[str],
 
 # Sensible non-interactive defaults — used when there is no TTY to prompt on.
 DEFAULT_OWNER_NAME = "오너"
-DEFAULT_GOAL = "오픈소스 프로젝트 공개 런칭 기획"
+DEFAULT_GOAL = "신규 앱·서비스 출시 기획"
 
 # Where first-run answers are remembered, so setup is truly "first-run" once.
 STATE_FILE = Path(__file__).resolve().parent / ".workspace_state.json"

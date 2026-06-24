@@ -2,8 +2,8 @@
 
 The Workspace analogue of the Community showcase (``scripts/seed_demo_mockup.py``):
 a hand-authored, believable team — a **Coordinator** plus a **Researcher**,
-**Builder**, and **Critic** — working a real goal (*plan the public launch of our
-open-source project*), seeded directly into the kernel's in-memory store so you can
+**Builder**, and **Critic** — working a real goal (*plan the launch of a new app,
+'하루칸'*), seeded directly into the kernel's in-memory store so you can
 watch it **live** in the Core dashboard with zero setup: no API key, no network, no
 Discord.
 
@@ -43,7 +43,7 @@ except ImportError:  # imported as workspace.demo
 # ── the demo's fixed setup ───────────────────────────────────────────────────
 OWNER_NAME = "오너"
 OWNER_ID = "owner"
-GOAL = "오픈소스 프로젝트 공개 런칭 기획"
+GOAL = "신규 앱 '하루칸' 출시 기획"
 
 # Channels (mirror team.py's topology so the seeded demo and a real run look alike).
 DM_COORDINATOR = "dm-coordinator"
@@ -71,71 +71,71 @@ OWNER_REVIEW = "internal-owner"
 # TEMPLATE), so it comes back as a multi-section brief. The seeded demo must MATCH
 # that — a hand-authored brief on the SAME skeleton (## 한눈에 보기 / 결정 / 실행
 # 계획 / 리스크 / 다음 한 걸음), grounded in the exact specifics the seeded team
-# discussed (60초 데모, 화요일 9시 PT Show HN, 깨끗한 환경 퀵스타트 게이트, ~6시간
+# discussed (60초 데모, 화요일 9시 정직한 출시 글, 깨끗한 기기 온보딩 게이트, ~6시간
 # 지원 부하, 다섯 단계 체크리스트). The chat renderer (chat.js mdBlocks) turns the
 # `## ` / `- ` / `1.` into real headings + lists, so a visitor opening
 # dm-coordinator sees a genuine work document, not another chat bubble.
 DELIVERABLE_ROUND1 = (
     "## 한눈에 보기\n"
-    "과장 없이 **신뢰를 주는 집중 런칭**으로 갑니다. 가장 시끄러운 멀티채널 푸시가 아니라, "
-    "**검증된 60초 데모 + 잔인할 만큼 명확한 '이게 무엇이고 무엇이 아닌지' README**를 앞세운 "
-    "단일 Show HN — 전환에 성공한 사례 네 건 중 셋이 실제로 이렇게 움직였어요. 출시는 "
-    "**화요일 오전 9시(PT)**.\n\n"
+    "과장 없이 **신뢰를 주는 집중 출시**로 갑니다. 가장 시끄러운 멀티채널 푸시가 아니라, "
+    "**검증된 60초 데모 + 잔인할 만큼 명확한 '이게 무엇이고 무엇이 아닌지' 출시 글**을 앞세운 "
+    "단일 정직한 출시 — 전환에 성공한 사례 네 건 중 셋이 실제로 이렇게 움직였어요. 출시는 "
+    "**화요일 오전 9시**.\n\n"
     "## 결정 / 방향\n"
-    "- **단일 Show HN + 타이밍 맞춘 스레드 하나** — 산만한 멀티채널 푸시는 버립니다 "
+    "- **단일 출시 글 + 타이밍 맞춘 스레드 하나** — 산만한 멀티채널 푸시는 버립니다 "
     "(리서처: 4건 중 3건에서 단일 채널이 멀티채널을 이김).\n"
-    "- **데모가 시선을 끌고, 퀵스타트가 그 시선을 붙잡는다** — 리서처↔크리틱이 토론 끝에 "
-    "합의한 핵심. 데모만으로는 '거의 동작한다'에서 무너져요.\n"
-    "- **탈락시킨 대안**: 대대적 사전 홍보·인플루언서 푸시 — 정직한 런칭 기조와 충돌하고, "
+    "- **데모가 시선을 끌고, 온보딩이 그 시선을 붙잡는다** — 리서처↔크리틱이 토론 끝에 "
+    "합의한 핵심. 데모만으로는 '첫 칸을 채우기 직전'에서 무너져요.\n"
+    "- **탈락시킨 대안**: 대대적 사전 홍보·인플루언서 푸시 — 정직한 출시 기조와 충돌하고, "
     "데이터상 전환을 만들지도 못함.\n\n"
     "## 실행 계획\n"
-    "1. **범위 확정 + 정직한 README 작성** — 빌더 (D-3). '무엇이 아닌지'를 상단에 명시.\n"
+    "1. **범위 확정 + 정직한 출시 글 작성** — 빌더 (D-3). '무엇이 아닌지'를 상단에 명시.\n"
     "2. **60초 데모 녹화** — 빌더 (D-2). 90초 넘으면 이탈하므로 60초 고정, 군말 없이 "
-    "동작하는 출력으로 끝냄 (리서처 데이터).\n"
-    "3. **깨끗한 환경 퀵스타트 검증 + 상단 고정 '알려진 이슈' 안내** — 크리틱 (D-2). "
-    "*이게 런칭 게이트입니다* (아래 리스크 참조).\n"
-    "4. **Show HN 글 + 첫 댓글 FAQ 준비** — 빌더+리서처 (D-1).\n"
-    "5. **화요일 오전 9시(PT) 출시 + 종일 지원 인원 다섯** — 백업 인원 지정 (리서처: "
+    "첫 칸을 채우는 경험으로 끝냄 (리서처 데이터).\n"
+    "3. **깨끗한 기기 첫 설치~첫 가치경험(온보딩) 검증 + 상단 고정 '알려진 이슈' 안내** — 크리틱 (D-2). "
+    "*이게 출시 게이트입니다* (아래 리스크 참조).\n"
+    "4. **앱스토어/플레이스토어 등록 + 출시 글 + 첫 댓글 FAQ 준비** — 빌더+리서처 (D-1).\n"
+    "5. **화요일 오전 9시 출시 + 종일 지원 인원 다섯** — 백업 인원 지정 (리서처: "
     "지원 부하는 한나절이 아니라 약 6시간 치솟음).\n\n"
     "## 가장 큰 리스크와 완화책\n"
-    "- **데모와 맨바닥 설치 사이의 간극** *(크리틱, 최상위 리스크)* — 누가 클론 받고 첫 "
-    "5분 안에 벽에 부딪히면 그 스레드가 등을 돌립니다. 실제 한 사례는 '설치가 깨졌다'는 "
-    "최상단 댓글로 끝내 회복 못 했어요.\n"
-    "  - **완화책**: 깨끗한 환경에서 직접 검증한 '60초면 동작한다' 퀵스타트 + 상단 고정 "
-    "알려진 이슈. **퀵스타트가 깨끗한 환경 테스트를 통과하기 전엔 런칭하지 않습니다.**\n"
-    "- **런칭 당일 지원 부담** — 약 6시간 부하 집중. **완화책**: 종일 지원 다섯 명 + 백업 "
+    "- **첫 실행 후 빈 화면 / 첫 습관을 채우기까지의 이탈** *(크리틱, 최상위 리스크)* — 누가 설치하고 첫 "
+    "5분 안에 빈 화면 앞에서 막히면 그 스레드가 등을 돌립니다. 실제 한 사례는 '첫 화면에서 뭘 해야 할지 모르겠다'는 "
+    "최상단 리뷰로 끝내 회복 못 했어요.\n"
+    "  - **완화책**: 깨끗한 기기에서 직접 검증한 '60초면 첫 칸이 채워진다' 온보딩 + 상단 고정 "
+    "알려진 이슈. **온보딩이 깨끗한 기기 테스트를 통과하기 전엔 출시하지 않습니다.**\n"
+    "- **출시 당일 문의·지원 대응** — 약 6시간 부하 집중. **완화책**: 종일 지원 다섯 명 + 백업 "
     "인원 지정.\n\n"
     "## 다음 한 걸음\n"
-    "크리틱에게 **깨끗한 환경 퀵스타트 검증**을 가장 먼저 돌리게 하세요 — 그게 통과해야 "
+    "크리틱에게 **깨끗한 기기 온보딩 검증**을 가장 먼저 돌리게 하세요 — 그게 통과해야 "
     "나머지 일정이 의미가 있습니다. 통과 신호가 오면 화요일 진행을 확정합니다."
 )
 
 # Round-2 deliverable — the scheduled execution plan the owner asks for after the
-# quickstart gate passes (the live unfold's payoff: a SECOND real document, with
+# onboarding gate passes (the live unfold's payoff: a SECOND real document, with
 # dates + owners locked in, so the demo ends on "ready to ship", not mid-air).
 DELIVERABLE_ROUND2 = (
     "## 한눈에 보기\n"
-    "퀵스타트가 깨끗한 환경에서 통과했고(설치→첫 출력 48초), 데모는 58초로 확정됐어요. "
-    "이제 **날짜·담당까지 박은 실행 계획**으로 마무리합니다 — 화요일 오전 9시(PT) 진행 "
+    "온보딩이 깨끗한 기기에서 통과했고(첫 설치→첫 칸 채움 48초), 데모는 58초로 확정됐어요. "
+    "이제 **날짜·담당까지 박은 실행 계획**으로 마무리합니다 — 화요일 오전 9시 진행 "
     "**확정**.\n\n"
     "## 일정 (화요일 = D-Day)\n"
     "| 시점 | 할 일 | 담당 |\n"
     "|---|---|---|\n"
-    "| D-2 (일) | 60초 데모 녹화 + 깨끗한 환경 퀵스타트 검증 | 빌더 · 크리틱 |\n"
-    "| D-1 (월) | README 최종 + Show HN 글/첫 댓글 FAQ + 알려진 이슈 고정 | 빌더 · 리서처 |\n"
-    "| **D-Day 09:00 PT** | **Show HN 게시 + 타이밍 스레드** | 매니저 |\n"
+    "| D-2 (일) | 60초 데모 녹화 + 깨끗한 기기 온보딩 검증 | 빌더 · 크리틱 |\n"
+    "| D-1 (월) | 출시 글 최종 + 첫 댓글 FAQ + 알려진 이슈 고정 | 빌더 · 리서처 |\n"
+    "| **D-Day 09:00** | **출시 글 게시 + 스토어 등록 + 타이밍 스레드** | 매니저 |\n"
     "| D-Day 09:00–15:00 | 지원 집중 창(부하 피크 ~6h) | 다섯 + 백업 |\n"
     "| D-Day 15:00~ | 회고 메모 + 알려진 이슈 갱신 | 크리틱 |\n\n"
     "## 담당 / 책임\n"
     "- **매니저** — 출시 버튼, 스레드, 오너 보고.\n"
-    "- **빌더** — README·데모·체크리스트 산출물.\n"
-    "- **리서처** — Show HN 카피, FAQ, 지원 스크립트.\n"
-    "- **크리틱** — 퀵스타트 게이트, 알려진 이슈, 회고.\n\n"
+    "- **빌더** — 출시 글·데모·체크리스트 산출물.\n"
+    "- **리서처** — 출시 글 카피, FAQ, 지원 스크립트.\n"
+    "- **크리틱** — 온보딩 게이트, 알려진 이슈, 회고.\n\n"
     "## 가장 큰 리스크와 완화책\n"
-    "- **막판 환경 변화로 퀵스타트가 깨질 가능성** — **완화책**: D-1 저녁 동결, D-Day "
-    "아침 깨끗한 환경 재검증 한 번 더. 실패 시 출시 보류 (게이트 유지).\n\n"
+    "- **막판 환경 변화로 온보딩이 깨질 가능성** — **완화책**: D-1 저녁 동결, D-Day "
+    "아침 깨끗한 기기 재검증 한 번 더. 실패 시 출시 보류 (게이트 유지).\n\n"
     "## 다음 한 걸음\n"
-    "D-1 저녁 코드/문서 **동결**을 지금 공지하세요. 그러면 화요일 아침 재검증만 통과하면 "
+    "D-1 저녁 빌드/문서 **동결**을 지금 공지하세요. 그러면 화요일 아침 재검증만 통과하면 "
     "바로 출시입니다."
 )
 
@@ -144,64 +144,64 @@ DELIVERABLE_ROUND2 = (
 TRANSCRIPT: list[tuple[str, str, str]] = [
     # 1) Owner ↔ Coordinator — the goal lands, the Coordinator plans.
     (DM_COORDINATOR, OWNER_ID,
-     "목표는 이거예요: 우리 오픈소스 프로젝트 공개 런칭을 기획하는 거. 근거 없는 과장은 "
-     "싫어요 — 깔끔하고 정직한 런칭이면 좋겠어요. 어디서부터 시작할까요?"),
+     "목표는 이거예요: 우리 신규 앱 '하루칸' 출시를 기획하는 거. 근거 없는 과장은 "
+     "싫어요 — 깔끔하고 정직한 출시면 좋겠어요. 어디서부터 시작할까요?"),
     (DM_COORDINATOR, "coordinator",
-     "알겠어요, 오너님 — 목표는 하나로 명확해요. 과장하지 않으면서도 신뢰를 주는 런칭. "
-     "셋으로 나눠서 진행할게요. 리서처는 비슷한 프로젝트들이 실제로 어떻게 전환을 "
+     "알겠어요, 오너님 — 목표는 하나로 명확해요. 과장하지 않으면서도 신뢰를 주는 출시. "
+     "셋으로 나눠서 진행할게요. 리서처는 비슷한 앱들이 실제로 어떻게 전환을 "
      "이끌어냈는지 파고들고, 빌더는 그 방향을 날짜와 담당자가 있는 순서 잡힌 체크리스트로 "
-     "만들고, 크리틱은 런칭 당일에 터질 수 있는 지점들로 계획을 압박 검증해요. 종합은 제가 "
+     "만들고, 크리틱은 출시 당일에 터질 수 있는 지점들로 계획을 압박 검증해요. 종합은 제가 "
      "정리해서 가져올게요."),
 
     # 2) Coordinator ↔ each specialist — real delegation + first take.
     (DM["researcher"], "coordinator",
-     "리서처 — 당신 몫은 이거예요. 비슷한 오픈소스 프로젝트들은 어떻게 런칭했고, 실제로 "
+     "리서처 — 당신 몫은 이거예요. 비슷한 앱들은 어떻게 출시했고, 실제로 "
      "성과를 움직인 건 뭐였는지(허영 지표 말고). 구체적으로 가져와요."),
     (DM["researcher"], "researcher",
-     "맡았어요. 첫 인상부터: 전환에 성공한 런칭들은 가장 시끄러운 쪽이 아니었어요 — '이게 "
+     "맡았어요. 첫 인상부터: 전환에 성공한 출시들은 가장 시끄러운 쪽이 아니었어요 — '이게 "
      "이렇게 동작합니다'를 보여주는 60초 데모와, '이게 무엇이고 무엇이 아닌지'를 잔인할 만큼 "
-     "명확하게 내건 쪽이었죠. 제가 뽑은 네 사례 중 셋에서 Show HN 하나에 타이밍 맞춘 스레드 "
+     "명확하게 내건 쪽이었죠. 제가 뽑은 네 사례 중 셋에서 정직한 출시 글 하나에 타이밍 맞춘 스레드 "
      "하나가 산만한 멀티채널 푸시를 이겼어요. 지금 전환 데이터를 더 파고드는 중이에요."),
 
     (DM["builder"], "coordinator",
-     "빌더 — 이 방향을 구체적이고 순서 잡힌 런칭 체크리스트로 만들어줘요. 단계, 담당자, "
+     "빌더 — 이 방향을 구체적이고 순서 잡힌 출시 체크리스트로 만들어줘요. 단계, 담당자, "
      "현실적인 날짜까지. 당장 내보낼 수 있는 가장 작은 것으로."),
     (DM["builder"], "builder",
-     "초안 잡는 중이에요. 뼈대: (1) 범위 확정 + 정직한 README 작성, (2) 60초 데모 녹화, "
-     "(3) Show HN 글 + 첫 댓글 FAQ 준비, (4) 런칭 당일 이슈에 답할 인원 배치, (5) 화요일 "
-     "오전 9시(PT) 출시. 이 다섯에 안 들어가는 건 다 쳐낼게요. 지금 의존 관계 순서를 잡고 "
+     "초안 잡는 중이에요. 뼈대: (1) 범위 확정 + 정직한 출시 글 작성, (2) 60초 데모 녹화, "
+     "(3) 스토어 등록 + 출시 글 + 첫 댓글 FAQ 준비, (4) 출시 당일 문의에 답할 인원 배치, (5) 화요일 "
+     "오전 9시 출시. 이 다섯에 안 들어가는 건 다 쳐낼게요. 지금 의존 관계 순서를 잡고 "
      "있어요."),
 
     (DM["critic"], "coordinator",
-     "크리틱 — 잡혀가는 계획을 압박 검증해줘요. 런칭 당일 우리가 실제로 아픈 지점이 어디죠? "
+     "크리틱 — 잡혀가는 계획을 압박 검증해줘요. 출시 당일 우리가 실제로 아픈 지점이 어디죠? "
      "모든 리스크에 완화책을 같이."),
     (DM["critic"], "critic",
-     "가장 큰 리스크는 트래픽이 아니에요 — 데모와 맨바닥 설치 사이의 간극이죠. 누가 클론 "
-     "받고 첫 5분 안에 벽에 부딪히면, 그 스레드가 우리한테 등을 돌려요. 완화책: 깨끗한 환경에서 "
-     "직접 검증한 '60초면 동작한다' 퀵스타트, 그리고 상단 고정된 알려진 이슈 안내. 두 번째 "
+     "가장 큰 리스크는 트래픽이 아니에요 — 첫 실행 후 빈 화면, 첫 습관을 채우기까지의 이탈이죠. 누가 설치 "
+     "하고 첫 5분 안에 빈 화면 앞에서 막히면, 그 스레드가 우리한테 등을 돌려요. 완화책: 깨끗한 기기에서 "
+     "직접 검증한 '60초면 첫 칸이 채워진다' 온보딩, 그리고 상단 고정된 알려진 이슈 안내. 두 번째 "
      "리스크는 지원 부담이에요."),
 
     # 3) Specialist ↔ specialist (A2A) — they genuinely debate.
     (A2A_RC, "researcher",
-     "크리틱 — 제 판단엔 Show HN이 단일 수단으로는 레버리지가 가장 커요. 이견 있으면 "
+     "크리틱 — 제 판단엔 정직한 출시 글이 단일 수단으로는 레버리지가 가장 커요. 이견 있으면 "
      "반박해줘요."),
     (A2A_RC, "critic",
-     "레버리지가 크다는 데는 동의해요 — 기본적으로 안전하다는 데는 동의 못 해요. Show HN은 "
-     "'동작한다'엔 보상을 주고 '거의 동작한다'엔 벌을 줘요. 맨바닥 시작이 버틴다는 근거가 "
+     "레버리지가 크다는 데는 동의해요 — 기본적으로 안전하다는 데는 동의 못 해요. 출시 글은 "
+     "'동작한다'엔 보상을 주고 '거의 동작한다'엔 벌을 줘요. 첫 실행이 버틴다는 근거가 "
      "뭐예요?"),
     (A2A_RC, "researcher",
-     "타당해요. 네 프로젝트 중 둘은 검증된 퀵스타트가 전환에 결정적이었다고 꼽았어요 — 그걸 "
-     "건너뛴 하나는 설치가 깨졌다는 최상단 댓글이 달렸고 끝내 회복 못 했고요. 그러니까 당신이 "
-     "말한 맨바닥 시작 리스크가 곁다리가 아니라 진짜 핵심 레버예요."),
+     "타당해요. 네 앱 중 둘은 검증된 온보딩이 전환에 결정적이었다고 꼽았어요 — 그걸 "
+     "건너뛴 하나는 첫 화면에서 막혔다는 최상단 리뷰가 달렸고 끝내 회복 못 했고요. 그러니까 당신이 "
+     "말한 첫 실행 이탈 리스크가 곁다리가 아니라 진짜 핵심 레버예요."),
     (A2A_RC, "critic",
-     "그럼 합의 본 거네요. 데모가 시선을 끌고, 퀵스타트가 그 시선을 붙잡는다. 준비 완료라고 "
-     "하기 전에 깨끗한 환경 테스트를 통과하도록 제가 계획을 잡고 있을게요."),
+     "그럼 합의 본 거네요. 데모가 시선을 끌고, 온보딩이 그 시선을 붙잡는다. 준비 완료라고 "
+     "하기 전에 깨끗한 기기 테스트를 통과하도록 제가 계획을 잡고 있을게요."),
 
     (A2A_BR, "builder",
      "리서처 — 제 다섯 단계 중에 당신 데이터가 실제로 뒷받침하는 건 어떤 거고, 제가 그냥 "
      "가정하고 있는 건 어떤 거예요?"),
     (A2A_BR, "researcher",
-     "1~3단계는 뒷받침돼요 — 정직한 README, 60초 데모, Show HN 타이밍 다 전환에 성공한 "
+     "1~3단계는 뒷받침돼요 — 정직한 출시 글, 60초 데모, 출시 타이밍 다 전환에 성공한 "
      "패턴과 맞아요. 4단계가 자원이 부족한 지점인데요. 데이터를 보면 부하는 당신이 잡은 한 "
      "나절이 아니라 여섯 시간쯤 치솟아요."),
     (A2A_BR, "builder",
@@ -212,21 +212,21 @@ TRANSCRIPT: list[tuple[str, str, str]] = [
 
     # 4) Group round — the team converges.
     (GROUP, "coordinator",
-     "팀 — 정리합시다. 각자 한 문장씩: 런칭에서 가장 중요한 단 하나의 포인트."),
+     "팀 — 정리합시다. 각자 한 문장씩: 출시에서 가장 중요한 단 하나의 포인트."),
     (GROUP, "researcher",
      "검증된 60초 데모와 명확한 '이게 무엇이고 무엇이 아닌지'를 앞세우기 — 실제로 전환을 만든 "
      "건 그거예요."),
     (GROUP, "builder",
      "다섯 단계 체크리스트를 화요일에 출시하고, 거기 없는 건 다 쳐내기."),
     (GROUP, "critic",
-     "준비 완료라고 하기 전에 깨끗한 환경에서 퀵스타트 테스트하기 — 맨바닥 시작이 승부의 "
+     "준비 완료라고 하기 전에 깨끗한 기기에서 온보딩 테스트하기 — 첫 실행이 승부의 "
      "전부예요."),
     (GROUP, "researcher-2",
-     "선례도 같은 결이에요 — 비슷한 런칭들이 '무엇이 아닌지'를 상단에 적었을 때 이탈이 줄었어요."),
+     "선례도 같은 결이에요 — 비슷한 출시들이 '무엇이 아닌지'를 상단에 적었을 때 이탈이 줄었어요."),
     (GROUP, "builder-2",
-     "깨끗한 환경 셋업은 제가 자동화해둘게요 — 클론 한 번에 첫 출력까지 끊김 없이."),
+     "깨끗한 기기 온보딩은 제가 자동화해둘게요 — 첫 설치 한 번에 첫 칸 채움까지 끊김 없이."),
     (GROUP, "designer",
-     "README 첫 화면과 데모 썸네일은 60초 안에 '이게 뭔지' 읽히게 — 한 줄 요약 + 스샷 1장 고정."),
+     "첫 화면과 데모 썸네일은 60초 안에 '이게 뭔지' 읽히게 — 한 줄 요약 + 스샷 1장 고정."),
 
     # 5) The owner-approved deliverable, back in the owner DM. THE work product —
     #    a structured markdown brief (not a chat paragraph), exactly the shape a
@@ -238,7 +238,7 @@ TRANSCRIPT: list[tuple[str, str, str]] = [
 # Written to the mgr-approvals system-log channel (the convention from the
 # Workspace HITL gate), so it's inspectable in the same dashboard.
 APPROVAL_TRAIL: list[str] = [
-    "[HITL] 제안됨 · final_deliverable · 오너님을 위한 런칭 종합",
+    "[HITL] 제안됨 · final_deliverable · 오너님을 위한 출시 종합",
     "[HITL] 결정 · 오너 승인 (수정: 최대 리스크 문구 더 단단하게)",
     "[HITL] 결과 · dm-coordinator 로 전달됨",
 ]
@@ -253,9 +253,9 @@ RELATIONSHIPS: list[tuple[str, str, str, int, str]] = [
     ("coordinator", "builder", "manages", 62,
      "체크리스트를 배분하고 출시 가능한 다섯 단계로 붙들어 둠."),
     ("coordinator", "critic", "manages", 62,
-     "리스크 점검을 배분하고 깨끗한 환경 게이트를 채택함."),
+     "리스크 점검을 배분하고 깨끗한 기기 온보딩 게이트를 채택함."),
     ("researcher", "critic", "collaborator", 78,
-     "결과를 두고 토론 — 맨바닥 시작 간극이 진짜 레버라는 데 의견을 모음."),
+     "결과를 두고 토론 — 첫 실행 이탈이 진짜 레버라는 데 의견을 모음."),
     ("builder", "researcher", "collaborator", 70,
      "체크리스트를 데이터에 기반시킴 — 지원 시간을 하루 종일로 늘림."),
     # 역할별 복수 인원 — 같은 직무끼리 분담(협업), 코디네이터가 묶음 관리
@@ -264,7 +264,7 @@ RELATIONSHIPS: list[tuple[str, str, str, int, str]] = [
     ("coordinator", "designer", "manages", 58, "산출물의 첫인상·가독성을 배분."),
     ("researcher", "researcher-2", "collaborator", 66, "옵션 매핑 ↔ 선례 검증을 나눠 맡음."),
     ("builder", "builder-2", "collaborator", 64, "계획 ↔ 구현 디테일을 나눠 맡음."),
-    ("designer", "builder", "collaborator", 60, "README/데모 화면을 빌더와 맞춤."),
+    ("designer", "builder", "collaborator", 60, "첫 화면/데모 화면을 빌더와 맞춤."),
 ]
 
 # Current emotion per agent (drives the agent cards + node tone).
@@ -281,15 +281,15 @@ EMOTIONS: dict[str, tuple[str, int]] = {
 # 5-layer memory: (agent, channel, level, content, importance, pinned).
 MEMORIES: list[tuple[str, str, int, str, int, bool]] = [
     ("coordinator", DM_COORDINATOR, 2,
-     "런칭 결정: 집중되고 정직한 Show HN, 화요일 오전 9시(PT), 검증된 60초 데모를 "
+     "출시 결정: 집중되고 정직한 출시 글, 화요일 오전 9시, 검증된 60초 데모를 "
      "앞세움.", 9, True),
     ("coordinator", GROUP, 1,
-     "전문가 각자의 한 줄 포인트가 깔끔하게 모였다 — 데모, 체크리스트, 깨끗한 환경 "
-     "테스트.", 6, False),
+     "전문가 각자의 한 줄 포인트가 깔끔하게 모였다 — 데모, 체크리스트, 깨끗한 기기 "
+     "온보딩 테스트.", 6, False),
     ("researcher", A2A_RC, 2,
-     "검증된 퀵스타트가 전환과 '설치가 깨졌다는 최상단 댓글'을 가른 차이였다.", 8, True),
+     "검증된 온보딩이 전환과 '첫 화면에서 막혔다는 최상단 리뷰'를 가른 차이였다.", 8, True),
     ("researcher", DM["researcher"], 1,
-     "Show HN 하나에 타이밍 맞춘 스레드 하나가 산만한 멀티채널 푸시를 이겼다 (4건 중 "
+     "정직한 출시 글 하나에 타이밍 맞춘 스레드 하나가 산만한 멀티채널 푸시를 이겼다 (4건 중 "
      "3건).", 6, False),
     ("builder", DM["builder"], 1,
      "다섯 단계 체크리스트; 화요일 출시; 나머지는 다 쳐낸다.", 7, False),
@@ -297,17 +297,17 @@ MEMORIES: list[tuple[str, str, int, str, int, bool]] = [
      "지원 부하는 한나절이 아니라 약 6시간 치솟는다 — 시간을 늘리고 백업 인원을 "
      "지정함.", 7, True),
     ("critic", DM["critic"], 2,
-     "맨바닥 시작 간극이 승부의 전부 — 퀵스타트가 깨끗한 환경에서 통과하기 전엔 "
-     "런칭하지 않는다.", 9, True),
+     "첫 실행 이탈이 승부의 전부 — 온보딩이 깨끗한 기기에서 통과하기 전엔 "
+     "출시하지 않는다.", 9, True),
 ]
 
 # Semantic facts (Layer 3): (agent, subject, predicate, object).
 FACTS: list[tuple[str, str, str, str]] = [
-    ("coordinator", "오너", "원한다", "과장하지 않는 런칭"),
-    ("coordinator", "런칭", "출시한다", "화요일 오전 9시(PT)"),
-    ("researcher", "Show HN", "보상한다", "'동작한다'; 벌한다 '거의 동작한다'"),
-    ("builder", "지원 시간", "이어야 한다", "백업 인원을 지정한 런칭 당일 종일"),
-    ("critic", "가장 큰 리스크", "는", "데모와 맨바닥 설치 사이의 간극"),
+    ("coordinator", "오너", "원한다", "과장하지 않는 출시"),
+    ("coordinator", "출시", "출시한다", "화요일 오전 9시"),
+    ("researcher", "정직한 출시 글", "보상한다", "'동작한다'; 벌한다 '거의 동작한다'"),
+    ("builder", "지원 시간", "이어야 한다", "백업 인원을 지정한 출시 당일 종일"),
+    ("critic", "가장 큰 리스크", "는", "첫 실행 후 빈 화면 / 첫 습관까지의 이탈"),
 ]
 
 # A few illustrative observability rows so the dashboard's Tool-call Timeline shows
@@ -317,10 +317,10 @@ FACTS: list[tuple[str, str, str, str]] = [
 TOOL_CALLS: list[tuple[str, str, str, dict, str]] = [
     # (agent, channel, tool_name, args, result_preview)
     ("researcher", A2A_RC, "recall_memory",
-     {"query": "비슷한 런칭 전환 사례"},
-     "기억 3건: 검증된 퀵스타트 → 전환; Show HN 타이밍; 데모 길이"),
+     {"query": "비슷한 앱 출시 전환 사례"},
+     "기억 3건: 검증된 온보딩 → 전환; 출시 글 타이밍; 데모 길이"),
     ("critic", DM["critic"], "remember",
-     {"content": "맨바닥 시작 간극이 런칭의 가장 큰 리스크", "importance": 9},
+     {"content": "첫 실행 이탈이 출시의 가장 큰 리스크", "importance": 9},
      "저장됨 (L2, 고정)"),
     ("builder", A2A_BR, "recall_memory",
      {"query": "지원 부하 시간대"},
@@ -333,19 +333,19 @@ TOOL_CALLS: list[tuple[str, str, str, dict, str]] = [
 # The live "launch prep" continuation — unfolded one turn per tick by the activity
 # loop so a viewer watches the work move forward in real time.
 CONTINUATION: list[tuple[str, str, str]] = [
-    (GROUP, "builder", "퀵스타트 초안 올렸어요 — 지금 새 VM에서 테스트 중이에요."),
+    (GROUP, "builder", "온보딩 초안 올렸어요 — 지금 깨끗한 기기에서 테스트 중이에요."),
     (A2A_BR, "researcher",
-     "깨끗한 환경 실행: 설치부터 첫 출력까지 48초. 버텨요."),
+     "깨끗한 기기 실행: 첫 설치부터 첫 칸 채움까지 48초. 버텨요."),
     (GROUP, "critic",
-     "깨끗한 환경 실행을 제가 직접 확인했어요. 4단계 보류 해제할게요."),
+     "깨끗한 기기 실행을 제가 직접 확인했어요. 4단계 보류 해제할게요."),
     (DM_COORDINATOR, "coordinator",
-     "오너님 — 퀵스타트가 깨끗한 환경에서 통과해요. 화요일 진행 가능합니다."),
+     "오너님 — 온보딩이 깨끗한 기기에서 통과해요. 화요일 진행 가능합니다."),
     (GROUP, "researcher",
-     "데모 58초로 줄였어요 — 군말 없이 바로 동작하는 출력으로 끝나요."),
+     "데모 58초로 줄였어요 — 군말 없이 바로 첫 칸을 채우는 경험으로 끝나요."),
     (A2A_RC, "critic",
      "상단 고정 알려진 이슈 안내 초안 잡았어요. 우리 발목 잡을 거 하나 줄였네요."),
     (GROUP, "builder",
-     "Show HN 글 + 첫 댓글 FAQ 준비됐어요. 지원 인원 다섯 명 확정됐고요."),
+     "스토어 등록 + 출시 글 + 첫 댓글 FAQ 준비됐어요. 지원 인원 다섯 명 확정됐고요."),
     # Round-2 payoff: the Coordinator delivers the SECOND structured document — the
     # scheduled execution plan the owner asked for (dates + owners locked in). Lands
     # in dm-coordinator as a real markdown brief, so the live unfold ends on a
@@ -357,7 +357,7 @@ CONTINUATION: list[tuple[str, str, str]] = [
 # the channel isn't empty on first load (a visitor switching to "오너의 검토" sees the
 # owner already reviewed round 1). Logged from OWNER_ID (read-only channel).
 OWNER_REVIEW_SEED: list[str] = [
-    "팀이 가져온 방향 좋아요 — 정직한 런칭 기조 맞고. 다만 '깨끗한 환경 퀵스타트'가 "
+    "팀이 가져온 방향 좋아요 — 정직한 출시 기조 맞고. 다만 '깨끗한 기기 온보딩'이 "
     "진짜 통과하는지 확인이 빠졌네. 다음 라운드에 그거 검증부터 시켜야겠다.",
 ]
 
@@ -369,11 +369,11 @@ OWNER_REVIEW_SEED: list[str] = [
 OWNER_TURNS: list[tuple[str, str, str]] = [
     # Round 2 instruction — the owner hands down the next concrete ask, as a human would.
     (DM_COORDINATOR, OWNER_ID,
-     "퀵스타트 검증이 통과했다니 좋네요. 이제 화요일에 실제로 굴릴 수 있게 일정과 담당자까지 "
+     "온보딩 검증이 통과했다니 좋네요. 이제 화요일에 실제로 굴릴 수 있게 일정과 담당자까지 "
      "박은 실행 계획으로 마무리해 줘요 — 당장 시작할 수 있게."),
     # Round 2 owner review — lands in internal-owner after the team's round-2 work shows.
     (OWNER_REVIEW, OWNER_ID,
-     "퀵스타트 검증 통과 확인했고 데모 길이도 잡혔어요. 일정·담당까지 들어오면 화요일 진행 "
+     "온보딩 검증 통과 확인했고 데모 길이도 잡혔어요. 일정·담당까지 들어오면 화요일 진행 "
      "충분합니다 — 거의 다 왔다."),
     (OWNER_REVIEW, OWNER_ID,
      "실행 계획까지 다 잡혔어요. 이 정도면 화요일 진행 충분합니다 — 여기서 마무리."),
@@ -580,10 +580,10 @@ DEMO_EXTRA: list[tuple[str, str, str, str, str]] = [
      "이 팀의 또 다른 리서처입니다. 1번 리서처가 옵션을 매핑하면, 당신은 실제 선례·벤치마크로 "
      "그걸 검증합니다. 구체적 사례와 수치로 '진짜 버티는 주장'을 가려내세요.", "researcher"),
     ("builder-2", "빌더 2", "persona",
-     "이 팀의 또 다른 빌더입니다. 1번 빌더가 계획을 짜면, 당신은 깨끗한 환경 셋업·자동화 같은 "
-     "실제 구현 디테일을 맡습니다. '클론 한 번에 첫 출력까지' 끊김 없게 만드세요.", "builder"),
+     "이 팀의 또 다른 빌더입니다. 1번 빌더가 계획을 짜면, 당신은 깨끗한 기기 온보딩·자동화 같은 "
+     "실제 구현 디테일을 맡습니다. '첫 설치 한 번에 첫 칸 채움까지' 끊김 없게 만드세요.", "builder"),
     ("designer", "디자이너", "persona",
-     "이 팀의 디자이너입니다. 산출물의 첫인상과 가독성을 책임집니다 — README 첫 화면, 데모 "
+     "이 팀의 디자이너입니다. 산출물의 첫인상과 가독성을 책임집니다 — 첫 화면, 데모 "
      "썸네일, 한눈에 읽히는 레이아웃. 60초 안에 '이게 뭔지' 읽히게 다듬으세요.", "designer"),
 ]
 

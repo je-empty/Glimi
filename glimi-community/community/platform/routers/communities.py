@@ -20,7 +20,7 @@ from community.community import (
 )
 
 from .. import accounts
-from ..auth import public_readonly_user, require_user
+from ..auth import get_current_user, public_readonly_user, require_user
 from ..community_ctx import run_in_community
 from ..discord_verify import verify_token_sync, wipe_glimi_channels_sync
 from ..supervisor import supervisor
@@ -94,9 +94,14 @@ def _fetch_members(community_id: str, limit: int = 8) -> list[dict]:
 
 
 @router.get("")
-async def list_my_communities(user: dict = Depends(require_user)):
+async def list_my_communities(user: dict | None = Depends(get_current_user)):
     running = set(supervisor.list_running())
-    visible = _visible_communities(user)
+    if user:
+        visible = _visible_communities(user)
+    else:
+        # 익명 공개 둘러보기(데모 랜딩): read_only 커뮤니티만 노출 → 스위처가
+        # '—' 대신 실제 커뮤니티 목록을 보여줌. private 커뮤니티 누수 방지.
+        visible = [c for c in list_communities() if c.get("read_only")]
     for c in visible:
         c["running"] = c["id"] in running
         c["members"] = _fetch_members(c["id"])
