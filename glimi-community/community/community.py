@@ -209,9 +209,11 @@ def init_community(community_id: str, copy_assets: bool = True):
             shutil.copy2(example, env_path)
         else:
             env_path.write_text(
-                "# 디스코드 봇 토큰 (필수)\n"
-                "DISCORD_BOT_TOKEN=\n\n"
-                "# 오너 디스코드 오너 ID (선택)\n"
+                "# 이 커뮤니티 전용 환경변수 (선택). 비워두면 전역 설정을 상속한다.\n"
+                "# 웹 채팅이 기본 — 아래는 Discord 어댑터를 쓸 때만 필요하다.\n\n"
+                "# (선택) Discord 봇 토큰 — 채우면 Discord 어댑터가 활성화된다.\n"
+                "# DISCORD_BOT_TOKEN=\n\n"
+                "# (선택) 오너 Discord 유저 ID — 권한 체크용\n"
                 "# DISCORD_OWNER_ID=\n"
             )
 

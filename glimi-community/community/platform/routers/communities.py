@@ -40,7 +40,7 @@ class CreateCommunityIn(BaseModel):
     name: str | None = None  # 표시용 이름 (한글 등). 없으면 id 로 폴백
     description: str = ""
     language: str = "en"
-    token: str  # Discord bot token
+    token: str = ""  # Discord bot token (옵션 — 웹 우선; 비우면 Discord 어댑터 비활성)
     owner: OwnerProfileIn
     clean_existing_channels: bool = False
     grant_to_user: str | None = None
@@ -303,8 +303,6 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
         raise HTTPException(400, "already exists")
     if not data.id.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(400, "id must be alphanumeric with -/_")
-    if not data.token.strip():
-        raise HTTPException(400, "discord token required")
     if not data.owner.name.strip():
         raise HTTPException(400, "owner name required")
 
@@ -313,7 +311,7 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
 
     # ── 1a. (옵션) 기존 Discord glimi-* 채널·카테고리 즉시 삭제 ──
     wipe_summary = None
-    if data.clean_existing_channels:
+    if data.clean_existing_channels and data.token.strip():
         from fastapi.concurrency import run_in_threadpool
         wipe_summary = await run_in_threadpool(wipe_glimi_channels_sync, data.token.strip(), 30.0)
         if not wipe_summary.get("ok"):
@@ -327,9 +325,10 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     # ── 2. registry name + description + language ──
     _update_registry(data.id, data.name or data.id, data.description, data.language)
 
-    # ── 3. .env 에 토큰 기록 ──
+    # ── 3. .env (옵션 — Discord 토큰이 주어졌을 때만 기록; 웹 우선 기본은 미기록) ──
     env_path = COMMUNITIES_DIR / data.id / ".env"
-    set_key(str(env_path), "DISCORD_BOT_TOKEN", data.token.strip())
+    if data.token.strip():
+        set_key(str(env_path), "DISCORD_BOT_TOKEN", data.token.strip())
 
     # ── 3b. 모델 override (inherit 면 아무것도 안 씀 → 전역 기본값 상속) ──
     _write_community_model(
