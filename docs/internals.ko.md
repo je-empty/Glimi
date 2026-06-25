@@ -123,7 +123,7 @@ graph LR
 
 | 연결 그래프 | 메모리 인스펙터 |
 |---|---|
-| <img src="screenshots/en/04-graph-live.webp" height="300" alt="연결 그래프"/> | <img src="screenshots/en/02-persona-memory.png" height="300" alt="메모리 인스펙터"/> |
+| <img src="screenshots/ko/04-graph-live.png" height="300" alt="연결 그래프"/> | <img src="screenshots/ko/02-persona-memory.png" height="300" alt="메모리 인스펙터"/> |
 
 - **Cytoscape.js 그래프** — 에이전트 연결·채널 활동·supervisor overlay 표시
 - **메모리 인스펙터 (L0–L5)** — pinned, 에피소드, 의미 사실, 관계 변곡점 표시
