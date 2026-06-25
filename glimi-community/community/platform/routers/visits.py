@@ -12,7 +12,10 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import time
+from contextlib import contextmanager
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -23,6 +26,39 @@ from ..auth import require_admin
 from ..db import conn
 
 router = APIRouter()
+
+# 분리 배포 대비: 공개 데모 인스턴스와 내부 admin 인스턴스가 서로 다른 platform.db 를
+# 쓰면 공개 방문이 admin 에 안 보인다. GLIMI_VISITS_DB 로 방문기록만 공유 SQLite 에 모은다.
+# 미설정(개발/단일 인스턴스)이면 공유 platform.db 그대로 — 즉 동작/테스트 불변.
+_VISITS_DB = (os.environ.get("GLIMI_VISITS_DB") or "").strip()
+_VISIT_DDL = """
+CREATE TABLE IF NOT EXISTS visit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, ts_epoch REAL NOT NULL,
+    ip TEXT, country TEXT, city TEXT, asorg TEXT, asn TEXT, ua TEXT, path TEXT, referrer TEXT,
+    is_owner INTEGER DEFAULT 0, sid TEXT, dwell_ms INTEGER );
+CREATE INDEX IF NOT EXISTS idx_visit_ip  ON visit_log(ip);
+CREATE INDEX IF NOT EXISTS idx_visit_ts  ON visit_log(ts_epoch);
+CREATE INDEX IF NOT EXISTS idx_visit_sid ON visit_log(sid);
+"""
+
+
+@contextmanager
+def _vconn():
+    """방문기록 DB 연결. GLIMI_VISITS_DB 설정 시 그 전용 파일(여러 인스턴스 공유, WAL),
+    아니면 공유 platform.db(``conn``)."""
+    if not _VISITS_DB:
+        with conn() as c:
+            yield c
+        return
+    Path(_VISITS_DB).parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(_VISITS_DB, timeout=10)
+    c.row_factory = sqlite3.Row
+    try:
+        c.execute("PRAGMA journal_mode=WAL")  # 멀티프로세스 동시 read/write
+        c.executescript(_VISIT_DDL)           # 전용 DB 에 테이블 보장
+        yield c
+    finally:
+        c.close()
 
 # 운영자(자기) IP — GLIMI_OWNER_IPS="1.2.3.4,5.6.7.8". 비우면 항상 방문자로 취급.
 _OWNER_IPS = {ip.strip() for ip in (os.environ.get("GLIMI_OWNER_IPS") or "").split(",") if ip.strip()}
@@ -58,7 +94,7 @@ async def track_visit(v: VisitIn, request: Request):
         if not sid:
             return {"ok": True}
         dwell = max(0, min(int(v.dwell_ms), _MAX_DWELL_MS))
-        with conn() as c:
+        with _vconn() as c:
             c.execute(
                 "UPDATE visit_log SET dwell_ms = ? WHERE id = ("
                 "  SELECT id FROM visit_log WHERE sid = ? AND path = ? AND dwell_ms IS NULL "
@@ -71,7 +107,7 @@ async def track_visit(v: VisitIn, request: Request):
     # 진입 비콘
     hdr = request.headers
     ip = _client_ip(request)
-    with conn() as c:
+    with _vconn() as c:
         c.execute(
             "INSERT INTO visit_log (ts, ts_epoch, ip, country, city, asorg, asn, ua, "
             "path, referrer, is_owner, sid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -102,7 +138,7 @@ async def admin_sessions(
     반환: {sessions:[{sid, legacy, ip, country, city, asorg, ua, is_owner, start_ts,
     page_count, total_dwell_ms, duration_ms, events:[{path, ts, dwell_ms}]}], total, visitors}
     """
-    with conn() as c:
+    with _vconn() as c:
         rows = c.execute(
             "SELECT ts, ts_epoch, ip, country, city, asorg, asn, ua, path, referrer, "
             "COALESCE(is_owner,0) AS is_owner, sid, dwell_ms "
