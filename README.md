@@ -285,6 +285,7 @@ cd Glimi
                             # first run opens the browser /setup wizard to set the admin password
                             # (or set GLIMI_ADMIN_PASSWORD for headless/non-interactive)
 ```
+> Then log in at `http://localhost:8000/login` as username **`admin`** with the password you set. (Headless/API: POST `username=admin&password=…` to `/login`.) Your community dashboard lives at `/community/<id>`.
 
 **Windows** (native):
 ```powershell
@@ -324,7 +325,7 @@ python -m community.community list            # list communities (CLI)
 
 ![Glimi Workspace](glimi-workspace/assets/brand/Glimi-Workspace-banner.svg)
 
-Every user gets a team. Glimi Workspace runs a Coordinator plus roles: Researcher, Builder, Critic. You set project context once — goals, past decisions, style. Each agent saves it so new sessions start ready. Model or host swaps keep context intact. Workspace is persistent staff, not a temp tool.
+Every user gets a team. Glimi Workspace runs a Coordinator that proposes a goal-appropriate set of specialist roles for the task (e.g. researcher / builder / critic, or trail-scout / logistics-planner / gear-guide for a trip) — the roster is generated per goal, not a fixed three. You set project context once — goals, past decisions, style. Each agent saves it so new sessions start ready. Model or host swaps keep context intact. Workspace is persistent staff, not a temp tool.
 
 Workspace and Community run on one Core. Workspace handles work; Community handles friends. The split shows Core modularity. Workspace imports only `glimi` — no chat SDK, no Community code.
 
@@ -345,8 +346,10 @@ The demo runs a stored live team that loops on its data. The dashboard updates i
 ./run.sh workspace                      # the workspace server (home + demo + create) → http://127.0.0.1:8800
 ./run.sh workspace --demo               # serve just the seeded demo team
 ./run.sh workspace --serve              # run a real goal once, then serve the result
+./run.sh workspace --serve --name "<you>" --goal "<your goal>"   # your own goal (else a default goal runs)
 ./run.sh workspace --serve --approve final   # require owner sign-off on the deliverable
 ```
+> With a real backend (Claude/local), `--serve` runs the **full work round first** — that can take several minutes before `:8800` opens. It isn't hung; watch the console. (`--demo` serves instantly.)
 
 #### Human-in-the-loop — the approval gate
 

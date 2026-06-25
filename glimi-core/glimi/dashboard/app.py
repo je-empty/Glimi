@@ -85,6 +85,24 @@ def _load_i18n(lang: str) -> dict:
         return {"error": str(exc)}
 
 
+_I18N_CACHE: dict = {}
+
+
+def _t(key: str, lang: str = "en") -> str:
+    """i18n lookup for the shared dashboard template (``{{ t('tab_overview', language) }}``).
+    Flat key → translated string; falls back to en, then the key itself."""
+    lang = lang if lang in ("ko", "en") else "en"
+    if lang not in _I18N_CACHE:
+        _I18N_CACHE[lang] = _load_i18n(lang)
+    return _I18N_CACHE[lang].get(key) or _I18N_CACHE.get("en", {}).get(key) or key
+
+
+# The canonical template (dashboard/_core.html) calls ``t(...)`` for tab labels; register
+# it as a Jinja global so the kernel/Workspace serve path renders. (Community injects its
+# own copy via community/platform/templates/__init__.py — this is the Core/Workspace path.)
+_TEMPLATES.env.globals["t"] = _t
+
+
 def create_app(reader: DashboardReader) -> FastAPI:
     """Build the read-only dashboard FastAPI app for a given reader.
 
