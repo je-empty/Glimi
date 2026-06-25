@@ -272,6 +272,23 @@ Glimi measures multi-agent quality with **EDD**: an autonomous **owner agent** d
 
 ---
 
+## 📚 Deep dives
+
+This README is the at-a-glance tour. Each subsystem has a focused doc:
+
+| Topic | Doc |
+|---|---|
+| **Memory & runtime internals** — the 8-layer pipeline, L0–L5 stack, model-swap survival | [`docs/memory.en.md`](docs/memory.en.md) |
+| **Elastic Memory** — context-window-aware memory budgeting | [`docs/elastic_memory.en.md`](docs/elastic_memory.en.md) |
+| **Positioning** — what makes Glimi different + the full vs-alternatives table | [`docs/positioning.en.md`](docs/positioning.en.md) |
+| **Core capabilities & library embedding** — full capability detail, `KernelStore` DI, model roles | [`docs/core_internals.en.md`](docs/core_internals.en.md) |
+| **Community internals** — channels, context-leak, spy mode, architecture | [`docs/community_internals.en.md`](docs/community_internals.en.md) |
+| **EDD** — eval-driven development: dimensions, the generation table, the flywheel | [`docs/edd.en.md`](docs/edd.en.md) |
+| **Local models** — Ollama tiers + setup | [`docs/local_models.md`](docs/local_models.md) |
+| **Contributor onboarding** — setup, first task, workflow | [`docs/START_HERE.html`](docs/START_HERE.html) |
+
+---
+
 ## Examples
 
 Lightweight starters that run on Glimi Core only, without the Community social-sim layer:
