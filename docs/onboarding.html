@@ -412,7 +412,7 @@
         <div class="child app">
           <div class="label">flagship 앱</div>
           <div class="name app">Glimi Community</div>
-          <div class="pip">apps/community/ (재배치 예정)</div>
+          <div class="pip">glimi-community/community/</div>
           <p>"AI friends that keep living when you're not looking." Glimi Core 로 만든 첫 official 앱. 가벼운 예시가 아닌 별도 정체성의 application.</p>
         </div>
       </div>
@@ -453,16 +453,15 @@ cd Glimi
     <h3>기타 명령</h3>
     <pre><code>./run.sh --port 9000                    # 대시보드 포트 변경
 ./run.sh --imagegen                     # 로컬 LoRA 초상화 생성 (opt-in, ~6분/장)
-./run.sh --legacy &lt;community&gt;           # 레거시 단일 봇 모드 (QA / 디버깅)
 ./scripts/qa.sh                         # E2E QA runner (tmux 세션: Glimi-QA-Runner)
 ./scripts/stop.sh                       # graceful shutdown
 
-python -m src.platform.accounts list    # 계정 목록
-python -m src.community list            # 커뮤니티 목록</code></pre>
+python -m community.platform.accounts list   # 계정 목록
+python -m community list                      # 커뮤니티 목록</code></pre>
 
     <div class="card accent-yellow">
       <h4>주의: 첫 부팅</h4>
-      <p>첫 실행 시 venv 생성 후 <code>requirements.txt</code> 설치 (5–10분). <code>--imagegen</code> 사용 시 <code>[imagegen]</code> extra( peft + diffusers) 1회 설치, LoRA 가중치(.safetensors 186MB) 는 <code>community/glimi_imagegen/loras/</code> 필요</p>
+      <p>첫 실행 시 venv 생성 후 <code>requirements.txt</code> 설치 (5–10분). <code>--imagegen</code> 사용 시 <code>[imagegen]</code> extra( peft + diffusers) 1회 설치, LoRA 가중치(.safetensors 186MB) 는 <code>glimi-community/community/glimi_imagegen/loras/</code> 필요</p>
     </div>
 
     <h3>처음 동작 확인 체크리스트</h3>
@@ -538,39 +537,41 @@ Retrieval scoring:
   <!-- ============================================ -->
   <section id="repo">
     <h2><span class="num">5</span>레포 구조</h2>
-    <p class="lead"><code>glimi/</code> = Core 커널, <code>community/</code> = Community 앱 코드.</p>
+    <p class="lead">모노레포 = 3 프로젝트. <code>glimi-core/glimi/</code> = Core 커널, <code>glimi-community/community/</code> = Community 앱 코드, <code>glimi-workspace/workspace/</code> = Workspace 앱. (OSS 공개 시 각각 별 레포로 분리 예정.)</p>
 
     <h3>현재 구조 (June 2026)</h3>
     <pre><code>Glimi/
-├── glimi/                      <span style="color:var(--accent-green)"># ⭐ Glimi Core 커널 (pip install glimi · 채팅 SDK/DB 의존 0)</span>
-│   ├── runtime/                <span style="color:var(--muted)"># per-agent model swap</span>
-│   ├── tools/                  <span style="color:var(--muted)"># &lt;tools&gt; protocol</span>
-│   ├── memory/                 <span style="color:var(--muted)"># L0–L5 + facts + relationship</span>
-│   ├── llm/                    <span style="color:var(--muted)"># Claude / Ollama / Grok CLI / echo 백엔드 (vLLM·llama.cpp planned)</span>
-│   ├── conversation/           <span style="color:var(--muted)"># A2A loop</span>
-│   ├── context_budget.py       <span style="color:var(--muted)"># Elastic Memory (컨텍스트 예산)</span>
-│   └── store.py                <span style="color:var(--muted)"># KernelStore ABC (storage 중립)</span>
-├── community/                        <span style="color:var(--accent-orange)"># Glimi Community — 커널 위에 올린 앱</span>
-│   ├── core/                   <span style="color:var(--muted)"># 앱측 runtime/memory wiring (커널 re-export + DI)</span>
-│   │   ├── prompts/            <span style="color:var(--muted)"># en/ + ko/ overlay, locale.py, model.py</span>
-│   │   ├── runtime.py          <span style="color:var(--muted)"># 커널에 KernelStore 등 주입 + API re-export</span>
-│   │   ├── channel_adapter.py  <span style="color:var(--muted)"># ChannelAdapter Protocol (transport 중립 seam)</span>
-│   │   ├── mgr_actions.py      <span style="color:var(--muted)"># 매니저 도구 핸들러 (플랫폼 중립)</span>
-│   │   └── ...
-│   ├── adapters/               <span style="color:var(--muted)"># SqliteKernelStore + profile/observer 어댑터</span>
-│   │   └── web/                <span style="color:var(--muted)"># 라이브 웹 어댑터 (channels.py = 채널 어댑터)</span>
-│   ├── platform/               <span style="color:var(--muted)"># FastAPI + 대시보드 + web_runtime.py (per-community)</span>
-│   ├── scenes/                 <span style="color:var(--muted)"># tutorial 등 (Community 도메인)</span>
-│   ├── supervisors/            <span style="color:var(--muted)"># cross-scene 감시자</span>
-│   ├── achievements/           <span style="color:var(--muted)"># Community UX 메타</span>
-│   ├── tools/                  <span style="color:var(--muted)"># CLI · dev_runner · migrate</span>
-│   └── glimi_imagegen/         <span style="color:var(--muted)"># LoRA 초상화 (opt-in)</span>
+├── glimi-core/                 <span style="color:var(--accent-green)"># ⭐ Glimi Core 프로젝트 (pip install glimi · deps 0)</span>
+│   └── glimi/                  <span style="color:var(--accent-green)">#    커널 패키지 (채팅 SDK/DB 의존 0)</span>
+│       ├── runtime/            <span style="color:var(--muted)"># per-agent model swap</span>
+│       ├── tools/              <span style="color:var(--muted)"># &lt;tools&gt; protocol</span>
+│       ├── memory/             <span style="color:var(--muted)"># L0–L5 + facts + relationship</span>
+│       ├── llm/                <span style="color:var(--muted)"># Claude / Ollama / Grok CLI / echo 백엔드 (vLLM·llama.cpp planned)</span>
+│       ├── conversation/       <span style="color:var(--muted)"># A2A loop</span>
+│       ├── context_budget.py   <span style="color:var(--muted)"># Elastic Memory (컨텍스트 예산)</span>
+│       └── store.py            <span style="color:var(--muted)"># KernelStore ABC (storage 중립)</span>
+├── glimi-community/            <span style="color:var(--accent-orange)"># Glimi Community 프로젝트 — 커널 위에 올린 앱</span>
+│   └── community/              <span style="color:var(--accent-orange)">#    앱 패키지</span>
+│       ├── core/               <span style="color:var(--muted)"># 앱측 runtime/memory wiring (커널 re-export + DI)</span>
+│       │   ├── prompts/        <span style="color:var(--muted)"># en/ + ko/ overlay, locale.py, model.py</span>
+│       │   ├── runtime.py      <span style="color:var(--muted)"># 커널에 KernelStore 등 주입 + API re-export</span>
+│       │   ├── channel_adapter.py  <span style="color:var(--muted)"># ChannelAdapter Protocol (transport 중립 seam)</span>
+│       │   ├── mgr_actions.py  <span style="color:var(--muted)"># 매니저 도구 핸들러 (플랫폼 중립)</span>
+│       │   └── ...
+│       ├── adapters/           <span style="color:var(--muted)"># SqliteKernelStore + profile/observer 어댑터</span>
+│       │   └── web/            <span style="color:var(--muted)"># 라이브 웹 어댑터 (channels.py = 채널 어댑터)</span>
+│       ├── platform/           <span style="color:var(--muted)"># FastAPI + 대시보드 + web_runtime.py (per-community)</span>
+│       ├── scenes/             <span style="color:var(--muted)"># tutorial 등 (Community 도메인)</span>
+│       ├── supervisors/        <span style="color:var(--muted)"># cross-scene 감시자</span>
+│       ├── achievements/       <span style="color:var(--muted)"># Community UX 메타</span>
+│       ├── tools/              <span style="color:var(--muted)"># CLI · dev_runner · migrate</span>
+│       └── glimi_imagegen/     <span style="color:var(--muted)"># LoRA 초상화 (opt-in)</span>
+├── glimi-workspace/            <span style="color:var(--muted)"># Glimi Workspace 프로젝트 (workspace/ 패키지)</span>
 ├── docs/
 ├── tests/
 ├── communities/                <span style="color:var(--muted)"># per-community SQLite (.gitignored)</span>
 ├── analysis/                   <span style="color:var(--muted)"># 전략 문서 (.gitignored)</span>
 ├── run.sh · scripts/
-├── pyproject.toml              <span style="color:var(--muted)"># glimi (core, deps 0) / glimi[community] (앱)</span>
 ├── README.md · README.ko.md
 ├── LICENSE                     <span style="color:var(--muted)"># AGPL-3.0</span>
 └── CLAUDE.md</code></pre>
@@ -667,7 +668,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
         <ul>
           <li>위치: 범용 <code>community/core/prompts/en/</code> · scene별 <code>community/scenes/{scene}/</code></li>
           <li>영문 기준. 한국 특화(<code>locale.py</code> helper로 ㅇㅇ·카톡·호칭 주입)</li>
-          <li>모델별 dialect 차이는 <code>src.core.prompts.model.tool_call_syntax_hint()</code> 호출</li>
+          <li>모델별 dialect 차이는 <code>community.core.prompts.model.tool_call_syntax_hint()</code> 호출</li>
           <li>구조 다르면 <code>ko/{module}.py</code> override</li>
         </ul>
       </div>
@@ -697,7 +698,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
           <li>메모리·감정은 system prompt 제외. <code>agent_runtime</code> 이 user prompt 에 채널별 동적 주입.</li>
           <li>그룹채팅: 오너 메시지는 <code>handle_group</code> 에 1회만 로깅 (<code>generate_response</code> 의 <code>log_user_message=False</code>).</li>
           <li>프로필 수정 시 <code>invalidate_cache()</code> 후 <code>runtime.refresh_agent()</code> 호출.</li>
-          <li>타임스탬프 = UTC-aware ISO (<code>datetime.now(timezone.utc).isoformat()</code> 또는 <code>src.core.timeutil.now_utc_iso()</code>).</li>
+          <li>타임스탬프 = UTC-aware ISO (<code>datetime.now(timezone.utc).isoformat()</code> 또는 <code>community.core.timeutil.now_utc_iso()</code>).</li>
         </ul>
       </div>
       <div class="col dont">
@@ -712,8 +713,8 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
 
     <h3>안전성</h3>
     <div class="card accent-red">
-      <h4>Sync safety brake</h4>
-      <p><code>community/core/sync.py</code> 에 catastrophic delete 방지 brake 있음. <strong>brake 발동 시 자동 재시도 금지</strong> — 수동 점검 후 진행. 자세한 건 <code>analysis/edge_cases.md</code> (gitignored) 참조.</p>
+      <h4>대량 삭제 주의</h4>
+      <p>과거 Discord↔DB sync 모듈에 catastrophic delete 방지 brake 가 있었으나, Discord 어댑터 제거(2026-06-25)와 함께 해당 모듈도 삭제됨. 현재 라이브 트랜스포트는 웹 채팅 단일 — 외부 소스↔DB 동기화 단계가 없다. 향후 새 어댑터에서 양방향 sync 를 추가한다면 동일한 lookahead+brake 패턴을 다시 적용할 것. 관련 이력은 <code>docs/edge_cases.md</code> 참조.</p>
     </div>
   </section>
 
@@ -821,7 +822,7 @@ pytest tests/e2e/                  # E2E (시간 걸림)</code></pre>
         <tr><td><a href="execution.md">docs/execution.md</a></td><td>실행 명령 + 플랫폼 CLI + QA 자동화</td></tr>
         <tr><td><a href="yuna_knowledge.md">docs/yuna_knowledge.md</a></td><td>유나(매니저) 공개 FAQ — 씬/도전과제 추가 시 반드시 갱신</td></tr>
         <tr><td><a href="edge_cases.md">docs/edge_cases.md</a></td><td>특이 케이스 이력 (LLM placebo drift 등 재현 가능 anomaly + fix 기록)</td></tr>
-        <tr><td><a href="../community/glimi_imagegen/README.md">community/glimi_imagegen/README.md</a></td><td>로컬 LoRA 초상화 생성 (Animagine XL 4.0, opt-in)</td></tr>
+        <tr><td><a href="../glimi-community/community/glimi_imagegen/README.md">glimi-community/community/glimi_imagegen/README.md</a></td><td>로컬 LoRA 초상화 생성 (Animagine XL 4.0, opt-in)</td></tr>
       </tbody>
     </table>
 

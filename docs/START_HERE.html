@@ -625,7 +625,7 @@
         <div class="child app">
           <div class="label">flagship 앱</div>
           <div class="name app">Glimi Community</div>
-          <div class="pip">apps/community/ (재배치 예정)</div>
+          <div class="pip">glimi-community/community/</div>
           <p>"AI friends that keep living when you're not looking." Glimi Core 로 만든 첫 공식 앱. 예제가 아닌 독립 앱.</p>
         </div>
       </div>
@@ -718,12 +718,11 @@ cd Glimi
     <h3>유용한 기타 명령</h3>
     <pre><code>./run.sh --port 9000                    # 대시보드 포트 변경
 ./run.sh --imagegen                     # 로컬 LoRA 초상화 생성 (opt-in, ~6분/장)
-./run.sh --legacy &lt;community&gt;           # 레거시 단일 봇 모드 (QA / 디버깅)
 ./scripts/qa.sh                         # E2E QA runner (tmux: Glimi-QA-Runner)
 ./scripts/stop.sh                       # graceful shutdown
 
-python -m src.platform.accounts list    # 계정 목록
-python -m src.community list            # 커뮤니티 목록</code></pre>
+python -m community.platform.accounts list   # 계정 목록
+python -m community list                      # 커뮤니티 목록</code></pre>
   </section>
 
   <!-- ============================================ -->
@@ -808,7 +807,7 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
       <p>이 repo 에서 Claude Code 실행 시 다음이 <strong>자동 주입</strong>됨:</p>
       <ul>
         <li><code>CLAUDE.md</code> (루트) — 아키텍처 원칙, 규칙, 브랜치 전략</li>
-        <li>각 subdirectory 에 <code>CLAUDE.md</code> 가 있으면 함께 로드 (예: <code>community/glimi_imagegen/CLAUDE.md</code>)</li>
+        <li>각 subdirectory 에 <code>CLAUDE.md</code> 가 있으면 함께 로드 (예: <code>glimi-community/community/glimi_imagegen/CLAUDE.md</code>)</li>
       </ul>
       <p>따로 설명 안 해도 Claude 가 "트랜스포트 = 플러그형 어댑터 (웹이 라이브)", "AI co-author trailer 금지", "타임스탬프 UTC-aware" 규칙을 알고 시작.</p>
     </div>
@@ -1037,7 +1036,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
     <ul>
       <li>메모리·감정 <strong>system prompt에 넣지 않음</strong> — <code>agent_runtime</code> 이 user prompt에 채널별 주입</li>
       <li>프로필 수정 후 <code>invalidate_cache()</code> + <code>runtime.refresh_agent()</code> 호출</li>
-      <li>타임스탬프 = UTC-aware ISO (<code>src.core.timeutil.now_utc_iso()</code>) — SQLite <code>CURRENT_TIMESTAMP</code> 금지</li>
+      <li>타임스탬프 = UTC-aware ISO (<code>community.core.timeutil.now_utc_iso()</code>) — SQLite <code>CURRENT_TIMESTAMP</code> 금지</li>
       <li><code>dm-</code> 채널 삭제 금지 (<code>dm-agent-mgr-001</code> 포함, 보호)</li>
       <li>루트엔 봇 토큰·커뮤니티 DB·런타임 상태 두지 않음 (<code>dev/test_defaults.json</code> 예외)</li>
     </ul>
