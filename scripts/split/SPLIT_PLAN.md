@@ -16,7 +16,7 @@ package (not on each other's source).
 | Repo | Contents | Depends on |
 |---|---|---|
 | **`glimi`** (kernel, → PyPI) | `glimi/` + `eval/` + kernel tests | nothing (zero-dep core; `glimi[dashboard]` = fastapi/uvicorn/jinja2) |
-| **`glimi-community`** (flagship app) | `src/` + root `i18n/` + `assets/` + `resources/` + community tests | `glimi[dashboard]` + discord.py etc. |
+| **`glimi-community`** (flagship app) | `src/` + root `i18n/` + `assets/` + `resources/` + community tests | `glimi[dashboard]` (web-first; no chat-platform SDK) etc. |
 | **`glimi-workspace`** (work app) | `apps/workspace/` (hoisted to root) + workspace tests | `glimi[dashboard]` |
 
 Authored from the `split-readiness-audit` workflow (4 parallel audits + architect plan).
@@ -68,14 +68,14 @@ Done:
 
 ✅ Community also migrated (2026-06-19): `src/platform/templates/dashboard/index.html`
 is now a thin `{% extends "dashboard/_core.html" %}` rendered with `community_chrome=True`
-+ all caps. The Discord bot-lifecycle / damage-recovery script lives in a community
++ all caps. The runtime lifecycle / damage-recovery script lives in a community
 partial (`_community_server_control.html`) filled into `extra_scripts`; PWA into
 `extra_head`; sync-modal + boot overlay into `extra_modals`; the server-control
 buttons (`gp-server-ctrl`) into `extra_chrome` — **none of it in Core**. `templates/__init__.py`
 adds the package template dir to the Jinja search path. Community still serves its own
 `/static` copies (test-guarded == canonical; its SW/cache-busting hangs off that path).
 Verified on a scratch demo instance: full chrome (switcher / 가동 / lang / supervisor /
-elastic / Discord+Scene KPIs), all 13 tabs, graph, chat, no console errors — pixel-identical
+elastic / Scene KPIs), all 13 tabs, graph, chat, no console errors — pixel-identical
 to before. The behaviour is neutral, so the live community adopts it on its next restart
 (its running process has the old template cached until then — no live disruption needed).
 
@@ -88,7 +88,7 @@ to before. The behaviour is neutral, so the live community adopts it on its next
 ## Phase 3 — Packaging ✅ staged
 
 - ✅ Kernel `pyproject.toml` (this repo's live one): `name=glimi`, `dependencies=[]`, extras `sdk` + `dashboard` (`fastapi/uvicorn[standard]/jinja2`); package-data ships `glimi.dashboard` templates(+nested)/static/i18n. (Community/imagegen extras move to the community repo — see staged file.)
-- ✅ `split/pyproject.community.toml` — `glimi-community`, deps `glimi[dashboard]` + discord.py/dotenv/itsdangerous/multipart/rich/Pillow/textual; `imagegen` extra.
+- ✅ `split/pyproject.community.toml` — `glimi-community`, deps `glimi[dashboard]` + dotenv/itsdangerous/multipart/rich/Pillow; `imagegen` extra.
 - ✅ `split/pyproject.workspace.toml` — `glimi-workspace`, deps `glimi[dashboard]` + python-multipart + httpx; flat layout (`python run.py`, tests `import server`).
 - Local dev (no PyPI round-trip): each app repo `requirements-dev.txt` = `-e ../glimi[dashboard]` + `-e .`.
 - 👤 Publish `glimi 0.1.0` to (Test)PyPI so the app repos resolve `glimi[dashboard]` in CI; until then their CI checks out + `pip install -e` the kernel path.

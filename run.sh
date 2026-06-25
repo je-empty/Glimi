@@ -17,9 +17,6 @@
 #   --setup-only                     → 세팅(venv/deps/ollama/모델)만 하고 서버는 안 띄움
 #
 # 레거시 모드:
-#   ./run.sh --legacy <community>    → 구 단일 봇 (QA/디버깅용)
-#   ./run.sh tui                     → 구 TUI wizard (deprecated)
-#   ./run.sh tui <community>         → 구 TUI dashboard
 #
 # Workspace 앱:
 #   ./run.sh workspace [--serve]     → Glimi Workspace (--serve 면 :8800 + 브라우저)
@@ -128,8 +125,8 @@ fi
 source .venv/bin/activate
 
 # ── 루트 .env 로드 ────────────────────────────────────
-# 여기서 export 하면 플랫폼 + 자식 봇 프로세스가 상속 (ANTHROPIC_API_KEY / DISCORD_BOT_TOKEN 등).
-# 커뮤니티별 .env 는 자식 봇이 override=True 로 다시 로드하므로 충돌 없음.
+# 여기서 export 하면 웹 플랫폼이 상속 (ANTHROPIC_API_KEY 등).
+# 커뮤니티별 .env 는 런타임이 override=True 로 다시 로드하므로 충돌 없음.
 if [ -f .env ]; then
     set -a
     # shellcheck disable=SC1091
@@ -266,90 +263,16 @@ mkdir -p dev
 # ── 기존 프로세스 정리 ────────────────────────────────
 _cleanup_existing() {
     pkill -f "community.platform" 2>/dev/null || true
-    pkill -f "community.discord_bot" 2>/dev/null || true
-    pkill -f "community.tui.dashboard" 2>/dev/null || true
-    pkill -f "community.tui.wizard" 2>/dev/null || true
     pkill -f "community.tools.dev_runner" 2>/dev/null || true
     pkill -f "workspace/run.py" 2>/dev/null || true
-    rm -f dev/.bot*.pid dev/.platform.pid 2>/dev/null || true
+    rm -f dev/.platform.pid 2>/dev/null || true
     sleep 1
     pkill -9 -f "community.platform" 2>/dev/null || true
-    pkill -9 -f "community.discord_bot" 2>/dev/null || true
-    pkill -9 -f "community.tui.dashboard" 2>/dev/null || true
 }
 _cleanup_existing
 
 echo -e "${CYAN}◈ Project Glimi${NC}"
 
-# ── 레거시 TUI ────────────────────────────────────────
-if [ "$1" = "tui" ]; then
-    shift
-    if [ -z "$1" ]; then
-        echo -e "${YELLOW}  (레거시 TUI wizard — 플랫폼 웹으로 이전됨)${NC}"
-        exec python -m community.tui.wizard
-    else
-        echo -e "  TUI dashboard: ${GREEN}$1${NC}"
-        exec python -m community.tui.dashboard "$1"
-    fi
-fi
-
-# ── 레거시 단일 봇 ────────────────────────────────────
-if [ "$1" = "--legacy" ]; then
-    shift
-    if [ -n "$1" ]; then
-        export GLIMI_COMMUNITY="$1"
-        shift
-    fi
-    echo -e "${YELLOW}  레거시 단일 봇 모드${NC}"
-    if [ -n "$GLIMI_COMMUNITY" ]; then
-        echo -e "  커뮤니티: ${GREEN}${GLIMI_COMMUNITY}${NC}"
-    fi
-    echo ""
-
-    # 레거시 모드용 런타임 파일 — 커뮤니티 디렉토리 안에 격리 (루트 공유 금지)
-    CID="${GLIMI_COMMUNITY:-default}"
-    RUNTIME_DIR="communities/${CID}/runtime"
-    mkdir -p "$RUNTIME_DIR"
-    PID_FILE="${RUNTIME_DIR}/.bot.pid"
-    PAUSE_FILE="${RUNTIME_DIR}/.bot-paused"
-    rm -f "$PAUSE_FILE"
-
-    _leg_cleanup() {
-        echo -e "\n${YELLOW}종료${NC}"
-        [ -f "$PID_FILE" ] && kill "$(cat $PID_FILE)" 2>/dev/null && rm -f "$PID_FILE"
-        exit 0
-    }
-    trap _leg_cleanup SIGINT SIGTERM
-
-    while true; do
-        if [ -f "$PAUSE_FILE" ]; then
-            echo -e "${YELLOW}[legacy] pause flag — 대기${NC}"
-            while [ -f "$PAUSE_FILE" ]; do sleep 1; done
-        fi
-        echo -e "${GREEN}[legacy] 봇 시작${NC}"
-        python -m community.discord_bot &
-        BOT_PID=$!
-        echo $BOT_PID > "$PID_FILE"
-        wait $BOT_PID
-        EXIT_CODE=$?
-        rm -f "$PID_FILE"
-
-        if [ $EXIT_CODE -eq 42 ]; then
-            echo -e "${CYAN}[legacy] 개발자 에이전트 실행${NC}"
-            python -m community.tools.dev_runner
-            echo -e "${GREEN}[legacy] 봇 재시작${NC}"
-            sleep 2
-            continue
-        fi
-        if [ $EXIT_CODE -eq 0 ]; then
-            echo -e "${GREEN}[legacy] 정상 종료${NC}"
-            break
-        fi
-        echo -e "${RED}[legacy] 비정상 종료 — 5초 후 재시작${NC}"
-        sleep 5
-    done
-    exit 0
-fi
 
 # ── Glimi Workspace 앱 모드 ───────────────────────────
 # ./run.sh workspace [--server|--serve|--demo] [--name X] [--goal "..."] [--backend echo|claude_cli|ollama]

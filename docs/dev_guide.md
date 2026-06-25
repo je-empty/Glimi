@@ -11,7 +11,7 @@
 |------|--------|
 | **타깃** | 20대 초반 여성 감성 유저 (B 세그먼트) · 장기관계·힐링·케어 선호 |
 | **제품 한 줄** | "AI 친구들이 당신 없이도 자기들끼리 살아가는 커뮤니티" |
-| **플랫폼** | 디스코드 = 테스트용 / 자체 웹 PWA = 12개월 / 모바일 네이티브 = 15개월+ |
+| **플랫폼** | 자체 웹 채팅 = 라이브 (유일 transport, `GLIMI_TRANSPORT=web`) / 웹 PWA = 진행 / 모바일 네이티브 = 15개월+ |
 | **연령** | 17+ |
 | **콘텐츠** | Phase A-B SFW 전용 / Phase C 부터 Community-scoped + Opt-in 이중 잠금 |
 | **현재 스프린트** | **Phase 0 — 감정 Application Layer** (EmotionSupervisor / 프롬프트 감정 강제 / 케어 루프) |
@@ -26,7 +26,7 @@
 2. **감정은 퍼스트클래스** — 새 기능 설계 시 "이 기능이 친구의 감정 delta 를 남기는가" 체크. NO 면 우선순위 낮춤.
 3. **드라마는 해결 구조만** — 갈등은 "발생→중재→화해". 파괴적 엔딩 금지.
 4. **도구 폭주 금지** — 신규 `<tools>` 도구 추가 시 "타깃 B 감정 접점이 있나" 심사. 지금 44개인데 실제 플레이는 10개 미만 사용.
-5. **디스코드 편의에 최적화 금지** — 12개월 후 자체 웹 PWA 로 이전. 디스코드 종속 코드 작성 시 추상화 레이어 필수.
+5. **transport 중립 유지** — 채팅 출구는 어댑터다. 코어 로직은 특정 채팅 SDK 를 몰라야 하고, 새 transport 는 `community/core/channel_adapter.py` (`ChannelAdapter` Protocol) + `glimi-core/glimi/transport.py` (`Outbox`/`Speaker`) 시 seam 에 꽂는다. 라이브 어댑터 = `community/adapters/web/`.
 6. **메타 용어 금지** — 사용자 노출 텍스트에 "AI / 봇 / 에이전트" 단어 금지. 친구·사람·이름으로.
 
 ---
@@ -70,7 +70,7 @@
 ### 감정 시스템 (P0 작업 시)
 - `community/db.py` — `agents.current_emotion`, `emotion_intensity`, `conversations.context_emotion`
 - `community/core/runtime.py:201` — 프롬프트 감정 주입 지점
-- 도구: `set_emotion` (`community/bot/tool_handlers.py`, `community/core/tools/registry.py`)
+- 도구: `set_emotion` (`community/core/mgr_actions.py`, `community/core/tools/registry.py`)
 - **P0 신규 작업**: `community/supervisors/emotion.py` 신설, `profile.py._build_persona_prompt` 감정 강제 섹션 추가
 
 ### 메모리 시스템 (5 레이어)
@@ -89,21 +89,21 @@
 ### Supervisor 시스템
 - `community/supervisors/base.py` — SupervisorPool, 3 kind (scene/channel/system)
 - 네이밍: `{Scope}{Role}Supervisor` / id = `scope.role` / label = `범주 · 서브`
-- Lifecycle trigger: 봇 ready / `db.set_channel_status` / `Scene.set_phase` / tick loop
+- Lifecycle trigger: 런타임 ready / `db.set_channel_status` / `Scene.set_phase` / tick loop
 - 신규 system supervisor 추가 시 `SupervisorPool.sync()` 에 등록
 
 ### 도구(`<tools>`) 추가
 - `community/core/tools/registry.py` — 도구 정의 (이름·설명·인자·예시)
-- `community/bot/mgr_system.py` 또는 `community/bot/tool_handlers.py` — 핸들러 구현
+- `community/core/mgr_actions.py` — 매니저 도구 핸들러 구현
 - `community/core/tools/dispatcher.py` — 호출 → 핸들러 연결
 - **심사 기준**: 타깃 B 감정 접점 있나 / 기존 도구로 대체 불가 / 보안상 파괴적이지 않나
 
-### 디스코드 봇 레이어
-- `community/discord_bot.py` — 엔트리포인트
-- `community/bot/handlers.py` — DM/그룹 메시지 처리
-- `community/bot/core.py` — Webhook, 채널 매핑
-- `community/bot/formatting.py` — 평문 → 디스코드 네이티브 변환 (`#channel`, `@owner`)
-- `community/bot/tasks.py` — 백그라운드 태스크
+### 웹 채팅 어댑터 레이어 (라이브 transport)
+- `community/platform/web_runtime.py` — 커뮤니티별 런타임 엔트리 (플랫폼 supervisor 가 구동, subprocess 없음)
+- `community/adapters/web/channels.py` — 라이브 채널 어댑터 (DM/그룹/internal 메시지 처리, 채널 매핑)
+- `community/core/channel_adapter.py` — `ChannelAdapter` Protocol (transport 중립 seam)
+- `glimi-core/glimi/transport.py` — `Outbox`/`Speaker` 추상 (새 transport 가 꽂는 자리)
+- 포맷팅: `#channel`/`@owner` 멘션은 웹 클라이언트가 네이티브 렌더 (`docs/formatting.md`)
 
 ### 튜토리얼·온보딩
 - `community/scenes/tutorial/` — 전체 플로우
@@ -152,10 +152,10 @@
 
 - ❌ 10대 서브컬처 타깃 씬 (이세계·하드 판타지·학원 배틀물)
 - ❌ 폭력·배신·파괴적 갈등 결말 씬
-- ❌ 디스코드 전용 편의 기능 (12개월 후 버릴 것 — 추상화 없이 직접 의존 금지)
+- ❌ 특정 채팅 SDK 직접 의존 (transport 중립 — 코어 로직은 `ChannelAdapter` seam 만 알아야 함)
 - ❌ 메모리·감정을 system prompt 에 넣기 (user prompt 에 동적 주입해야 함)
 - ❌ 사용자 노출 텍스트에 "AI / 봇 / 에이전트" 단어
-- ❌ `<tools>` 블록을 대화 채널에 노출 (mgr-system-log 에만)
+- ❌ `<tools>` 블록을 대화 채널에 노출 (런타임 툴 로그는 `communities/<id>/logs/system.log` 파일로)
 - ❌ dm-/mgr- 채널 삭제 (보호됨)
 - ❌ `--host 0.0.0.0` 없이 대시보드 재시작
 - ❌ 커밋 메시지에 Claude Co-Authored-By 넣기
@@ -172,7 +172,7 @@ python -m tests.unit.test_community_isolation
 # 포맷팅 (formatting.py 변경 시)
 python -m tests.unit.test_formatting
 
-# E2E QA (튜토리얼·봇 플로우 변경 시)
+# E2E QA (튜토리얼·웹 채팅 플로우 변경 시)
 ./scripts/qa.sh
 
 # UI/대시보드 변경 시

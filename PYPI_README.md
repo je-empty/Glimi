@@ -24,7 +24,7 @@ flagship app that proves it out.
   the model's context window and guarantees the assembled prompt never overflows.
 - **Storage / platform neutral** — the kernel talks to a `KernelStore` ABC and
   `AgentProfile` / `OwnerContext` / `KernelObserver` protocols. Bring your own
-  database, profile source, and observability sink. **Zero Discord / DB / web
+  database, profile source, and observability sink. **Zero transport / DB / web
   dependency in the kernel itself.**
 - **Model-vendor neutral** — Claude (via the Claude CLI, no SDK required) and
   Ollama (via stdlib `urllib`) work out of the box; vLLM / llama.cpp fit the
@@ -68,7 +68,7 @@ chat = Glimi(backend="ollama")        # fully local via Ollama (set GLIMI_OLLAMA
 a `NullObserver`, and the chosen backend. To plug in your own database, implement
 `KernelStore` (exported from `glimi`, alongside `InMemoryKernelStore`,
 `SimpleProfileProvider`, `EchoBackend`, `LLMBackend`, …) and inject it via
-`glimi.runtime.set_store(...)`. A complete production wiring (SQLite + Discord)
+`glimi.runtime.set_store(...)`. A complete production wiring (SQLite + web transport)
 lives in the repo at `src/adapters/` and the Glimi Community app built on top.
 
 Full documentation, architecture diagrams, the live observability dashboard, and

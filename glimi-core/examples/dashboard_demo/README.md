@@ -25,5 +25,5 @@ Then open <http://127.0.0.1:8800>.
 - **Channels** — click a channel to read its messages.
 
 The dashboard never mutates the store — it only observes it. It makes no
-Discord / Community / server-control assumptions, so you can point
+transport / Community / server-control assumptions, so you can point
 `serve(your_store)` at any `KernelStore` population.

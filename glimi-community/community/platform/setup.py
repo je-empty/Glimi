@@ -2,7 +2,7 @@
 
 흐름:
   - `is_configured()` False → run.sh/run.bat 가 브라우저를 `/setup` 으로 연다.
-  - 사용자가 모델 모드(claude / hybrid / local) + admin 비번 (+ 선택 Discord 토큰) 입력.
+  - 사용자가 모델 모드(claude / hybrid / local) + admin 비번 입력.
   - `apply_setup()` 가 루트 `.env` 기록 + 프로세스 env 즉시 반영 + admin 생성 + 마커.
   - 이후 `is_configured()` True → /setup 비활성(리다이렉트), /api/setup 403.
 
@@ -153,7 +153,6 @@ def apply_setup(
     api_key: str = "",
     use_cli: bool = False,
     tier: str = "standard",
-    discord_token: str = "",
     monthly_cap_usd: int = DEFAULT_MONTHLY_CAP_USD,
 ) -> dict:
     """위저드 입력을 적용. 검증 실패 시 ValueError.
@@ -198,10 +197,6 @@ def apply_setup(
             "Claude 턴이 모두 placeholder 로 떨어질 수 있어요 — "
             "Local-only 모드를 권합니다."
         )
-
-    if discord_token.strip():
-        upsert_env("DISCORD_BOT_TOKEN", discord_token.strip())
-        os.environ["DISCORD_BOT_TOKEN"] = discord_token.strip()
 
     # admin 계정 생성 — bootstrap 이 GLIMI_ADMIN_PASSWORD 를 읽는다.
     os.environ["GLIMI_ADMIN_PASSWORD"] = admin_password.strip()

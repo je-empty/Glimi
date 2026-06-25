@@ -108,7 +108,7 @@ def seed(community_id: str = "demo") -> None:
     (logs_dir / "system.log").write_text("[seed] demo mockup (5-layer memory) loaded\n")
     env_path = demo_dir / ".env"
     if not env_path.exists():
-        env_path.write_text("DISCORD_BOT_TOKEN=mockup-no-token\n")
+        env_path.write_text("# (선택) 커뮤니티별 모델/키 override\n")
 
     # DB 초기화 (init_db 가 _migrate_schema 를 호출해 최신 컬럼/테이블 보장)
     db.init_db()

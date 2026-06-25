@@ -4,9 +4,6 @@
 ```bash
 ./run.sh                              # 플랫폼 데몬 (FastAPI, :8000) — 기본
 ./run.sh --port 9000                  # 포트 변경
-./run.sh --legacy <community>         # 구 단일 봇 모드 (QA/디버깅)
-./run.sh tui                          # 레거시 TUI wizard (deprecated)
-./run.sh tui <community>              # 레거시 TUI dashboard
 ./scripts/stop.sh                     # 전체 종료
 
 # 계정 관리 (CLI)
@@ -22,10 +19,10 @@ python -m community.community export <id> <output_dir>
 python -m community.community import <input_dir> <id>
 ```
 
-## 멀티 서버 지원
-- `.env` 에 `DISCORD_GUILD_ID=서버ID` 설정 → 특정 서버만 사용
-- `on_message` 에서 guild 필터링 → 다른 서버 메시지 무시
-- 미설정 시 `guilds[0]` 사용
+## 멀티 커뮤니티 지원
+- 플랫폼(`community.platform`)이 단일 프로세스로 N 커뮤니티를 웹으로 서빙 (`GLIMI_TRANSPORT=web`).
+- 커뮤니티별 격리는 `GLIMI_DATA_DIR`/`GLIMI_COMMUNITIES_DIR` 로 잡고, 라우팅은 `community_id` 로.
+- 채널 전송은 transport 중립 seam(`Outbox`/`ChannelAdapter`) 위에서 web 어댑터(`community/adapters/web/channels.py`)가 처리.
 
 ## QA 자동 테스트
 
@@ -33,15 +30,13 @@ python -m community.community import <input_dir> <id>
 **토큰 누적 기록:** `tests/e2e/results/token_usage.md` — 매 런 델타 append.
 
 ```bash
-python -m tests.e2e.runner              # 1회
-python -m tests.e2e.runner --runs 3
-./scripts/qa.sh                          # tmux 백그라운드 (권장)
-./scripts/qa.sh stop
+.venv/bin/python -m tests.e2e.community_e2e --rounds 1   # 1회 (웹 자체 채팅)
+./scripts/community_e2e.sh                                # 백그라운드 (권장)
 ```
 
 ### 웹 E2E (실서버 HTTP/WS 구동)
 
-위 `qa.sh` 는 디스코드 기반. **웹 자체 채팅을 진짜 서버로 구동하는 E2E** 는 별도:
+**웹 자체 채팅을 진짜 서버로 구동하는 E2E** — 현재 정본 경로:
 
 - **커뮤니티 웹 E2E** — `tests/e2e/community_e2e.py` + `scripts/community_e2e.sh`.
   격리된 temp `GLIMI_DATA_DIR`/`GLIMI_COMMUNITIES_DIR` 에 `community.platform` 서버를
@@ -65,22 +60,23 @@ GLIMI_LLM_BACKEND=echo .venv/bin/python -m tests.e2e.community_e2e --rounds 1 --
 판정 산출물: `tests/e2e/results/community-e2e-<ts>.json` (verdict) + `community-e2e-store-<ts>.json`
 (served snapshot) + `community-report-<ts>.{md,json}` (포트폴리오 리포트).
 
-### 구조
+### 구조 (현재 웹 E2E)
 ```
 tests/e2e/
-├── runner.py           ← 오케스트레이터
-├── test_user_bot.py    ← Claude Haiku 테스트 유저
-└── results/            ← JSON + 로그
+├── community_e2e.py        ← 커뮤니티 서버 spawn + 오너 에이전트 드라이브
+├── community_owner_agent.py ← 개발자 자아 오너 에이전트
+├── community_verdict.py    ← 구조 판정
+├── community_report.py     ← 마크다운 리포트
+└── results/                ← JSON + 로그
 ```
 
 ### 동작
-1. `qa` 커뮤니티 자동 생성/초기화 (DB + 유저 프로필 + `.clean-channels` 플래그)
-2. Glimi 봇 시작 → 기존 디스코드 채널 삭제 → 튜토리얼 시작
-3. 테스트 유저 봇 시작 → 신규 유저처럼 대화
-4. 튜토리얼 완료 or 타임아웃
+1. 격리된 temp `GLIMI_DATA_DIR`/`GLIMI_COMMUNITIES_DIR` 에 `qa` 커뮤니티 자동 생성/초기화 (DB + 유저 프로필)
+2. `community.platform` 서버 기동 (web transport) → 친구 DM 채널을 채팅 WebSocket 으로 구동
+3. 오너 에이전트가 신규 오너처럼 인사→질문→후속 대화 진행
+4. 라운드 완료 or 타임아웃
 5. 로그 → 자동 판정 (프로필 중복, race condition, 태그 노출 등)
 
 ### 필요 설정
-- `communities/qa/.env`: `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `TEST_BOT_TOKEN`
-- 별도 디스코드 서버에 Glimi 봇 + 테스트 유저 봇 초대
-- 유저 프로필 커스텀: `QA_USER_NAME`, `QA_USER_NICKNAME`, `QA_USER_AGE` 등
+- 토큰/외부 계정 불필요 — 웹 자체 채팅으로 격리 temp dir 에서 셀프 구동.
+- 유저(오너) 프로필 커스텀: `QA_OWNER_NAME`, `QA_OWNER_NICKNAME`, `QA_OWNER_AGE` 등

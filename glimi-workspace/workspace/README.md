@@ -1,10 +1,10 @@
 # Glimi Workspace
 
-**A specialist team that genuinely *interacts* — built entirely on Glimi Core, no Discord, no Community code.**
+**A specialist team that genuinely *interacts* — built entirely on Glimi Core, no chat-platform SDK, no Community code.**
 
-Glimi Workspace is a *second app on the same kernel*. The Glimi Community sim is a Discord social world of AI friends; this is its **work sibling** — a small team of role-based specialists that takes a work *goal* and produces a deliverable. But it doesn't work in one round-robin room: the team **interacts across several channels the way a real team does** — the owner DMs the lead, the lead delegates to each specialist, specialists talk *to each other*, and the whole team converges in a group room. Both apps run the **same engine** (`glimi`), and both are viewable in the **same Core dashboard** — where these interactions show up as a real **connection graph**.
+Glimi Workspace is a *second app on the same kernel*. The Glimi Community sim is a web social world of AI friends; this is its **work sibling** — a small team of role-based specialists that takes a work *goal* and produces a deliverable. But it doesn't work in one round-robin room: the team **interacts across several channels the way a real team does** — the owner DMs the lead, the lead delegates to each specialist, specialists talk *to each other*, and the whole team converges in a group room. Both apps run the **same engine** (`glimi`), and both are viewable in the **same Core dashboard** — where these interactions show up as a real **connection graph**.
 
-That's the whole point: a second, distinctly different app on one kernel is the strongest proof that **Glimi Core is a genuinely reusable core**, not a monolith. The Workspace imports only the `glimi` package — zero `discord`, zero Community (`src`) code.
+That's the whole point: a second, distinctly different app on one kernel is the strongest proof that **Glimi Core is a genuinely reusable core**, not a monolith. The Workspace imports only the `glimi` package — zero chat-platform SDK, zero Community (`src`) code.
 
 ## The team
 
@@ -184,8 +184,8 @@ things first — readiness stage, target audience, and the definition of success
 ## Files
 
 - `run.py` — entry point: argument parsing, the interaction topology (`run_workspace`: the owner DM, delegation DMs, the A2A exchanges, the group round, the **HITL-gated** delivery via `gated_deliver`, and `form_relationships`), the summary, and the `--serve` dashboard hand-off.
-- `team.py` — the team personas, the interaction topology constants (channels + collaborating pairs), and first-run setup (`resolve_setup`). Pure config + I/O; imports nothing from `glimi`/`src`/`discord`.
-- `approval.py` — the **human-in-the-loop approval gate**: `ApprovalPolicy` (REQUIRE_APPROVAL vs AUTO), `run_gate` (approve / edit / reject + fallback), the observable trail, and the `WebApprovalQueue` `--serve` stub. Kernel-neutral — imports nothing from `glimi`/`src`/`discord`.
+- `team.py` — the team personas, the interaction topology constants (channels + collaborating pairs), and first-run setup (`resolve_setup`). Pure config + I/O; imports nothing from `glimi`/`src`.
+- `approval.py` — the **human-in-the-loop approval gate**: `ApprovalPolicy` (REQUIRE_APPROVAL vs AUTO), `run_gate` (approve / edit / reject + fallback), the observable trail, and the `WebApprovalQueue` `--serve` stub. Kernel-neutral — imports nothing from `glimi`/`src`.
 - `demo.py` — the **live demo** (`--demo`): a hand-authored launch-team population (transcript, relationships, 5-layer memory, facts, observability rows) seeded into the store, plus the background `activity_loop` that keeps the dashboard updating in real time. Offline, `$0`. Kernel-only.
 - `README.md` — this file.
 

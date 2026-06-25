@@ -2,16 +2,16 @@
 
    The markup is the single shared source (glimi/dashboard/templates/dashboard/
    _core.html); community renders it with community_chrome=True (switcher / server
-   control / elastic / Discord+Scene KPIs / logo) and all caps on, then fills the
+   control / elastic / Scene KPIs / logo) and all caps on, then fills the
    extension blocks with what is genuinely community-layer:
      • extra_head    — PWA app-shell (manifest / icons / theme-color)
-     • extra_modals  — Discord sync modal + boot/recovery overlay
-     • extra_scripts — the Discord bot-lifecycle / damage-recovery script + SW
+     • extra_modals  — sync progress modal + boot/recovery overlay
+     • extra_scripts — the web-runtime lifecycle / damage-recovery script + SW
    Core never carries any of this. Context comes from routers/pages.py. #}
 {% extends "dashboard/_core.html" %}
 
 {% block extra_chrome %}
-<!-- 플랫폼 서버 컨트롤 (community-only — Discord 봇 라이프사이클; Core 엔 없음).
+<!-- 플랫폼 서버 컨트롤 (community-only — 커뮤니티 웹 런타임 라이프사이클; Core 엔 없음).
      glimiServerCtrl()/refresh() 는 _community_server_control.html 가 정의. -->
 <div class="gp-server-ctrl" id="gp-server-ctrl">
   <span id="gp-bot-status" class="gp-status">…</span>

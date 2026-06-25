@@ -1,12 +1,12 @@
 # Architecture
 
 ## 기술 스택
-- Python 3.11+ / discord.py (현재 유일 어댑터)
+- Python 3.11+ / FastAPI (웹 플랫폼) / Glimi 커널
 - 에이전트 두뇌: Claude Code CLI (`claude` 명령어) subagent 방식
 - 페르소나/매니저/Creator: claude-sonnet-4-6 / Dev Runner: Opus / Supervisors: Haiku
 - DB: SQLite (`communities/{id}/community.db`)
-- 플랫폼(관리 UI): FastAPI + uvicorn (`community/platform/`, `:8765`)
-- TUI: Textual (`community/tui/`, deprecated — 웹으로 이전 중)
+- 플랫폼(웹 채팅 + 관리 UI): FastAPI + uvicorn (`community/platform/`, `:8765`)
+- 트랜스포트: 웹 채팅 (`GLIMI_TRANSPORT=web`) — transport-중립 seam (`community/core/channel_adapter.py` ChannelAdapter Protocol + `community/adapters/web/`). 새 트랜스포트(Telegram 등)는 같은 seam 에 plug-in
 
 ## 디렉토리 구조
 ```
@@ -21,7 +21,7 @@ Glimi/
 ├── communities/            ← 커뮤니티별 데이터 (.gitignore)
 │   ├── registry.toml
 │   └── {id}/
-│       ├── .env            ← DISCORD_BOT_TOKEN
+│       ├── .env            ← 커뮤니티별 설정 override (웹 우선, 토큰 불필요)
 │       ├── community.db    ← SQLite
 │       ├── profile_images/
 │       └── logs/
@@ -40,7 +40,6 @@ Glimi/
     ├── community.py        ← 커뮤니티 컨텍스트
     ├── db.py               ← SQLite CRUD
     ├── log_writer.py
-    ├── discord_bot.py      ← 봇 엔트리 (subprocess 로 돌아감)
     ├── core/               ← 에이전트 두뇌 (플랫폼 중립)
     │   ├── runtime.py
     │   ├── profile.py
@@ -48,16 +47,18 @@ Glimi/
     │   ├── memory.py
     │   ├── monitor.py
     │   ├── conversation.py
-    │   ├── sync.py         ← Discord↔DB 동기화 (어댑터 책임)
+    │   ├── channel_adapter.py ← ChannelAdapter Protocol (transport-중립 seam)
+    │   ├── mgr_actions.py  ← 매니저 도구 핸들러 (<tools> 디스패치)
     │   ├── timeutil.py
     │   └── tools/          ← <tools> XML 프로토콜
     ├── glimi_imagegen/     ← LoRA 이미지 생성 패키지 (도메인 무관, 영어 prompt + 두 path)
-    ├── bot/                ← Discord 어댑터
-    ├── platform/           ← FastAPI 플랫폼 (신규)
+    ├── adapters/
+    │   └── web/            ← 라이브 웹 채팅 어댑터 (channels.py = ChannelAdapter 구현)
+    ├── platform/           ← FastAPI 플랫폼 (웹 채팅 + 관리 UI)
+    │   └── web_runtime.py  ← 커뮤니티별 런타임 (플랫폼 supervisor 구동, subprocess 없음)
     ├── scenes/             ← Scene 시스템 (tutorial 등)
     ├── supervisors/        ← 백그라운드 감시자
     ├── achievements/
-    ├── tui/                ← 터미널 UI (deprecated)
     └── tools/
         ├── cli.py
         ├── dev_runner.py   ← 개발자 에이전트 (Opus)
@@ -66,8 +67,8 @@ Glimi/
 
 ## 핵심 모듈
 
-### discord_bot.py
-- Webhook 으로 에이전트별 프로필 이미지/이름 전송
+### adapters/web/channels.py (라이브 채널 어댑터)
+- `community/core/channel_adapter.py` 의 ChannelAdapter Protocol 구현 — 에이전트별 프로필 이미지/이름을 웹 채팅으로 전송
 - `handle_dm`: 1:1 채널 (채널별 asyncio.Lock)
 - `handle_group`: 그룹채팅 (GROUP_PARTICIPANTS 로 참여자 관리)
 - 매니저/Creator 응답의 `<tools>` 블록 파싱 → `core/tools/dispatcher` 실행
@@ -121,10 +122,10 @@ Glimi/
 ```
 
 - 도구 정의: `community/core/tools/registry.py`
-- 핸들러: `community/bot/mgr_system.py` 의 `_h_*` 함수
+- 핸들러: `community/core/mgr_actions.py` 의 `_h_*` 함수
 - 별칭 해석: 사람 이름 → agent_id 자동 매핑
 - 결과는 자연어 피드백으로 LLM 에 재주입 (연쇄 호출)
-- 주요 도구: `create_room`, `start_conversation`, `delete_channel`, `rename_channel`, `set_topic`, `purge_messages`, `restore_discord`, `set_emotion`, `update_profile`, `update_relationship`, `clear_channel`, `reset_agent`, `dev_request`, `list_channels`, `query_log`, `search`, `get_profile`, `get_relationship`, `list_events`, `set_profile_image`, `recall_memory`, `pin_memory`
+- 주요 도구: `create_room`, `start_conversation`, `delete_channel`, `rename_channel`, `set_topic`, `purge_messages`, `set_emotion`, `update_profile`, `update_relationship`, `clear_channel`, `reset_agent`, `dev_request`, `list_channels`, `query_log`, `search`, `get_profile`, `get_relationship`, `list_events`, `set_profile_image`, `recall_memory`, `pin_memory`
 
 ## 에이전트 ID 체계
 - persona: `agent-persona-001, 002, ...`

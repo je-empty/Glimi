@@ -141,15 +141,6 @@
     <strong id="del-cid" style="color: var(--err); font-family: ui-monospace, monospace;">...</strong> 커뮤니티를 완전히 삭제합니다.<br>
     <span class="muted">대화 기록·프로필 이미지·전체 데이터가 모두 지워지며 복구할 수 없어요.</span>
   </p>
-  <div style="margin: 14px 0; padding: 12px; background: color-mix(in srgb, var(--warn) 8%, var(--panel2)); border-radius: 10px;">
-    <label style="display: flex; align-items: start; gap: 8px; cursor: pointer; font-size: 13px;">
-      <input id="del-wipe" type="checkbox" style="margin-top: 2px; cursor: pointer;">
-      <span>
-        <strong>Discord 채널도 함께 제거</strong>
-        <br><span class="muted" style="font-size: 12px;">체크하면 봇 토큰으로 접속해 <code>glimi-*</code> 카테고리 + 관련 채널 전부 삭제.<br>체크 안 하면 Discord 서버엔 채널 그대로 남음 (봇 다시 초대하거나 수동 정리 필요)</span>
-      </span>
-    </label>
-  </div>
   <div class="del-body" style="margin: 16px 0;">
     <label style="display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted);">확인을 위해 커뮤니티 ID 를 정확히 입력해 주세요.</label>
     <input id="del-input" type="text" style="width: 100%;" placeholder="" autocomplete="off">
@@ -172,7 +163,6 @@ async function deleteCommunity(cid) {
   const dlg = document.getElementById('delete-dialog');
   document.getElementById('del-cid').textContent = cid;
   document.getElementById('del-input').value = '';
-  document.getElementById('del-wipe').checked = false;
   document.getElementById('del-progress').innerHTML = '';
   dlg.dataset.cid = cid;
   dlg.querySelectorAll('button').forEach(b => b.disabled = false);
@@ -183,7 +173,6 @@ async function confirmDelete() {
   const dlg = document.getElementById('delete-dialog');
   const cid = dlg.dataset.cid;
   const typed = document.getElementById('del-input').value.trim();
-  const wipe = document.getElementById('del-wipe').checked;
   if (typed !== cid) {
     alert('입력이 일치하지 않아 삭제를 취소했어요.');
     return;
@@ -193,9 +182,7 @@ async function confirmDelete() {
   const actions = dlg.querySelector('.del-actions');
   const progress = document.getElementById('del-progress');
   if (progress) {
-    const msg = wipe
-      ? '정지하고 채널과 데이터를 지우는 중이에요... (최대 30초)'
-      : '정지하고 데이터를 지우는 중이에요... (최대 10초)';
+    const msg = '정지하고 데이터를 지우는 중이에요... (최대 10초)';
     progress.innerHTML =
       '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--panel2);border-radius:8px;margin-top:12px;border-left:3px solid var(--accent)">' +
       '<div style="width:16px;height:16px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div>' +
@@ -203,20 +190,13 @@ async function confirmDelete() {
   }
   if (actions) actions.querySelectorAll('button').forEach(b => b.disabled = true);
 
-  const url = '/api/communities/' + encodeURIComponent(cid) + (wipe ? '?wipe_discord=true' : '');
+  const url = '/api/communities/' + encodeURIComponent(cid);
   try {
     const r = await fetch(url, { method: 'DELETE' });
     if (!r.ok) {
       if (progress) progress.innerHTML = '<div class="err">삭제 실패: ' + (await r.text()) + '</div>';
       if (actions) actions.querySelectorAll('button').forEach(b => b.disabled = false);
       return;
-    }
-    const res = await r.json();
-    if (wipe && res.wipe) {
-      const w = res.wipe;
-      if (w.deleted_channels && w.deleted_channels.length) {
-        console.log('Discord 채널 삭제:', w.deleted_channels);
-      }
     }
     dlg.close();
     location.reload();

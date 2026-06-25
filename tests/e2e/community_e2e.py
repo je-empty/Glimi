@@ -245,7 +245,7 @@ for suffix in ("", "-shm", "-wal"):
 (cdir / "logs" / "system.log").write_text("[seed] fresh (mgr+creator only)\\n")
 envf = cdir / ".env"
 if not envf.exists():
-    envf.write_text("DISCORD_BOT_TOKEN=fresh-no-token\\n")
+    envf.write_text("# (optional) per-community model/key override\\n")
 
 db.init_db()
 conn = db.get_conn()
@@ -896,14 +896,11 @@ def run(*, goal: str, context: str, rounds: int, num_friends: int, backend: str,
         # (c) log in (admin can access any community).
         cookie = _login(base)
         print("[community_e2e] logged in (session cookie acquired)")
-        # NOTE: the autonomous scene supervisors that would advance onboarding
-        # (collect_profile → bring in 하나 → first friend) currently run ONLY inside the
-        # Discord bot subprocess (`community.discord_bot`, needs DISCORD_BOT_TOKEN). The
-        # web platform serves chat on-demand but has no web-native autonomous loop yet,
-        # so in a pure web E2E the tutorial can't advance and friend_creation stays 0 —
-        # the QA system correctly surfaces this Discord-decoupling gap (analysis/
-        # platform_decoupling_review.md). POST /api/communities/{id}/start would just
-        # spawn a token-less Discord bot that exits immediately, so we don't call it.
+        # The autonomous scene supervisors that advance onboarding (collect_profile →
+        # bring in 하나 → first friend) run web-natively inside the in-process
+        # WebRuntime. POST /api/communities/{id}/start boots that runtime (boot +
+        # supervisor pool + 유나's proactive greeting + tick loop) with no Discord and
+        # no token — that is how a fresh community onboards.
 
         # (c.5) optional live-watch pause: the fresh community (owner + 유나 + 하나,
         #       no friends yet) is now served but NOT yet driven. Hold here so a

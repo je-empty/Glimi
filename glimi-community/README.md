@@ -2,7 +2,7 @@
 
 A cast of AI friends — each with its own persona, persistent memory, and relationships — who keep talking to you and to each other even when you're away. The flagship app on [**Glimi Core**](../glimi-core).
 
-A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is the primary way in; **Discord** is an optional adapter. Everything you watch — the relationship graph, each friend's 5-layer memory, the channels — is the Core dashboard, rendered for this app.
+A built-in **web chat** (light/dark, replies, reactions, threads, mobile) is the live transport (`GLIMI_TRANSPORT=web`, no token). It plugs into a transport-neutral seam (`Outbox`/`ChannelAdapter`), so new transports (Telegram, etc.) drop into the same slot. Everything you watch — the relationship graph, each friend's 5-layer memory, the channels — is the Core dashboard, rendered for this app.
 
 ## Run
 
@@ -16,7 +16,7 @@ First run opens a setup wizard (pick a model backend: Claude / Ollama / local). 
 ## What's in here
 
 - **`community/platform/`** — the FastAPI platform, the built-in web chat, and the dashboard host.
-- **`community/`** — scenes, achievements, the Discord adapter, the memory glue, and `adapters/kernel_store.py` (a `SqliteKernelStore(KernelStore)` that injects this app into the neutral kernel via DI).
+- **`community/`** — scenes, achievements, the live web adapter (`adapters/web/channels.py`), the memory glue, and `adapters/kernel_store.py` (a `SqliteKernelStore(KernelStore)` that injects this app into the neutral kernel via DI).
 - **`assets/`, `i18n/`** — profile images and localization.
 
 ## Depends on

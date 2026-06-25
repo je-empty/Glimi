@@ -59,7 +59,7 @@ agent-persona-{gender}-{age}-{mbti}-{vibe1}-{vibe2}-full.png
 
 ## 이미지 스펙
 
-- 해상도: 512x512 이상 (Discord webhook avatar 권장)
+- 해상도: 512x512 이상 (웹 프로필 아바타 권장)
 - full 버전: 세로 긴 사이즈 (예: 768x1024), 상반신 포함
 - 포맷: PNG (투명 배경 아님, 배경 있어도 됨)
 - 스타일: 일관성 위해 `Anime-style profile illustration ... bust-up shot` 유지

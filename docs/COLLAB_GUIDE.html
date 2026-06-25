@@ -181,8 +181,8 @@
     </tr>
     <tr>
       <td>🔌 어댑터</td>
-      <td><code>community/bot/</code> (Discord 출구 레이어)</td>
-      <td>과도기 — 추후 <code>community/adapters/</code> 분리 예정. 수정 시 decoupling 원칙 준수</td>
+      <td><code>community/adapters/web/</code> (라이브 웹 트랜스포트 레이어)</td>
+      <td>새 트랜스포트는 <code>ChannelAdapter</code> Protocol + <code>Outbox</code> seam 에 plug-in. 수정 시 decoupling 원칙 준수</td>
     </tr>
     <tr>
       <td>⚙️ 인프라·릴리스</td>
@@ -202,7 +202,7 @@
     </tr>
     <tr>
       <td><span class="zone review">리뷰 필수</span></td>
-      <td>코어 전체 (<code>community/core/</code> · <code>glimi/llm/</code> · <code>community/db.py</code>) · <code>community/achievements/engine.py</code>·<code>definitions.py</code> · <code>community/supervisors/</code> · <code>community/bot/</code> · <code>community/platform/</code></td>
+      <td>코어 전체 (<code>community/core/</code> · <code>glimi/llm/</code> · <code>community/db.py</code>) · <code>community/achievements/engine.py</code>·<code>definitions.py</code> · <code>community/supervisors/</code> · <code>community/adapters/</code> · <code>community/platform/</code></td>
       <td><strong>코어는 잠겨있지 않다</strong> — 개발이 계속 들어가는 영역이라 필요하면 수정 OK. 단 ① 작업 전 의도 1-2줄 공유, ② PR 에 "⚠ core 접점: 파일 — 이유" 명시, ③ 메인테이너 승인 후 머지. 새 도구·프롬프트는 각각 도구 절제 심사 / <code>docs/prompt_development.md</code> 규칙 통과</td>
     </tr>
     <tr>
@@ -343,7 +343,7 @@ supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</cod
   </ul>
 
   <div class="callout tip">
-    <strong>리뷰 SLA.</strong> 메인테이너는 PR 에 48시간 내 첫 반응 (승인/코멘트/일정 공유). 급한 건 디스코드/메신저로 핑.
+    <strong>리뷰 SLA.</strong> 메인테이너는 PR 에 48시간 내 첫 반응 (승인/코멘트/일정 공유). 급한 건 이슈/메신저로 핑.
   </div>
 </section>
 
@@ -359,7 +359,7 @@ supervisor 의 phase 전환 타이밍 판단이 맞는지 봐줬으면 함.</cod
     <tr><td>🕊️ 드라마</td><td>갈등은 발생 → 중재 → 화해. 파괴적 엔딩·배신·폭력 금지</td></tr>
     <tr><td>🔇 메타 용어</td><td>사용자 노출 텍스트에 "AI / 봇 / 에이전트 / 멤버" 금지 — 친구·사람·이름으로</td></tr>
     <tr><td>🧰 도구 절제</td><td>새 <code>&lt;tools&gt;</code> 도구는 "기존 도구로 대체 불가 + 감정 접점" 둘 다 통과해야 추가 (리뷰 필수 구역)</td></tr>
-    <tr><td>🔌 플랫폼 중립</td><td>코어 로직에 Discord 타입 누출 금지 — "이거 텔레그램·웹챗에서도 재사용 가능한가?" NO 면 잘못된 레이어</td></tr>
+    <tr><td>🔌 플랫폼 중립</td><td>코어 로직에 특정 채팅 SDK 타입 누출 금지 (transport 중립) — "이거 텔레그램·웹챗에서도 재사용 가능한가?" NO 면 잘못된 레이어</td></tr>
     <tr><td>🧬 코어 중립</td><td>코어(<code>community/core/</code>·<code>glimi/llm/</code>)에 <strong>특정 커뮤니티 콘텐츠 하드코딩 금지</strong> — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터 파일/설정에서 로드. "내 커뮤니티에서 잘 돌게" 만드는 수정은 환영하되, 그 데이터는 <code>communities/</code> 쪽 레이어로</td></tr>
     <tr><td>📖 문서 동기화</td><td>씬·도전과제 추가 시 <code>docs/yuna_knowledge.md</code> 같이 갱신 (유나가 사용자에게 설명하는 소스)</td></tr>
   </table>

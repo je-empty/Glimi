@@ -39,7 +39,7 @@
 - 도구 인자 schema validation 부재 → LLM 환각 통과
 
 #### B. Handler 의 silent no-op
-`community/bot/mgr_system.py:yuna_edit_relationship`:
+`community/core/mgr_actions.py:yuna_edit_relationship`:
 ```python
 if field == "intimacy": ... DB UPDATE
 elif field == "type":   ... DB UPDATE

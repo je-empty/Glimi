@@ -4,7 +4,7 @@
 
 ## 0. 트리거 → 즉시 체크리스트
 
-1. **현재 QA 세션 상태**: `tmux ls | grep QA` + `ps aux | grep discord_bot`
+1. **현재 QA 세션 상태**: `tmux ls | grep QA` + `ps aux | grep community_e2e`
    - 이미 돌아가면: 멈출지(백업+분석) 그대로 둘지 유저 의도 확인.
 2. **최근 결과 스캔**: `tests/e2e/results/run-*.json` 최신 3개 — 연속 PASS 면 목표 상향, FAIL 면 원인 확인 먼저.
 3. **git 상태**: 커밋 안 된 변경 있으면 먼저 파악 (내가 방금 뭘 고쳤는지 맥락 복구).

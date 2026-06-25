@@ -1,12 +1,15 @@
-# 메시지 포맷팅 (`community/bot/formatting.py`)
+# 메시지 포맷팅
 
-에이전트 응답의 평문 토큰을 디스코드 네이티브 렌더링으로 변환.
+에이전트 응답의 평문 토큰을 채널 mention 으로 렌더링.
 
-**저장/로그/DB 는 원문 유지**, 디스코드 전송 직전 (`_raw_send_as_agent`) 에만 변환.
+**저장/로그/DB 는 원문 유지** — 에이전트는 `#channel-name` 평문을 그대로 쓰고, 클라이언트 렌더링 시점에만 변환한다.
 
-## 현재 규칙
-- `#channel-name` → `<#channel_id>` (클릭 가능 mention). 못 찾으면 `**#name**` 볼드 폴백
-- `@owner-name` → `<@owner_id>` (오너만. 에이전트는 웹훅이라 mention 불가)
+## 현재 규칙 (웹)
+웹 클라이언트가 `#channel` / `#mention` 스타일을 네이티브로 렌더링한다.
+- `#channel-name` → 클릭 가능한 채널 링크. 못 찾으면 `**#name**` 볼드 폴백
+- `@owner-name` → 오너 mention 강조
+
+> 레거시 메모: `<#channel_id>` / `<@owner_id>` 형태는 과거 부트스트랩 어댑터(은퇴)에서 쓰던 syntax 였다. 웹은 위 평문 토큰을 직접 렌더링하므로 더 이상 ID 치환이 필요 없다.
 
 ## 규칙 확장
 `_RULES` 테이블에 `(pattern, resolver)` 추가. resolver = match + ctx dict → 치환 문자열 (또는 None = 변환 안 함).

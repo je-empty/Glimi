@@ -600,9 +600,9 @@
         <li><span class="badge tag">완료</span> <strong>방향 전환</strong>: 사업화 → OSS career capital. 문서: <code>analysis/pivot_subagent_review.md</code> (gitignored)</li>
         <li><span class="badge tag">완료</span> <strong>네이밍 재정의</strong>: Glimi = umbrella 브랜드. <code>Glimi Core</code> (라이브러리) + <code>Glimi Community</code> (앱)</li>
         <li><span class="badge tag">완료</span> <strong>라이선스</strong>: AGPL-3.0 확정. <code>LICENSE</code> 있음</li>
-        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어를 최상위 <code>glimi/</code> 패키지로 이동 (runtime · memory · LLM 백엔드 · <code>&lt;tools&gt;</code> 프로토콜 · conversation · context budget). Discord/DB 의존 0, standalone wheel 빌드. PyPI 미공개</li>
+        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어를 최상위 <code>glimi/</code> 패키지로 이동 (runtime · memory · LLM 백엔드 · <code>&lt;tools&gt;</code> 프로토콜 · conversation · context budget). 채팅 SDK/DB 의존 0, standalone wheel 빌드. PyPI 미공개</li>
         <li><span class="badge priority">진행 중</span> <strong>첫 contributor task</strong>: 로컬 모델 (Gemma 4, Qwen 3.5) 지원 — 아래 섹션 5 참조</li>
-        <li><span class="badge do">활성</span> <strong>Community 풀-스택</strong>: 웹 우선 — 웹 채팅 + 대시보드 + 멀티 커뮤니티 (<code>./run.sh</code>). Discord 어댑터는 선택</li>
+        <li><span class="badge do">활성</span> <strong>Community 풀-스택</strong>: 웹 우선 (<code>GLIMI_TRANSPORT=web</code>) — 웹 채팅 + 대시보드 + 멀티 커뮤니티 (<code>./run.sh</code>). 라이브 트랜스포트는 웹 어댑터, 토큰 불필요</li>
       </ul>
     </div>
   </section>
@@ -792,7 +792,7 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
       <li class="todo">vLLM 백엔드 (성능 우선 케이스)</li>
       <li class="todo">llama.cpp 백엔드 (Apple Silicon 최적화·작은 VRAM용)</li>
       <li class="todo">네이티브 Windows 지원 (<code>run.ps1</code> + 의존성 가이드)</li>
-      <li class="todo">Telegram 어댑터 (Discord 와 병렬)</li>
+      <li class="todo">Telegram 어댑터 (웹 어댑터와 같은 seam 에 plug-in)</li>
       <li class="todo">새 Community scene: birthday / healing / outing</li>
       <li class="todo">메모리 retrieval 에 임베딩 기반 semantic 추가</li>
     </ul>
@@ -810,7 +810,7 @@ python -m src.community list            # 커뮤니티 목록</code></pre>
         <li><code>CLAUDE.md</code> (루트) — 아키텍처 원칙, 규칙, 브랜치 전략</li>
         <li>각 subdirectory 에 <code>CLAUDE.md</code> 가 있으면 함께 로드 (예: <code>community/glimi_imagegen/CLAUDE.md</code>)</li>
       </ul>
-      <p>따로 설명 안 해도 Claude 가 "Discord = 어댑터", "AI co-author trailer 금지", "타임스탬프 UTC-aware" 규칙을 알고 시작.</p>
+      <p>따로 설명 안 해도 Claude 가 "트랜스포트 = 플러그형 어댑터 (웹이 라이브)", "AI co-author trailer 금지", "타임스탬프 UTC-aware" 규칙을 알고 시작.</p>
     </div>
 
     <h3>Claude Code 로 작업하는 워크플로우</h3>
@@ -993,16 +993,16 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
         <ul>
           <li>새 기능은 "Telegram·웹챗 어댑터 재사용 가능?" 통과해야 Core 자격</li>
           <li>플랫폼 중립 타입만 사용 (<code>str</code>, <code>int</code>, dataclass)</li>
-          <li>Discord 코드는 <code>community/bot/</code> (또는 <code>apps/community/</code>)에</li>
+          <li>트랜스포트 코드는 <code>community/adapters/web/</code> (라이브 웹 어댑터) 같은 어댑터 레이어에</li>
         </ul>
       </div>
       <div class="col dont">
         <h4>✗ Don't</h4>
         <ul>
-          <li><code>community/core/*</code> 에서 <code>import discord</code> 금지</li>
-          <li>Discord 타입이 코어 함수 시그니처로 새는 것</li>
-          <li><code>community/core/prompts/</code> 가 <code>community/bot/</code> import</li>
-          <li>예외: <code>community/core/sync.py</code> 만 임시 허용</li>
+          <li><code>community/core/*</code> 에서 특정 채팅 SDK import 금지 (transport 중립)</li>
+          <li>채팅 SDK 타입이 코어 함수 시그니처로 새는 것</li>
+          <li><code>community/core/prompts/</code> 가 어댑터 레이어 import</li>
+          <li>새 트랜스포트는 <code>ChannelAdapter</code> Protocol + <code>Outbox</code> seam 에 plug-in</li>
         </ul>
       </div>
     </div>
@@ -1056,7 +1056,7 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
           <li><code>community/core/{runtime, tools, memory, llm, conversation}</code> → 상위 <code>glimi/</code> 패키지</li>
           <li>도메인 종속 코드는 <code>community/</code> 유지 (Glimi Community 앱)</li>
           <li><code>KernelStore</code> ABC + <code>AgentProfile</code> / <code>OwnerContext</code> / <code>KernelObserver</code> protocol 정의, DI 적용</li>
-          <li>Discord·DB 의존 없음 — standalone wheel 빌드</li>
+          <li>채팅 SDK·DB 의존 없음 — standalone wheel 빌드</li>
         </ul>
       </div>
 
@@ -1105,10 +1105,9 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
 
       <div class="phase future">
         <div class="phase-label">미래</div>
-        <h3>Phase 4 — 비-Discord 어댑터 (Community 확장)</h3>
+        <h3>Phase 4 — 추가 트랜스포트 어댑터 (Community 확장)</h3>
         <ul>
-          <li>Telegram 어댑터</li>
-          <li>웹챗 어댑터 (Glimi 자체 client)</li>
+          <li>Telegram 어댑터 (라이브 웹 어댑터와 같은 seam)</li>
           <li>Community 새 scene: birthday, healing, outing</li>
           <li>오너 부재 시뮬레이션 + 복귀 브리핑</li>
         </ul>

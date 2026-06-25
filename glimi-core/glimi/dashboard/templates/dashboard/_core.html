@@ -4,14 +4,14 @@
      • Glimi Workspace (rendered with a workspace context),
      • Glimi Community (extends this, fills the extension blocks).
 
-   It is **platform-neutral**: no Discord, no bot lifecycle, no community content.
+   It is **platform-neutral**: no transport adapter, no app lifecycle, no community content.
    Behaviour is switched entirely by render context — never by forking the markup:
 
      static_base      asset URL prefix (default "/static"); all css/js load from here.
      api_base         API prefix for the shared dashboard.js (→ <body data-api-base>).
      caps_json        JSON capability map (→ <body data-caps>); null = everything on.
      community_chrome bool — community-only chrome (switcher / server-ctrl / elastic /
-                      Discord+Scene KPIs / logo). Kernel & Workspace pass false.
+                      Scene KPIs / logo). Kernel & Workspace pass false.
      active_tab       which tab opens first ("chat" for apps, "overview" for the
                       chat-less kernel viewer).
      language         "ko" | "en"   ·   asset_v   cache-bust token
@@ -143,7 +143,7 @@
     <button data-tab="events"><i class="ti ti-bolt tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_events', language) }}</span> <span class="count" id="tc-events">0</span></button>
     <button data-tab="supervisors" class="sup-tab"><i class="ti ti-eye tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_supervisors', language) }}</span> <span class="count" id="tc-supervisors">0</span></button>
     <button data-tab="health"><i class="ti ti-activity tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_health', language) }}</span></button>
-    {# Sync tab (Discord↔DB) — hidden by default for every app. applyCaps()/capOn('sync')
+    {# Sync tab (legacy adapter↔DB sync) — hidden by default for every app. applyCaps()/capOn('sync')
        keeps it gated off; rendered with display:none so it never flashes pre-JS, and
        only un-hidden when an app opts in via data-caps {"sync":true}. #}
     <button data-tab="sync" style="display:none"><i class="ti ti-refresh tab-emoji" aria-hidden="true"></i><span class="tab-label">{{ t('tab_sync', language) }}</span></button>

@@ -130,7 +130,7 @@ The Core dashboard shows all agents — graph, memory inspector (L0–L5), chann
 - **Tool call timeline** — `<tools>` args + results
 - **Per-agent model (read-only)** — lists model and override badge (live swap in Community/Workspace)
 
-## Community architecture (web-first; Discord = optional adapter)
+## Community architecture (web-first; pluggable transport seam)
 
 ```mermaid
 flowchart LR
@@ -144,7 +144,7 @@ flowchart LR
         Core["⚙ Glimi Core<br/>(runtime · memory · supervisors)"]
         DB[("SQLite<br/>community.db")]
         Log["📄 logs/system.log<br/>(runtime tool logs)"]
-        Bot["🤖 Discord adapter<br/>(optional)"]
+        Seam["🔌 ChannelAdapter seam<br/>(Outbox · web adapter live;<br/>new transports plug in here)"]
     end
 
     subgraph Channels["💬 Channels"]
@@ -160,7 +160,7 @@ flowchart LR
     Core -.->|"tool-call logs"| Log
     Owner <-->|"chat"| DM & Grp
     Owner -. "spy 🔍 read-only" .-> SecDM & SecGrp
-    Bot -. "optional mirror" .-> Plat
+    Plat <-->|"transport-neutral"| Seam
 
     style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
     style Core fill:#1a3a5c,stroke:#4a9eff,color:#fff
@@ -168,7 +168,7 @@ flowchart LR
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
 ```
 
-**Web chat is primary; Discord is optional.** Core never imports `discord`. Community ships FastAPI + WebSocket chat; Discord only mirrors. Telegram and others will follow.
+**Web chat is the live transport.** Core never imports any chat SDK — it talks through the transport-neutral seam (`Outbox`/`Speaker` in `glimi-core/glimi/transport.py` + the `ChannelAdapter` Protocol in `community/core/channel_adapter.py`). Community ships FastAPI + WebSocket chat as the live adapter (`community/adapters/web/`). Discord was the first bootstrap adapter that validated this seam; it was retired once web reached parity (2026-06-25). New transports (Telegram, etc.) plug into the same seam.
 
 ## Channel structure (Community)
 

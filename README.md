@@ -20,7 +20,7 @@ The web dashboard shows a relationship graph, memory inspector, channel viewer, 
 
 ![Glimi — a living community of agents, live in the connection graph](docs/screenshots/en/11-community-dashboard.png)
 
-**Glimi Community** runs a chat group of AI friends with a web UI or Discord bridge. They remember and talk like people. **Glimi Workspace** runs work roles (Coordinator, Researcher, Builder, Critic) with a live demo. Starters in `examples/` use the same Core.
+**Glimi Community** runs a chat group of AI friends in a built-in web UI. They remember and talk like people. **Glimi Workspace** runs work roles (Coordinator, Researcher, Builder, Critic) with a live demo. Starters in `examples/` use the same Core.
 
 > *agent* means a *Generative Agent* — a character that remembers, forms opinions, and initiates talks — not an autonomous task-runner. We say *agent* in code and *friends / characters* for users.
 
@@ -32,7 +32,7 @@ Glimi/                           one repo, three self-contained projects (a "wor
 │   ├── eval/                    ·   golden-set capability eval (LLM-judge · regression gate); glimi.edd = generational E2E EDD
 │   └── pyproject.toml           ·   builds the `glimi` / `glimi[dashboard]` wheel (the only PyPI artifact)
 ├── glimi-community/             ← Glimi Community — the flagship app (Core was extracted FROM here)
-│   ├── community/               ·   FastAPI platform · built-in web chat · scenes · achievements · Discord adapter
+│   ├── community/               ·   FastAPI platform · built-in web chat · scenes · achievements · pluggable transport adapters
 │   ├── assets/ · i18n/          ·   profile images · localization
 │   └── pyproject.toml · run.sh  ·   depends on glimi[dashboard]
 ├── glimi-workspace/             ← Glimi Workspace — a 2nd app built ON the kernel (proof of reuse)
@@ -162,7 +162,7 @@ from glimi import (
 )
 ```
 
-To use your DB, implement `KernelStore` (and optional `ProfileProvider`/`OwnerContext`/`KernelObserver`) and inject with `glimi.runtime.set_store(...)`. Example (SQLite + Discord):
+To use your DB, implement `KernelStore` (and optional `ProfileProvider`/`OwnerContext`/`KernelObserver`) and inject with `glimi.runtime.set_store(...)`. Example (SQLite + web transport):
 
 - `community/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
 - `community/core/runtime.py` — injects them and exports API
@@ -204,13 +204,13 @@ Friends remember everything: time, jokes, hard weeks, secrets. Each friend keeps
 
 ### Talk to them — the built-in web chat
 
-Community provides its own chat: Discord-style layout, character sidebar, grouped messages, replies, reactions, threads, dark/light themes, mobile support. The dashboard and chat share one store. Click a graph line to jump to its chat.
+Community provides its own chat: a familiar messaging layout, character sidebar, grouped messages, replies, reactions, threads, dark/light themes, mobile support. The dashboard and chat share one store. Click a graph line to jump to its chat.
 
 | Web chat (light) | Web chat (dark) | On mobile |
 |---|---|---|
 | <img src="docs/screenshots/en/08-web-chat.png" alt="Web chat — light theme"/> | <img src="docs/screenshots/en/09-web-chat-dark.png" alt="Web chat — dark theme"/> | <img src="docs/screenshots/en/10-web-chat-mobile.png" height="420" alt="Web chat on mobile"/> |
 
-Discord is optional and runs as one adapter. Chat moves via WebSocket through Core's neutral outbox/inbox seam, used by Telegram and future adapters.
+The web chat runs as the live adapter. Chat moves via WebSocket through Core's neutral outbox/inbox seam (`Outbox` / `ChannelAdapter`) — the same seam Telegram and other transports plug into.
 
 **A demo is included.** On setup, a read-only **demo community** appears automatically. It shows Glimi in action without tokens or bots. Posting is off, and a banner marks it so.
 
@@ -218,7 +218,7 @@ Discord is optional and runs as one adapter. Chat moves via WebSocket through Co
 
 ### The defining UX move
 
-Each character has channels — DMs with you, **secret DMs with each other**, and group chats you can read but not join — on web or Discord. **Context leaks between channels**: what you tell A can show in A↔B, and B answers in that tone without quoting.
+Each character has channels — DMs with you, **secret DMs with each other**, and group chats you can read but not join — all in the web client. **Context leaks between channels**: what you tell A can show in A↔B, and B answers in that tone without quoting.
 
 ```
 14:02 — you DM A in #dm-A
@@ -252,11 +252,11 @@ Glimi Core handles this: channel discipline (layer 4) enforces borders, memory i
 | **Manager + Creator characters** | Yuna (admin / tutorial / DM approval) and Hana (persona design / avatar prompts) |
 | **Scene system** | `tutorial` shipped; `birthday` / `healing` / `outing` planned |
 | **Achievements** | 7 default unlocks tracked as the user explores: first chat, three friends, group chat, peek-internal, autonomous-chat, long-relationship, fourth-wall break |
-| **Multi-community isolation** | One platform process spawns N community bot subprocesses; each gets its own SQLite DB and Discord server |
+| **Multi-community isolation** | One platform supervisor runs N per-community web runtimes (`community/platform/web_runtime.py`, no subprocess); each gets its own SQLite DB and isolated web space |
 
 ### Community architecture & channels
 
-Community is built on Glimi Core with a **web-first** design: a FastAPI + WebSocket platform talks to Core (runtime · memory · supervisors) over a SQLite `community.db`, and **Discord is an optional mirror** — Core never imports `discord`. Channels come in four kinds — `dm-{name}` (incl. manager `dm-agent-mgr-001`), `group-{names}`, and the spy-readable `internal-dm-{A}-{B}` / `internal-group-{names}` — plus a `logs/system.log` file for runtime tool-call logs.
+Community is built on Glimi Core with a **web-first** design: a FastAPI + WebSocket platform talks to Core (runtime · memory · supervisors) over a SQLite `community.db`, and the **web chat is the live transport** — reached through Core's neutral `ChannelAdapter` seam, so new transports plug in without Core ever importing a chat SDK. Channels come in four kinds — `dm-{name}` (incl. manager `dm-agent-mgr-001`), `group-{names}`, and the spy-readable `internal-dm-{A}-{B}` / `internal-group-{names}` — plus a `logs/system.log` file for runtime tool-call logs.
 
 The engine flowchart and the full channel-structure table are in → [**Internals**](docs/internals.en.md).
 
@@ -268,7 +268,7 @@ The engine flowchart and the full channel-structure table are in → [**Internal
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`
 - For Claude agents: **Claude CLI login** (default) or `.env` `ANTHROPIC_API_KEY`. Claude uses **metered credits**.
 - **Free options:** **Local-only** (Ollama) or **Hybrid** (personas local/free, mgr/creator/dev on Claude).
-- Discord bot token (if you enable Discord)
+- No chat tokens needed — communities run web-first out of the box.
 
 **Fresh Mac** — one command installs Homebrew, Python, Node, Claude CLI, sets up, and opens the wizard:
 
@@ -326,7 +326,7 @@ python -m community.community list            # list communities (CLI)
 
 Every user gets a team. Glimi Workspace runs a Coordinator plus roles: Researcher, Builder, Critic. You set project context once — goals, past decisions, style. Each agent saves it so new sessions start ready. Model or host swaps keep context intact. Workspace is persistent staff, not a temp tool.
 
-Workspace and Community run on one Core. Workspace handles work; Community handles friends. The split shows Core modularity. Workspace imports only `glimi` — no `discord`, no Community code.
+Workspace and Community run on one Core. Workspace handles work; Community handles friends. The split shows Core modularity. Workspace imports only `glimi` — no chat SDK, no Community code.
 
 Agents use separate DMs. The owner messages the Coordinator, who assigns tasks. Specialists debate in A2A channels and regroup before delivery. Those exchanges form the same graph used in Community. Each member keeps its own L0–L5 memory.
 #### One server, many workspaces
@@ -387,7 +387,7 @@ Multi-agent products are hard to measure; perception isn't data. Glimi applies *
 Failures shown for clarity:
 
 - **`conversation_quality` 6 → 9 → 8 → 4 → 7** shows LLM variance. Gen-1→2 fixed manager loops; gen-4 regressed; gen-11 stabilized at 7.
-- **`friend_creation` (critical) was 0 for gens 1–4 and 6–10, and 10 at gen-5 and gen-11**—the expected fail came from Discord-bot subprocess isolation (see [`docs/qa_system.md`](docs/qa_system.md), `analysis/platform_decoupling_review.md`). Web-native onboarding first cleared it at **gen-5 (77.5, first ✅ PASS)**; after a regression across gens 6–10 it was restored at **gen-11 (85.0, the highest)**. `conversation_quality` 7 and `no_hallucination` 6 stay exposed.
+- **`friend_creation` (critical) was 0 for gens 1–4 and 6–10, and 10 at gen-5 and gen-11**—the expected fail came from subprocess isolation in the old bootstrap adapter (see [`docs/qa_system.md`](docs/qa_system.md), `analysis/platform_decoupling_review.md`). Web-native onboarding first cleared it at **gen-5 (77.5, first ✅ PASS)**; after a regression across gens 6–10 it was restored at **gen-11 (85.0, the highest)**. `conversation_quality` 7 and `no_hallucination` 6 stay exposed.
 - **Composite ≥ 70 is not enough.** Gens 2 (75.0) and 3 (72.5) cleared the threshold but still FAILED on `friend_creation` = 0 — a high chat score can't outvote a broken critical journey. That is the gate working as designed.
 
 Core rule: **git tracks product quality**. Each commit's impact appears in history. The dashboard and PDF below visualize it.
@@ -453,7 +453,7 @@ Lightweight starters that run on Glimi Core only, without the Community social-s
 | **Memory store (default)** | SQLite — pluggable via the `KernelStore` ABC (the kernel never touches the DB directly) |
 | **Tool protocol** | `<tools>` inline XML — alias resolution, JSON-typed args, deferred execution |
 | **Web dashboard** | FastAPI + Jinja2 + Cytoscape.js + htmx |
-| **Community adapter** | `discord.py` with per-agent Webhook avatars |
+| **Community transport** | Built-in web chat (FastAPI + WebSocket) over Core's pluggable `ChannelAdapter` seam — per-agent avatars, new transports plug into the same seam |
 | **Community image gen** (opt-in) | Local LoRA portrait via Animagine XL 4.0 (~6min/portrait, 186MB weights) |
 
 ---
@@ -461,7 +461,7 @@ Lightweight starters that run on Glimi Core only, without the Community social-s
 ## Roadmap
 
 **Kernel extraction and packaging**
-- ✅ Moved `community/core/{runtime, tools, memory, llm, conversation}` → `glimi/`; imports standalone, no Discord/DB.
+- ✅ Moved `community/core/{runtime, tools, memory, llm, conversation}` → `glimi/`; imports standalone, no transport/DB coupling.
 - ✅ Added `KernelStore` ABC plus `AgentProfile`, `OwnerContext`, `KernelObserver` protocols; adapters in `community/adapters/`.
 - ✅ `pyproject`: `pip install glimi` installs core with **no runtime deps**. Extras: `glimi[sdk]` (Anthropic), `glimi[dashboard]` (FastAPI). Kernel builds as wheel used by apps.
 
@@ -514,7 +514,7 @@ Ollama handles all local LLM calls. Gemma 4 (26b-a4b / e4b / e2b) and Qwen 3.5 w
 
 ### Code conventions (the easy-to-regress ones)
 
-- **Discord = adapter.** `community/core/*` never imports it. Community code lives in `community/bot/`, `community/scenes/`, `community/achievements/`, etc.
+- **Transport = adapter.** `community/core/*` never imports a chat SDK — transports plug into the `ChannelAdapter` seam (`community/adapters/web/`). Community code lives in `community/scenes/`, `community/achievements/`, manager tool handlers in `community/core/mgr_actions.py`, etc.
 - **Memory / emotion = user-prompt injections**, not system-prompts. `AgentRuntime` builds per channel and turn.
 - **Timestamps = UTC ISO** (`community.core.timeutil.now_utc_iso()`). SQLite `CURRENT_TIMESTAMP` is naive—avoid it.
 - **Meta words** like "agent", "bot", "AI" banned in user text. `<tools>` blocks are internal. Tool-call logs → `logs/system.log`.

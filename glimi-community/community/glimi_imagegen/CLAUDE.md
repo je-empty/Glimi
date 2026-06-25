@@ -55,7 +55,7 @@ Returns dict: `{full_path, crop_path, crop_method, prompt, seed, version}`.
 
 ### 코어와의 decoupling
 
-Glimi 의 `src/core/*` 는 디스코드를 모르듯, 이미지 생성 모듈은 Glimi 의 도메인 객체를 모름. 이 모듈은 **prompt + 두 path 만** 받음 — agent / community / channel 같은 것 import 금지. Glimi 측에서 wrapper 짜서 사용.
+Glimi 의 `src/core/*` 가 특정 채팅 transport 를 모르듯, 이미지 생성 모듈은 Glimi 의 도메인 객체를 모름. 이 모듈은 **prompt + 두 path 만** 받음 — agent / community / channel 같은 것 import 금지. Glimi 측에서 wrapper 짜서 사용.
 
 ```python
 # Glimi 측 wrapper 예시 (src/services/profile_image.py 같은 데)

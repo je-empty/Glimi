@@ -37,7 +37,7 @@ flowchart TB
 
 3개(채널 규율, anti-echo, 자가 치유)는 *application 패턴* 기반으로 Community 영역에, 나머지는 Glimi Core 가 담당한다.
 
-**1 · 프롬프트 조립** — 언어 × agent_type dispatch (`ko/` 가 `en/` 위에 overlay). 백엔드별 도구 dialect (Claude `<tools>` XML, OpenAI function call). 로캘 snippet (`ㅇㅇ` / `ok`, `카톡` / `Discord`).
+**1 · 프롬프트 조립** — 언어 × agent_type dispatch (`ko/` 가 `en/` 위에 overlay). 백엔드별 도구 dialect (Claude `<tools>` XML, OpenAI function call). 로캘 snippet (`ㅇㅇ` / `ok`, `카톡` / `chat`).
 
 **2 · 도구 프로토콜** — `ToolSpec` 레지스트리가 권한·타입 검증을 수행한다. dispatcher 는 핸들러 결과를 다음 user prompt 에 주입한다.
 
@@ -131,7 +131,7 @@ graph LR
 - **도구 호출 타임라인** — `<tools>` 호출 이력과 결과 표시
 - **에이전트별 모델 (읽기 전용)** — 클라우드/로컬 모델 표시 (스왑은 Community/Workspace 전용)
 
-## Community 아키텍처 (웹 우선; Discord = 선택 어댑터)
+## Community 아키텍처 (웹 우선; pluggable transport)
 
 ```mermaid
 flowchart LR
@@ -145,7 +145,7 @@ flowchart LR
         Core["⚙ Glimi Core<br/>(runtime · memory · supervisors)"]
         DB[("SQLite<br/>community.db")]
         Log["📄 logs/system.log<br/>(런타임 도구 로그)"]
-        Bot["🤖 Discord 어댑터<br/>(선택)"]
+        Seam["🔌 ChannelAdapter seam<br/>(Outbox / Speaker)"]
     end
 
     subgraph Channels["💬 채널"]
@@ -161,7 +161,8 @@ flowchart LR
     Core -.->|"도구 호출 로그"| Log
     Owner <-->|"대화"| DM & Grp
     Owner -. "spy 🔍 읽기만" .-> SecDM & SecGrp
-    Bot -. "선택 미러링" .-> Plat
+    Plat <-->|"transport 중립"| Seam
+    Seam -. "Telegram / 기타 어댑터가 붙는 자리" .-> Plat
 
     style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
     style Core fill:#1a3a5c,stroke:#4a9eff,color:#fff
@@ -169,7 +170,7 @@ flowchart LR
     style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
 ```
 
-원칙: **내장 웹 채팅이 1급 주력, Discord 는 선택 어댑터일 뿐 커널이 아니다.** Glimi Core 는 `discord` 를 import 하지 않는다. Community 가 1급 웹 채팅(FastAPI + WebSocket)을 제공하고, Discord 어댑터는 선택이며 같은 채널을 미러링한다. Telegram / 기타 어댑터가 같은 자리에 붙을 예정이다.
+원칙: **내장 웹 채팅이 유일한 라이브 트랜스포트(`GLIMI_TRANSPORT=web`)이고, 트랜스포트는 어댑터로 갈아끼울 수 있다.** Glimi Core 는 특정 채팅 SDK 를 import 하지 않는다 — transport 중립 seam(`glimi/transport.py` 의 Outbox / Speaker + `community/core/channel_adapter.py` 의 ChannelAdapter Protocol)만 안다. 라이브 어댑터는 `community/adapters/web/` (`channels.py`) 이고, Community 가 1급 웹 채팅(FastAPI + WebSocket)을 제공한다. Telegram / 기타 어댑터가 같은 seam 에 붙을 예정이다. (Discord 어댑터가 이 seam 을 처음 검증한 부트스트랩 출구였으나, 웹이 패리티에 도달하면서 2026-06-25 에 은퇴했다.)
 
 ## 채널 구조 (Community)
 

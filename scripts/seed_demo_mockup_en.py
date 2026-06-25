@@ -120,7 +120,7 @@ def seed(community_id: str = "demo-en") -> None:
     (logs_dir / "system.log").write_text("[seed] demo-en mockup (5-layer memory) loaded\n")
     env_path = demo_dir / ".env"
     if not env_path.exists():
-        env_path.write_text("DISCORD_BOT_TOKEN=mockup-no-token\n")
+        env_path.write_text("# (optional) per-community model/key override\n")
 
     # DB init (init_db calls _migrate_schema to ensure latest columns/tables)
     db.init_db()

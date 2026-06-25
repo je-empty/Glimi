@@ -5,8 +5,8 @@ synthesizes), a **Researcher** (brings concrete detail), and a **Skeptic**
 (stress-tests claims) — work one question over several rounds on a single shared
 channel.
 
-It's [Glimi Core](../../README.md) used as a plain **library** — no Discord, no
-Community code, ~100 lines. The same engine that powers Glimi Community.
+It's [Glimi Core](../../README.md) used as a plain **library** — no chat-platform
+SDK, no Community code, ~100 lines. The same engine that powers Glimi Community.
 
 ## What it shows
 

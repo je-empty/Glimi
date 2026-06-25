@@ -239,7 +239,7 @@ async function wizNext(from) {
   } else if (from === 2) {
     const name = document.getElementById('f-owner-name').value.trim();
     if (!name) { alert('이름을 입력해 주세요'); return; }
-    // 확인 요약 채우기 (커뮤니티 정보 — 웹 우선, Discord 없음)
+    // 확인 요약 채우기 (커뮤니티 정보 — 웹 우선, 토큰 불필요)
     const fieldOrPh = (elId) => { const el = document.getElementById(elId); return (el.value.trim() || el.placeholder || ''); };
     const selText = (elId) => { const el = document.getElementById(elId); return el.options[el.selectedIndex].text; };
     document.getElementById('create-summary').innerHTML =

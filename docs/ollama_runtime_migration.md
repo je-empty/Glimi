@@ -1,7 +1,7 @@
 # runtime.py 대화 엔진 → Ollama 연결 계획
 
 > **상태**: ✅ 구현 완료 (B안 provider 분기). 작성·구현 2026-05-30.
-> **목적**: AI 친구들의 실제 디스코드 대화를 로컬 Ollama 모델로 돌리기.
+> **목적**: AI 친구들의 실제 대화를 로컬 Ollama 모델로 돌리기.
 >
 > **구현 요약**:
 > - `runtime.py`: `_provider_for()`/`_ollama_model_arg()`/`_backend_available()` 헬퍼 추가,
@@ -10,7 +10,7 @@
 > - `ollama.py`: `_think_setting()` — 기본 `think=false` (추론이 num_predict 예산을 다 먹어 답이 빈 채 잘리는 문제 fix). `GLIMI_OLLAMA_THINK=auto/true` 로 제어.
 > - **검증**: provider 라우팅·헬퍼·stream_lines·think:false 단위 통과 + 실제 persona(강서율) 스트리밍 end-to-end 통과 (로컬 Gemma, 캐릭터 유지, 누출 없음).
 > - **재시작**: `community/core/runtime.py`(봇) + `community/llm/ollama.py`(봇+플랫폼 양쪽 import) 수정 → `run.bat` 으로 봇+플랫폼 재시작.
-> - **남은 것**: 라이브 디스코드 턴 (오너 직접 대화) 최종 수용 테스트 — 일반대화/a2a/유나 `<tools>` 정확도 확인.
+> - **남은 것**: 라이브 턴 (오너 직접 대화) 최종 수용 테스트 — 일반대화/a2a/유나 `<tools>` 정확도 확인. (당시 출구는 부트스트랩 Discord 어댑터 — 웹 패리티 도달 후 2026-06-25 은퇴.)
 > - **롤백**: `.env` 에서 `GLIMI_LLM_BACKEND` 제거 → 즉시 Claude 복귀.
 >
 > **후속 (2026-05-30 추가)**:
@@ -28,7 +28,7 @@
 
 ### 참고: LLM/CLI 미사용 경로 (혼동 방지)
 - **페이지 실행** (`run.bat` → FastAPI/uvicorn): 순수 파이썬, CLI 불필요.
-- **디스코드 연결/동기화**: 디스코드 토큰만 필요, CLI 불필요.
+- **채널 어댑터 (웹 출구)**: 순수 파이썬, CLI 불필요. (이 마이그레이션 당시 출구는 부트스트랩 Discord 어댑터였고, 웹 패리티 도달 후 2026-06-25 은퇴.)
 - 오직 "친구들이 발화를 생성하는 순간"만 LLM 필요 → 그게 runtime.py에서 Claude에 묶여 있음.
 
 ## 현재 구조 (조사 결과)
@@ -94,7 +94,7 @@ Claude 경로는 그대로 두고, `provider == ollama`일 때만 `community.llm
 
 ## 검증 계획
 - **단위**: persona/mgr 각각 ollama 분기로 `generate` 호출 → 응답·tool 파싱 확인.
-- **통합**: `run.bat` 재시작 후 디스코드에서 (a) 일반 대화 (b) agent-to-agent (c) 유나 `<tools>` 호출 로그 확인.
+- **통합**: `run.bat` 재시작 후 라이브 채널에서 (a) 일반 대화 (b) agent-to-agent (c) 유나 `<tools>` 호출 로그 확인.
 - **롤백**: `.env`에서 `GLIMI_LLM_BACKEND` 제거 → 즉시 Claude 복귀 (분기 추가라 안전).
 
 ## 영향 범위 / 재시작

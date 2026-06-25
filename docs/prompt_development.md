@@ -60,7 +60,7 @@ community/scenes/{scene}/      # scene-scoped (해당 scene 만 의미 있음)
 
 | 상황 | 해결 |
 |---|---|
-| 단어 1~2개만 언어별 다름 (`"카톡"` vs `"Discord"`) | `locale.py` helper |
+| 단어 1~2개만 언어별 다름 (`"카톡"` vs `"chat"`) | `locale.py` helper |
 | 문장 1~2개 언어별 다름 | locale helper (긴 문자열 return) |
 | block 5+ 줄 언어별 다름 | locale helper 가 block 전체 return (`korean_onboarding_hints()` 예시) |
 | 프롬프트 **구조·순서** 자체가 다름 | `community/core/prompts/ko/{module}.py` 전체 override |
@@ -87,11 +87,11 @@ f"{tool_call_syntax_hint()}"
 
 ## 4. Decoupling 원칙
 
-### community/core/* 에서 `import discord` 금지
-platform adapter decoupling 원칙. core 는 Discord / Telegram / Web 중립. `community/bot/*` 만 Discord 의존 OK.
+### community/core/* 에서 특정 채팅 SDK import 금지 (transport 중립)
+platform adapter decoupling 원칙. core 는 transport 중립 — Web / Telegram 등 어떤 채널이 붙어도 동작해야 함. 채널 의존 코드는 `community/adapters/<transport>/*` 안에만 (라이브 = `community/adapters/web/`).
 
-### community/core/prompts/ 는 community/bot/ 를 import 하면 안 됨
-- 이전에 `community/core/prompts/helpers.formatting_guide()` 가 `community.bot.formatting` 을 lazy import 하던 누수 있었음 (Phase 2-C 에서 `community.core.formatting` 으로 이동 완료).
+### community/core/prompts/ 는 transport adapter 를 import 하면 안 됨
+- 이전에 `community/core/prompts/helpers.formatting_guide()` 가 어댑터 포매팅을 lazy import 하던 누수 있었음 (Phase 2-C 에서 `community.core.formatting` 으로 이동 완료).
 
 ### scene-local 자료는 scene 폴더에
 - `community/scenes/{scene}/` 에 prompts / greeting / judge_prompts / handlers / supervisor / scene 배치

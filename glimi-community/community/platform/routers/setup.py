@@ -32,7 +32,6 @@ async def api_setup(request: Request):
             api_key=payload.get("api_key", ""),
             use_cli=bool(payload.get("use_cli", False)),
             tier=payload.get("tier", "standard"),
-            discord_token=payload.get("discord_token", ""),
             monthly_cap_usd=payload.get("monthly_cap_usd", setup_mod.DEFAULT_MONTHLY_CAP_USD),
         )
     except ValueError as e:

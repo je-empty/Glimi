@@ -5,7 +5,7 @@
 > 그 점수를 **git 세대(commit)별로 추적**한다. = *agent-driven eval harness with generational
 > quality tracking* (eval-driven development / "eval flywheel").
 
-이건 디스코드 기반 구판 QA(`tests/e2e/runner.py`·`test_user_bot.py`, **폐기**)의 후계 —
+이건 부트스트랩 어댑터 시절 구판 QA(`tests/e2e/runner.py`·`test_user_bot.py`, **폐기**)의 후계 —
 같은 목적("커뮤니티가 잘 도는가")을 **웹 기반·시스템화·포폴급**으로 다시 세운 것.
 
 ## 무엇을 검증하나 (차원)
@@ -143,10 +143,10 @@ glimi.edd  (코어, 도메인-중립, glimi wheel 에 포함)
   ≥2개 수집되면 자동으로 **하나(creator) 등장 → 첫 친구 생성**. 이 진행을 **자율 supervisor 가 백그라운드 틱**으로 한다.
 - 거친 fix(전부 유효, 커밋됨): 오너를 튜토리얼 협조형으로(유나 질문에 답) · WS keepalive 견고성 · mgr/creator 프롬프트 강화.
 
-**진짜 근본 원인**: 그 **자율 scene supervisor(튜토리얼 포함)는 현재 `community.discord_bot` 서브프로세스 안에서만
-돈다** (`DISCORD_BOT_TOKEN` 필요). 웹 플랫폼은 채팅을 on-demand 로 서빙할 뿐 **web-native 자율 루프가 없다** — 그래서
-순수 웹 E2E 에선 튜토리얼이 진행 못 해 `friend_creation` 이 0 에 머문다. (디스코드 QA 가 됐던 건 디스코드 봇이
-그 supervisor 를 돌렸기 때문.) **= CLAUDE.md "Discord = 어댑터" 미완 디커플링** (`analysis/platform_decoupling_review.md`).
+**진짜 근본 원인**: 그 **자율 scene supervisor(튜토리얼 포함)는 과거 부트스트랩 어댑터 서브프로세스 안에서만
+돌았다**. 웹 플랫폼은 채팅을 on-demand 로 서빙할 뿐 **web-native 자율 루프가 아직 없다** — 그래서
+순수 웹 E2E 에선 튜토리얼이 진행 못 해 `friend_creation` 이 0 에 머문다. (예전 QA 가 진행됐던 건
+그 부트스트랩 어댑터가 supervisor 를 돌렸기 때문.) **= web-native 자율 루프 미완** (`analysis/platform_decoupling_review.md`).
 
-**robust fix**: 자율 supervisor 를 디스코드에서 분리해 **web-native 로 실행** (플랫폼 디커플링 프로젝트). 그 전까진 QA 가
-이 갭을 정직하게 측정·가시화한다 (gen 별 `friend_creation` = 0, 디커플링 완료 시 0→10).
+**robust fix**: 자율 supervisor 를 **web-native 로 실행** (`community/platform/web_runtime.py` 위에서 플랫폼 supervisor 가 구동).
+그 전까진 QA 가 이 갭을 정직하게 측정·가시화한다 (gen 별 `friend_creation` = 0, web-native 루프 완료 시 0→10).

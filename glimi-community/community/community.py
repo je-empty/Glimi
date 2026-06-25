@@ -8,7 +8,7 @@ communities/ 디렉토리 아래 커뮤니티별 서브디렉토리로 격리.
   communities/
   ├── registry.toml        ← 커뮤니티 목록 + default
   ├── my-server/
-  │   ├── .env             ← DISCORD_BOT_TOKEN
+  │   ├── .env             ← (선택) 커뮤니티별 모델/키 override
   │   ├── community.db     ← SQLite
   │   ├── profile_images/  ← 에이전트 프로필 이미지
   │   └── logs/
@@ -128,8 +128,8 @@ def get_env_path() -> str:
 
 
 def is_maintenance_mode() -> bool:
-    """대시보드 sync/scan/restore 중이면 True. 봇 루프 전반에서 이 플래그 체크 → 작업 중엔 agent 대화·tool 실행 전부 pause.
-    DB·Discord 상태 변경 와중에 봇이 새 메시지 찍으면 불일치."""
+    """대시보드 유지보수 작업(채널 정리 등) 중이면 True. 런타임 전반에서 이 플래그 체크 →
+    작업 중엔 에이전트 대화·tool 실행 전부 pause (DB 상태 변경 중 새 메시지로 인한 불일치 방지)."""
     try:
         flag = get_community_dir() / "logs" / ".maintenance"
         return flag.exists()
@@ -210,11 +210,9 @@ def init_community(community_id: str, copy_assets: bool = True):
         else:
             env_path.write_text(
                 "# 이 커뮤니티 전용 환경변수 (선택). 비워두면 전역 설정을 상속한다.\n"
-                "# 웹 채팅이 기본 — 아래는 Discord 어댑터를 쓸 때만 필요하다.\n\n"
-                "# (선택) Discord 봇 토큰 — 채우면 Discord 어댑터가 활성화된다.\n"
-                "# DISCORD_BOT_TOKEN=\n\n"
-                "# (선택) 오너 Discord 유저 ID — 권한 체크용\n"
-                "# DISCORD_OWNER_ID=\n"
+                "# 이 커뮤니티만 다른 모델/키를 쓰려면 여기에 override.\n\n"
+                "# GLIMI_LLM_BACKEND=claude_cli\n"
+                "# ANTHROPIC_API_KEY=sk-ant-...\n"
             )
 
     # 기본 프로필 이미지 복사

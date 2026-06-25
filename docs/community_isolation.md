@@ -6,7 +6,6 @@
 - `community.community._current_id` (env `GLIMI_COMMUNITY`)
 - `community.db.DB_PATH` cached
 - `community.core.profile._profile_cache` / `_user_profile_cache` / `_user_summary_cache`
-- `community.bot._webhook_cache`
 - `community.core.memory._extract_queue` (background worker)
 - `community.core.runtime.AgentRuntime._active_agents` / `_pending_tool_results`
 
@@ -24,7 +23,7 @@
 
 ## demo 커뮤니티 쇼케이스 (`scripts/seed_demo_mockup.py`)
 
-`http://localhost:8765/?community=demo` — 디스코드 없이 **DB 만** 구성 (봇 불필요).
+`http://localhost:8765/?community=demo` — web-first, **DB 만** 구성 (토큰 불필요).
 
 **구성:**
 - 오너 "빈이" + 에이전트 9명 (유나 mgr, 하나 creator, 페르소나 7 — 전원 여자)

@@ -388,8 +388,8 @@
       <h3>현재 상태 (May 2026)</h3>
       <ul>
         <li><span class="badge tag">전환 중</span> <strong>피벗 진행 중</strong>: 사업화 → OSS career capital 방향. <code>analysis/pivot_subagent_review.md</code> 참조 (gitignored, 메인테이너만 접근)</li>
-        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어 (<code>community/core/*</code>, <code>glimi/llm/*</code>) 를 <code>glimi/</code> 패키지로 분리 — Discord/DB 의존 0, standalone wheel 빌드. <code>pip install glimi</code> 는 PyPI 공개(0.1.0) 예정, 그전엔 소스 설치</li>
-        <li><span class="badge do">활성</span> <strong>Community 풀-스택 작동</strong>: 웹 우선 — 웹 채팅 + 대시보드 + 멀티 커뮤니티 (<code>./run.sh</code>). Discord 는 어댑터(과도기)</li>
+        <li><span class="badge tag">완료</span> <strong>커널 추출</strong>: 도메인 무관 코어 (<code>community/core/*</code>, <code>glimi/llm/*</code>) 를 <code>glimi/</code> 패키지로 분리 — 채팅 SDK/DB 의존 0, standalone wheel 빌드. <code>pip install glimi</code> 는 PyPI 공개(0.1.0) 예정, 그전엔 소스 설치</li>
+        <li><span class="badge do">활성</span> <strong>Community 풀-스택 작동</strong>: 웹 우선 (<code>GLIMI_TRANSPORT=web</code>) — 웹 채팅 + 대시보드 + 멀티 커뮤니티 (<code>./run.sh</code>). 라이브 트랜스포트는 웹 어댑터 (<code>community/adapters/web/</code>)</li>
       </ul>
     </div>
   </section>
@@ -542,7 +542,7 @@ Retrieval scoring:
 
     <h3>현재 구조 (June 2026)</h3>
     <pre><code>Glimi/
-├── glimi/                      <span style="color:var(--accent-green)"># ⭐ Glimi Core 커널 (pip install glimi · Discord/DB 의존 0)</span>
+├── glimi/                      <span style="color:var(--accent-green)"># ⭐ Glimi Core 커널 (pip install glimi · 채팅 SDK/DB 의존 0)</span>
 │   ├── runtime/                <span style="color:var(--muted)"># per-agent model swap</span>
 │   ├── tools/                  <span style="color:var(--muted)"># &lt;tools&gt; protocol</span>
 │   ├── memory/                 <span style="color:var(--muted)"># L0–L5 + facts + relationship</span>
@@ -554,17 +554,17 @@ Retrieval scoring:
 │   ├── core/                   <span style="color:var(--muted)"># 앱측 runtime/memory wiring (커널 re-export + DI)</span>
 │   │   ├── prompts/            <span style="color:var(--muted)"># en/ + ko/ overlay, locale.py, model.py</span>
 │   │   ├── runtime.py          <span style="color:var(--muted)"># 커널에 KernelStore 등 주입 + API re-export</span>
-│   │   ├── sync.py             <span style="color:var(--muted)"># Discord ↔ DB 동기화 (어댑터 책임)</span>
+│   │   ├── channel_adapter.py  <span style="color:var(--muted)"># ChannelAdapter Protocol (transport 중립 seam)</span>
+│   │   ├── mgr_actions.py      <span style="color:var(--muted)"># 매니저 도구 핸들러 (플랫폼 중립)</span>
 │   │   └── ...
 │   ├── adapters/               <span style="color:var(--muted)"># SqliteKernelStore + profile/observer 어댑터</span>
-│   ├── bot/                    <span style="color:var(--muted)"># Discord 어댑터</span>
-│   ├── platform/               <span style="color:var(--muted)"># FastAPI + 대시보드</span>
+│   │   └── web/                <span style="color:var(--muted)"># 라이브 웹 어댑터 (channels.py = 채널 어댑터)</span>
+│   ├── platform/               <span style="color:var(--muted)"># FastAPI + 대시보드 + web_runtime.py (per-community)</span>
 │   ├── scenes/                 <span style="color:var(--muted)"># tutorial 등 (Community 도메인)</span>
 │   ├── supervisors/            <span style="color:var(--muted)"># cross-scene 감시자</span>
 │   ├── achievements/           <span style="color:var(--muted)"># Community UX 메타</span>
 │   ├── tools/                  <span style="color:var(--muted)"># CLI · dev_runner · migrate</span>
-│   ├── glimi_imagegen/         <span style="color:var(--muted)"># LoRA 초상화 (opt-in)</span>
-│   └── tui/                    <span style="color:var(--muted)"># legacy wizard</span>
+│   └── glimi_imagegen/         <span style="color:var(--muted)"># LoRA 초상화 (opt-in)</span>
 ├── docs/
 ├── tests/
 ├── communities/                <span style="color:var(--muted)"># per-community SQLite (.gitignored)</span>
@@ -646,16 +646,16 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
         <ul>
           <li>새 기능은 "이 로직을 Telegram·웹챗 어댑터에서 재사용 가능한가?" 통과 시 Core 자격</li>
           <li>플랫폼 중립 타입만 사용 (<code>str</code>, <code>int</code>, dataclass)</li>
-          <li>Discord 코드는 <code>community/bot/</code> 또는 이후 <code>apps/community/</code> 내</li>
+          <li>트랜스포트 코드는 <code>community/adapters/web/</code> (라이브 웹 어댑터) 같은 어댑터 레이어 내</li>
         </ul>
       </div>
       <div class="col dont">
         <h4>✗ Don't</h4>
         <ul>
-          <li><code>community/core/*</code> 에서 <code>import discord</code> 금지</li>
-          <li>Discord 타입 (<code>Webhook</code>, <code>TextChannel</code>, <code>guild</code>) 이 코어 시그니처에 새지 않게</li>
-          <li><code>community/core/prompts/</code> → <code>community/bot/</code> import 금지</li>
-          <li>예외: <code>community/core/sync.py</code> 는 임시로 discord 허용 (어댑터 책임, 추후 이동)</li>
+          <li><code>community/core/*</code> 에서 특정 채팅 SDK import 금지 (transport 중립)</li>
+          <li>채팅 SDK 타입이 코어 함수 시그니처에 새지 않게</li>
+          <li><code>community/core/prompts/</code> → 어댑터 레이어 import 금지</li>
+          <li>새 트랜스포트는 <code>ChannelAdapter</code> Protocol (<code>community/core/channel_adapter.py</code>) + <code>Outbox</code> seam 에 plug-in</li>
         </ul>
       </div>
     </div>
@@ -756,12 +756,12 @@ docs: Glimi umbrella 리브랜딩 (Core + Community) + LICENSE AGPL-3.0</code></
       <div class="entry hard">
         <div class="label">고급 · hard</div>
         <h4>커널 unit 테스트</h4>
-        <p>커널 추출 완료 (<code>glimi/</code> 최상위, Discord/DB 의존 없음). 다음: standalone 커널 커버리지+PyPI 0.1.0 준비. 메인테이너와 사전 동기화 권장.</p>
+        <p>커널 추출 완료 (<code>glimi/</code> 최상위, 채팅 SDK/DB 의존 없음). 다음: standalone 커널 커버리지+PyPI 0.1.0 준비. 메인테이너와 사전 동기화 권장.</p>
       </div>
       <div class="entry hard">
         <div class="label">고급 · hard</div>
-        <h4>비-Discord 어댑터</h4>
-        <p>Telegram·Slack·web-chat 어댑터. <code>community/adapters/</code> 신설. Core 인터페이스 정립이 핵심.</p>
+        <h4>새 트랜스포트 어댑터</h4>
+        <p>Telegram·Slack 어댑터. 라이브 웹 어댑터(<code>community/adapters/web/</code>)와 같은 <code>ChannelAdapter</code> + <code>Outbox</code> seam 에 plug-in. Core 인터페이스 재사용이 핵심.</p>
       </div>
       <div class="entry hard">
         <div class="label">고급 · hard</div>

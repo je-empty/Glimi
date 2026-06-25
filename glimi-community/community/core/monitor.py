@@ -55,9 +55,8 @@ def _ps_has(pattern: str) -> bool:
 def _bot_alive_for_current_community() -> bool:
     """현재 active 커뮤니티의 봇이 살아있는지 판정.
 
-    `ps ax` 로 discord_bot 프로세스 전체 검사는 다른 커뮤니티 봇까지 잡아
-    다른 커뮤니티 조회 시 오탐이 발생 → 현재 커뮤니티의 system.log mtime
-    기준으로 판정 (log_writer가 주기적으로 씀 → 활성 봇은 mtime이 120s 이내).
+    process 전체 검사는 다른 커뮤니티 런타임까지 잡아 오탐이 발생 → 현재 커뮤니티의
+    system.log mtime 기준으로 판정 (log_writer가 주기적으로 씀 → 활성 런타임은 mtime이 120s 이내).
 
     대시보드가 "Stop Server" 로 봇을 죽였을 때 log mtime 이 아직 fresh 해서
     120초간 Running 으로 남는 문제 → stop marker 파일 (.bot-stopped) 을 확인:
@@ -122,7 +121,6 @@ def get_meta_snapshot() -> dict:
         "yuna_greeted": "",
         "active_user_id": "",
         "user_name": "",
-        "discord_owner_id": "",
     }
     try:
         conn = db.get_conn()

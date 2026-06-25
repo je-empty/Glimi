@@ -27,18 +27,17 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 이 repo 가 개인 머신에서 **다른 서비스와 한 호스트를 공유하며 실서비스로 운영**되는 경우(공유 ollama/메모리/제어 레이어),
 그 계약·조율 규약은 gitignore 된 **`CLAUDE.local.md`** 에 있다 — 있으면 반드시 따른다 (직접 launchd/포트 만지지 말고 `serverctl` 경유, 공유자원 변경은 조율 로그에 기록). 외부 기여자/CI 와 무관(로컬 전용).
 
-## 🔌 아키텍처 원칙 — Discord = 어댑터
-**최종 목표는 웹 자체 채팅 + 앱. 디스코드는 현재 채팅 UI 직접 구현 공수 때문에 쓰는 임시 출구.**
+## 🔌 아키텍처 원칙 — transport = 어댑터, 웹이 정본
+**웹 채팅이 라이브·정본 transport (`GLIMI_TRANSPORT=web`). 코어는 transport 를 모른다 — 플랫폼 중립 타입만 사용.**
 
-- **코어 로직** (에이전트 두뇌·메모리·감정·씬·도구 실행) 은 Discord 를 몰라야 함. 플랫폼 중립 타입만 사용
-- **Discord 는 "출구" 레이어** — `community/bot/` = Discord 어댑터. 나중에 `community/adapters/telegram/`, `community/adapters/web_chat/` 이 붙을 자리
-- **새 기능 설계 질문**: "이 로직을 Telegram·웹채팅에서 재사용 가능한가?" NO 면 잘못된 레이어
-- **금지**: `community/core/*` 에서 `import discord` / `Webhook`·`TextChannel`·`guild` 같은 Discord 타입이 코어 시그니처에 새는 것
+- **코어 로직** (에이전트 두뇌·메모리·감정·씬·도구 실행) 은 어떤 transport 도 몰라야 함. 플랫폼 중립 타입만 사용
+- **transport = 어댑터 레이어** — `community/adapters/web/` = 웹 어댑터(라이브). 같은 자리에 `community/adapters/telegram/` 등이 붙는다. 모든 어댑터는 `community/core/channel_adapter.py` 의 `ChannelAdapter` 프로토콜을 구현
+- **새 기능 설계 질문**: "이 로직을 다른 transport(텔레그램 등)에서 재사용 가능한가?" NO 면 잘못된 레이어
+- **금지**: `community/core/*` 에서 특정 채팅 SDK 타입(`Webhook`·`TextChannel`·`guild` 류) 이 코어 시그니처에 새는 것
 - **금지**: 코어 (`community/core/`·`community/llm/`) 에 특정 커뮤니티 콘텐츠 하드코딩 — 캐릭터명·실존 아티스트/IP·특정 언어 문구는 커뮤니티 데이터/설정에서 로드. 코어의 예시 텍스트는 가상·중립으로 ("내 커뮤니티에서 잘 돌게" 하는 수정은 데이터 레이어로)
-- **허용 (과도기)**: `community/core/sync.py` 같은 "Discord↔DB 동기화" 는 discord import OK — 어댑터 책임. 추후 `community/adapters/discord/sync.py` 로 이동
-- **추상화 타깃**: `outbox.send(channel_id, speaker, text, ...)` 추상 인터페이스. 디스코드 webhook / 텔레그램 API / 웹 WebSocket 이 각자 구현
+- **추상화 타깃**: `outbox.send(channel_id, speaker, text, ...)` 추상 인터페이스 (`glimi-core/glimi/transport.py`). 웹 WebSocket / 텔레그램 API 가 각자 구현
 
-현황 + 분리 공수는 **`analysis/platform_decoupling_review.md`** 참조.
+**이력**: Discord 가 첫 부트스트랩 어댑터로 이 transport seam 을 검증했고, 웹 패리티 달성 후 제거됨(2026-06-25). 자산은 seam(transport / `ChannelAdapter` / Outbox) 자체 — Discord 는 그 첫 인스턴스였을 뿐. 새 transport 는 같은 seam 에 꽂는다.
 
 ## 📑 문서 참조 맵
 - `docs/architecture.md` — 디렉토리 구조, 핵심 모듈, DB 스키마, `<tools>` 프로토콜, 채널 구조, ID 체계
@@ -59,7 +58,7 @@ Glimi = 살아있는 멀티 에이전트 하네스 (Glimi Core, 라이브러리)
 - **언어**: 영어 정본. 한국 특화 (ㅇㅇ/ㅋㅋ/카톡/호칭) = `community/core/prompts/locale.py` helper 로 주입. 구조적으로 다르면 `ko/{module}.py` override
 - **모델 dialect**: `<tools>` / `<call>` 같은 syntax 하드코딩 금지. `community.core.prompts.model.tool_call_syntax_hint()` helper 호출
 - **레거시 금지**: `[CMD:...]` / `[ACTION:...]` / `[QUERY:...]` 절대 쓰지 말 것 (전수 제거됨, 커밋 756f3b6)
-- **decoupling**: `community/core/*` 에서 `import discord` 금지. `community/core/prompts/` 에서 `community/bot/` import 금지
+- **decoupling**: `community/core/*` 에서 특정 채팅 SDK import 금지(transport 중립). `community/core/prompts/` 에서 `community/adapters/*` import 금지
 - 상세 + 체크리스트는 `docs/prompt_development.md` 참조
 
 ## 🪶 문서화 원칙 (CLAUDE.md 용량 관리)
