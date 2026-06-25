@@ -88,7 +88,7 @@
   </a>
   {% if brand_sub %}<span class="sub">{{ brand_sub }}</span>{% endif %}
   <a class="lang-link" href="?lang={{ 'ko' if EN else 'en' }}">{{ '한국어' if EN else 'English' }}</a>
-  <a class="login-link" href="/login">{{ 'Log in' if EN else '로그인' }}</a>
+  {% if not hide_login %}<a class="login-link" href="/login">{{ 'Log in' if EN else '로그인' }}</a>{% endif %}
 </div>
 {% if lede %}<p class="dl-lede">{{ lede }}</p>{% endif %}
 

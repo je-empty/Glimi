@@ -166,6 +166,8 @@ _USER_BACKEND = (os.environ.get("GLIMI_LLM_BACKEND") or "echo").strip() or "echo
 # create form is hidden, the create endpoint 403s, and persisted user workspaces are
 # not restored. Used by the owner's public showcase so visitors can't spin up workspaces.
 _DEMO_ONLY = (os.environ.get("GLIMI_DEMO_ONLY") or "").strip().lower() not in ("", "0", "false", "no")
+# 공개 랜딩 모드 — 공개 데모 홈에 로그인 버튼 숨김 (오너는 CF 인증 경유). 기본 OFF.
+_PUBLIC_LANDING = (os.environ.get("GLIMI_PUBLIC_LANDING") or "").strip().lower() not in ("", "0", "false", "no")
 
 # Demo identities. Two entries are built from the SAME seeded launch team
 # (``demo.build``):
@@ -1130,6 +1132,7 @@ def create_app(registry: Optional[WorkspaceRegistry] = None,
                           "있어요. 로그인도 필요 없어요."),
             "items": items,
             "create": create,
+            "hide_login": _PUBLIC_LANDING,
         }
         resp = _TEMPLATES.TemplateResponse(request, "_demo_list.html", ctx)
         resp.headers["Cache-Control"] = "no-store"

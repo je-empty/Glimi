@@ -1,8 +1,14 @@
 """HTML 페이지 라우터 — 로그인 / 홈 (커뮤니티 리스트) / 커뮤니티 대시보드."""
+import os
+
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from community.community import is_read_only, list_communities
+
+# 공개 랜딩 모드 — 외부 공개 데모(미니)에선 공개 홈에 로그인 버튼을 노출하지 않는다.
+# 오너는 CF 인증 경유 admin 으로, 일반 방문자는 read-only 데모만. 기본값 OFF(자가호스트는 로그인 노출).
+_PUBLIC_LANDING = (os.environ.get("GLIMI_PUBLIC_LANDING") or "").strip().lower() not in ("", "0", "false", "no")
 
 from .. import accounts, setup as setup_mod, templates
 from ..auth import get_current_user, public_readonly_user, require_admin, require_user
@@ -57,6 +63,7 @@ async def home(request: Request):
                      else "서로 대화하고, 기억하고, 관계를 쌓아가는 친구들 — 아래 데모에서 직접 만나보세요."),
             "items": items,
             "create": None,
+            "hide_login": _PUBLIC_LANDING,
         }
         return templates.env.TemplateResponse(request, "_demo_list.html", ctx)
 
