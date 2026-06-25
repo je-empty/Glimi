@@ -9,7 +9,7 @@
 휘발성 in-memory dict — 재시작 시 잊혀짐 (튜토리얼 후 set_profile_image 까지 보통 1-2 분
 이내라 영속 저장 불필요).
 
-플랫폼 중립 (discord-free). 구 위치 community/bot/profile_preview.py 는 re-export shim.
+플랫폼 중립 (discord-free).
 """
 from __future__ import annotations
 

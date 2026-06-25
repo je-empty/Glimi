@@ -1,10 +1,9 @@
 """정사각형 센터 크롭 — discord-free 순수 PIL 스파인 (Phase 1.6).
 
-구 `community/bot/commands.py` 의 아바타 처리에 중복돼 있던 1:1 center-crop +
-다운스케일 로직을 한 곳으로 모음. discord 업로드/URL 저장은 commands.py 에 남겨두고
-(Phase 6 에서 함께 삭제), 여기엔 플랫폼 중립 이미지 변환만 둔다.
+아바타 처리에 중복돼 있던 1:1 center-crop + 다운스케일 로직을 한 곳으로 모은
+플랫폼 중립 이미지 변환 스파인. (업로드/URL 저장 같은 전송 측 처리는 어댑터 책임.)
 
-로직은 commands.py 의 두 크롭 블록과 동일:
+로직:
   open → RGBA 변환 → w≠h 면 짧은 쪽 기준 center-crop → size 초과 시 LANCZOS 리사이즈
   → PNG 저장.
 """

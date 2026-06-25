@@ -9,8 +9,8 @@ Wires the pure kernel engine (``glimi.conversation``) to the Community app:
   ``get_channel_adapter()`` → ``core.mgr_actions.parse_and_execute_actions``),
 - applies the app's maintenance guard.
 
-This is the web home for ``start_conversation`` (the old ``community/bot/
-conversation_bridge.py`` re-exports from here). NO ``import discord``.
+This is the web home for ``start_conversation`` (the former Discord adapter
+re-exported it from here before it was removed). NO ``import discord``.
 
 The pure helpers (stop / list / detect / state) come straight from the kernel
 module — they share the kernel's active-conversation state, so re-exporting them

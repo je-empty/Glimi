@@ -11,14 +11,13 @@ const API_BASE = (typeof document !== 'undefined' && document.body &&
   document.body.getAttribute('data-api-base')) || '';
 // Capability flags — which feature tabs this app exposes. Community = all on
 // (data-caps absent → CAPS null → capOn() true). Workspace injects data-caps to
-// hide sim-only tabs (scenes/achievements/supervisors/sync/events/health/logs).
+// hide sim-only tabs (scenes/achievements/supervisors/events/health/logs).
 let CAPS = null;
 try { CAPS = JSON.parse((document.body && document.body.getAttribute('data-caps')) || 'null'); } catch (e) { CAPS = null; }
 // Capabilities that are OFF by default for EVERY app (including Community, where
-// CAPS is null = everything-on). The Sync tab + all Discord-specific plumbing are
-// hidden unless an app opts in with an explicit `data-caps` of {"sync":true} /
-// {"discord":true}. Backend routes are untouched — this only hides the UI.
-const CAP_DENY_BY_DEFAULT = ['sync', 'discord', 'dbdelete'];
+// CAPS is null = everything-on). Destructive DB-delete affordances are hidden
+// unless an app opts in with an explicit `data-caps` of {"dbdelete":true}.
+const CAP_DENY_BY_DEFAULT = ['dbdelete'];
 function capOn(name) {
   if (CAP_DENY_BY_DEFAULT.includes(name)) return !!(CAPS && CAPS[name] === true);
   return !CAPS || CAPS[name] !== false;
@@ -91,15 +90,12 @@ const I18N_UNUSED_OLD = {
     // Tabs
     tab_overview: 'Overview', tab_agents: 'Agents', tab_channels: 'Channels',
     tab_messages: 'Messages', tab_scenes: 'Scenes', tab_events: 'Events',
-    tab_health: 'Health', tab_sync: 'Sync', tab_dev: 'Dev', tab_usage: 'Usage',
+    tab_health: 'Health', tab_dev: 'Dev', tab_usage: 'Usage',
     tab_supervisors: 'Supervisors', tab_logs: 'Logs',
     // Buttons
     btn_server_start: '▶ 서버 시작',
     btn_server_stop: '⏸ 서버 중단',
     btn_server_restart: '↻ 재시작',
-    btn_scan: '🔍 Scan Discord',
-    btn_sync: '▶ Full Sync',
-    btn_restore: '↻ Restore Messages',
     btn_clear_msgs: '🧹 메시지 전체 삭제 (DB만)',
     btn_delete_ch: '🗑 채널 삭제',
     btn_refresh: '새로고침',
@@ -110,7 +106,6 @@ const I18N_UNUSED_OLD = {
     sec_glimi_resources: 'Glimi Resource Usage',
     sec_system_resources: 'System Resources',
     sec_server_control: 'Server Control',
-    sec_sync_actions: 'Sync Actions',
     sec_trash: 'Trash',
     sec_db_channels: 'DB-registered Channels',
     sec_profile: 'Profile',
@@ -148,19 +143,14 @@ const I18N_UNUSED_OLD = {
     f_emotion: '감정', f_status: '상태', f_model: '모델', f_owner: '오너',
     f_background: '배경',
     f_started: '시작', f_completed: '완료', f_last_active: '마지막 활동',
-    // Sync
-    sync_guard_running: 'ℹ 서버 실행 중 — Sync 버튼 클릭 시 자동으로 서버 중단 → 작업 → 재시작 진행. 취소 버튼 제공됨.',
-    sync_guard_stopped: '○ 서버 오프라인 — 모든 sync 작업 즉시 가능.',
-    sync_hint: 'Discord 서버와 DB 사이 상태를 맞추는 작업. 서버 실행 중이면 자동 중단·작업·재시작.',
     trash_hint: '휴지통 — 채널/메시지 삭제 시 완전 삭제 대신 여기로 옮겨짐. 실수 복구용 안전망.',
     // Confirm dialogs
-    confirm_clear: '#{ch}의 DB 메시지 전체 삭제. Discord 채널은 유지. 진행?',
+    confirm_clear: '#{ch}의 DB 메시지 전체 삭제. 진행?',
     confirm_delete_ch: '채널 #{ch} 완전 삭제. 복구 어려움. 진행?',
     confirm_trash_msg: '이 메시지를 trash로 옮길까? (복구 가능)',
     confirm_empty_trash: 'Trash 전체 비우기. 되돌릴 수 없음. 진행?',
     confirm_stop_server: '커뮤니티 서버 중단?',
     confirm_restart_server: '서버 재시작? (10~20초 소요)',
-    confirm_sync_restart: '{act}를 실행하려면 서버 일시 중단이 필요. 중단 → 실행 → 재시작 자동으로 진행할까?',
   },
   en: {
     offline_title: 'Offline',
@@ -177,17 +167,16 @@ const I18N_UNUSED_OLD = {
     section_active_members: 'Agents', section_recent_conv: 'Recent Conversations',
     tab_overview: 'Overview', tab_agents: 'Agents', tab_channels: 'Channels',
     tab_messages: 'Messages', tab_scenes: 'Scenes', tab_events: 'Events',
-    tab_health: 'Health', tab_sync: 'Sync', tab_dev: 'Dev', tab_usage: 'Usage',
+    tab_health: 'Health', tab_dev: 'Dev', tab_usage: 'Usage',
     tab_supervisors: 'Supervisors', tab_logs: 'Logs',
     btn_server_start: '▶ Start Server', btn_server_stop: '⏸ Stop Server',
     btn_server_restart: '↻ Restart',
-    btn_scan: '🔍 Scan Discord', btn_sync: '▶ Full Sync', btn_restore: '↻ Restore Messages',
     btn_clear_msgs: '🧹 Clear All Messages (DB only)',
     btn_delete_ch: '🗑 Delete Channel',
     btn_refresh: 'Refresh', btn_empty_trash: 'Empty Trash', btn_close: 'Close',
     sec_processes: 'Processes', sec_glimi_resources: 'Glimi Resource Usage',
     sec_system_resources: 'System Resources', sec_server_control: 'Server Control',
-    sec_sync_actions: 'Sync Actions', sec_trash: 'Trash',
+    sec_trash: 'Trash',
     sec_db_channels: 'DB-registered Channels',
     sec_profile: 'Profile', sec_relationships: 'Relationships',
     sec_memory: 'Memory', sec_thinking_logs: 'Thinking Logs',
@@ -208,17 +197,13 @@ const I18N_UNUSED_OLD = {
     f_emotion: 'Emotion', f_status: 'Status', f_model: 'Model', f_owner: 'Owner',
     f_background: 'Background',
     f_started: 'Started', f_completed: 'Completed', f_last_active: 'last active',
-    sync_guard_running: 'ℹ Server is running — clicking a sync button will auto stop server → run → restart. A confirm dialog lets you cancel.',
-    sync_guard_stopped: '○ Server offline — all sync actions available.',
-    sync_hint: 'Synchronize state between Discord and the DB. Server is auto-stopped/restarted as needed.',
     trash_hint: 'Trash — deleted channels/messages go here first. Safety net for accidental deletion.',
-    confirm_clear: 'Clear all messages in #{ch} from DB? Discord channel will be kept.',
+    confirm_clear: 'Clear all messages in #{ch} from DB?',
     confirm_delete_ch: 'Delete channel #{ch} completely? Hard to recover.',
     confirm_trash_msg: 'Move this message to trash? (recoverable)',
     confirm_empty_trash: 'Empty the Trash permanently? This cannot be undone.',
     confirm_stop_server: 'Stop the community server?',
     confirm_restart_server: 'Restart the server? (takes 10-20s)',
-    confirm_sync_restart: 'Running {act} needs a temporary server stop. Auto stop → run → restart. Continue?',
   },
 };
 // (duplicate currentLang/t removed — defined earlier using fetched I18N_CACHE)
@@ -394,21 +379,15 @@ function applySupVisibility() {
 applySupVisibility();
 
 // ==== Capability gating (host apps hide sim-only tabs) ====
-// Community: CAPS null → every tab shown EXCEPT the deny-by-default ones
-// (sync/discord — see CAP_DENY_BY_DEFAULT). A host like Workspace injects
-// data-caps to hide tabs it has no backend for (scenes/achievements/
-// supervisors/events/health/logs); we hide their nav + toggles so the rich
-// dashboard degrades to the workspace-relevant surface. Always runs (no early
-// return on null CAPS) so the Sync tab + Discord controls stay hidden for ALL
-// apps unless explicitly opted in.
+// Community: CAPS null → every tab shown EXCEPT the deny-by-default ones (see
+// CAP_DENY_BY_DEFAULT). A host like Workspace injects data-caps to hide tabs it
+// has no backend for (scenes/achievements/supervisors/events/health/logs); we
+// hide their nav + toggles so the rich dashboard degrades to the
+// workspace-relevant surface. Always runs (no early return on null CAPS).
 function applyCaps() {
   document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
     if (!capOn(btn.dataset.tab)) btn.style.display = 'none';
   });
-  // Discord/sync-specific surfaces inside still-visible views (e.g. the channel
-  // detail modal's destructive buttons, the Sync view body) carry .cap-sync /
-  // .cap-discord so they collapse with the same gate.
-  if (!capOn('sync')) document.getElementById('view-sync')?.style.setProperty('display', 'none');
   {
     // supervisor 토글: cap on 이면 노출, off 면 숨김 (community=caps null→on, workspace 데모만 on).
     const st = document.getElementById('supervisor-toggle');
@@ -1805,340 +1784,8 @@ async function isBotRunning() {
   return !!(item && item.running);
 }
 
-let _syncAbortCtrl = null;
-let _syncInProgress = false;
-
-function openSyncModal(title, cancellable) {
-  document.getElementById('sync-modal').style.display = 'flex';
-  document.getElementById('sync-modal-title').textContent = title;
-  document.getElementById('sync-modal-subtitle').textContent = '다른 탭·버튼 이용 불가';
-  document.getElementById('sync-modal-spinner').style.display = 'block';
-  document.getElementById('sync-modal-cancel').style.display = cancellable ? 'inline-block' : 'none';
-  document.getElementById('sync-modal-close').style.display = 'none';
-  document.getElementById('sync-modal-log').textContent = '';
-  _syncInProgress = true;
-}
-
-function finishSyncModal(success) {
-  document.getElementById('sync-modal-spinner').style.display = 'none';
-  document.getElementById('sync-modal-cancel').style.display = 'none';
-  document.getElementById('sync-modal-close').style.display = 'inline-block';
-  document.getElementById('sync-modal-subtitle').textContent = success ? '완료 ✓' : '중단됨';
-  _syncInProgress = false;
-}
-
-function closeSyncModal() {
-  if (_syncInProgress) return;  // 진행 중엔 강제 닫기 금지
-  document.getElementById('sync-modal').style.display = 'none';
-}
-
-function cancelSyncAction() {
-  if (_syncAbortCtrl) {
-    _syncAbortCtrl.abort();
-    appendSyncLog('\n⏸ 취소 요청됨...');
-  }
-}
-
-function appendSyncLog(s) {
-  const log = document.getElementById('sync-modal-log');
-  log.textContent += s + '\n';
-  log.scrollTop = log.scrollHeight;
-}
-
-// Scan 결과 + 선택 상태 — 탭 재렌더에도 살아남음
-let _lastScanResult = null;   // {counts, db_counts, total, channels_scanned}
-let _syncSelectedChannels = new Set();
-
-// 메시지 drift 무시 채널 (백엔드 actions.py 의 MSG_SYNC_EXCLUDED 와 일치).
-// 채널 존재 여부 (missing/orphan) 는 그대로 체크 — drift 만 스킵.
-const MSG_SYNC_EXCLUDED = new Set(['mgr-system-log']);
-
-function _chDiffInfo(dbCount, dcCount) {
-  const diff = dbCount - dcCount;
-  if (diff > 0) return { cls: 'diff-up', label: `⬆ ${diff}건 Discord 누락 → 복원` };
-  if (diff < 0) return { cls: 'diff-down', label: `⬇ ${-diff}건 Discord 초과 → 삭제` };
-  return { cls: 'diff-ok', label: '✓ 동기화됨' };
-}
-
-function renderScanTable() {
-  const host = document.getElementById('scan-result');
-  if (!host) return;
-  if (!_lastScanResult) {
-    host.innerHTML = '';
-    return;
-  }
-  const dc = _lastScanResult.counts || {};
-  const dbC = _lastScanResult.db_counts || {};
-  const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
-  // 같은 tolerance 를 backend _analyze_damage 와 일치시킴 — startup prep 의 damage 판정과
-  // sync 탭의 "필요" 판정이 같도록. 절대 ≤5 AND 상대 ≤5% drift 는 split mismatch 등 비파괴.
-  const TOL_ABS = 5;
-  const TOL_REL = 0.05;
-  const isSignificant = (db, dcCount) => {
-    const a = Math.abs(db - dcCount);
-    if (a === 0) return false;
-    const denom = Math.max(db, dcCount, 1);
-    return a > TOL_ABS && (a / denom) > TOL_REL;
-  };
-  // MSG_SYNC_EXCLUDED 채널은 테이블엔 보이지만 체크박스 비활성 + 딤처리 — 존재는 알리되
-  // 유저가 싱크 대상으로 실수 선택 못하게.
-  const rows = [...allChs].map(ch => {
-    const dbCount = dbC[ch] || 0;
-    const dcCount = dc[ch] || 0;
-    const diff = dbCount - dcCount;
-    return {
-      ch,
-      db: dbCount,
-      dc: dcCount,
-      diff,
-      needsSync: !MSG_SYNC_EXCLUDED.has(ch) && isSignificant(dbCount, dcCount),
-      isMinor: !MSG_SYNC_EXCLUDED.has(ch) && diff !== 0 && !isSignificant(dbCount, dcCount),
-      excluded: MSG_SYNC_EXCLUDED.has(ch),
-    };
-  });
-  // 제외 채널은 가장 아래로, 나머지는 needsSync 우선 → minor drift → diff 큰 순
-  rows.sort((a, b) => {
-    if (a.excluded !== b.excluded) return a.excluded ? 1 : -1;
-    const needA = a.needsSync ? 0 : (a.isMinor ? 1 : 2);
-    const needB = b.needsSync ? 0 : (b.isMinor ? 1 : 2);
-    if (needA !== needB) return needA - needB;
-    return Math.abs(b.diff) - Math.abs(a.diff);
-  });
-
-  // 집계는 sync 대상 (제외 채널 아닌 것) 기준
-  const syncable = rows.filter(r => !r.excluded);
-  const totalDB = syncable.reduce((s, r) => s + r.db, 0);
-  const totalDC = syncable.reduce((s, r) => s + r.dc, 0);
-  const needUp = syncable.filter(r => r.needsSync && r.diff > 0).reduce((s, r) => s + r.diff, 0);
-  const needDown = syncable.filter(r => r.needsSync && r.diff < 0).reduce((s, r) => s + (-r.diff), 0);
-  const syncedCh = syncable.filter(r => !r.needsSync).length;  // minor 도 동기화됨으로 카운트
-  const needCh = syncable.length - syncedCh;
-
-  const allSelected = needCh > 0 && syncable.filter(r => r.needsSync).every(r => _syncSelectedChannels.has(r.ch));
-
-  host.innerHTML = `
-    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 14px;background:var(--panel);border:1px solid var(--border-soft);border-radius:8px;margin-bottom:10px;font-size:12px">
-      <div><span style="color:var(--text-dim)">DB:</span> <b>${totalDB.toLocaleString()}</b></div>
-      <div><span style="color:var(--text-dim)">Discord:</span> <b>${totalDC.toLocaleString()}</b></div>
-      ${needUp > 0 ? `<div style="color:var(--warn)">⬆ ${needUp.toLocaleString()}건 복원 예정</div>` : ''}
-      ${needDown > 0 ? `<div style="color:var(--err)">⬇ ${needDown.toLocaleString()}건 삭제 예정</div>` : ''}
-      ${(needUp === 0 && needDown === 0) ? '<div style="color:var(--ok)">✓ 완전 동기화 상태</div>' : ''}
-      <div style="flex:1"></div>
-      <div style="color:var(--text-dim)">${syncedCh}/${syncable.length} 동기화됨</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
-        <input type="checkbox" id="scan-toggle-all" ${allSelected ? 'checked' : ''} onchange="scanToggleAll(this.checked)">
-        <b>싱크 필요한 ${needCh}개 전체 선택</b>
-      </label>
-      <div style="flex:1"></div>
-      <div style="color:var(--text-dim);font-size:11.5px">
-        선택: <b id="scan-selected-count">${_syncSelectedChannels.size}</b>개
-      </div>
-      <button class="act-btn success" onclick="runSyncWithSelection()" ${_syncSelectedChannels.size === 0 ? 'disabled' : ''}>
-        ▶ 선택한 ${_syncSelectedChannels.size}개 채널 싱크
-      </button>
-    </div>
-    <div class="modal-table-wrap" style="max-height:360px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:8px">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead style="background:var(--panel-2);position:sticky;top:0">
-          <tr>
-            <th style="text-align:left;padding:8px 10px;font-weight:600;width:34px"></th>
-            <th style="text-align:left;padding:8px 10px;font-weight:600">채널</th>
-            <th style="text-align:right;padding:8px 10px;font-weight:600;width:70px">DB</th>
-            <th style="text-align:right;padding:8px 10px;font-weight:600;width:70px">Discord</th>
-            <th style="text-align:left;padding:8px 14px;font-weight:600">상태</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => {
-            const info = _chDiffInfo(r.db, r.dc);
-            const checked = _syncSelectedChannels.has(r.ch);
-            // 제외 채널은 무조건 비활성 + 딤처리. 동기화된 채널도 체크 비활성.
-            // tolerance 안 인 minor drift 도 disabled — sync 필요 X 로 표시.
-            // 그래도 사용자가 명시 sync 원하면 dim 행 풀고 수동 체크 가능 (체크박스만 enabled).
-            const disabled = r.excluded || (!r.needsSync && !r.isMinor);
-            let statusLabel;
-            let color;
-            if (r.excluded) {
-              statusLabel = '— sync 제외 (로그 채널)';
-              color = 'var(--text-dim)';
-            } else if (r.needsSync) {
-              statusLabel = info.label;
-              color = r.diff > 0 ? 'var(--warn)' : 'var(--err)';
-            } else if (r.isMinor) {
-              statusLabel = `✓ 동기화됨 (작은 drift ${Math.abs(r.diff)}건 — split mismatch 등 비파괴)`;
-              color = 'var(--text-dim)';
-            } else {
-              statusLabel = info.label;
-              color = 'var(--text-dim)';
-            }
-            const rowStyle = r.excluded ? 'opacity:0.5' : '';
-            return `
-              <tr style="border-top:1px solid var(--border-soft);${rowStyle}">
-                <td style="padding:6px 10px">
-                  <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
-                    ${r.excluded ? `title="mgr-system-log 은 런타임 로그 채널이라 메시지 동기화 제외"` : ''}
-                    onchange="scanToggleChannel('${esc(r.ch)}', this.checked)">
-                </td>
-                <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:11.5px">#${esc(r.ch)}</td>
-                <td style="padding:6px 10px;text-align:right;color:var(--text-dim)">${r.db}</td>
-                <td style="padding:6px 10px;text-align:right;color:var(--text-dim)">${r.dc}</td>
-                <td style="padding:6px 14px;color:${color}">${statusLabel}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function scanToggleChannel(ch, checked) {
-  if (checked) _syncSelectedChannels.add(ch);
-  else _syncSelectedChannels.delete(ch);
-  renderScanTable();
-}
-
-function scanToggleAll(checked) {
-  if (!_lastScanResult) return;
-  const dc = _lastScanResult.counts || {};
-  const dbC = _lastScanResult.db_counts || {};
-  const allChs = new Set([...Object.keys(dc), ...Object.keys(dbC)]);
-  if (checked) {
-    for (const ch of allChs) {
-      if (MSG_SYNC_EXCLUDED.has(ch)) continue;
-      if ((dbC[ch] || 0) !== (dc[ch] || 0)) _syncSelectedChannels.add(ch);
-    }
-  } else {
-    _syncSelectedChannels.clear();
-  }
-  renderScanTable();
-}
-
-function runSyncWithSelection() {
-  if (_syncSelectedChannels.size === 0) { toast('싱크할 채널을 선택해', 'warn'); return; }
-  runSyncAction('sync', { channels: [..._syncSelectedChannels] });
-}
-
-async function runSyncAction(action, extraBody) {
-  if (_syncInProgress) { toast('이미 sync 작업 중', 'warn'); return; }
-  const endpoints = {
-    scan: '/api/action/scan_discord',
-    sync: '/api/action/run_sync',
-    arrange: '/api/action/arrange_channels',
-    restore: '/api/action/restore',
-  };
-  const labels = { scan: 'Scan Discord', sync: 'Full Sync', arrange: '채널 순서 정렬', restore: 'Restore Messages' };
-  const cancellable = (action === 'scan' || action === 'arrange');
-  openSyncModal(labels[action], cancellable);
-  const appendOut = appendSyncLog;
-  _syncAbortCtrl = new AbortController();
-
-  const running = await isBotRunning();
-  let restartAfter = false;
-
-  if (running) {
-    if (!confirm(`${labels[action]}를 실행하려면 서버 일시 중단이 필요. 중단 → 실행 → 재시작 자동으로 진행할까?`)) {
-      appendOut('❌ 취소됨');
-      finishSyncModal(false);
-      return;
-    }
-    restartAfter = true;
-    appendOut('⏸ 서버 중단 중...');
-    const stopR = await postJson(q('/api/action/stop_server'), {});
-    if (stopR.error) { appendOut(`❌ 중단 실패: ${stopR.message || stopR.error}`); toast('중단 실패', 'err'); finishSyncModal(false); return; }
-    appendOut(`✓ 프로세스 ${stopR.count}개 종료`);
-    const stopped = await waitFor(async () => !(await isBotRunning()), 1000, 30);
-    if (!stopped) { appendOut('⚠ 서버가 여전히 running 감지 — 계속 진행'); }
-    appendOut('● 서버 오프라인 확인');
-  }
-
-  appendOut(`▶ ${labels[action]} 실행 중...`);
-  let r;
-  try {
-    const fetchOpts = cancellable ? { signal: _syncAbortCtrl.signal } : {};
-    r = await postJson(q(endpoints[action]), extraBody || {}, fetchOpts);
-  } catch (e) {
-    if (e.name === 'AbortError') {
-      appendOut('⏹ 사용자 취소로 중단됨');
-      toast('취소됨', 'warn');
-      finishSyncModal(false);
-      return;
-    }
-    appendOut(`❌ 요청 오류: ${e.message}`);
-    toast(e.message, 'err');
-    finishSyncModal(false);
-    return;
-  }
-  if (r.error) {
-    appendOut(`❌ ${r.message || r.error}`);
-    toast(r.message || r.error, 'err');
-  } else {
-    appendOut('✓ 완료');
-    // Scan 결과는 global state 에 저장 → 테이블로 렌더
-    if (action === 'scan' && r.result) {
-      _lastScanResult = r.result;
-      // 이전 선택 초기화 후 diff 있는 채널 자동 선택
-      _syncSelectedChannels.clear();
-      const dc = r.result.counts || {};
-      const dbC = r.result.db_counts || {};
-      for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
-        if (MSG_SYNC_EXCLUDED.has(ch)) continue;
-        if ((dbC[ch] || 0) !== (dc[ch] || 0)) _syncSelectedChannels.add(ch);
-      }
-      const totalDiff = Object.keys(dc).length + Object.keys(dbC).length;
-      appendOut(`  스캔 완료: ${r.result.channels_scanned}개 채널 · Discord 총 ${r.result.total}건`);
-      appendOut(`  싱크 필요: ${_syncSelectedChannels.size}개 채널 (체크됨)`);
-      renderScanTable();
-    } else {
-      if (r.logs && r.logs.length) appendOut(r.logs.join('\n'));
-      if (r.result) appendOut(JSON.stringify(r.result, null, 2));
-    }
-    // Sync 완료 후엔 자동 재스캔 → 실제 clean 상태를 `_lastScanResult` 에 저장.
-    // 이전엔 cache 만 무효화 (null) 해서 테이블은 비어있어도 실제 검증 안 한 상태였음.
-    // → 가동 시 overlay 가 fresh scan 하면 재전송 실패 같은 drift 를 새로 찾아내 sync 탭과
-    //   상태가 엇갈려 보이는 문제. 이제 sync 직후 한번 더 scan 해서 실제로 clean 인지 확인.
-    if (action === 'sync') {
-      _syncSelectedChannels.clear();
-      appendOut('\n▶ 싱크 후 재검증 스캔...');
-      try {
-        const vr = await postJson(q('/api/action/scan_discord'), {});
-        if (vr && vr.result) {
-          _lastScanResult = vr.result;
-          const dc = vr.result.counts || {};
-          const dbC = vr.result.db_counts || {};
-          let drift = 0;
-          for (const ch of new Set([...Object.keys(dc), ...Object.keys(dbC)])) {
-            if (MSG_SYNC_EXCLUDED.has(ch)) continue;
-            if ((dbC[ch] || 0) !== (dc[ch] || 0)) drift++;
-          }
-          appendOut(drift === 0 ? '✓ 재검증: drift 없음' : `⚠ 재검증: ${drift}개 채널 여전히 drift`);
-          renderScanTable();
-        } else {
-          _lastScanResult = null;
-          renderScanTable();
-        }
-      } catch (_e) {
-        _lastScanResult = null;
-        renderScanTable();
-      }
-    }
-    toast(`${labels[action]} 완료`, 'ok');
-  }
-
-  if (restartAfter) {
-    appendOut('\n▶ 서버 재시작 중...');
-    const startR = await postJson(q('/api/action/start_server'), {});
-    if (startR.error) { appendOut(`⚠ 재시작 실패: ${startR.message || startR.error}`); toast('재시작 실패 — 수동 기동 필요', 'err', 5000); }
-    else { appendOut('● 서버 재시작 요청됨 (10~20초 후 online)'); toast('서버 재시작 중', 'ok'); }
-  }
-  finishSyncModal(!r.error);
-  tick();
-}
-
 async function doChannelClear(channel) {
-  if (!confirm(`#${channel}의 DB 메시지 전체 삭제. Discord 채널은 유지. 진행?`)) return;
+  if (!confirm(`#${channel}의 DB 메시지 전체 삭제. 진행?`)) return;
   const r = await postJson(q('/api/action/channel_clear'), {channel});
   if (r.error) return toast(r.message || r.error, 'err');
   toast(`#${channel} 메시지 ${r.deleted?.deleted_count || '?'}개 삭제됨`, 'ok');
@@ -2195,8 +1842,8 @@ async function emptyTrash() {
 async function runServerControl(action) {
   const labels = { start: '시작', stop: '중단', restart: '재시작' };
   const endpoints = { start: 'start_server', stop: 'stop_server', restart: 'restart_server' };
-  // Health 탭의 server-log → Sync 탭의 sync-output → 아무것도 없으면 toast 만. DOM 가변성 방어.
-  const out = document.getElementById('health-server-log') || document.getElementById('sync-output');
+  // Health 탭의 server-log 가 있으면 거기에, 없으면 toast 만. DOM 가변성 방어.
+  const out = document.getElementById('health-server-log');
   const appendOut = (s) => { if (out) { out.textContent += s + '\n'; out.scrollTop = out.scrollHeight; } };
   if (action === 'stop' && !confirm('커뮤니티 서버 중단?')) return;
   if (action === 'restart' && !confirm('서버 재시작? (10~20초 소요)')) return;
@@ -3854,57 +3501,10 @@ async function tick() {
     // Server Control 은 플랫폼 상단 바로 이관됨 — Health 탭에는 server-log 없음
   }
 
-  // Sync tab — Discord↔DB sync UI. Hidden by default for every app (capOn('sync')
-  // is false unless an app opts in via data-caps); the backend routes stay live.
-  // Skip the whole render when the tab is gated off so no Discord chrome paints.
-  if (capOn('sync') && document.getElementById('sync-full')) {
-  // sync-output 의 기존 로그 보존 (재렌더 시 사용자가 방금 본 sync 진행 안 지워지게).
-  const serverRunning = b.bot_alive;
-  const guardNote = serverRunning
-    ? `<div style="padding:10px 14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--text)">ℹ 서버 실행 중 — Sync 버튼 클릭 시 <b>자동으로 서버 중단 → 작업 → 재시작</b> 진행. 취소 버튼 제공됨.</div>`
-    : `<div style="padding:10px 14px;background:color-mix(in srgb,var(--ok) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--ok) 25%,transparent);border-radius:10px;margin-bottom:16px;font-size:12px;color:var(--ok)">○ 서버 오프라인 — 모든 sync 작업 즉시 가능.</div>`;
-  const _prevSyncOutput = document.getElementById('sync-output');
-  const _savedSyncLog = _prevSyncOutput ? _prevSyncOutput.textContent : '';
-  document.getElementById('sync-full').innerHTML = `
-    ${guardNote}
-    <div class="detail-section" style="margin-top:0">
-      <h4>Sync Actions</h4>
-      <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
-        Discord 서버와 DB 사이 상태를 맞추는 작업. 서버 실행 중이면 자동 중단·작업·재시작.
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="act-btn primary" onclick="runSyncAction('scan')">🔍 Scan Discord</button>
-        <button class="act-btn success" onclick="runSyncAction('sync')" title="전체 채널 싱크 (스캔 없이)">▶ Full Sync</button>
-        <button class="act-btn" onclick="runSyncAction('arrange')" title="카테고리·채널 순서만 정렬 (빠름)">⇅ 채널 순서 정렬</button>
-        <button class="act-btn" onclick="runSyncAction('restore')">↻ Restore Messages</button>
-      </div>
-      <div id="scan-result" style="margin-bottom:12px"></div>
-      <div id="sync-output" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);background:var(--panel-2);padding:10px;border-radius:8px;min-height:60px;max-height:180px;overflow-y:auto;white-space:pre-wrap"></div>
-    </div>
-    <div class="detail-section">
-      <h4>Trash · <span id="trash-count" style="color:var(--text-faint)">...</span></h4>
-      <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
-        휴지통 — 채널/메시지 삭제 시 완전 삭제 대신 여기로 옮겨짐. 실수 복구용 안전망.
-        <br>Empty Trash 로 영구 삭제, 각 항목별 <b>복구</b> 가능.
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button class="act-btn small" onclick="loadTrash()">새로고침</button>
-        <button class="act-btn small danger" onclick="emptyTrash()">Empty Trash</button>
-      </div>
-      <div id="trash-list"></div>
-    </div>
-    <div class="detail-section">
-      <h4>DB-registered Channels · ${(snap.channels || []).length}</h4>
-      ${renderChannelsGrouped(snap.channels || [])}
-    </div>
-  `;
-  if (_savedSyncLog) {
-    document.getElementById('sync-output').textContent = _savedSyncLog;
-  }
-  // Scan 결과 테이블 복원 (tick 마다 사라지지 않도록)
-  renderScanTable();
-  loadTrash();
-  }  // end capOn('sync') guard — Sync/Discord UI hidden by default
+  // (former Discord↔DB sync tab removed — web chat is the only transport now;
+  //  the scan/sync/arrange/restore endpoints it drove no longer exist. Trash +
+  //  DB-channel listing helpers (loadTrash/emptyTrash/renderChannelsGrouped)
+  //  stay defined and callable for whatever surface re-hosts them.)
 
   // (legacy "Dev" tab 제거됨 — 새 글로벌 admin 페이지 /admin/dev-requests 로 이전)
 

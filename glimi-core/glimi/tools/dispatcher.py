@@ -38,7 +38,7 @@ class ToolContext:
 async def run_single(call: ToolCall, ctx: ToolContext) -> ToolResult:
     """하나의 tool call 실행 + 관측 1행 기록 (choke-point).
 
-    모든 어댑터(Discord 오늘, 웹챗/플랫폼 미래)의 도구 실행이 정확히 이 함수를
+    모든 어댑터(웹챗 등)의 도구 실행이 정확히 이 함수를
     한 번 통과한다. 실행을 _run() 으로 감싸고 그 둘레에서 latency 측정 + tool_calls
     기록 (store 미주입/standalone 이면 no-op). 기록은 절대 실행을 깨지 않는다.
     """
@@ -140,7 +140,7 @@ def _is_coro_callable(fn: Callable) -> bool:
 
 
 async def run_tools(calls: list[ToolCall], ctx: ToolContext) -> list[ToolResult]:
-    """여러 tool call을 순차 실행. 순차 실행이 안전 (DB/discord 동시성)."""
+    """여러 tool call을 순차 실행. 순차 실행이 안전 (DB/전송 동시성)."""
     results: list[ToolResult] = []
     for call in calls:
         r = await run_single(call, ctx)

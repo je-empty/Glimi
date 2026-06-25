@@ -3,10 +3,10 @@
 """Platform-neutral chat transport seam.
 
 These are the types that decouple the kernel chat brain from any concrete
-delivery channel (Discord webhook, web WebSocket, Telegram API, ...). The kernel
+delivery channel (web WebSocket, Telegram API, ...). The kernel
 emits *outbound* turns through an :class:`Outbox` and receives *inbound* turns as
 :class:`InboundMessage` handed to an :class:`Inbox`. Concrete adapters
-(``src/bot`` for Discord, ``src/platform`` for web chat) implement these
+(``community/adapters/web`` for web chat) implement these
 Protocols; the kernel only ever sees the abstract shapes.
 
 Hard rule: this module is stdlib + ``typing`` ONLY. No app imports, no
@@ -28,7 +28,7 @@ class Speaker:
     """Who is producing an outbound turn (an agent persona / mgr / creator).
 
     ``avatar_url`` is optional metadata an adapter may use to render the turn
-    (e.g. a Discord webhook avatar or a web bubble avatar).
+    (e.g. a web chat bubble avatar).
     """
 
     agent_id: str

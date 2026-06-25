@@ -4,7 +4,7 @@
 
 This package holds the reusable kernel that any application (Glimi Community,
 future apps, or your own) builds on. It stays platform/domain-neutral: no
-Discord, no app-specific content, no hardcoded community data.
+transport coupling, no app-specific content, no hardcoded community data.
 
 What's here:
 - ``llm`` — pluggable LLM backends (Claude CLI / Anthropic SDK / Ollama / the
@@ -14,7 +14,7 @@ What's here:
   data store and persona layer only through abstract seams:
   ``KernelStore`` (``store``), ``ProfileProvider`` / ``OwnerContext``
   (``profiles``), and ``KernelObserver`` (``observability``). The kernel imports
-  with **zero** Discord/DB dependency and installs as a standalone wheel.
+  with **zero** transport/DB dependency and installs as a standalone wheel.
 - ``stores`` — a concrete, dependency-free ``InMemoryKernelStore``.
 - ``harness`` — a high-level ``Glimi`` facade that wires everything together.
 

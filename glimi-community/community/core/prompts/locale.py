@@ -30,19 +30,20 @@ def simple_ack_examples() -> str:
 
 # ── Chat platform metaphor ─────────────────────────────────────────────────
 # Used to tell the LLM "write like a chat message, not like email/novel".
-# In Korean communities the reference point is KakaoTalk (카톡); Discord elsewhere.
+# In Korean communities the reference point is KakaoTalk (카톡); a generic
+# messaging app elsewhere.
 
 def chat_platform_name() -> str:
     if _lang() == "ko":
         return "카톡"  # KakaoTalk
-    return "Discord"
+    return "a messaging app"
 
 
 def chat_style_phrase() -> str:
-    """Brief 'chat-style' descriptor — e.g. 'like KakaoTalk' vs 'Discord style'."""
+    """Brief 'chat-style' descriptor — e.g. 'like KakaoTalk' vs 'messaging-app style'."""
     if _lang() == "ko":
         return "카톡처럼 짧은 메시지 여러 개로"
-    return "Discord-style short messages across multiple lines"
+    return "messaging-app style short messages across multiple lines"
 
 
 # ── Group chat term ────────────────────────────────────────────────────────

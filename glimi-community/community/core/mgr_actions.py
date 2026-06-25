@@ -5,12 +5,11 @@ mgr_actions — discord-free manager(유나/하나/세나) action spine.
 
 The neutral half of the old ``community/bot/mgr_system.py``: ``<tools>`` dispatch
 (``parse_and_execute_actions``) + the ``yuna_*`` action implementations, all routed
-through a :class:`community.core.channel_adapter.ChannelAdapter` instead of
-``discord.TextChannel`` / ``discord.Guild``.
+through a :class:`community.core.channel_adapter.ChannelAdapter` instead of any
+transport-specific channel/guild object.
 
-DECOUPLING (CLAUDE.md): **NEVER ``import discord``** here, and never import
-``community.bot.*`` at module level (that package does ``import discord``). The web
-process imports this module discord-free.
+DECOUPLING (CLAUDE.md): **NEVER ``import discord``** here. The web process imports
+this module discord-free.
 
 Signature convention (transport-neutral):
     async def yuna_xxx(channel_name: str, args_str: str, ctx) -> ...
@@ -20,10 +19,9 @@ Signature convention (transport-neutral):
 through ``ctx.channels.ensure_channel`` / ``find_channel`` / ``delete_channel`` /
 ``rename_channel`` / ``set_topic``.
 
-The legacy Discord ``bot/mgr_system.py`` keeps its own ``import discord`` versions
-for the (Phase-6-doomed) Discord transport; ``bot/mgr_system.py`` re-exports
-``parse_and_execute_actions`` / ``_tool_followup_generate`` / ``_sanitize_dm_name``
-from here so existing web/dev_queue callers keep working.
+This module is the canonical home for ``parse_and_execute_actions`` /
+``_tool_followup_generate`` / ``_sanitize_dm_name`` (the former Discord adapter
+re-exported them from here before it was removed).
 """
 from __future__ import annotations
 
@@ -938,8 +936,8 @@ async def yuna_force_agent(channel_name: str, args_str: str, ctx) -> None:
 def create_dev_request(description: str, requested_by: str) -> None:
     """개발 요청 파일 생성 (pending.json). discord-free.
 
-    DEV_DIR 는 active community 의 dev 디렉토리 — bot/__init__ (discord) 를 거치지
-    않고 community.get_community_dir() 로 직접 계산.
+    DEV_DIR 는 active community 의 dev 디렉토리 — community.get_community_dir() 로
+    직접 계산.
     """
     from community import community as _comm
     dev_dir = str(_comm.get_community_dir() / "dev")

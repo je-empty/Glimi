@@ -7,9 +7,9 @@ The neutral spine of the old ``mgr_system._cmd_profile_create`` /
 ``_cmd_profile_delete`` / ``_greet_new_persona`` / ``_apply_sample_profile_image``:
 DB registration + relationship seeding + profile save are 100% discord-free; the
 dm-channel ensure + first-greet + avatar refresh route through a
-:class:`ChannelAdapter` (web no-op for avatar; discord pushes webhook avatar).
+:class:`ChannelAdapter` (web no-op for avatar; other adapters may push their own).
 
-NEVER ``import discord`` / ``community.bot.*`` at module level.
+NEVER ``import discord`` at module level.
 """
 from __future__ import annotations
 
@@ -228,7 +228,7 @@ async def apply_sample_profile_image(name: str, sample_file: str, ctx,
     conn.close()
     log_writer.system(f"✓ 샘플 프로필 이미지 적용: {agent_name} ← {sample_file}")
 
-    # avatar 즉시 갱신 — web no-op (라이브 /api/avatar), discord webhook push.
+    # avatar 즉시 갱신 — web no-op (라이브 /api/avatar); 어댑터별 push 가능.
     try:
         await ctx.channels.refresh_agent_avatar(target["id"])
     except Exception as e:

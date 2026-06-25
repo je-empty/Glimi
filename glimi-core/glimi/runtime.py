@@ -522,7 +522,7 @@ def _is_reasoning_leak(text: str) -> bool:
 
 
 # Claude CLI가 stdout으로 토해내는 에러/상태 메시지 패턴.
-# 이게 agent 응답인 척 DB/Discord에 찍히면 몰입 깨지므로 필터.
+# 이게 agent 응답인 척 DB/채널에 찍히면 몰입 깨지므로 필터.
 _CLAUDE_ERROR_PREFIXES = (
     "you've hit your limit",
     "you have hit your limit",
@@ -572,7 +572,7 @@ def _looks_like_claude_error(text: str) -> bool:
 
 def _report_claude_error(agent_name: str, text: str, source: str):
     """LLM 에러 텍스트 필터링 시 observer 로 system 로그 남김.
-    (플랫폼별 추가 송출 — Discord mgr-system-log 등 — 은 앱의 KernelObserver 구현 책임.)"""
+    (플랫폼별 추가 송출 — 시스템 로그 등 — 은 앱의 KernelObserver 구현 책임.)"""
     snippet = text.strip().replace("\n", " ")[:200]
     msg = f"⚠ LLM 에러 필터 [{agent_name}/{source}]: {snippet}"
     _observer.system(msg)
@@ -1743,7 +1743,7 @@ class AgentRuntime:
         """
         스트리밍 응답 생성 — 메시지가 생성될 때마다 on_message 콜백 호출
 
-        on_message는 동기 함수 (discord_bot이 loop.call_soon_threadsafe로 감쌈)
+        on_message는 동기 함수 (어댑터가 loop.call_soon_threadsafe로 감쌈)
         Returns: 전체 메시지 리스트 (DB 로깅용)
         """
         if agent_id not in self._active_agents:
@@ -1986,8 +1986,8 @@ class AgentRuntime:
             latency_ms=int((_t.monotonic() - _st0) * 1000),
         )
 
-        # DB 로깅은 handlers에서 디스코드 전송 후 처리
-        # (대시보드에 디스코드보다 먼저 보이는 문제 방지)
+        # DB 로깅은 handlers에서 채널 전송 후 처리
+        # (대시보드에 채널보다 먼저 보이는 문제 방지)
 
         return messages
 
@@ -2082,7 +2082,7 @@ class AgentRuntime:
         """CLI 호출 실패/빈 응답 시 fallback. 몰입 보호를 위해 메타 단어 ("Claude Code" 등)
         일절 사용 금지. 자연스러운 "지금 잠깐 바빠서" 식 문구로 대체.
 
-        과거엔 "Claude Code 연결 끊겨있어" 문구가 그대로 Discord 로 나가서 유저가
+        과거엔 "Claude Code 연결 끊겨있어" 문구가 그대로 채널로 나가서 유저가
         persona 의 정체성 메타를 알아차리는 몰입 깨짐 버그.
         """
         name = profile["name"]

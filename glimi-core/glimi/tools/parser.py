@@ -153,7 +153,7 @@ def parse_response(text: str) -> ParsedResponse:
 
 
 def strip_tool_blocks(text: str) -> str:
-    """<tools>...</tools> 완전 제거한 chat 텍스트. Discord 전송용 안전장치."""
+    """<tools>...</tools> 완전 제거한 chat 텍스트. 채널 전송용 안전장치."""
     if not text:
         return ""
     text = _FENCE_WRAPPED_TOOLS.sub(r'\1', text)

@@ -9,14 +9,14 @@ Glimi and chats with their AI friends + manager (유나) + creator (하나) — 
 turn, from the START (onboarding) — deciding each round which channel to talk in
 and what to say, **in character as the human owner** (never meta / never "as an AI").
 
-It REUSES the heart of :mod:`tests.e2e.test_user_bot` (the existing autonomous
-owner-driver that role-plays the owner over Discord): its owner PERSONA + the
+It carries over the heart of the former autonomous owner-driver that role-played
+the owner over chat: its owner PERSONA + the
 per-turn decision logic (given the recent transcript, decide the owner's next
 message), the no-meta / no-stage-direction guards, and the onboarding-then-explore
-arc (greet 유나 → ask 하나 for a friend → chat with friends → follow up). The
-difference is the surface: here the owner drives the REAL served web chat over the
-WebSocket instead of Discord, so the decision logic is lifted out of the Discord
-client into two backend-agnostic functions the web harness can call directly:
+arc (greet 유나 → ask 하나 for a friend → chat with friends → follow up). Here the
+owner drives the REAL served web chat over the
+WebSocket, so the decision logic lives in
+two backend-agnostic functions the web harness can call directly:
 
   - :func:`owner_next_turn(state) -> {"channel", "text", "note"}` — one owner turn:
     given a snapshot of the community (channels + recent messages per channel +
@@ -47,8 +47,8 @@ import os
 import re
 from typing import Optional
 
-# ── owner persona (ported from tests.e2e.test_user_bot.PERSONA) ─────────────────
-# The same human owner the Discord driver role-plays, retargeted at the web chat.
+# ── owner persona ───────────────────────────────────────────────────────────────
+# The same human owner the former driver role-played, retargeted at the web chat.
 # A real person chatting with their AI friends + manager — warm, curious, casual
 # 반말, PROACTIVE (keeps the world moving), and NEVER meta. The character-creation
 # constraint (prefer female friends — the avatar bank only has female avatars) and
@@ -101,7 +101,7 @@ Friend you want (when the time comes):
 - Give a vibe and let 하나 fill in name/age/details. A short clear "응 그거 좋아!" when she
   proposes someone is enough — no need to over-spec.
 
-Rules (carryover from the Discord driver):
+Rules (carryover from the former driver):
 - Korean only. Text like a real person on KakaoTalk — SHORT (1-3 sentences).
 - You don't know words like "에이전트", "페르소나", "멤버", "봇", "AI". NEVER use them.
   If someone uses them, you'd just say "그게 뭔데? ㅋㅋ".
@@ -271,7 +271,7 @@ _META_PAREN_RE = re.compile(
 
 
 def _scrub(text: str) -> str:
-    """Strip a self-name prefix + meta stage-direction parens (the Discord driver's
+    """Strip a self-name prefix + meta stage-direction parens (the former driver's
     cleanup), collapse whitespace. Keeps the owner reading like a real person."""
     if not text:
         return ""

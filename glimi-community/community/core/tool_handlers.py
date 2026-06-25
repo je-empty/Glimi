@@ -3,19 +3,16 @@
 """
 Tool Handlers (core) — discord-free tool-protocol handler registry.
 
-The neutral home of the old ``community/bot/tool_handlers.py``: each handler is
+The canonical handler registry: each handler is
 ``async def handler(args: dict, ctx: ToolContext) -> dict | ToolResult`` and routes
 channel I/O through ``ctx.channels`` (a :class:`ChannelAdapter`) +
 ``community.core.mgr_actions`` + ``community.core.dev_agent`` — NEVER ``import
-discord`` and NEVER ``community.bot.*`` at module level.
+discord`` at module level.
 
-Differences vs the legacy bot registry:
+Differences vs the former adapter registry:
 - ``ctx.channel_obj`` / ``ctx.guild`` → ``ctx.channels`` (find/ensure/send/avatar).
-- the ``discord_*`` query handlers (디코*) are DROPPED — no web analog.
+- the ``discord_*`` query handlers (디코*) were DROPPED — no web analog.
 - ``yuna_*`` delegations target ``core.mgr_actions`` (adapter signatures).
-
-The legacy ``bot/tool_handlers.py`` re-exports ``register_all`` from here so the
-(Phase-6-doomed) Discord transport keeps registering the same handler set.
 """
 from __future__ import annotations
 
@@ -412,7 +409,7 @@ async def _h_finish_tutorial(args: dict, ctx: ToolContext):
 # ── agent profile create/delete (delegate; create needs _cmd_profile_create) ─
 
 async def _h_create_agent_profile(args: dict, ctx: ToolContext):
-    # NOTE: _cmd_profile_create (에이전트 활성화 + dm 채널 + greet) 는 discord 본문이 길어
+    # NOTE: _cmd_profile_create (에이전트 활성화 + dm 채널 + greet) 본문이 길어
     # Phase 3 에선 미이식 — web 활성화 경로는 Phase 4 (boot/web_runtime) 에서 채널 어댑터로 연결.
     # 여기선 gender-lock / 중복 검증 + 이벤트 로그까지만 수행하고 활성화는 보류.
     import json as _j
@@ -507,7 +504,7 @@ async def _h_generate_profile_image(args: dict, ctx: ToolContext):
             await channels.send_as_agent(channel_name, caller_agent_id,
                                          f"{name} 그리다가 오류 났어 ㅠㅠ ({type(e).__name__})")
             return
-        # webhook avatar 갱신 → web 에선 no-op (라이브 /api/avatar). discord 는 push.
+        # avatar 갱신 → web 에선 no-op (라이브 /api/avatar); 어댑터별 push 가능.
         await channels.refresh_agent_avatar(agent_id)
         await channels.send_image_as_agent(
             channel_name, caller_agent_id, result["full_path"],
@@ -592,7 +589,7 @@ async def _h_create_agent_with_image(args: dict, ctx: ToolContext):
 
 
 async def _h_approve_request(args: dict, ctx: ToolContext):
-    # NOTE: yuna_approve_action 본문은 discord channel-create 가 많아 Phase 3 미이식.
+    # NOTE: yuna_approve_action 본문은 channel-create 가 많아 Phase 3 미이식.
     # web 승인 경로는 후속 — 여기선 결정만 기록.
     log_writer.system(
         f"[approve_request] #{args['request_id']} → {args['decision']} (web stub)"

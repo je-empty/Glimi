@@ -3,7 +3,7 @@
 // Data flow is PRESERVED from Phase 2: channel list (/chat/channels), history
 // cold-load (/chat/history), a single WebSocket re-connected per selected
 // channel, and frame handling (text/typing/image/interrupted/error/pong). What
-// changed is the RENDER layer: Discord-paradigm grouped rows (consecutive
+// changed is the RENDER layer: grouped message rows (consecutive
 // messages by the same author within a 5-min window collapse to lead + cont
 // rows), the owner's own messages render LEFT like everyone (tagged .me), a
 // 2-tier contenteditable composer with reply-cue + char count + Shift+Enter,
@@ -382,7 +382,7 @@
     return mdBlocks(esc(raw));
   }
 
-  // Channel-mention system (works for Discord <#id> too): a #name in a message is
+  // Channel-mention system: a #name in a message is
   // clickable and switches to that channel — resolved by real key, dm-<name>, or
   // the agent's display name, so #아린 / #dm-아린 / #서유나 all land on the right DM.
   function resolveChannelMention(raw) {
@@ -1314,9 +1314,9 @@
   });
 
   // ==== Live poll ====
-  // The WebSocket only carries messages that flow through THIS web process. The
-  // Discord adapter (and any other transport) writes to the same DB in a separate
-  // process, so those messages never hit the socket. Re-fetch the active channel's
+  // The WebSocket only carries messages that flow through THIS web process. Any
+  // other transport or process writes to the same DB in a separate process, so
+  // those messages never hit the socket. Re-fetch the active channel's
   // tail on an interval and append only unseen ids (dedup via msgIndex; the owner's
   // own optimistic rows are already reconciled to their server id by the WS, so
   // they're skipped). This makes the chat live regardless of who wrote the message.
@@ -1440,7 +1440,7 @@
       if (!q) return true;
       return (c.name || c.channel || '').toLowerCase().indexOf(q) !== -1;
     };
-    // Discord/Slack ordering: group channels (rooms) FIRST, then DMs sorted by
+    // Sidebar ordering: group channels (rooms) FIRST, then DMs sorted by
     // most-recent activity, then the agent-to-agent backchannels ("Between agents"
     // / "에이전트끼리" — ONE user-facing term everywhere). Managers no longer get a
     // separate pinned section — they sort by recency like everyone else (the row

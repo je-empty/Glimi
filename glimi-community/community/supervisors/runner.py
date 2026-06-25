@@ -3,10 +3,10 @@
 """Supervisor registrar — transport-neutral (was ``community/bot/supervisors.py``).
 
 Registers the system supervisors + runs the initial pool sync, and provides the
-idle-nudge entrypoints. The old ``bot/supervisors.py`` resolved a live Discord
-``guild`` (``get_target_guild``) and ticked ``pool.tick(guild=…)``; this version
-uses the :class:`community.core.channel_adapter.ChannelAdapter` from the factory
-so it works for BOTH transports (web runtime + the discord shim call it).
+idle-nudge entrypoints. The former Discord adapter resolved a live ``guild``
+(``get_target_guild``) and ticked ``pool.tick(guild=…)``; this version uses the
+:class:`community.core.channel_adapter.ChannelAdapter` from the factory so it
+works through the transport-neutral seam (the live web runtime drives it).
 
 ``import discord`` is never present here (CLAUDE.md decoupling) — the adapter is
 the only outbound seam.

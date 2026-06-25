@@ -3,7 +3,7 @@
    Token-based ONLY (tokens.css). No hardcoded hex anywhere in this file.
    Light = default; Dark via :root[data-theme="dark"] on <html>. The light/dark
    toggle is the inherited topbar 🌙/☀ button (base.html toggleTheme()).
-   Discord 패러다임: 작성자별로 묶인 전체 너비 행(좌측 정렬), 좌측 채널/사람 레일.
+   레이아웃: 작성자별로 묶인 전체 너비 행(좌측 정렬), 좌측 채널/사람 레일.
    ============================================================ */
 
 /* 풀하이트 채팅 — base.html 의 body 블록을 오버라이드해 .gp-main 을 우회한다.
@@ -371,7 +371,7 @@ body {
 
 /* Chat-feed rows are SCOPED to .chat-shell so the entrance-animation defaults
    (opacity:0 + grid layout) never leak onto the dashboard's GLOBAL `.msg` ledger
-   (Messages / Overview / Sync / agent-detail lists), which would otherwise render
+   (Messages / Overview / agent-detail lists), which would otherwise render
    those rows invisible / mis-laid-out — chat.css loads after dashboard.css, so a
    bare `.msg{opacity:0}` wins on the dashboard. The child/modifier rules below
    stay unscoped (they only match chat-specific children that the ledger lacks). */

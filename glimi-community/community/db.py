@@ -1412,8 +1412,9 @@ def increment_channel_turn(channel: str) -> int:
 # 채널 레지스트리 (플랫폼 중립 — 웹 채널 어댑터 백킹)
 # ══════════════════════════════════════════════════════
 # WebChannelAdapter 가 채널 lifecycle (ensure/find/rename/topic/delete) 을 DB 로
-# 구현하기 위한 net-new 레이어. Discord 는 길드 채널 객체가 정본이지만 웹은 channels
-# 테이블이 정본. set_channel_participants 와 달리 status/current_turn 을 보존한다
+# 구현하기 위한 net-new 레이어. 웹에서는 channels 테이블이 채널의 정본이다
+# (구 어댑터는 외부 채널 객체를 정본으로 봤지만 웹은 DB 정본).
+# set_channel_participants 와 달리 status/current_turn 을 보존한다
 # (INSERT OR REPLACE 가 running 채널 status 를 리셋하던 회귀 차단).
 
 # 삭제 보호 — dm-/mgr- 채널은 오너 핵심 대화선이라 삭제 금지 (CLAUDE.md).
@@ -1722,8 +1723,8 @@ def _migrate_schema():
 
     # conversations 테이블 신규 컬럼 — 답글/스레드 + (예약) 플랫폼 메시지 id.
     # 백필 없음 (NULL = 비스레드, 기존 행 그대로 정상). reply_to/thread_root 는
-    # conversations(id) 를 가리키는 nullable INTEGER. platform_message_id 는 추후
-    # Discord 동기화용 예약 (web-only v1 에서는 항상 NULL).
+    # conversations(id) 를 가리키는 nullable INTEGER. platform_message_id 는
+    # 외부 플랫폼 동기화용 예약 슬롯 (web-only v1 에서는 항상 NULL).
     conv_cols = [r["name"] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()]
     conv_additions = {
         "reply_to": "INTEGER",
@@ -1794,8 +1795,8 @@ def _migrate_schema():
         print("[DB] usage_records.was_blocked 추가")
 
     # channels.topic (기존 라이브 DB) — additive, idempotent. 웹 채널 어댑터의
-    # set_channel_topic / yuna_set_channel_topic (구 Discord channel.topic) 백킹.
-    # 백필 없음 (NULL = 토픽 미설정). 디코는 토픽을 채널 객체에 두지만 웹은 DB 가 정본.
+    # set_channel_topic / yuna_set_channel_topic (구 채널 객체 topic) 백킹.
+    # 백필 없음 (NULL = 토픽 미설정). 웹은 토픽을 DB 가 정본으로 둔다.
     channels_cols = [r["name"] for r in conn.execute("PRAGMA table_info(channels)").fetchall()]
     if "topic" not in channels_cols:
         conn.execute("ALTER TABLE channels ADD COLUMN topic TEXT")

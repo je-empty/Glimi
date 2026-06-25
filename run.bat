@@ -16,11 +16,6 @@ REM                                         lite=e2b / standard=e4b / quality=iq
 REM                                         / prod=26b+e4b split (24GB+). See docs/local_models.md
 REM   --setup-only                     -> run setup (venv/deps/ollama/model) then exit
 REM
-REM Legacy modes:
-REM   run.bat --legacy ^<community^>     -> single bot (QA/debugging)
-REM   run.bat tui                      -> legacy TUI wizard
-REM   run.bat tui ^<community^>          -> legacy TUI dashboard
-REM
 REM Workspace app:
 REM   run.bat workspace [--serve]      -> Glimi Workspace (--serve = :8800 + browser)
 REM
@@ -124,7 +119,7 @@ if not exist "%MARKER%" (
     echo. > "%MARKER%"
 )
 
-REM === load root .env (propagate ANTHROPIC_API_KEY / DISCORD_BOT_TOKEN to platform + child bots) ===
+REM === load root .env (propagate ANTHROPIC_API_KEY etc. to the web platform) ===
 if exist .env (
     for /f "usebackq eol=# tokens=1,* delims==" %%a in (".env") do (
         if not "%%a"=="" set "%%a=%%b"
@@ -232,7 +227,7 @@ if "%SETUP_ONLY%"=="1" (
 
 REM === cleanup existing processes ===
 REM Use PowerShell Get-CimInstance for commandline-based process matching (wmic deprecated).
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | Where-Object { $_.CommandLine -match 'src\.(platform|discord_bot|tui\.dashboard|tui\.wizard|tools\.dev_runner)' -or $_.CommandLine -match 'apps[\\./]workspace[\\./]run' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" 2>nul
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | Where-Object { $_.CommandLine -match 'community\.(platform|tools\.dev_runner)' -or $_.CommandLine -match 'workspace[\\./]run' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" 2>nul
 del /q dev\.platform.pid 2>nul
 del /q dev\.bot*.pid 2>nul
 timeout /t 1 /nobreak >nul
@@ -240,63 +235,6 @@ timeout /t 1 /nobreak >nul
 echo.
 echo === Project Glimi ===
 echo.
-
-REM === Legacy TUI mode ===
-if "%~1"=="tui" (
-    if "%~2"=="" (
-        echo   Legacy TUI wizard ^(moved to web platform^)
-        python -m community.tui.wizard
-    ) else (
-        echo   TUI dashboard: %~2
-        python -m community.tui.dashboard "%~2"
-    )
-    exit /b
-)
-
-REM === Legacy single-bot mode ===
-if "%~1"=="--legacy" (
-    if not "%~2"=="" (
-        set "GLIMI_COMMUNITY=%~2"
-    )
-    echo   Legacy single-bot mode
-    if defined GLIMI_COMMUNITY (
-        echo   Community: !GLIMI_COMMUNITY!
-    )
-    echo.
-
-    set "CID=!GLIMI_COMMUNITY!"
-    if not defined GLIMI_COMMUNITY set "CID=default"
-    set "RUNTIME_DIR=communities\!CID!\runtime"
-    if not exist "!RUNTIME_DIR!" mkdir "!RUNTIME_DIR!"
-    set "PAUSE_FILE=!RUNTIME_DIR!\.bot-paused"
-    if exist "!PAUSE_FILE!" del /q "!PAUSE_FILE!"
-
-    :legacy_loop
-    if exist "!PAUSE_FILE!" (
-        echo [legacy] pause flag - waiting
-        :pause_wait
-        timeout /t 1 /nobreak >nul
-        if exist "!PAUSE_FILE!" goto pause_wait
-    )
-    echo [legacy] Bot starting
-    python -m community.discord_bot
-    set "EXIT_CODE=!errorlevel!"
-
-    if !EXIT_CODE! equ 42 (
-        echo [legacy] Running dev agent ^(exit 42^)
-        python -m community.tools.dev_runner
-        echo [legacy] Bot restarting
-        timeout /t 2 /nobreak >nul
-        goto legacy_loop
-    )
-    if !EXIT_CODE! equ 0 (
-        echo [legacy] Normal exit
-        exit /b 0
-    )
-    echo [legacy] Abnormal exit ^(code !EXIT_CODE!^) - restarting in 5s
-    timeout /t 5 /nobreak >nul
-    goto legacy_loop
-)
 
 REM === Glimi Workspace app mode ===
 REM   run.bat workspace [--serve] [--name X] [--goal "..."] [--backend echo^|claude_cli^|ollama]

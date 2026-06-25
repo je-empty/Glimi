@@ -76,7 +76,7 @@ def build_common_prompt(agent_type: str = "persona") -> str:
     else:
         owner_rule = ""
 
-    # Locale-aware style phrase — e.g. "카톡처럼 짧은 메시지 여러 개로" for ko, "Discord-style…" for en.
+    # Locale-aware style phrase — e.g. "카톡처럼 짧은 메시지 여러 개로" for ko, "messaging-app style…" for en.
     style_phrase = chat_style_phrase()
     # Korean-specific filler particles (ㅋㅋ / ㅎㅎ) note — empty string for other langs.
     filler_note = filler_particles_note()
@@ -113,7 +113,7 @@ def build_common_prompt(agent_type: str = "persona") -> str:
     return f"""
 === Style Guide — conversational basics ===
 - When referencing a channel, ALWAYS use the `#channel-name` form. Examples: {channel_examples}.
-  The runtime auto-converts these to clickable Discord links (`<#id>`). Do not wrap in backticks,
+  The runtime auto-converts these to clickable channel links (`<#id>`). Do not wrap in backticks,
   parentheses, or bold — leave `#name` as plain text.
 - People's names stay plain (no formatting). Use bold only for genuinely important words — sparingly.
 - Inline code backticks only for filenames, tool names, commands: `` `update_profile` ``, `` `.env` ``.

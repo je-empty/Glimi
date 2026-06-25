@@ -2,9 +2,9 @@
 # Copyright (C) 2026 Jaebin Sim
 """Glimi Workspace E2E QA runner — drive the autonomous owner-driver loop.
 
-The Community QA runner (``tests/e2e/runner.py``) spins up a Discord bot + a
-TestUser bot driving 150 turns. The Workspace needs NO Discord and NO second
-bot: the **owner-agent** is the driver, so we drive the kernel directly. This
+The Community QA runner drove a TestUser bot over 150 turns through a second
+driver bot. The Workspace needs NO second bot: the **owner-agent** is the
+driver, so we drive the kernel directly. This
 runner:
 
 1. builds a fresh echo/claude_cli ``Glimi`` workspace seeded with the full team

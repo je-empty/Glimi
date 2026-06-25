@@ -2,14 +2,14 @@
 Tutorial scene — Phase 2 채널 세팅 액션들 (transport-neutral, adapter-driven).
 
 기존 src/bot/mgr_system.py 의 `_trigger_tutorial_phase2` / `_tutorial_setup_channels`
-를 scene 폴더로 이전 (Phase 4.5: discord guild → ChannelAdapter).
+를 scene 폴더로 이전 (Phase 4.5: 길드 직접 조작 → ChannelAdapter).
 
-각 함수는 `channels: ChannelAdapter` 를 받는다 (web=WebChannelAdapter / discord=Discord
-Adapter). discord.utils.get → channels.find_channel/list_channels, create_tutorial_channel
+각 함수는 `channels: ChannelAdapter` 를 받는다 (web=WebChannelAdapter). 구 어댑터의
+guild 조회 → channels.find_channel/list_channels, create_tutorial_channel
 → channels.ensure_channel, 카테고리 재정렬 → channels.reorder_categories() (web no-op).
 Phase/seed/prompt 로직은 verbatim 유지.
 
-`import discord` / `community.bot.*` top-level import 절대 금지 (web python 엔 discord 미설치).
+`import discord` / `community.bot.*` top-level import 절대 금지 — transport 중립 유지.
 """
 from __future__ import annotations
 
@@ -288,7 +288,7 @@ async def setup_channels(channels):
     if not sent_any:
         log_writer.system(f"⚠ {CREATOR_CHANNEL}에 인사 메시지 0건 — 생성 응답 비어있음")
 
-    # 카테고리 순서 정렬 (discord categories; web no-op)
+    # 카테고리 순서 정렬 (어댑터 책임; web no-op)
     await channels.reorder_categories()
 
     scene.set_phase("channels_done")

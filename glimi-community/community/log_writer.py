@@ -66,8 +66,8 @@ def agent_thinking(agent_id: str, msg: str):
     system(f"💭 [{agent_id}] {msg}")
 
 
-def agent_discord(agent_id: str, channel: str, msg: str):
-    """디스코드 전송 — 시스템 로그에 기록"""
+def agent_send(agent_id: str, channel: str, msg: str):
+    """메시지 전송 — 시스템 로그에 기록"""
     system(f"📤 [{channel}] {msg}")
 
 

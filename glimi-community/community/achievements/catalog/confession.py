@@ -88,7 +88,7 @@ def candidate_pre_filter(user_id: str) -> list[dict]:
     return candidates
 
 
-_JUDGE_PROMPT = """You are classifying Korean Discord chat messages.
+_JUDGE_PROMPT = """You are classifying Korean chat messages.
 
 Question: Is this message a Korean character's **first-person direct emotional confession** to another person — saying things like "(나) 너 좋아해" / "사랑해" / "마음 열렸어" / "너밖에 없어" / a clear love or deep-affection confession to a specific you?
 
