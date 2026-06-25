@@ -149,11 +149,12 @@
         function send(body) {
           try {
             var json = JSON.stringify(body);
+            // text/plain = CORS 단순요청(preflight 없음) — 교차오리진 비콘도 안전.
             if (navigator.sendBeacon) {
-              navigator.sendBeacon("/api/track", new Blob([json], { type: "application/json" }));
+              navigator.sendBeacon("/api/track", new Blob([json], { type: "text/plain;charset=UTF-8" }));
             } else {
               fetch("/api/track", { method: "POST", keepalive: true,
-                headers: { "Content-Type": "application/json" }, body: json })
+                headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json })
                 .catch(function () {});  // 엔드포인트 없는 앱(워크스페이스 등)에서 무해
             }
           } catch (e) {}

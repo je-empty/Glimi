@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import time
@@ -82,10 +83,28 @@ def _client_ip(request: Request) -> str:
 
 
 @router.post("/api/track")
-async def track_visit(v: VisitIn, request: Request):
-    """공개 비콘. 인증 없음. 진입(INSERT) 또는 이탈(dwell UPDATE)."""
+async def track_visit(request: Request):
+    """공개 비콘. 인증 없음. 진입(INSERT) 또는 이탈(dwell UPDATE).
+
+    교차오리진 비콘은 preflight 를 피하려 ``text/plain`` 단순요청으로 온다 → content-type
+    에 의존하지 않고 본문을 직접 JSON 파싱한다(same-origin ``application/json`` 도 동일 처리).
+    """
+    try:
+        data = json.loads(await request.body() or b"{}")
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+    v = VisitIn(
+        path=str(data.get("path") or ""),
+        ref=str(data.get("ref") or ""),
+        sid=str(data.get("sid") or ""),
+        dwell_ms=data.get("dwell_ms"),
+    )
     sid = (v.sid or "")[:64]
     path = (v.path or "")[:300]
+    if not path:
+        return {"ok": True}  # 빈 본문/프로브 — 기록 안 함
     if any(path.startswith(p) for p in _EXCLUDE_PREFIXES):
         return {"ok": True}  # 추적 제외 경로
 
