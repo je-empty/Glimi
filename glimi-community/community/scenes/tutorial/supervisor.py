@@ -381,29 +381,16 @@ class TutorialFlowSupervisor(Supervisor):
     async def _nudge_yuna(self, channels, guild, system_msg: str):
         log_writer.system(f"[sup:tutorial] 유나 재촉")
         MGR_CHANNEL = mgr_channel()
-        # adapter-first: web 은 채널 존재만 확인, 디코는 channel obj resolve.
-        ch = None
-        if channels is not None:
-            if not await channels.find_channel(MGR_CHANNEL):
-                return
-        else:
-            import discord  # lazy — Discord-only 경로.
-            ch = discord.utils.get(guild.text_channels, name=MGR_CHANNEL)
-            if not ch:
-                return
-        await self._inject_and_send(MGR_ID, MGR_CHANNEL, ch, system_msg, channels=channels)
+        # web transport — verify the channel exists via the adapter.
+        if channels is None or not await channels.find_channel(MGR_CHANNEL):
+            return
+        await self._inject_and_send(MGR_ID, MGR_CHANNEL, None, system_msg, channels=channels)
 
     async def _nudge_agent(self, channels, guild, agent_id: str, ch_name: str, system_msg: str):
-        ch = None
-        if channels is not None:
-            if not await channels.find_channel(ch_name):
-                return
-        else:
-            import discord  # lazy — Discord-only 경로.
-            ch = discord.utils.get(guild.text_channels, name=ch_name)
-            if not ch:
-                return
-        await self._inject_and_send(agent_id, ch_name, ch, system_msg, channels=channels)
+        # web transport — verify the channel exists via the adapter.
+        if channels is None or not await channels.find_channel(ch_name):
+            return
+        await self._inject_and_send(agent_id, ch_name, None, system_msg, channels=channels)
 
     async def _inject_and_send(self, agent_id, ch_name, channel, instruction, *, channels=None):
         if log_writer.is_thinking(agent_id) or log_writer.is_speaking(agent_id):
@@ -428,21 +415,11 @@ class TutorialFlowSupervisor(Supervisor):
                 )
             )
             sent_count = 0
-            if channels is not None:
-                # adapter-first (web). 어댑터가 pacing 처리.
-                for resp in responses:
-                    clean = resp.strip()
-                    if clean and clean != "..." and clean != "(무시)":
-                        await channels.send_as_agent(ch_name, agent_id, clean)
-                        sent_count += 1
-            else:
-                from community.bot.core import send_as_agent, _split_for_chat  # lazy — Discord-only.
-                for resp in responses:
-                    clean = resp.strip()
-                    if clean and clean != "..." and clean != "(무시)":
-                        for part in _split_for_chat(clean):
-                            await send_as_agent(channel, agent_id, part)
-                            await asyncio.sleep(0.1)
-                            sent_count += 1
+            # web transport — the channels adapter handles pacing.
+            for resp in responses:
+                clean = resp.strip()
+                if clean and clean != "..." and clean != "(무시)":
+                    await channels.send_as_agent(ch_name, agent_id, clean)
+                    sent_count += 1
             if sent_count == 0:
                 log_writer.system(f"[sup:{self.name}] {agent_id} 재촉 응답 없음 (에이전트가 불필요 판단)")

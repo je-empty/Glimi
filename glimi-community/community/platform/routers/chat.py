@@ -228,13 +228,16 @@ def _load_community_llm_env() -> None:
 def _resolve_responding_agent(channel_id: str, frame_agent: str) -> str:
     """Resolve which agent answers a user turn on ``channel_id``.
 
+    Used for DM turns and as the single-agent fallback. ``group-*`` channels are
+    handled separately by :func:`_resolve_group_responders` +
+    :func:`_run_group_fanout` (multi-agent parallel fan-out); this resolver only
+    runs for a group if that fan-out finds no personas.
+
     Web convention (asymmetric vs Discord — do NOT reuse CHANNEL_AGENT_MAP):
       - ``dm-<agent_id>``: the channel's agent answers. The frame carries the
         agent explicitly; fall back to deriving it from the channel id.
-      - ``group-*``: v1 runs the single ``agent`` from the frame. Full
-        multi-agent group fan-out (Discord's ``GROUP_PARTICIPANTS`` + parallel
-        ``_process_agent``) is NOT ported yet — that is Phase 3. If the frame has
-        no agent for a group, fall back to ``mgr`` so we never crash.
+      - ``group-*`` with no resolvable persona: fall back to ``mgr`` so we never
+        crash on an empty group.
     """
     agent = (frame_agent or "").strip()
     if agent:
@@ -266,6 +269,86 @@ def _agent_exists(community_id: str, agent_id: str) -> bool:
         return run_in_community(community_id, _check)
     except Exception:
         return False
+
+
+def _resolve_group_responders(community_id: str, channel_id: str) -> list[str]:
+    """All persona agents that answer a turn in a ``group-*`` channel — the web
+    port of Discord's ``handle_group`` fan-out. Reads the channel's participant
+    set (``channels.participants``, the canonical web-side group membership) and
+    keeps only existing ``persona`` agents; if the set is empty or has no persona,
+    falls back to every persona so a group is never silent. Managers and the owner
+    do not auto-respond in a group (managers answer in their own DM)."""
+    def _resolve() -> list[str]:
+        from community import db
+        try:
+            parts = set(db.get_channel_participants(channel_id) or [])
+        except Exception:
+            parts = set()
+        personas = [a["id"] for a in db.list_agents() if a.get("type") == "persona"]
+        if parts:
+            scoped = [pid for pid in personas if pid in parts]
+            if scoped:
+                return scoped
+        return personas
+
+    try:
+        from community.platform.community_ctx import run_in_community
+        return run_in_community(community_id, _resolve)
+    except Exception:
+        return []
+
+
+def _log_owner_turn(
+    community_id: str, channel_id: str, text: str, reply_to: Optional[int],
+) -> None:
+    """Persist the owner's human turn ONCE for a group fan-out. Each fanned-out
+    agent then runs with ``log_user_message=False`` so the kernel does not re-log
+    the same line per agent (Discord logged it once in ``handle_group`` too). The
+    reply pointer is applied here since the per-agent backfill is skipped."""
+    def _log() -> None:
+        from community import db
+        owner_id = _resolve_owner_speaker_id()
+        try:
+            mid = db.log_message(channel_id, owner_id, text)
+            if reply_to is not None and mid is not None:
+                db.set_reply(mid, reply_to)
+        except Exception:
+            pass
+
+    try:
+        from community.platform.community_ctx import run_in_community
+        run_in_community(community_id, _log)
+    except Exception:
+        pass
+
+
+async def _run_group_fanout(
+    *, community_id: str, channel_id: str, text: str, outbox: WebOutbox,
+    responders: list[str],
+) -> None:
+    """Fan one owner turn out to ALL group personas in parallel, each with a small
+    staggered start delay so replies feel natural rather than simultaneous (web
+    port of Discord ``handle_group``'s shuffled ``_process_agent`` tasks). The
+    human turn is logged once by the caller; each agent runs with
+    ``log_user_message=False`` and no per-agent reply backfill."""
+    import random
+    order = responders[:]
+    random.shuffle(order)
+
+    async def _one(agent_id: str, delay: float) -> None:
+        if delay > 0:
+            await asyncio.sleep(delay)
+        await _run_turn(
+            community_id=community_id, channel_id=channel_id,
+            agent_id=agent_id, text=text, outbox=outbox,
+            reply_to=None, log_user_message=False,
+        )
+
+    tasks = [
+        asyncio.create_task(_one(rid, random.uniform(0.3, 1.2) * i * 0.5))
+        for i, rid in enumerate(order)
+    ]
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ── read APIs (channel list + history) — community-scoped ──────────────
@@ -660,6 +743,7 @@ def _fetch_thread(community_id: str, root_id: int, limit: int = 50) -> list[dict
 async def _run_turn(
     *, community_id: str, channel_id: str, agent_id: str, text: str,
     outbox: WebOutbox, reply_to: Optional[int] = None,
+    log_user_message: bool = True,
 ) -> None:
     """Stream one agent turn back over the socket using the agent's CONFIGURED
     backend (config-layering) — NO backend is forced here.
@@ -716,6 +800,7 @@ async def _run_turn(
             _load_community_llm_env()
             return runtime.generate_response_streaming(
                 agent_id, channel_id, text, on_message=_on_message,
+                log_user_message=log_user_message,
             )
         try:
             run_in_community(community_id, _call)
@@ -1133,10 +1218,25 @@ async def chat_ws(websocket: WebSocket, cid: str):
                 if reply_to is not None and not _message_in_channel(cid, reply_to, channel_id):
                     reply_to = None
 
-            # Resolve which agent answers (DM → channel's agent; group → frame's
-            # agent, v1 single-agent; never crash). channel_kind falls UNKNOWN →
-            # 'group' → postable, so validate the agent exists before spawning a
-            # turn for a non-existent agent.
+            # group-* → fan out to ALL participating personas in parallel (web port
+            # of Discord handle_group). DM → the single channel agent answers.
+            if channel_kind(channel_id) == "group" or channel_id.startswith("group-"):
+                responders = _resolve_group_responders(cid, channel_id)
+                if responders:
+                    # Log the human turn once, then run each agent with the kernel's
+                    # human-turn logging suppressed (avoids one dup per responder).
+                    _log_owner_turn(cid, channel_id, text, reply_to)
+                    await _run_group_fanout(
+                        community_id=cid, channel_id=channel_id,
+                        text=text, outbox=outbox, responders=responders,
+                    )
+                    continue
+                # No persona resolved → fall through to single-agent (mgr) so an
+                # empty group never goes silent.
+
+            # Resolve which agent answers (DM → channel's agent; group fallback →
+            # mgr; never crash). channel_kind falls UNKNOWN → 'group' → postable,
+            # so validate the agent exists before spawning a turn.
             agent_id = _resolve_responding_agent(channel_id, frame_agent)
             if not _agent_exists(cid, agent_id):
                 await websocket.send_json({

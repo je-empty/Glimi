@@ -72,12 +72,6 @@ def _apply_community(cid: Optional[str]) -> None:
         _inv_profile()
     except Exception:
         pass
-    try:
-        import community.bot as _bot
-        if hasattr(_bot, "_webhook_cache"):
-            _bot._webhook_cache.clear()
-    except Exception:
-        pass
 
 
 def _set_active_community(cid: Optional[str]) -> None:

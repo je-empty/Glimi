@@ -45,7 +45,6 @@ dashboard = [
 # Glimi Community (쇼케이스 앱) 전체 실행에 필요한 것 — Discord 어댑터 + 웹 대시보드.
 # 설치: pip install -e ".[community]"
 community = [
-    "discord.py>=2.3.0",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
     "Pillow>=10.0.0",

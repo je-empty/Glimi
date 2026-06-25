@@ -202,10 +202,6 @@ async def serve_service_worker():
 
 # ── POST mutations ────────────────────────────
 _POST_MUTATIONS = {
-    "/api/action/scan_discord": dash_actions.api_action_scan_discord,
-    "/api/action/run_sync": dash_actions.api_action_run_sync,
-    "/api/action/arrange_channels": dash_actions.api_action_arrange_channels,
-    "/api/action/restore": dash_actions.api_action_restore,
     "/api/action/channel_clear": dash_actions.api_action_channel_clear,
     "/api/action/channel_delete": dash_actions.api_action_channel_delete,
     "/api/action/trash_message": dash_actions.api_action_trash_message,

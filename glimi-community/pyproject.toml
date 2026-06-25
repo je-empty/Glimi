@@ -15,7 +15,6 @@ authors = [{ name = "Jaebin Sim" }]
 # ships to PyPI this is a normal published dependency.
 dependencies = [
     "glimi[dashboard]",
-    "discord.py>=2.3.0",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
     "Pillow>=10.0.0",

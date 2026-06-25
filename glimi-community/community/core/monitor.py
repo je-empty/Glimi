@@ -84,7 +84,7 @@ def _bot_alive_for_current_community() -> bool:
     except Exception:
         pass
     # fallback: process 기반 (log 파일이 아직 없거나 예외 시)
-    return _ps_has("community.discord_bot")
+    return _ps_has("community.platform")
 
 
 def get_bot_status() -> dict:
@@ -1155,8 +1155,8 @@ def get_health() -> dict:
         except Exception:
             pass
 
-        # Glimi 관련 프로세스 합산 (community.discord_bot, tests.e2e.runner, test_user_bot)
-        patterns = ("community.discord_bot", "tests.e2e.runner", "tests.e2e.test_user_bot", "community.tools.dev_runner")
+        # Glimi 관련 프로세스 합산 (web platform + dev runner)
+        patterns = ("community.platform", "community.tools.dev_runner")
         for proc in psutil.process_iter(["pid", "cmdline", "cpu_percent", "memory_info"]):
             try:
                 cmd = " ".join(proc.info.get("cmdline") or [])

@@ -7,8 +7,7 @@ Context:
     caller_agent_id: 호출한 에이전트 ID
     caller_agent_type: "mgr" | "creator" | "persona"
     channel_name: 실행 컨텍스트 채널
-    channel_obj: discord.TextChannel (optional)
-    guild: discord.Guild (optional)
+    channels: ChannelAdapter (transport-neutral 출구)
 
 Flow:
     parsed = parse_response(agent_output)
@@ -32,9 +31,7 @@ class ToolContext:
     caller_agent_id: str
     caller_agent_type: str  # "mgr" | "creator" | "persona"
     channel_name: str
-    channel_obj: Any = None  # discord.TextChannel
-    guild: Any = None  # discord.Guild
-    channels: Any = None  # ChannelAdapter (transport-neutral 출구; Discord 는 channel_obj/guild 사용)
+    channels: Any = None  # ChannelAdapter (transport-neutral 출구)
     extra: dict = None  # 자유 필드
 
 

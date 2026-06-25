@@ -22,7 +22,6 @@ from community.community import (
 from .. import accounts
 from ..auth import get_current_user, public_readonly_user, require_user
 from ..community_ctx import run_in_community
-from ..discord_verify import verify_token_sync, wipe_glimi_channels_sync
 from ..supervisor import supervisor
 
 router = APIRouter(prefix="/api/communities")
@@ -40,9 +39,7 @@ class CreateCommunityIn(BaseModel):
     name: str | None = None  # 표시용 이름 (한글 등). 없으면 id 로 폴백
     description: str = ""
     language: str = "en"
-    token: str = ""  # Discord bot token (옵션 — 웹 우선; 비우면 Discord 어댑터 비활성)
     owner: OwnerProfileIn
-    clean_existing_channels: bool = False
     grant_to_user: str | None = None
     # 모델 설정 — inherit(전역 기본값 상속) | cloud/claude(전용 Claude 키) |
     #            hybrid(페르소나=로컬, 나머지=Claude) | local(Ollama)
@@ -50,10 +47,6 @@ class CreateCommunityIn(BaseModel):
     model_api_key: str = ""
     model_tier: str = "standard"
     model_monthly_cap_usd: int | None = None  # hybrid/claude 일 때 커뮤니티별 월 상한(선택)
-
-
-class VerifyTokenIn(BaseModel):
-    token: str
 
 
 def _visible_communities(user: dict) -> list[dict]:
@@ -223,13 +216,6 @@ def _run_db_init(cid: str) -> tuple[bool, str]:
     return (proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:])
 
 
-@router.post("/verify_token")
-async def verify_token_endpoint(data: VerifyTokenIn, user: dict = Depends(require_user)):
-    """Discord 봇 토큰 검증 — 봇명/서버명/권한/기존채널 반환."""
-    from fastapi.concurrency import run_in_threadpool
-    return await run_in_threadpool(verify_token_sync, data.token, 15.0)
-
-
 @router.get("/new_defaults")
 async def new_defaults(id: str = "", user: dict = Depends(require_user)):
     """로컬 dev 편의 — `dev/test_defaults.json` 에 저장된 커뮤니티 id 별 기본값 반환.
@@ -309,28 +295,11 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     # ── 1. community 디렉터리 + 기본 파일 ──
     init_community(data.id)
 
-    # ── 1a. (옵션) 기존 Discord glimi-* 채널·카테고리 즉시 삭제 ──
-    wipe_summary = None
-    if data.clean_existing_channels and data.token.strip():
-        from fastapi.concurrency import run_in_threadpool
-        wipe_summary = await run_in_threadpool(wipe_glimi_channels_sync, data.token.strip(), 30.0)
-        if not wipe_summary.get("ok"):
-            # 삭제 실패해도 진행하되 경고 수집
-            wipe_summary.setdefault("errors", []).append("일부 실패 — 봇 첫 기동 시 잔여분 자동 정리됨")
-        # 잔여분 대비 .clean-channels 플래그도 남겨둠 — orphan 채널 추후 정리
-        log_dir = COMMUNITIES_DIR / data.id / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        (log_dir / ".clean-channels").touch()
-
     # ── 2. registry name + description + language ──
     _update_registry(data.id, data.name or data.id, data.description, data.language)
 
-    # ── 3. .env (옵션 — Discord 토큰이 주어졌을 때만 기록; 웹 우선 기본은 미기록) ──
+    # ── 3. 모델 override (inherit 면 아무것도 안 씀 → 전역 기본값 상속) ──
     env_path = COMMUNITIES_DIR / data.id / ".env"
-    if data.token.strip():
-        set_key(str(env_path), "DISCORD_BOT_TOKEN", data.token.strip())
-
-    # ── 3b. 모델 override (inherit 면 아무것도 안 씀 → 전역 기본값 상속) ──
     _write_community_model(
         str(env_path),
         data.model_mode,
@@ -369,46 +338,27 @@ async def create(data: CreateCommunityIn, user: dict = Depends(require_user)):
     return {
         "ok": True,
         "id": data.id,
-        "wipe": wipe_summary,
     }
 
 
 @router.delete("/{community_id}")
 async def delete(
     community_id: str,
-    wipe_discord: bool = False,
     user: dict = Depends(require_user),
 ):
-    """커뮤니티 삭제. wipe_discord=true 면 .env 토큰으로 디스코드 channels 까지 정리."""
+    """커뮤니티 삭제 — 디렉터리 + registry 엔트리 제거."""
     if not accounts.user_can_access(user, community_id):
         raise HTTPException(403, "no access")
     if supervisor.status(community_id).get("running"):
-        supervisor.stop(community_id)
+        await supervisor.stop_async(community_id)
 
     cdir = COMMUNITIES_DIR / community_id
-    wipe_summary = None
 
-    # ── 1. 옵션 — Discord 채널 정리 (dir 지우기 전에 .env 에서 토큰 읽기) ──
-    if wipe_discord and cdir.exists():
-        env_file = cdir / ".env"
-        token = ""
-        if env_file.exists():
-            for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
-                line = line.strip()
-                if line.startswith("DISCORD_BOT_TOKEN="):
-                    token = line.split("=", 1)[1].strip().strip("'\"")
-                    break
-        if token:
-            from fastapi.concurrency import run_in_threadpool
-            wipe_summary = await run_in_threadpool(wipe_glimi_channels_sync, token, 30.0)
-        else:
-            wipe_summary = {"ok": False, "errors": [".env 에 DISCORD_BOT_TOKEN 없음"]}
-
-    # ── 2. 디렉터리 삭제 ──
+    # ── 1. 디렉터리 삭제 ──
     if cdir.exists():
         shutil.rmtree(cdir)
 
-    # ── 3. registry 정리 ──
+    # ── 2. registry 정리 ──
     if REGISTRY_PATH.exists():
         content = REGISTRY_PATH.read_text()
         import re
@@ -424,22 +374,22 @@ async def delete(
         content = pattern2.sub("", content)
         REGISTRY_PATH.write_text(content)
 
-    return {"ok": True, "wipe": wipe_summary}
+    return {"ok": True}
 
 
 @router.post("/{community_id}/start")
 async def start(community_id: str, user: dict = Depends(require_user)):
     if not accounts.user_can_access(user, community_id):
         raise HTTPException(403, "no access")
-    handle = supervisor.start(community_id)
-    return {"ok": True, "pid": handle.process.pid}
+    await supervisor.start_async(community_id)
+    return {"ok": True}
 
 
 @router.post("/{community_id}/stop")
 async def stop(community_id: str, user: dict = Depends(require_user)):
     if not accounts.user_can_access(user, community_id):
         raise HTTPException(403, "no access")
-    stopped = supervisor.stop(community_id)
+    stopped = await supervisor.stop_async(community_id)
     return {"ok": True, "was_running": stopped}
 
 
@@ -447,8 +397,8 @@ async def stop(community_id: str, user: dict = Depends(require_user)):
 async def restart(community_id: str, user: dict = Depends(require_user)):
     if not accounts.user_can_access(user, community_id):
         raise HTTPException(403, "no access")
-    handle = supervisor.restart(community_id)
-    return {"ok": True, "pid": handle.process.pid}
+    await supervisor.restart_async(community_id)
+    return {"ok": True}
 
 
 @router.get("/{community_id}/status")

@@ -167,15 +167,10 @@ class ChatSupervisor(Supervisor):
                 return
             log_writer.system(f"[sup:{self.id}] 멈춤 — {target_id} 재촉")
             self._mark_nudged()
-            # adapter-first (web): 채널 존재 확인. 디코는 guild 에서 channel obj resolve.
-            ch = None
+            # web transport — verify the channel exists via the adapter.
+            if channels is None or not await channels.find_channel(self.channel_name):
+                return
             if channels is not None:
-                if not await channels.find_channel(self.channel_name):
-                    return
-            else:
-                import discord
-                ch = discord.utils.get(guild.text_channels, name=self.channel_name)
-            if channels is not None or ch:
                 # 1인칭 self-talk — persona 가 지시문으로 오해하지 않도록.
                 # 새 주제 유도: 같은 대화 재탕 방지. 여러 seed 중 랜덤.
                 import random as _r
@@ -282,18 +277,10 @@ class ChatSupervisor(Supervisor):
                 )
 
             sent = 0
-            if channels is not None:
-                # adapter-first (web). 어댑터가 pacing 처리 — _split_for_chat 불필요.
-                for clean in kept:
-                    await channels.send_as_agent(self.channel_name, agent_id, clean)
-                    sent += 1
-            else:
-                from community.bot.core import send_as_agent, _split_for_chat
-                for clean in kept:
-                    for part in _split_for_chat(clean):
-                        await send_as_agent(channel, agent_id, part)
-                        await asyncio.sleep(0.1)
-                        sent += 1
+            # web transport — the channels adapter handles pacing (no _split_for_chat).
+            for clean in kept:
+                await channels.send_as_agent(self.channel_name, agent_id, clean)
+                sent += 1
             if sent == 0:
                 # nudge 가 어떤 응답을 만들었지만 디스코드 송출 0 — 진단용 로그.
                 # 빈 list (CLI 실패/타임아웃), 모든 라인이 "..." 또는 "(무시)" 등

@@ -54,33 +54,15 @@ class DevQueueSupervisor(Supervisor):
         from community.core.channels import MGR_ID
         from community import db as _db
 
-        # dev (세나) DM 채널 ensure — adapter-first (web), guild-fallback (Discord).
-        ch = None  # discord channel obj (guild branch only)
-        if channels is not None:
-            try:
-                await channels.ensure_channel(DEV_CHANNEL, participants=[DEV_ID, MGR_ID])
-                _db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
-            except Exception as e:
-                log_writer.system(f"[dev.queue] {DEV_CHANNEL} 채널 ensure 실패: {e}")
-                return
-        else:
-            for c in guild.text_channels:
-                if c.name == DEV_CHANNEL:
-                    ch = c
-                    break
-            if ch is None:
-                try:
-                    from community.core.sync import ensure_unique_channel
-                    from community.bot.core import _ensure_category, _get_category_for_channel
-                    category = await _ensure_category(guild, _get_category_for_channel(DEV_CHANNEL))
-                    result = await ensure_unique_channel(guild, DEV_CHANNEL, category)
-                    ch = result[0] if isinstance(result, tuple) else result
-                    _db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
-                except Exception as e:
-                    log_writer.system(f"[dev.queue] {DEV_CHANNEL} 채널 ensure 실패: {e}")
-                    return
-                if ch is None:
-                    return
+        # dev (세나) DM 채널 ensure — web transport (channels adapter always present).
+        if channels is None:
+            return
+        try:
+            await channels.ensure_channel(DEV_CHANNEL, participants=[DEV_ID, MGR_ID])
+            _db.set_channel_participants(DEV_CHANNEL, [DEV_ID, MGR_ID])
+        except Exception as e:
+            log_writer.system(f"[dev.queue] {DEV_CHANNEL} 채널 ensure 실패: {e}")
+            return
 
         # Dev agent invoke — pending 큐에서 가장 오래된 1건 대상.
         try:
@@ -106,11 +88,7 @@ class DevQueueSupervisor(Supervisor):
             )
             # tool 호출 dispatch (dev_organize / dev_escalate / dev_clarify) — adapter-first.
             # web 은 core.mgr_actions, 디코는 동일 core 스파인 + discord 어댑터.
-            if channels is not None:
-                _adapter = channels
-            else:
-                from community.adapters.discord.channels import get_discord_adapter
-                _adapter = get_discord_adapter()
+            _adapter = channels
             from community.core.mgr_actions import parse_and_execute_actions
             try:
                 responses = await parse_and_execute_actions(

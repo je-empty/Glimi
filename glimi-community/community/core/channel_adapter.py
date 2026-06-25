@@ -58,14 +58,10 @@ class ChannelAdapter(Protocol):
 
 
 def get_channel_adapter() -> "ChannelAdapter":
-    """팩토리. GLIMI_TRANSPORT=web 이면 WebChannelAdapter, 아니면 Discord.
+    """팩토리 — 항상 WebChannelAdapter (웹이 유일 transport).
 
-    web_runtime 가 부팅 시 GLIMI_TRANSPORT=web 를 한 번 설정한다(핀드 프로세스).
-    지연 import 로 discord/플랫폼 모듈 순환·미설치를 피한다.
+    지연 import 로 플랫폼 모듈 순환을 피한다.
     """
-    if os.environ.get("GLIMI_TRANSPORT", "").strip().lower() == "web":
-        from community.adapters.web.channels import WebChannelAdapter
-        from community.community import get_community_id
-        return WebChannelAdapter(get_community_id())
-    from community.adapters.discord.channels import get_discord_adapter
-    return get_discord_adapter()
+    from community.adapters.web.channels import WebChannelAdapter
+    from community.community import get_community_id
+    return WebChannelAdapter(get_community_id())

@@ -55,12 +55,6 @@ def ensure_dev_seeded() -> bool:
             log_writer.system(f"❌ dev 시드 엔트리 없음 in {seed_path.name}")
             return False
         db.save_agent_profile(dev_seed)
-        try:
-            from community.bot import CHANNEL_AGENT_MAP, AGENT_CHANNEL_MAP
-            CHANNEL_AGENT_MAP[DEV_CHANNEL] = DEV_ID
-            AGENT_CHANNEL_MAP[DEV_ID] = DEV_CHANNEL
-        except Exception:
-            pass
         log_writer.system(f"✓ dev lazy 시드 등록: {DEV_ID} ({DEV_NAME})")
         return True
     except Exception as e:

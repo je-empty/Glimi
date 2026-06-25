@@ -305,23 +305,14 @@ class OrchestratorSupervisor(Supervisor):
             if len(personas) > 3:
                 personas = random.sample(personas, 3)
 
-            # adapter-first branch (web). BEFORE any community.bot import.
-            if channels is not None:
-                if not await channels.find_channel(ch_name):
-                    return False
-                async def _send(agent_id: str, message: str):
-                    await channels.send_as_agent(ch_name, agent_id, message)
-                from community.core.conversation_bridge import start_conversation
-            else:
-                # guild-fallback branch (Discord — Phase-6-doomed).
-                from community.bot.conversation_bridge import start_conversation
-                from community.bot.core import send_as_agent
-                import discord
-                ch = discord.utils.get(guild.text_channels, name=ch_name)
-                if not ch:
-                    return False
-                async def _send(agent_id: str, message: str):
-                    await send_as_agent(ch, agent_id, message)
+            # web transport — the channels adapter is always present.
+            if channels is None:
+                return False
+            if not await channels.find_channel(ch_name):
+                return False
+            async def _send(agent_id: str, message: str):
+                await channels.send_as_agent(ch_name, agent_id, message)
+            from community.core.conversation_bridge import start_conversation
 
             names = []
             for pid in personas:
@@ -368,25 +359,15 @@ class OrchestratorSupervisor(Supervisor):
         from community.core.channels import internal_dm_channel_name
         ch_name = internal_dm_channel_name(a_name, b_name)
         try:
-            # adapter-first branch (web). BEFORE any community.bot import.
-            if channels is not None:
-                ref = await channels.ensure_channel(ch_name, participants=[a_id, b_id])
-                if getattr(ref, "created", False):
-                    log_writer.system(f"[sup:orchestrator] 채널 생성: {ch_name}")
-                from community.core.conversation_bridge import start_conversation
-                async def _send(agent_id: str, message: str):
-                    await channels.send_as_agent(ch_name, agent_id, message)
-            else:
-                # guild-fallback branch (Discord — Phase-6-doomed).
-                from community.bot.conversation_bridge import start_conversation
-                from community.bot.core import _get_category_for_channel, _ensure_category, send_as_agent
-                from community.core.sync import ensure_unique_channel
-                cat = await _ensure_category(guild, _get_category_for_channel(ch_name))
-                ch, created = await ensure_unique_channel(guild, ch_name, cat)
-                if created:
-                    log_writer.system(f"[sup:orchestrator] 채널 생성: {ch_name}")
-                async def _send(agent_id: str, message: str):
-                    await send_as_agent(ch, agent_id, message)
+            # web transport — the channels adapter is always present.
+            if channels is None:
+                return
+            ref = await channels.ensure_channel(ch_name, participants=[a_id, b_id])
+            if getattr(ref, "created", False):
+                log_writer.system(f"[sup:orchestrator] 채널 생성: {ch_name}")
+            from community.core.conversation_bridge import start_conversation
+            async def _send(agent_id: str, message: str):
+                await channels.send_as_agent(ch_name, agent_id, message)
             db.set_channel_participants(ch_name, [a_id, b_id])
             # 첫 internal 대화면 관계 레코드도 자동 생성 — 없으면 다음 스캔에서도 계속
             # "모르는 사이" 로 분류되어 skip → rapport 쌓이지 못하는 루프. 여기서 기본

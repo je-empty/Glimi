@@ -14,7 +14,6 @@ license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Jaebin Sim" }]
 dependencies = [
     "glimi[dashboard]>=0.1.0",   # published kernel (editable path in dev — see requirements-dev.txt)
-    "discord.py>=2.3.0",
     "python-dotenv>=1.0.0",
     "itsdangerous>=2.1.0",
     "python-multipart>=0.0.9",

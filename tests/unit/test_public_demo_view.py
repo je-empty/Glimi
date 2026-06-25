@@ -203,7 +203,7 @@ def test_route_anon_401_on_post_action_even_demo(client_app):
     mutation route is not in the public-readonly opt-in set."""
     anon, _comm = client_app
     r = anon.post(
-        "/api/action/run_sync?community=demo",
+        "/api/action/channel_clear?community=demo",
         headers={"accept": "application/json"},
         json={},
     )

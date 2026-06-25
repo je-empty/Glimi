@@ -241,22 +241,13 @@ class CommitmentSupervisor(Supervisor):
             args_str = f"{agent_name} {target_channel} {instruction}"
             _mgr_dm = _mgr_dm_channel_name()
 
+            # web transport — the channels adapter is always present.
             if channels is not None:
-                # adapter-first (web). BEFORE community.bot import.
                 from community.core.mgr_actions import yuna_force_agent, MGR_ID
                 from glimi.tools.dispatcher import ToolContext
                 ctx = ToolContext(caller_agent_id=MGR_ID, caller_agent_type="mgr",
                                   channel_name=_mgr_dm, channels=channels)
                 await yuna_force_agent(_mgr_dm, args_str, ctx)
-            else:
-                # guild-fallback (Discord — Phase-6-doomed).
-                from community.bot.mgr_system import core_mgr_actions
-                from community.adapters.discord.channels import get_discord_adapter
-                from community.core.mgr_actions import MGR_ID
-                from glimi.tools.dispatcher import ToolContext
-                ctx = ToolContext(caller_agent_id=MGR_ID, caller_agent_type="mgr",
-                                  channel_name=_mgr_dm, channels=get_discord_adapter())
-                await core_mgr_actions.yuna_force_agent(_mgr_dm, args_str, ctx)
             log_writer.system(
                 f"[commitment] {agent_name} → #{target_channel} nudge 발송 (commit: {commit_msg[:80]})"
             )

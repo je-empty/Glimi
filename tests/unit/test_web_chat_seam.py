@@ -306,5 +306,12 @@ def test_dispatcher_source_has_no_backend_force():
     assert 'os.environ.setdefault("GLIMI_LLM_BACKEND"' not in src
     assert 'os.environ["GLIMI_LLM_BACKEND"]' not in src
     assert "generate_response_streaming" in src
-    # The single-owner human turn must NOT be suppressed (kernel logs it).
-    assert "log_user_message=False" not in src
+    # The human turn must never be silently dropped. A DM turn lets the kernel log
+    # it (default log_user_message=True). Group fan-out instead logs it ONCE up
+    # front (_log_owner_turn) and suppresses per-agent kernel logging to avoid one
+    # dup per responder — so if suppression appears, the explicit single-log must
+    # appear too.
+    if "log_user_message=False" in src:
+        assert "_log_owner_turn" in src, (
+            "fan-out suppresses kernel human-turn logging but does not log it once"
+        )
