@@ -361,7 +361,7 @@ Glimi 는 **EDD(eval-driven development)** 로 멀티 에이전트 품질을 측
 ### 보기: `/admin/qa` 대시보드 + PDF 리포트
 
 `/admin/qa` 는 **QA 대시보드**다(admin 로그인 → "QA"). 최신 점수, **트렌드 차트**, 세대별 표를 보여준다. 각 세대를 **PDF** 로 내보낼 수 있다(`glimi.edd.report` 가 HTML 1페이지를 생성하고, Playwright headless Chromium 으로 출력. 서버 렌더 SVG 트렌드 라인을 포함).
-![EDD — /admin/qa 대시보드: gen-11 PASS 85, 차원 분해, 세대별 품질 트렌드](docs/screenshots/en/19-edd-dashboard.png)
+![EDD — /admin/qa 대시보드: gen-11 PASS 85, 차원 분해, 세대별 품질 트렌드](docs/screenshots/ko/19-edd-dashboard.png)
 
 ```bash
 # 채점 세대 한 번 (무료 셀프테스트: echo 백엔드, judge skip, 구조 차원만)
