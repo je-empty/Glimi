@@ -15,7 +15,7 @@ const API_BASE = (typeof document !== 'undefined' && document.body &&
 let CAPS = null;
 try { CAPS = JSON.parse((document.body && document.body.getAttribute('data-caps')) || 'null'); } catch (e) { CAPS = null; }
 // Capabilities that are OFF by default for EVERY app (including Community, where
-// CAPS is null = everything-on). Destructive DB-delete affordances stay hidden
+// CAPS is null = everything-on). Destructive DB-delete affordances are hidden
 // unless an app opts in with an explicit `data-caps` of {"dbdelete":true}.
 const CAP_DENY_BY_DEFAULT = ['dbdelete'];
 function capOn(name) {
@@ -379,10 +379,10 @@ function applySupVisibility() {
 applySupVisibility();
 
 // ==== Capability gating (host apps hide sim-only tabs) ====
-// Community: CAPS null → every tab shown EXCEPT the deny-by-default ones
-// (see CAP_DENY_BY_DEFAULT). A host like Workspace injects data-caps to hide
-// tabs it has no backend for (scenes/achievements/supervisors/events/health/
-// logs); we hide their nav + toggles so the rich dashboard degrades to the
+// Community: CAPS null → every tab shown EXCEPT the deny-by-default ones (see
+// CAP_DENY_BY_DEFAULT). A host like Workspace injects data-caps to hide tabs it
+// has no backend for (scenes/achievements/supervisors/events/health/logs); we
+// hide their nav + toggles so the rich dashboard degrades to the
 // workspace-relevant surface. Always runs (no early return on null CAPS).
 function applyCaps() {
   document.querySelectorAll('nav.tabs button[data-tab]').forEach(btn => {
@@ -1769,8 +1769,23 @@ async function postJson(url, body, extraOpts) {
   }
 }
 
+async function waitFor(cond, msEach=500, maxTries=60) {
+  for (let i = 0; i < maxTries; i++) {
+    if (await cond()) return true;
+    await new Promise(r => setTimeout(r, msEach));
+  }
+  return false;
+}
+
+async function isBotRunning() {
+  const d = await j(API_BASE + '/api/communities');
+  if (!d) return false;
+  const item = (d.items || []).find(c => c.id === (COMMUNITY || d.active));
+  return !!(item && item.running);
+}
+
 async function doChannelClear(channel) {
-  if (!confirm(`#${channel}의 DB 메시지 전체 삭제. 채널 자체는 유지. 진행?`)) return;
+  if (!confirm(`#${channel}의 DB 메시지 전체 삭제. 진행?`)) return;
   const r = await postJson(q('/api/action/channel_clear'), {channel});
   if (r.error) return toast(r.message || r.error, 'err');
   toast(`#${channel} 메시지 ${r.deleted?.deleted_count || '?'}개 삭제됨`, 'ok');
@@ -3486,28 +3501,10 @@ async function tick() {
     // Server Control 은 플랫폼 상단 바로 이관됨 — Health 탭에는 server-log 없음
   }
 
-  // Trash + DB-registered Channels surface (rendered into #sync-full when present).
-  if (document.getElementById('sync-full')) {
-  document.getElementById('sync-full').innerHTML = `
-    <div class="detail-section" style="margin-top:0">
-      <h4>Trash · <span id="trash-count" style="color:var(--text-faint)">...</span></h4>
-      <div style="color:var(--text-dim);font-size:11.5px;margin-bottom:10px">
-        휴지통 — 채널/메시지 삭제 시 완전 삭제 대신 여기로 옮겨짐. 실수 복구용 안전망.
-        <br>Empty Trash 로 영구 삭제, 각 항목별 <b>복구</b> 가능.
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button class="act-btn small" onclick="loadTrash()">새로고침</button>
-        <button class="act-btn small danger" onclick="emptyTrash()">Empty Trash</button>
-      </div>
-      <div id="trash-list"></div>
-    </div>
-    <div class="detail-section">
-      <h4>DB-registered Channels · ${(snap.channels || []).length}</h4>
-      ${renderChannelsGrouped(snap.channels || [])}
-    </div>
-  `;
-  loadTrash();
-  }
+  // (former Discord↔DB sync tab removed — web chat is the only transport now;
+  //  the scan/sync/arrange/restore endpoints it drove no longer exist. Trash +
+  //  DB-channel listing helpers (loadTrash/emptyTrash/renderChannelsGrouped)
+  //  stay defined and callable for whatever surface re-hosts them.)
 
   // (legacy "Dev" tab 제거됨 — 새 글로벌 admin 페이지 /admin/dev-requests 로 이전)
 

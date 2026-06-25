@@ -371,7 +371,7 @@ body {
 
 /* Chat-feed rows are SCOPED to .chat-shell so the entrance-animation defaults
    (opacity:0 + grid layout) never leak onto the dashboard's GLOBAL `.msg` ledger
-   (Messages / Overview / Sync / agent-detail lists), which would otherwise render
+   (Messages / Overview / agent-detail lists), which would otherwise render
    those rows invisible / mis-laid-out — chat.css loads after dashboard.css, so a
    bare `.msg{opacity:0}` wins on the dashboard. The child/modifier rules below
    stay unscoped (they only match chat-specific children that the ledger lacks). */
