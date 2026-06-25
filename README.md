@@ -62,37 +62,10 @@ git clone https://github.com/je-empty/Glimi.git && cd Glimi
 
 ## What makes Glimi different
 
-Glimi Core runs agents that persist across sessions. Standard frameworks launch short-lived agents, compress context, and rebuild later. In Glimi, each agent keeps its context — work, decisions, preferences, and links — stored across sessions and model swaps. The same core drives **Glimi Workspace** (shared workbench) and **Glimi Community** (friend memory).
+Glimi Core keeps each agent's context — work, decisions, preferences, links — stored across sessions and model swaps, instead of launching short-lived agents and rebuilding context like standard frameworks. Two traits set it apart: **memory sized to the context window** (Elastic Memory) and **anti-drift fact supersession**, both shipped free with a relationship-graph dashboard.
 
-Other projects (LangChain/LangGraph, AutoGen, CrewAI, OpenAI Agents SDK, Letta, etc.) focus on single **tasks** and discard the agent after. Some (Letta) persist memory or run open worlds (Stanford Generative Agents, AI Town). Glimi merges these ideas into a **single pip-installable runtime** with two traits:
+→ details, the full alternatives comparison (Letta / AI Town / Zep / CrewAI / SillyTavern), and where Glimi sits: [docs/positioning.en.md](docs/positioning.en.md)
 
-**1. Memory sized to context (Elastic Memory).** Glimi fits memory to the set context window (`num_ctx`). It trims by token budget so prompts stay within limit. The same agent runs at 4096 or 16384 without personality loss. Others trim history (CrewAI, Letta, OpenAI Agents SDK, AutoGen, LangGraph) but not by target size. Ollama's request to auto-match VRAM is still open.
-
-**2. Anti-drift memory.** Facts expire on time or are marked superseded when replaced. Agents forget stale data but keep the record. Zep's Graphiti is closed; Mem0 dropped contradiction handling in 2026. Glimi ships supersession logic, runtime, and dashboard free. It uses row-level SQLite instead of a full graph.
-
-**Integration overview**
-
-- **Persistent population.** Each agent has a persona and model (Claude or Ollama). State is stored, not reprised, surviving model swaps.
-- **Autonomous activity.** A timed supervisor spawns threads, revives idle agents, and advances scenes offline.
-- **Light load.** All agents share one resident model, swapping only context. Fits a fleet on 16 GB. Uses Ollama's resident model while Glimi tracks state.
-- **Dashboard.** Web UI shows relationships, memory (L0–L5), live channel, and model inspector. Others show single agents; Glimi spans many.
-
-Status: alpha (0.1.0, not on PyPI). Letta leads in memory depth, AI Town in autonomy, SillyTavern in characters, Zep in graphs. Glimi combines them.
-<!--
-### Glimi vs. the alternatives
-
-Glimi fills the intersection of those efforts.
-| Capability | Glimi | Letta (MemGPT) | AI Town | Zep / Graphiti | CrewAI / LangGraph | SillyTavern |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|
-| Pip-install library, you design the fleet | ✅ | ✅ | ❌ TS game stack | ✅ engine only | ✅ | ❌ chat front-end |
-| Per-agent model, cloud + local in one fleet | ✅ | ✅ | ❌ one shared model | — | ✅ | ◐ |
-| Memory survives a model swap (state in storage) | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ |
-| Temporal fact supersession (anti-drift) | ✅ scoped | ❌ | ❌ | ✅ the reference | ❌ | ❌ |
-| Autonomous agent-to-agent (self-initiated) | ✅ | ❌ | ✅ | ❌ | ❌ | ◐ |
-| Hardware-aware elastic context budgeting | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Built-in relationship-graph + memory dashboard | ✅ | ◐ one agent | ◐ sim viewer | ❌ hosted | ❌ separate | ❌ |
-
-✅ yes · ◐ partial · ❌ no · — not applicable. Letta pages memory deeper, AI Town supports larger worlds, Zep's graph is richer, and SillyTavern builds stronger characters. Glimi is the only one covering all seven rows in a single AGPL-3.0 package.
 ---
 
 ## Glimi Core — the harness
@@ -103,75 +76,46 @@ Glimi fills the intersection of those efforts.
 
 | Feature | Detail |
 |---|---|
-| **Multi-agent runtime** | Per-agent model override stored in DB. Cloud (Claude) and local (Ollama) coexist in one fleet — Grok CLI too; vLLM / llama.cpp are planned via the pluggable backend seam. Swappable without restart. |
-| **Tool protocol** | `<tools><call id="1" name="...">...</call></tools>` inline XML — declarative `ToolSpec` registry with permission, type, env-gating |
-| **Layered persistent memory (L0–L5)** | L0 raw (`conversations`) → L1 working window (recent verbatim, injected live) → L2 episodic rollup (L1→L2→L3 digests in `memories`) → L3 semantic facts (`agent_facts`: subject·predicate·object with `valid_from`/`valid_to` supersession) → L4 relationship (`relationships` + history) → L5 pinned (`memories.is_pinned`). Async Haiku extraction off the response path. |
-| **Autonomous A2A conversation** | 1:1 and multi-agent channels. Turn-limited, closure-detected. Agents start conversations with each other via the tool protocol. |
-| **Proactive supervisor layer** | The one layer that ticks without input. A pair scanner opens new agent-to-agent channels, a chat watcher revives idle ones, and a scene watcher progresses stuck workflows. |
-| **Live observability dashboard** (`glimi[dashboard]`, read-only) | Cytoscape.js agent graph, per-agent memory inspector (L0–L5), real-time channel viewer, tool-call timeline, LLM usage/cost card, runtime state badges. (Live model-swap *writes* are a Community/Workspace platform feature; the Core dashboard surfaces the per-agent model for inspection.) |
-| **Evaluation harness** | A golden set across persona / tool-use / memory / fallback / supervisor capabilities; deterministic checks + an LLM-as-judge (reused, not reinvented); a backend-tagged **regression gate** (fails CI on a pass-rate or judge-score drop); a production-feedback loop that promotes a flagged bad turn into a golden case. Runs free on the offline `echo` backend. |
-| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** drives a full app from onboarding through the core journey, scored across weighted dimensions into a **0–100 quality score**, each run a **git-SHA-anchored "generation"** (SQLite + committed JSON) so quality is tracked commit-over-commit. The flagship differentiator — **[real measured generations + the flywheel](#edd--eval-driven-development-quality-tracked-per-commit-)** get their own section above. |
-| **Cost & latency accounting** | Every LLM call records tokens, estimated cost, and latency at one choke-point; every tool call records args/result/latency/ok at another. Honest by construction — local/echo priced at $0, CLI/estimate rows labeled *est.*, dollars shown only for real priced spend. |
-| **Human-in-the-loop gate** (Workspace) | An approval policy (`approve / edit / reject` + fallback + decision trail) around a consequential action, used by Workspace; never hangs (non-interactive auto-approves). |
-| **Self-healing (experimental, off by default)** | Agent emits `request_dev_fix` → enqueues a dev_requests row → a dev-queue supervisor triages → on approval an Opus subprocess (`GLIMI_DEV_DISPATCH=1`) patches source → bot restart with the patch summary injected. |
+| **Multi-agent runtime** | Per-agent model override in DB; Claude + Ollama (+ Grok CLI) in one fleet, swappable without restart |
+| **Tool protocol** | `<tools><call id="1" name="...">...</call></tools>` inline XML with a declarative `ToolSpec` registry |
+| **Layered persistent memory (L0–L5)** | Raw → working window → episodic → semantic facts (temporal supersession) → relationship → pinned |
+| **Autonomous A2A conversation** | Turn-limited, closure-detected 1:1 and group channels agents open with each other |
+| **Proactive supervisor layer** | The one layer that ticks without input — opens, revives, and progresses conversations |
+| **Live observability dashboard** (`glimi[dashboard]`, read-only) | Agent graph, memory inspector (L0–L5), channel viewer, tool-call timeline, LLM cost card |
+| **Evaluation harness** | Golden set + LLM-judge + backend-tagged regression gate; runs free on the `echo` backend |
+| **End-to-end EDD QA (generational)** | An owner agent drives the app to a **0–100 score** per git-SHA "generation" — see [the EDD section](#edd--eval-driven-development-quality-tracked-per-commit-) |
+| **Cost & latency accounting** | Every LLM + tool call metered at one choke-point; local/echo $0, estimates labeled *est.* |
+| **Human-in-the-loop gate** (Workspace) | `approve / edit / reject` policy around a consequential action; never hangs |
+| **Self-healing (experimental, off)** | `request_dev_fix` → triage → Opus subprocess patches source → restart |
+
+Full capability detail → [docs/core_internals.en.md](docs/core_internals.en.md).
 
 ### Inside the runtime
 
 Each response runs through **8 layers** — five pre-LLM (prompt, tool, memory, channel, guard), two post-LLM (A2A loop, self-heal), and a scheduled supervisor tier. Memory is a six-level stack (L0 raw → L5 pinned) with temporal fact supersession, and state lives outside prompts so it survives model swaps and profile edits.
 
-The runtime pipeline diagram, per-layer detail, the memory-architecture diagram, hardening rules, and the model-swap guarantees are in → [**Internals**](docs/internals.en.md).
+→ details: the runtime pipeline diagram, per-layer breakdown, the memory-architecture diagram, hardening rules, and model-swap guarantees — [docs/memory.en.md](docs/memory.en.md).
 
 ### Elastic Memory — memory that fits any context window
 
-Local models have small windows (Ollama 4096). A full Glimi prompt — character system + L0–L5 memory + chat history — often exceeds that, truncating early tokens.
-`Elastic Memory` (`glimi/context_budget.py`) manages this:
+Local models have small windows (Ollama 4096), so a full Glimi prompt (character system + L0–L5 memory + history) overflows. `Elastic Memory` (`glimi/context_budget.py`) trims to a token budget keyed to `num_ctx` (baseline 8192; 4096 shrinks, 16384 doubles recall), hardware-aware per community.
 
-- **Memory scales with window** — baseline `num_ctx` 8192; 4096 shrinks, 16384 doubles recall.
-- **Best-effort fit** — trims oldest conversation first; logs warning if even system prompt overflows.
-- **Backend-agnostic** — works with Claude or any; mainly for locals (cloud 200 k rarely needs it).
-- **Per-community, hardware-aware** — `community/core/system_specs.py` reads RAM/VRAM, suggests Low 4096 / Mid 8192 / High 16384 tiers, writes config like a quality slider.
+→ details: [docs/elastic_memory.en.md](docs/elastic_memory.en.md).
 
 ### Quick Start (library)
 
-Glimi Core **alpha (0.1.0, not on PyPI)**. Install from source. Kernel includes in-memory store and **offline `echo` backend**, so it runs with **no deps or API key** — `echo` shows wiring and conversation storage.
+Glimi Core is **alpha (0.1.0, not on PyPI)** — install from source. The kernel ships an in-memory store and an **offline `echo` backend**, so it runs with **no deps or API key**. Two lines to a working agent; swap the backend for real models.
 
 ```python
 from glimi import Glimi
 
 chat = Glimi(backend="echo")          # offline: no deps, no API key, no network
 chat.add_agent("nova", persona="A curious, upbeat companion who loves questions.")
-
 print(chat.reply("nova", "Hi! What's your name?"))
-print(chat.reply("nova", "Nice — tell me something fun."))
+# backend="claude_cli" (metered Claude) or backend="ollama" (free, local) — nothing else changes
 ```
 
-Switch the backend for real models; nothing else changes.
-
-```python
-chat = Glimi(backend="claude_cli")    # Claude via the Claude CLI login (no SDK); metered API credits, not a free subscription
-chat = Glimi(backend="ollama")        # fully local via Ollama — the free option (set GLIMI_OLLAMA_MODEL)
-```
-
-`Glimi` connects modules — in-memory `KernelStore`, simple `ProfileProvider`/`OwnerContext`, `NullObserver`, and selected backend. Import parts directly if you outgrow defaults.
-
-```python
-from glimi import (
-    InMemoryKernelStore, SimpleProfileProvider, SimpleOwnerContext,
-    KernelStore, ProfileProvider, OwnerContext, KernelObserver,  # seams to implement
-    LLMBackend, LLMResponse, EchoBackend,
-)
-```
-
-To use your DB, implement `KernelStore` (and optional `ProfileProvider`/`OwnerContext`/`KernelObserver`) and inject with `glimi.runtime.set_store(...)`. Example (SQLite + web transport):
-
-- `community/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
-- `community/core/runtime.py` — injects them and exports API
-
-### Web dashboard + model roles
-
-The Core dashboard is **read-only** observability over all agents — Cytoscape.js graph, memory inspector (L0–L5), channel viewer, tool-call timeline, per-agent model badge. The default config splits roles across models (Haiku for memory/judge/replies, Sonnet for reasoning, Opus for one-shot/self-heal) for roughly **10× cheaper** than Sonnet-only.
-
-Dashboard panel breakdown (with screenshots) and the full model-roles table are in → [**Internals**](docs/internals.en.md).
+→ details: dependency-injection seams (`KernelStore` / `ProfileProvider` / `OwnerContext` / `KernelObserver`), the read-only dashboard panels, and the full LLM model-roles table (~10× cheaper than Sonnet-only) — [docs/core_internals.en.md](docs/core_internals.en.md).
 
 ### Fully local mode (zero Claude dependency)
 
@@ -216,49 +160,11 @@ The web chat runs as the live adapter. Chat moves via WebSocket through Core's n
 
 <img src="docs/screenshots/en/16-community-demo-readonly.png" alt="Read-only demo community — look-only mockup" width="820"/>
 
-### The defining UX move
+### The defining UX move — channel context leakage
 
-Each character has channels — DMs with you, **secret DMs with each other**, and group chats you can read but not join — all in the web client. **Context leaks between channels**: what you tell A can show in A↔B, and B answers in that tone without quoting.
+Each character has channels — DMs with you, **secret DMs with each other**, and group chats you can read but not join. **Context leaks between channels**: what you tell A surfaces in A↔B gossip (which you spy on, read-only), and B later answers you in that tone — no quoting, no "I heard." Glimi Core makes this work: channel discipline (layer 4) holds the borders, memory injection (layer 3) carries the context, and a supervisor (layer 8) opens the gossip.
 
-```
-14:02 — you DM A in #dm-A
-  You: "hey, is B mad at me or something? they've been short with me all week"
-  A:   "lol why would they be 🤷 probably just busy"
-
-14:05 — A and B gossip in #internal-dm-A-B  (you read silently; they don't see you here)
-  A: "bruh the owner just DM'd me asking if you're mad at them 😂"
-  B: "???? no lmao"
-  A: "apparently you've been 'short' all week"
-  B: "I've literally been on deadline crunch..."
-  A: "I didn't snitch, just said you were busy"
-  B: "ok ty"
-
-14:30 — you DM B in #dm-B
-  You: "how's your day going"
-  B:   "surviving — crunch week 😮‍💨"
-```
-
-B says "crunch week" — explaining the short replies. No quoting A, no "I heard." B's memory notes: *owner asked about me in A's DM.* Later you ask "are we cool?"; that memory injects, shaping the reply.
-
-Glimi Core handles this: channel discipline (layer 4) enforces borders, memory injection (layer 3) moves context, supervisor (layer 8) drives gossip.
-
-### Community-specific feature set
-
-| Feature | Description |
-|---|---|
-| **Owner-absence simulation & return briefing** (roadmap) | Agents keep talking while you're away; Manager briefs you on return |
-| **Channel context leakage** | Memory of secret conversations naturally affects later replies without direct quotation |
-| **Spy mode** | `internal-*` channels are read-only for the owner — agents don't know you're there |
-| **Manager + Creator characters** | Yuna (admin / tutorial / DM approval) and Hana (persona design / avatar prompts) |
-| **Scene system** | `tutorial` shipped; `birthday` / `healing` / `outing` planned |
-| **Achievements** | 7 default unlocks tracked as the user explores: first chat, three friends, group chat, peek-internal, autonomous-chat, long-relationship, fourth-wall break |
-| **Multi-community isolation** | One platform supervisor runs N per-community web runtimes (`community/platform/web_runtime.py`, no subprocess); each gets its own SQLite DB and isolated web space |
-
-### Community architecture & channels
-
-Community is built on Glimi Core with a **web-first** design: a FastAPI + WebSocket platform talks to Core (runtime · memory · supervisors) over a SQLite `community.db`, and the **web chat is the live transport** — reached through Core's neutral `ChannelAdapter` seam, so new transports plug in without Core ever importing a chat SDK. Channels come in four kinds — `dm-{name}` (incl. manager `dm-agent-mgr-001`), `group-{names}`, and the spy-readable `internal-dm-{A}-{B}` / `internal-group-{names}` — plus a `logs/system.log` file for runtime tool-call logs.
-
-The engine flowchart and the full channel-structure table are in → [**Internals**](docs/internals.en.md).
+→ details: the worked DM-leak transcript, the full Community-specific feature set (spy mode, manager + creator, scenes, achievements, multi-community isolation), the web-first architecture flowchart, and the channel-structure table — [docs/community_internals.en.md](docs/community_internals.en.md).
 
 ### Quick Start (Community) — cross-platform
 
@@ -358,81 +264,11 @@ Before the Coordinator sends the final synthesis, Workspace can route it through
 
 ## EDD — eval-driven development (quality tracked per commit) ⭐
 
-Multi-agent products are hard to measure; perception isn't data. Glimi applies **EDD — eval-driven development**. An autonomous **owner agent** runs the app from onboarding to core flow. Each run produces **weighted dimension scores** and a **0–100 composite**, committed as a **git-SHA generation**. `git log` becomes a quality timeline where each commit shows its score. The **`glimi.edd`** module in the `glimi` kernel supports this for both Community and Workspace, each defining its own dimensions and owner agent.
-
-**Scoring**: each dimension 0–10 with a weight; the composite is a weighted average normalized to 0–100. `critical` = any fail voids the run. LLM-judge dimensions are **skipped** on `echo` or when no judge exists. Community defines six dimensions:
-
-| Dimension | Kind | Weight | Critical | What it checks |
-|---|---|:--:|:--:|---|
-| `onboarding` | structural | 1.0 | | A fresh owner greets the manager and gets oriented |
-| `friend_creation` | structural | 1.5 | ⭐ | An owner request actually creates a new friend, and conversation follows |
-| `conversation_quality` | LLM-judge | 2.0 | | Replies are human, coherent, in-character (5 axes: in_character · coherence · naturalness · engagement · no_meta) |
-| `no_hallucination` | LLM-judge | 1.5 | | No invented facts, no claiming actions it never took |
-| `no_leaks` | structural | 1.0 | | Zero meta / error / tool-block leakage into chat |
-| `responsiveness` | structural | 1.0 | | Every driven DM gets a distinct reply, no stalls |
-
-### The flywheel, with real measurements
-
-**Repo generations** (`tests/e2e/qa_generations/*.json`) are real `claude_cli` runs scored by the judge and tagged with a git SHA. Data is small because the system is new. The aim is to accumulate scored generations, not depth of history.
-
-| Gen | git SHA | Branch | Composite / 100 | Verdict | `conversation_quality` | `friend_creation` (critical) | Failing |
-|:--:|:--:|---|:--:|:--:|:--:|:--:|---|
-| **1** | `1eb4c46`* | `feat/community-qa-system` | **69.4** | ❌ FAIL | 6.0 | **0.0** | friend_creation, conversation_quality |
-| **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation *(composite ≥ 70, but critical = 0)* |
-| **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation *(composite ≥ 70, but critical = 0)* |
-| **4** | `f1eb58a`* | `develop` | **56.9** | ❌ FAIL | 4.0 ▼ | **0.0** | friend_creation, conversation_quality, no_hallucination |
-| **5** | `217de05`* | `feat/web-native-onboarding` | **77.5** | ✅ **PASS** | 6.0 | **10.0** ▲▲ | — *(first PASS)* |
-| ⋯ | gens 6–10 | `217de05` → `a8d874d` | 57.8 ↘ 22.2 ↗ 57.8 | ❌ FAIL (regressed) | — | **0.0** ▼ | friend_creation |
-| **11** | `a8d874d`* | `feat/web-native-onboarding` | **85.0** | ✅ **PASS** | 7.0 | **10.0** ▲▲ | — *(highest)* |
-
-`*` = dirty working tree during run. All values come from committed JSON. **First PASS was gen-5** (`217de05`, 77.5): web-native onboarding lifted critical `friend_creation` 0 → 10. It regressed to 0 across gens 6–10, then held at 10 in gen-11 (`a8d874d`, **85.0 — the highest**).
-
-Failures shown for clarity:
-
-- **`conversation_quality` 6 → 9 → 8 → 4 → 7** shows LLM variance. Gen-1→2 fixed manager loops; gen-4 regressed; gen-11 stabilized at 7.
-- **`friend_creation` (critical) was 0 for gens 1–4 and 6–10, and 10 at gen-5 and gen-11**—the expected fail came from subprocess isolation in the old bootstrap adapter (see [`docs/qa_system.md`](docs/qa_system.md), `analysis/platform_decoupling_review.md`). Web-native onboarding first cleared it at **gen-5 (77.5, first ✅ PASS)**; after a regression across gens 6–10 it was restored at **gen-11 (85.0, the highest)**. `conversation_quality` 7 and `no_hallucination` 6 stay exposed.
-- **Composite ≥ 70 is not enough.** Gens 2 (75.0) and 3 (72.5) cleared the threshold but still FAILED on `friend_creation` = 0 — a high chat score can't outvote a broken critical journey. That is the gate working as designed.
-
-Core rule: **git tracks product quality**. Each commit's impact appears in history. The dashboard and PDF below visualize it.
-
-### See it: the `/admin/qa` dashboard + PDF reports
-
-A **QA dashboard** at `/admin/qa` (admin → "QA") shows the latest composite, **trend chart**, and per-generation breakdown. Any run exports to **PDF** via `glimi.edd.report`, which prints through Playwright. The trend SVG is server-rendered for consistent output.
+Glimi measures multi-agent quality with **EDD**: an autonomous **owner agent** drives the app from onboarding through the core journey, scored across weighted dimensions into a **0–100 composite** and committed as a **git-SHA generation**, so `git log` becomes a quality timeline. Real runs span gen-1 (69.4, FAIL) to **gen-11 (85.0, PASS — the highest)**, with a `critical` gate that voids a run when the `friend_creation` journey breaks even if the chat score is high. A `/admin/qa` dashboard and `glimi.edd` PDF reports visualize it.
 
 ![EDD — /admin/qa dashboard: gen-11 PASS 85, the dimension breakdown, and the quality-over-generations trend](docs/screenshots/en/19-edd-dashboard.png)
 
-```bash
-# one scored generation (free self-test: echo backend, judge skipped, structural dims only)
-GLIMI_LLM_BACKEND=echo .venv/bin/python -m tests.e2e.community_e2e --owner-agent --rounds 2 --qa
-
-# a real, judged generation → SQLite + a committable gen-NNNN-*.json
-GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e \
-    --owner-agent --rounds 10 --qa --report
-
-# + a PDF report (trend chart + dimensions; needs Playwright). --pdf implies --qa.
-GLIMI_LLM_BACKEND=claude_cli .venv/bin/python -m tests.e2e.community_e2e \
-    --owner-agent --rounds 10 --pdf --report
-```
-
-```bash
-git log -- tests/e2e/qa_generations/   # the quality timeline (committed generations)
-git log --grep "qa:"                   # every quality-affecting change, with its score delta
-```
-
-**For adopters:** `glimi.edd` is domain-neutral in the `glimi` wheel. Add your dimensions and owner-agent driver for composite scoring, git-anchored SQLite + JSON storage, and HTML/PDF reports.
-
-```python
-from glimi.edd import Dimension, DimResult, build_assessment, GenerationStore
-
-DIMS = [Dimension("onboarding", "Onboarding", 1.0, "structural", "fresh user gets oriented"),
-        Dimension("core_journey", "Core journey", 1.5, "structural", "...", critical=True)]
-results = [DimResult.for_dim(d, score=..., passed=..., detail="...") for d in DIMS]  # you evaluate
-assessment = build_assessment(results, min_overall=70)                              # core scores → 0–100
-store = GenerationStore(db_path="qa.db", generations_dir="qa_generations/")          # core persists
-store.record(assessment.as_dict(), run_id="run-1")                                   # → SQLite + git-SHA JSON
-```
-
-Community uses six dimensions on this core. Workspace reuses `glimi.edd` with deliverable / delegation / A2A dimensions. One framework powers both apps. Full spec: [`docs/qa_system.md`](docs/qa_system.md).
+→ details: the six scoring dimensions, the full generation table, the flywheel analysis, the dashboard + PDF commands, and the adopter API (`glimi.edd`) — [docs/edd.en.md](docs/edd.en.md).
 
 ---
 

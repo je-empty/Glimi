@@ -1,14 +1,14 @@
-# Glimi — Internals
+# Glimi — Memory & Runtime Internals
 
-Deep architecture reference for Glimi Core and Glimi Community: the runtime pipeline, memory layers, dashboard observability, and the Community channel model. Pulled out of the README to keep it scannable; nothing here is lost, only relocated.
+[← README](../README.md)
 
-[← README](../README.md) · [← README (한국어)](../README.ko.md)
+How a single response flows through the runtime, the layered persistent memory stack (L0–L5), and why state survives model swaps and profile edits. State lives outside prompts, so relationships and memories persist across restarts and model changes (Haiku → local Llama).
 
 ---
 
 ## The 8 layers
 
-Each response runs through **8 layers**. Some wrap the LLM call (prompt, tools, memory). Others live in subsystems (A2A loop, supervisors, self-heal). Seven follow messages; one runs on schedule.
+Each response runs through **8 layers** — five pre-LLM (prompt, tool, memory, channel, guard), two post-LLM (A2A loop, self-heal), and a scheduled supervisor tier. Some wrap the LLM call (prompt, tools, memory). Others live in subsystems (A2A loop, supervisors, self-heal). Seven follow messages; one runs on schedule.
 
 ```mermaid
 flowchart TB
@@ -62,6 +62,8 @@ Commands show system noise; self-talk merges into the next line.
 
 ## Memory architecture
 
+Layered persistent memory (L0–L5): L0 raw (`conversations`) → L1 working window (recent verbatim, injected live) → L2 episodic rollup (L1→L2→L3 digests in `memories`) → L3 semantic facts (`agent_facts`: subject·predicate·object with `valid_from`/`valid_to` supersession) → L4 relationship (`relationships` + history) → L5 pinned (`memories.is_pinned`). Async Haiku extraction runs off the response path.
+
 ```mermaid
 graph LR
     linkStyle default stroke:#888,stroke-width:1.5px
@@ -102,80 +104,3 @@ Hardening:
 
 - State stays outside prompts. Swapping Haiku → Sonnet → local Llama keeps relationships, facts, pinned memories; new models read the same injection.
 - Profile-edit tools pair `invalidate_cache()` with `runtime.refresh_agent()` so updates apply next turn and stop repeat-question bugs.
-
-## LLM model roles (default config)
-
-| Role | Model | Why |
-|---|---|---|
-| Memory extraction | `claude-haiku-4-5` | Cheap + fast, runs on every batch in background |
-| Supervisor / judge | `claude-haiku-4-5` | Lightweight state classification |
-| Agent reply (default) | `claude-haiku-4-5` | High-volume, latency-sensitive |
-| Reasoning / orchestration | `claude-sonnet-4-6` | Per-agent override from dashboard |
-| One-shot structured output | `claude-opus-4-6` | Profile JSON, complex generation |
-| Self-healing | `claude-opus-4-6` | Runtime-error source patching |
-
-About 10× cheaper than Sonnet-only.
-
-## Web dashboard (Glimi Core's observability)
-
-The Core dashboard shows all agents — graph, memory inspector (L0–L5), channel view, tool log. It is **read-only**; live model-swap writes need Community or Workspace.
-
-| Connection Graph | Memory Inspector |
-|---|---|
-| <img src="screenshots/en/04-graph-live.webp" height="300" alt="Connection Graph"/> | <img src="screenshots/en/02-persona-memory.png" height="300" alt="Memory Inspector"/> |
-
-- **Cytoscape.js graph** — agent links, channel activity, supervisor overlay
-- **Memory inspector (L0–L5)** — pinned, episodic, semantic, relationship data
-- **Live channel viewer** — shows each agent's view
-- **Tool call timeline** — `<tools>` args + results
-- **Per-agent model (read-only)** — lists model and override badge (live swap in Community/Workspace)
-
-## Community architecture (web-first; pluggable transport seam)
-
-```mermaid
-flowchart LR
-    linkStyle default stroke:#888,stroke-width:1.5px
-    subgraph Owner["👤 Owner"]
-        Web["🌐 Built-in web chat + dashboard"]
-    end
-
-    subgraph Engine["Community Engine (built on Glimi Core)"]
-        Plat["🧩 Platform (FastAPI · WebSocket)"]
-        Core["⚙ Glimi Core<br/>(runtime · memory · supervisors)"]
-        DB[("SQLite<br/>community.db")]
-        Log["📄 logs/system.log<br/>(runtime tool logs)"]
-        Seam["🔌 ChannelAdapter seam<br/>(Outbox · web adapter live;<br/>new transports plug in here)"]
-    end
-
-    subgraph Channels["💬 Channels"]
-        DM["💬 dm-{name}<br/>incl. manager dm-agent-mgr-001"]
-        Grp["👥 group-{names}"]
-        SecDM["🔒 internal-dm-A-B"]
-        SecGrp["🔒 internal-group-A-B-C"]
-    end
-
-    Web <-->|"chat (WebSocket)"| Plat
-    Plat <--> Core
-    Core <--> DB
-    Core -.->|"tool-call logs"| Log
-    Owner <-->|"chat"| DM & Grp
-    Owner -. "spy 🔍 read-only" .-> SecDM & SecGrp
-    Plat <-->|"transport-neutral"| Seam
-
-    style Engine fill:#1a3a2a,stroke:#4aff9e,color:#fff
-    style Core fill:#1a3a5c,stroke:#4a9eff,color:#fff
-    style SecDM fill:#2d2d2d,stroke:#f5c542,color:#fff
-    style SecGrp fill:#2d2d2d,stroke:#f5a142,color:#fff
-```
-
-**Web chat is the live transport.** Core never imports any chat SDK — it talks through the transport-neutral seam (`Outbox`/`Speaker` in `glimi-core/glimi/transport.py` + the `ChannelAdapter` Protocol in `community/core/channel_adapter.py`). Community ships FastAPI + WebSocket chat as the live adapter (`community/adapters/web/`). Discord was the first bootstrap adapter that validated this seam; it was retired once web reached parity (2026-06-25). New transports (Telegram, etc.) plug into the same seam.
-
-## Channel structure (Community)
-
-| Channel | Created | Purpose |
-|---|---|---|
-| `dm-{agent}` (incl. manager `dm-agent-mgr-001`) | first boot / on agent creation | Owner ↔ agent 1:1 |
-| `group-{names}` | on demand | Owner + agents multi-DM |
-| `internal-dm-{A}-{B}` | on demand | Agent-to-agent secret 1:1 (**owner read-only**) |
-| `internal-group-{names}` | on demand | Agent-to-agent secret group (**owner read-only**) |
-| `logs/system.log` (file) | runtime | Runtime tool-call logs — a file, not a channel |
