@@ -74,7 +74,7 @@ Other projects (LangChain/LangGraph, AutoGen, CrewAI, OpenAI Agents SDK, Letta, 
 
 - **Persistent population.** Each agent has a persona and model (Claude or Ollama). State is stored, not reprised, surviving model swaps.
 - **Autonomous activity.** A timed supervisor spawns threads, revives idle agents, and advances scenes offline.
-- **Light load.** All agents share one resident model, swapping only context. Fits a fleet on 16 GB. Uses Ollama's resident model while Glimi tracks state.
+- **Light load.** All agents share one resident model, swapping only context. Fits a fleet on 16 GB. Uses Ollama's resident model while Glimi tracks state.
 - **Dashboard.** Web UI shows relationships, memory (L0–L5), live channel, and model inspector. Others show single agents; Glimi spans many.
 
 Status: alpha (0.1.0, not on PyPI). Letta leads in memory depth, AI Town in autonomy, SillyTavern in characters, Zep in graphs. Glimi combines them.
@@ -123,17 +123,17 @@ The runtime pipeline diagram, per-layer detail, the memory-architecture diagram,
 
 ### Elastic Memory — memory that fits any context window
 
-Local models have small windows (Ollama 4096). A full Glimi prompt — character system + L0–L5 memory + chat history — often exceeds that, truncating early tokens.
+Local models have small windows (Ollama 4096). A full Glimi prompt — character system + L0–L5 memory + chat history — often exceeds that, truncating early tokens.
 `Elastic Memory` (`glimi/context_budget.py`) manages this:
 
-- **Memory scales with window** — baseline `num_ctx` 8192; 4096 shrinks, 16384 doubles recall.
+- **Memory scales with window** — baseline `num_ctx` 8192; 4096 shrinks, 16384 doubles recall.
 - **Best-effort fit** — trims oldest conversation first; logs warning if even system prompt overflows.
-- **Backend-agnostic** — works with Claude or any; mainly for locals (cloud 200 k rarely needs it).
-- **Per-community, hardware-aware** — `community/core/system_specs.py` reads RAM/VRAM, suggests Low 4096 / Mid 8192 / High 16384 tiers, writes config like a quality slider.
+- **Backend-agnostic** — works with Claude or any; mainly for locals (cloud 200 k rarely needs it).
+- **Per-community, hardware-aware** — `community/core/system_specs.py` reads RAM/VRAM, suggests Low 4096 / Mid 8192 / High 16384 tiers, writes config like a quality slider.
 
 ### Quick Start (library)
 
-Glimi Core **alpha (0.1.0, not on PyPI)**. Install from source. Kernel includes in-memory store and **offline `echo` backend**, so it runs with **no deps or API key** — `echo` shows wiring and conversation storage.
+Glimi Core **alpha (0.1.0, not on PyPI)**. Install from source. Kernel includes in-memory store and **offline `echo` backend**, so it runs with **no deps or API key** — `echo` shows wiring and conversation storage.
 
 ```python
 from glimi import Glimi
@@ -152,7 +152,7 @@ chat = Glimi(backend="claude_cli")    # Claude via the Claude CLI login (no SDK)
 chat = Glimi(backend="ollama")        # fully local via Ollama — the free option (set GLIMI_OLLAMA_MODEL)
 ```
 
-`Glimi` connects modules — in-memory `KernelStore`, simple `ProfileProvider`/`OwnerContext`, `NullObserver`, and selected backend. Import parts directly if you outgrow defaults.
+`Glimi` connects modules — in-memory `KernelStore`, simple `ProfileProvider`/`OwnerContext`, `NullObserver`, and selected backend. Import parts directly if you outgrow defaults.
 
 ```python
 from glimi import (
@@ -162,9 +162,9 @@ from glimi import (
 )
 ```
 
-To use your DB, implement `KernelStore` (and optional `ProfileProvider`/`OwnerContext`/`KernelObserver`) and inject with `glimi.runtime.set_store(...)`. Example (SQLite + Discord):
+To use your DB, implement `KernelStore` (and optional `ProfileProvider`/`OwnerContext`/`KernelObserver`) and inject with `glimi.runtime.set_store(...)`. Example (SQLite + Discord):
 
-- `community/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
+- `community/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
 - `community/core/runtime.py` — injects them and exports API
 
 ### Web dashboard + model roles
@@ -175,7 +175,7 @@ Dashboard panel breakdown (with screenshots) and the full model-roles table are 
 
 ### Fully local mode (zero Claude dependency)
 
-`GLIMI_LLM_BACKEND=ollama` routes all LLM calls (persona, manager tools, memory extraction, supervisor checks, achievement judging) to local Ollama — no Anthropic key. Choose tier with `GLIMI_LOCAL_TIER` (`run.sh --local-models`).
+`GLIMI_LLM_BACKEND=ollama` routes all LLM calls (persona, manager tools, memory extraction, supervisor checks, achievement judging) to local Ollama — no Anthropic key. Choose tier with `GLIMI_LOCAL_TIER` (`run.sh --local-models`).
 
 | Tier | Config | Mac | VRAM | Notes |
 |---|---|---|---|---|
@@ -184,7 +184,7 @@ Dashboard panel breakdown (with screenshots) and the full model-roles table are 
 | quality | `iq3-26b` single | 24 GB | **12 GB** | 26b quality on 12 GB (MoE, ~1 GB offload) |
 | prod | `iq3-26b` manager + `e4b` rest (split) | 32 GB | 24 GB | both resident, no swap |
 
-A 12 GB GPU can't hold a two-model split; use `quality` (26b single). See **[`docs/local_models.md`](docs/local_models.md)** for table and setup.
+A 12 GB GPU can't hold a two-model split; use `quality` (26b single). See **[`docs/local_models.md`](docs/local_models.md)** for table and setup.
 
 ---
 
@@ -355,9 +355,9 @@ Before the Coordinator sends the final synthesis, Workspace can route it through
 
 ## EDD — eval-driven development (quality tracked per commit) ⭐
 
-Multi-agent products are hard to measure; perception isn't data. Glimi applies **EDD — eval-driven development**. An autonomous **owner agent** runs the app from onboarding to core flow. Each run produces **weighted dimension scores** and a **0–100 composite**, committed as a **git-SHA generation**. `git log` becomes a quality timeline where each commit shows its score. The **`glimi.edd`** module in the `glimi` kernel supports this for both Community and Workspace, each defining its own dimensions and owner agent.
+Multi-agent products are hard to measure; perception isn't data. Glimi applies **EDD — eval-driven development**. An autonomous **owner agent** runs the app from onboarding to core flow. Each run produces **weighted dimension scores** and a **0–100 composite**, committed as a **git-SHA generation**. `git log` becomes a quality timeline where each commit shows its score. The **`glimi.edd`** module in the `glimi` kernel supports this for both Community and Workspace, each defining its own dimensions and owner agent.
 
-**Scoring**: each dimension 0–10 with a weight; the composite is a weighted average normalized to 0–100. `critical` = any fail voids the run. LLM-judge dimensions are **skipped** on `echo` or when no judge exists. Community defines six dimensions:
+**Scoring**: each dimension 0–10 with a weight; the composite is a weighted average normalized to 0–100. `critical` = any fail voids the run. LLM-judge dimensions are **skipped** on `echo` or when no judge exists. Community defines six dimensions:
 
 | Dimension | Kind | Weight | Critical | What it checks |
 |---|---|:--:|:--:|---|
@@ -370,29 +370,31 @@ Multi-agent products are hard to measure; perception isn't data. Glimi applies *
 
 ### The flywheel, with real measurements
 
-**Repo generations** (`tests/e2e/qa_generations/*.json`) are real `claude_cli` runs scored by the judge and tagged with a git SHA. Data is small because the system is new. The aim is to accumulate scored generations, not depth of history.
+**Repo generations** (`tests/e2e/qa_generations/*.json`) are real `claude_cli` runs scored by the judge and tagged with a git SHA. Data is small because the system is new. The aim is to accumulate scored generations, not depth of history.
 
 | Gen | git SHA | Branch | Composite / 100 | Verdict | `conversation_quality` | `friend_creation` (critical) | Failing |
 |:--:|:--:|---|:--:|:--:|:--:|:--:|---|
 | **1** | `1eb4c46`* | `feat/community-qa-system` | **69.4** | ❌ FAIL | 6.0 | **0.0** | friend_creation, conversation_quality |
-| **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation |
-| **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation |
+| **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation *(composite ≥ 70, but critical = 0)* |
+| **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation *(composite ≥ 70, but critical = 0)* |
 | **4** | `f1eb58a`* | `develop` | **56.9** | ❌ FAIL | 4.0 ▼ | **0.0** | friend_creation, conversation_quality, no_hallucination |
-| ⋯ | gens 5–10 | the web-native onboarding build | 56.9 → 85.0 | building | — | 0.0 → **10.0** | — |
-| **11** | `a8d874d`* | `feat/web-native-onboarding` | **85.0** | ✅ **PASS** | 7.0 | **10.0** ▲▲ | — *(first PASS)* |
+| **5** | `217de05`* | `feat/web-native-onboarding` | **77.5** | ✅ **PASS** | 6.0 | **10.0** ▲▲ | — *(first PASS)* |
+| ⋯ | gens 6–10 | `217de05` → `a8d874d` | 57.8 ↘ 22.2 ↗ 57.8 | ❌ FAIL (regressed) | — | **0.0** ▼ | friend_creation |
+| **11** | `a8d874d`* | `feat/web-native-onboarding` | **85.0** | ✅ **PASS** | 7.0 | **10.0** ▲▲ | — *(highest)* |
 
-`*` = dirty working tree during run. All values come from committed JSON. **Gen 11 milestone**: onboarding became web-native after gens 5–10 prep and flipped critical `friend_creation` **0 → 10**, first ✅ PASS (85/100).
+`*` = dirty working tree during run. All values come from committed JSON. **First PASS was gen-5** (`217de05`, 77.5): web-native onboarding lifted critical `friend_creation` 0 → 10. It regressed to 0 across gens 6–10, then held at 10 in gen-11 (`a8d874d`, **85.0 — the highest**).
 
 Failures shown for clarity:
 
-- **`conversation_quality` 6 → 9 → 8 → 4 → 7** shows LLM variance. Gen-1→2 fixed manager loops; gen-4 regressed; gen-11 stabilized at 7.
-- **`friend_creation` critical 0 for gens 1–10**—expected fail from Discord-bot subprocess isolation (see [`docs/qa_system.md`](docs/qa_system.md), `analysis/platform_decoupling_review.md`). Web-native onboarding fixed it. **Gen-11 `friend_creation` = 10 → first ✅ PASS (85/100)**. `conversation_quality` 7 and `no_hallucination` 6 stay exposed.
+- **`conversation_quality` 6 → 9 → 8 → 4 → 7** shows LLM variance. Gen-1→2 fixed manager loops; gen-4 regressed; gen-11 stabilized at 7.
+- **`friend_creation` (critical) was 0 for gens 1–4 and 6–10, and 10 at gen-5 and gen-11**—the expected fail came from Discord-bot subprocess isolation (see [`docs/qa_system.md`](docs/qa_system.md), `analysis/platform_decoupling_review.md`). Web-native onboarding first cleared it at **gen-5 (77.5, first ✅ PASS)**; after a regression across gens 6–10 it was restored at **gen-11 (85.0, the highest)**. `conversation_quality` 7 and `no_hallucination` 6 stay exposed.
+- **Composite ≥ 70 is not enough.** Gens 2 (75.0) and 3 (72.5) cleared the threshold but still FAILED on `friend_creation` = 0 — a high chat score can't outvote a broken critical journey. That is the gate working as designed.
 
 Core rule: **git tracks product quality**. Each commit's impact appears in history. The dashboard and PDF below visualize it.
 
 ### See it: the `/admin/qa` dashboard + PDF reports
 
-A **QA dashboard** at `/admin/qa` (admin → "QA") shows the latest composite, **trend chart**, and per-generation breakdown. Any run exports to **PDF** via `glimi.edd.report`, which prints through Playwright. The trend SVG is server-rendered for consistent output.
+A **QA dashboard** at `/admin/qa` (admin → "QA") shows the latest composite, **trend chart**, and per-generation breakdown. Any run exports to **PDF** via `glimi.edd.report`, which prints through Playwright. The trend SVG is server-rendered for consistent output.
 
 ![EDD — /admin/qa dashboard: gen-11 PASS 85, the dimension breakdown, and the quality-over-generations trend](docs/screenshots/en/19-edd-dashboard.png)
 
@@ -414,7 +416,7 @@ git log -- tests/e2e/qa_generations/   # the quality timeline (committed generat
 git log --grep "qa:"                   # every quality-affecting change, with its score delta
 ```
 
-**For adopters:** `glimi.edd` is domain-neutral in the `glimi` wheel. Add your dimensions and owner-agent driver for composite scoring, git-anchored SQLite + JSON storage, and HTML/PDF reports.
+**For adopters:** `glimi.edd` is domain-neutral in the `glimi` wheel. Add your dimensions and owner-agent driver for composite scoring, git-anchored SQLite + JSON storage, and HTML/PDF reports.
 
 ```python
 from glimi.edd import Dimension, DimResult, build_assessment, GenerationStore
@@ -427,7 +429,7 @@ store = GenerationStore(db_path="qa.db", generations_dir="qa_generations/")     
 store.record(assessment.as_dict(), run_id="run-1")                                   # → SQLite + git-SHA JSON
 ```
 
-Community uses six dimensions on this core. Workspace reuses `glimi.edd` with deliverable / delegation / A2A dimensions. One framework powers both apps. Full spec: [`docs/qa_system.md`](docs/qa_system.md).
+Community uses six dimensions on this core. Workspace reuses `glimi.edd` with deliverable / delegation / A2A dimensions. One framework powers both apps. Full spec: [`docs/qa_system.md`](docs/qa_system.md).
 
 ---
 

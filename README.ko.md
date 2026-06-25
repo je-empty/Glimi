@@ -343,17 +343,19 @@ Glimi 는 **EDD(eval-driven development)** 로 멀티 에이전트 품질을 측
 | 세대 | git SHA | 브랜치 | 종합 / 100 | 판정 | `conversation_quality` | `friend_creation` (critical) | 실패 차원 |
 |:--:|:--:|---|:--:|:--:|:--:|:--:|---|
 | **1** | `1eb4c46`* | `feat/community-qa-system` | **69.4** | ❌ FAIL | 6.0 | **0.0** | friend_creation, conversation_quality |
-| **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation |
-| **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation |
+| **2** | `b3eaf74`* | `feat/community-qa-system` | **75.0** | ❌ FAIL | **9.0** ▲ | **0.0** | friend_creation *(종합 ≥ 70 이지만 critical = 0)* |
+| **3** | `f1eb58a`* | `develop` | **72.5** | ❌ FAIL | 8.0 | **0.0** | friend_creation *(종합 ≥ 70 이지만 critical = 0)* |
 | **4** | `f1eb58a`* | `develop` | **56.9** | ❌ FAIL | 4.0 ▼ | **0.0** | friend_creation, conversation_quality, no_hallucination |
-| ⋯ | gens 5–10 | web-native 온보딩 빌드 | 56.9 → 85.0 | 빌드 중 | — | 0.0 → **10.0** | — |
-| **11** | `a8d874d`* | `feat/web-native-onboarding` | **85.0** | ✅ **PASS** | 7.0 | **10.0** ▲▲ | — *(첫 PASS)* |
+| **5** | `217de05`* | `feat/web-native-onboarding` | **77.5** | ✅ **PASS** | 6.0 | **10.0** ▲▲ | — *(첫 PASS)* |
+| ⋯ | gens 6–10 | `217de05` → `a8d874d` | 57.8 ↘ 22.2 ↗ 57.8 | ❌ FAIL (회귀) | — | **0.0** ▼ | friend_creation |
+| **11** | `a8d874d`* | `feat/web-native-onboarding` | **85.0** | ✅ **PASS** | 7.0 | **10.0** ▲▲ | — *(최고점)* |
 
-`*` 는 커밋 시점 dirty 상태다. 점수는 JSON 그대로. **gen-11** 에서 web-native 온보딩 빌드(gens 5–10 단계)로 critical `friend_creation` 이 **0 → 10**, 처음으로 ✅ PASS(85/100) 되었다.
+`*` 는 커밋 시점 dirty 상태다. 점수는 JSON 그대로. **최초 PASS 는 gen-5** (`217de05`, 77.5): web-native 온보딩이 critical `friend_creation` 을 0 → 10 으로 올렸다. 이후 gens 6–10 에서 0 으로 회귀했다가 gen-11 (`a8d874d`, **85.0 — 최고점**) 에서 다시 10 으로 안정화됐다.
 
 세부 지표:
 - **`conversation_quality` 6.0 → 9.0 → 8.0 → 4.0 … → 7.0** 은 LLM 변동성을 보여준다. gen-1→2 에서 중복 질문 제거, gen-4 회귀, gen-11 재안정화(7.0).
-- **`friend_creation` 은 `critical`, gens 1–10 은 0.0.** supervisor 가 디스코드 봇 내부에만 있어 웹 E2E 실패한 **어댑터 갭**을 수치로 남겼다. web-native 빌드 후 **gen-11 = 10.0 → 첫 ✅ PASS(85/100)**. (`conversation_quality` 7.0, `no_hallucination` 6.0 은 개선 중.)
+- **`friend_creation` (critical) 은 gens 1–4·6–10 에서 0, gen-5·gen-11 에서만 10 이다.** supervisor 가 디스코드 봇 내부에만 있어 웹 E2E 가 실패한 **어댑터 갭**을 수치로 남겼다. web-native 빌드가 **gen-5(77.5, 첫 ✅ PASS)** 에서 처음 통과시켰고, gens 6–10 회귀 후 **gen-11(85.0, 최고점)** 에서 복원됐다. (`conversation_quality` 7.0, `no_hallucination` 6.0 은 개선 중.)
+- **종합 ≥ 70 으로는 부족하다.** gen-2(75.0)·gen-3(72.5)은 기준은 넘겼지만 `friend_creation` = 0 으로 FAIL 했다 — 높은 대화 점수가 망가진 critical 저니를 덮을 수 없다. 게이트가 설계대로 동작한 것이다.
 
 **요약:** 품질을 git 에 1급 메트릭으로 기록한다. 모든 커밋의 영향이 수치로 보인다. 아래 대시보드·PDF 가 그 타임라인을 나타낸다.
 ### 보기: `/admin/qa` 대시보드 + PDF 리포트
