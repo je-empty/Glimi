@@ -101,21 +101,19 @@ Glimi fills the intersection of those efforts.
 
 ### What's in the box
 
-| Feature | One-liner |
+| Feature | Detail |
 |---|---|
-| **Multi-agent runtime** | Per-agent model override in the DB — Claude, Ollama, and Grok in one fleet, swappable without restart. |
-| **Tool protocol** | `<tools>` inline XML — a declarative `ToolSpec` registry with permission, type, and env-gating. |
-| **Layered persistent memory (L0–L5)** | Six levels, L0 raw → L5 pinned, with temporal fact supersession and async Haiku extraction off the response path. |
-| **Autonomous A2A conversation** | Agents start turn-limited, closure-detected 1:1 and group chats with each other. |
-| **Proactive supervisor layer** | The one layer that ticks without input — opens new pairings, revives idle chats, advances stuck scenes. |
-| **Live observability dashboard** (`glimi[dashboard]`, read-only) | Cytoscape.js graph, L0–L5 memory inspector, channel viewer, tool-call timeline, and LLM cost card. |
-| **Evaluation harness** | Golden-set capability eval with an LLM-judge and a backend-tagged regression gate that fails CI on a quality drop. |
-| **End-to-end EDD QA (generational)** | An owner agent drives the whole app, scored 0–100 per **git-SHA generation** — the flagship differentiator ([details below](#edd--eval-driven-development-quality-tracked-per-commit-)). |
-| **Cost & latency accounting** | Every LLM and tool call metered at one choke-point — honest by construction ($0 for local/echo, *est.* labels, real dollars only). |
-| **Human-in-the-loop gate** (Workspace) | An `approve / edit / reject` policy around consequential actions; never hangs (non-interactive auto-approves). |
-| **Self-healing** (experimental, off by default) | An agent files a fix request; an Opus subprocess patches the source and restarts with the summary injected. |
-
-Full capability detail → [Internals](docs/internals.en.md).
+| **Multi-agent runtime** | Per-agent model override stored in DB. Cloud (Claude) and local (Ollama) coexist in one fleet — Grok CLI too; vLLM / llama.cpp are planned via the pluggable backend seam. Swappable without restart. |
+| **Tool protocol** | `<tools><call id="1" name="...">...</call></tools>` inline XML — declarative `ToolSpec` registry with permission, type, env-gating |
+| **Layered persistent memory (L0–L5)** | L0 raw (`conversations`) → L1 working window (recent verbatim, injected live) → L2 episodic rollup (L1→L2→L3 digests in `memories`) → L3 semantic facts (`agent_facts`: subject·predicate·object with `valid_from`/`valid_to` supersession) → L4 relationship (`relationships` + history) → L5 pinned (`memories.is_pinned`). Async Haiku extraction off the response path. |
+| **Autonomous A2A conversation** | 1:1 and multi-agent channels. Turn-limited, closure-detected. Agents start conversations with each other via the tool protocol. |
+| **Proactive supervisor layer** | The one layer that ticks without input. A pair scanner opens new agent-to-agent channels, a chat watcher revives idle ones, and a scene watcher progresses stuck workflows. |
+| **Live observability dashboard** (`glimi[dashboard]`, read-only) | Cytoscape.js agent graph, per-agent memory inspector (L0–L5), real-time channel viewer, tool-call timeline, LLM usage/cost card, runtime state badges. (Live model-swap *writes* are a Community/Workspace platform feature; the Core dashboard surfaces the per-agent model for inspection.) |
+| **Evaluation harness** | A golden set across persona / tool-use / memory / fallback / supervisor capabilities; deterministic checks + an LLM-as-judge (reused, not reinvented); a backend-tagged **regression gate** (fails CI on a pass-rate or judge-score drop); a production-feedback loop that promotes a flagged bad turn into a golden case. Runs free on the offline `echo` backend. |
+| **End-to-end EDD QA (generational)** | The integration counterpart to the golden-set eval: an autonomous **owner agent** drives a full app from onboarding through the core journey, scored across weighted dimensions into a **0–100 quality score**, each run a **git-SHA-anchored "generation"** (SQLite + committed JSON) so quality is tracked commit-over-commit. The flagship differentiator — **[real measured generations + the flywheel](#edd--eval-driven-development-quality-tracked-per-commit-)** get their own section above. |
+| **Cost & latency accounting** | Every LLM call records tokens, estimated cost, and latency at one choke-point; every tool call records args/result/latency/ok at another. Honest by construction — local/echo priced at $0, CLI/estimate rows labeled *est.*, dollars shown only for real priced spend. |
+| **Human-in-the-loop gate** (Workspace) | An approval policy (`approve / edit / reject` + fallback + decision trail) around a consequential action, used by Workspace; never hangs (non-interactive auto-approves). |
+| **Self-healing (experimental, off by default)** | Agent emits `request_dev_fix` → enqueues a dev_requests row → a dev-queue supervisor triages → on approval an Opus subprocess (`GLIMI_DEV_DISPATCH=1`) patches source → bot restart with the patch summary injected. |
 
 ### Inside the runtime
 
@@ -125,9 +123,13 @@ The runtime pipeline diagram, per-layer detail, the memory-architecture diagram,
 
 ### Elastic Memory — memory that fits any context window
 
-Local models have small windows (Ollama 4096), and a full Glimi prompt — character system + L0–L5 memory + chat history — often exceeds that. `Elastic Memory` (`glimi/context_budget.py`) sizes memory to the set `num_ctx` (baseline 8192; 4096 shrinks recall, 16384 doubles it) and trims oldest conversation first so the same agent runs at any window without personality loss. It's backend-agnostic and hardware-aware — `community/core/system_specs.py` reads RAM/VRAM and suggests Low 4096 / Mid 8192 / High 16384 tiers like a quality slider.
+Local models have small windows (Ollama 4096). A full Glimi prompt — character system + L0–L5 memory + chat history — often exceeds that, truncating early tokens.
+`Elastic Memory` (`glimi/context_budget.py`) manages this:
 
-→ details: [Internals](docs/internals.en.md#elastic-memory--memory-sized-to-the-context-window).
+- **Memory scales with window** — baseline `num_ctx` 8192; 4096 shrinks, 16384 doubles recall.
+- **Best-effort fit** — trims oldest conversation first; logs warning if even system prompt overflows.
+- **Backend-agnostic** — works with Claude or any; mainly for locals (cloud 200 k rarely needs it).
+- **Per-community, hardware-aware** — `community/core/system_specs.py` reads RAM/VRAM, suggests Low 4096 / Mid 8192 / High 16384 tiers, writes config like a quality slider.
 
 ### Quick Start (library)
 
@@ -150,9 +152,20 @@ chat = Glimi(backend="claude_cli")    # Claude via the Claude CLI login (no SDK)
 chat = Glimi(backend="ollama")        # fully local via Ollama — the free option (set GLIMI_OLLAMA_MODEL)
 ```
 
-`Glimi` wires the defaults — an in-memory `KernelStore`, simple `ProfileProvider`/`OwnerContext`, a `NullObserver`, and your chosen backend. To swap in your own DB, implement `KernelStore` (plus optional profile/owner/observer seams) and inject it with `glimi.runtime.set_store(...)`. A SQLite + web-transport example ships in `community/adapters/kernel_store.py`.
+`Glimi` connects modules — in-memory `KernelStore`, simple `ProfileProvider`/`OwnerContext`, `NullObserver`, and selected backend. Import parts directly if you outgrow defaults.
 
-→ details: [Internals](docs/internals.en.md#library-embedding-kernelstore-di).
+```python
+from glimi import (
+    InMemoryKernelStore, SimpleProfileProvider, SimpleOwnerContext,
+    KernelStore, ProfileProvider, OwnerContext, KernelObserver,  # seams to implement
+    LLMBackend, LLMResponse, EchoBackend,
+)
+```
+
+To use your DB, implement `KernelStore` (and optional `ProfileProvider`/`OwnerContext`/`KernelObserver`) and inject with `glimi.runtime.set_store(...)`. Example (SQLite + web transport):
+
+- `community/adapters/kernel_store.py` — `SqliteKernelStore` + profile/observer adapters
+- `community/core/runtime.py` — injects them and exports API
 
 ### Web dashboard + model roles
 
