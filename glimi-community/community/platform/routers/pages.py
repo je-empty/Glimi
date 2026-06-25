@@ -238,6 +238,19 @@ async def admin_dev_requests_page(
     )
 
 
+@router.get("/admin/visits", response_class=HTMLResponse)
+async def admin_visits_page(
+    request: Request,
+    user: dict = Depends(require_admin),
+):
+    """방문 세션 — 공개 랜딩/데모 방문을 sid(탭 세션) 단위 타임라인으로 본다."""
+    return templates.env.TemplateResponse(
+        request,
+        "admin/visits.html",
+        {"user": user},
+    )
+
+
 def _qa_store():
     """The Community QA generation store (committed generations + local SQLite), via
     the shared core framework (:class:`glimi.edd.GenerationStore`). Path is

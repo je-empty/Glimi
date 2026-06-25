@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Glimi · 방문 세션 (admin){% endblock %}
+{% block head %}
+<style>
+  .visits-page { max-width: 1080px; margin: 0 auto; padding: 18px 22px 80px; }
+  .visits-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .visits-page h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .admin-tag { font-size: 10.5px; padding: 3px 8px; background: var(--err); color: white;
+               border-radius: 4px; font-weight: 700; letter-spacing: 0.5px; }
+  .visits-page .lede { color: var(--text-dim); font-size: 13px; margin: 4px 0 18px; }
+
+  .vs-stats { display: flex; gap: 22px; margin: 0 0 20px; flex-wrap: wrap; }
+  .vs-stat { display: flex; flex-direction: column; gap: 2px; }
+  .vs-stat .n { font-size: 24px; font-weight: 700; line-height: 1; }
+  .vs-stat .l { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.6px; }
+
+  .vs-list { display: flex; flex-direction: column; gap: 10px; }
+  .vs-card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel);
+             overflow: hidden; }
+  .vs-card.owner { border-color: var(--accent); }
+  .vs-card-head { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+                  padding: 12px 16px; cursor: pointer; }
+  .vs-card-head:hover { background: var(--panel2); }
+  .vs-who { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .vs-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+              letter-spacing: 0.4px; }
+  .vs-badge.live { background: color-mix(in srgb, var(--ok) 18%, var(--panel)); color: var(--ok); }
+  .vs-badge.legacy { background: var(--panel2); color: var(--text-faint); }
+  .vs-badge.owner { background: var(--accent); color: white; }
+  .vs-ip { font-family: ui-monospace, monospace; font-size: 12.5px; font-weight: 600; }
+  .vs-meta { color: var(--text-dim); font-size: 12px; }
+  .vs-right { display: flex; gap: 16px; align-items: center; color: var(--text-dim); font-size: 12.5px; }
+  .vs-right b { color: var(--text); font-weight: 700; }
+  .vs-date { color: var(--text-faint); font-size: 11.5px; white-space: nowrap; }
+  .vs-caret { transition: transform 0.15s; color: var(--text-faint); }
+  .vs-card.open .vs-caret { transform: rotate(90deg); }
+
+  .vs-timeline { display: none; padding: 4px 16px 14px; border-top: 1px solid var(--border);
+                 background: var(--panel2); }
+  .vs-card.open .vs-timeline { display: block; }
+  .vs-evt { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: baseline;
+            padding: 5px 0; font-size: 12.5px; border-bottom: 1px dashed var(--border); }
+  .vs-evt:last-child { border-bottom: 0; }
+  .vs-evt .t { color: var(--text-faint); font-family: ui-monospace, monospace; font-size: 11px; }
+  .vs-evt .p { font-family: ui-monospace, monospace; color: var(--text); overflow: hidden;
+               text-overflow: ellipsis; }
+  .vs-evt .d { color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .vs-empty { color: var(--text-faint); font-size: 13px; padding: 40px 0; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="visits-page">
+  <div class="visits-head">
+    <h1>방문 세션</h1>
+    <span class="admin-tag">ADMIN</span>
+  </div>
+  <p class="lede">공개 랜딩·데모 방문을 탭 세션(sid) 단위로 — 누가 어떤 페이지에 몇 초 머물렀는지 타임라인. (path·체류·UA·IP 만, 폼/키 입력 추적 아님)</p>
+
+  <div class="vs-stats" id="vs-stats"></div>
+  <div class="vs-list" id="vs-list"></div>
+</div>
+
+<script src="/static/js/admin/visits.js"></script>
+{% endblock %}

@@ -124,5 +124,52 @@
       });
     })();
   </script>
+  <script>
+    // 방문 세션 비콘 — 익명 방문을 탭 세션(sid) 단위로 /api/track 에 기록.
+    // path·referrer·체류시간만. 폼/키 입력은 절대 안 봄. /admin·/setup·/login 제외.
+    // 진입 시 enter, 이탈(pagehide/탭 숨김) 시 dwell_ms 를 보낸다.
+    (function () {
+      try {
+        var path = location.pathname || "/";
+        var EXCLUDE = ["/admin", "/setup", "/login"];
+        for (var i = 0; i < EXCLUDE.length; i++) {
+          if (path.indexOf(EXCLUDE[i]) === 0) return;  // 추적 제외
+        }
+        var KEY = "glimi_sid";
+        var sid = "";
+        try { sid = sessionStorage.getItem(KEY) || ""; } catch (e) {}
+        if (!sid) {
+          try {
+            sid = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+              : (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+          } catch (e) { sid = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10); }
+          try { sessionStorage.setItem(KEY, sid); } catch (e) {}
+        }
+        var t0 = Date.now();
+        function send(body) {
+          try {
+            var json = JSON.stringify(body);
+            if (navigator.sendBeacon) {
+              navigator.sendBeacon("/api/track", new Blob([json], { type: "application/json" }));
+            } else {
+              fetch("/api/track", { method: "POST", keepalive: true,
+                headers: { "Content-Type": "application/json" }, body: json })
+                .catch(function () {});  // 엔드포인트 없는 앱(워크스페이스 등)에서 무해
+            }
+          } catch (e) {}
+        }
+        send({ sid: sid, path: path, ref: document.referrer || "" });  // 진입
+        var sent = false;
+        function leave() {
+          if (sent) return; sent = true;
+          send({ sid: sid, path: path, dwell_ms: Date.now() - t0 });  // 이탈 체류시간
+        }
+        window.addEventListener("pagehide", leave);
+        document.addEventListener("visibilitychange", function () {
+          if (document.visibilityState === "hidden") leave();
+        });
+      } catch (e) { /* 비콘 실패는 무해 — 무시 */ }
+    })();
+  </script>
 </body>
 </html>

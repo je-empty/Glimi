@@ -95,6 +95,26 @@ CREATE TABLE IF NOT EXISTS dev_runs (
     error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dev_runs_status ON dev_runs(status, started_at DESC);
+
+-- 방문자 세션 추적 — 공개 랜딩/데모 페이지의 익명 방문을 sid(탭 세션) 단위로 묶어
+-- "누가 어떤 페이지에 몇 초 머물렀나" 를 관리자 화면에서 본다. path·referrer·체류·UA·IP 만
+-- (폼/키 입력 추적 아님). 조회는 admin 인증 필수. je-empty resume.iruyo.com 이식.
+CREATE TABLE IF NOT EXISTS visit_log (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        TEXT NOT NULL,        -- 사람이 읽는 시각 (UTC ISO)
+    ts_epoch  REAL NOT NULL,        -- 정렬·구간계산용 epoch
+    ip        TEXT,
+    country   TEXT, city TEXT, asorg TEXT, asn TEXT,   -- 지오/ISP (프록시 헤더 있으면)
+    ua        TEXT,
+    path      TEXT,
+    referrer  TEXT,
+    is_owner  INTEGER DEFAULT 0,    -- 운영자(자기 IP) 방문 구분 (GLIMI_OWNER_IPS)
+    sid       TEXT,                 -- sessionStorage UUID (탭 세션)
+    dwell_ms  INTEGER               -- 체류시간 (이탈 비콘이 채움)
+);
+CREATE INDEX IF NOT EXISTS idx_visit_ip  ON visit_log(ip);
+CREATE INDEX IF NOT EXISTS idx_visit_ts  ON visit_log(ts_epoch);
+CREATE INDEX IF NOT EXISTS idx_visit_sid ON visit_log(sid);
 """
 
 

@@ -13,7 +13,7 @@ import os
 
 from . import accounts, setup as setup_mod, templates  # noqa: F401 — 서브모듈 초기화
 from .db import init_db
-from .routers import admin_dev, auth, chat, communities, dashboard, pages, setup as setup_router
+from .routers import admin_dev, auth, chat, communities, dashboard, pages, setup as setup_router, visits
 from .supervisor import supervisor
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -78,6 +78,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Glimi Platform", lifespan=lifespan)
 
+# 정적 랜딩(다른 오리진)에서 오는 방문 비콘만 위한 opt-in CORS. 비우면(기본) same-origin
+# 전용 — 즉 커뮤니티가 직접 서빙하는 페이지만 추적. 배포 시 GLIMI_CORS_ORIGINS="https://glimi.example"
+# 로 랜딩 오리진을 허용. allow_credentials=False 라 admin 쿠키 엔드포인트는 교차오리진 노출 안 됨.
+_cors_origins = [o.strip() for o in (os.environ.get("GLIMI_CORS_ORIGINS") or "").split(",") if o.strip()]
+if _cors_origins:
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["POST", "OPTIONS"],
+        allow_headers=["content-type"],
+        allow_credentials=False,
+    )
+
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
@@ -95,6 +109,7 @@ app.include_router(communities.router)
 app.include_router(communities.avatar_router)
 app.include_router(dashboard.router)
 app.include_router(admin_dev.router)
+app.include_router(visits.router)
 app.include_router(chat.router)
 
 
