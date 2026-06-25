@@ -48,6 +48,18 @@ Glimi/                           one repo, three self-contained projects (a "wor
 
 ---
 
+## Quick Start
+
+```bash
+git clone https://github.com/je-empty/Glimi.git && cd Glimi
+./run.sh                 # Glimi Community (web dashboard) → http://localhost:8000
+./run.sh workspace       # Glimi Workspace → http://localhost:8800
+```
+
+`run.sh` bootstraps a shared venv and opens the browser. On first run you pick a model (Claude login or local Ollama) and an admin password — that's it. Embedding it as a library instead? See [Quick Start (library)](#quick-start-library). Full prerequisites and per-OS notes are in [Quick Start (Community)](#quick-start-community--cross-platform).
+
+---
+
 ## What makes Glimi different
 
 Glimi Core runs agents that persist across sessions. Standard frameworks launch short-lived agents, compress context, and rebuild later. In Glimi, each agent keeps its context — work, decisions, preferences, and links — stored across sessions and model swaps. The same core drives **Glimi Workspace** (shared workbench) and **Glimi Community** (friend memory).
